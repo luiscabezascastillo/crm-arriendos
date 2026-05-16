@@ -4,16 +4,18 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const navItems = [
-  { label: 'Panel',         href: '/panel' },
-  { label: 'CC1 Admin',     href: '/cc1' },
-  { label: 'CC2 Arr. Admon',href: '/cc2' },
-  { label: 'CC3 Mant.',     href: '/cc3' },
-  { label: 'BB1 / BB2',     href: '/bb' },
-  { label: 'Config',        href: '/config' },
+  { label: 'Panel',           href: '/panel' },
+  { label: 'CC1 Admin',       href: '/cc1' },
+  { label: 'CC2 Arr. Admon',  href: '/cc2' },
+  { label: 'CC3 Mant.',       href: '/cc3' },
+  { label: 'BB1 Ventas',      href: '/bb1' },
+  { label: 'BB2 Arriendos',   href: '/bb2' },
+  { label: 'Config',          href: '/config' },
 ]
 
 export function TopNav() {
   const pathname = usePathname()
+  const enPublicaciones = pathname === '/publicaciones' || pathname.startsWith('/publicaciones/')
 
   return (
     <nav style={{
@@ -75,6 +77,28 @@ export function TopNav() {
           )
         })}
       </div>
+
+      {/* Publicaciones — botón destacado */}
+      <Link href="/publicaciones" style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '6px 14px',
+        borderRadius: 8,
+        fontSize: '12px',
+        fontWeight: 600,
+        color: enPublicaciones ? '#fff' : '#1a56db',
+        background: enPublicaciones ? '#1a56db' : '#eff6ff',
+        border: '1px solid #1a56db',
+        textDecoration: 'none',
+        whiteSpace: 'nowrap',
+        transition: 'background 0.12s, color 0.12s',
+        marginRight: 8,
+      }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        Publicaciones
+      </Link>
 
       {/* Avatar */}
       <div title="cabez@fondocapital.com" style={{
