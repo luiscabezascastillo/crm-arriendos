@@ -6,8 +6,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const ML_CLIENT_ID     = '2049193411681689'
-const ML_CLIENT_SECRET = 'y6mb9ngfRImWakAsg8YIViuGAsCp2pqr'
+const ML_CLIENT_ID = process.env.ML_CLIENT_ID
+const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET
 const ML_API           = 'https://api.mercadolibre.com'
 
 async function getValidToken() {
