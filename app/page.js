@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { signIn } from 'next-auth/react'
 
@@ -36,17 +36,9 @@ export default function LoginPage() {
           <div style={{
             width: 52, height: 52,
             background: 'var(--brand-600)',
-            borderRadius: 14,
-            display: 'inline-flex',
-            alignItems: 'center', justifyContent: 'center',
             marginBottom: 14,
           }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
-                stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M9 22V12h6v10"
-                stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <img src="/logo-fcr.png" alt="Fondo Capital" style={{ width: 120, height: "auto" }} />
           </div>
           <h1 style={{
             fontSize: '22px', fontWeight: 600,
@@ -124,9 +116,11 @@ export default function LoginPage() {
           textAlign: 'center', marginTop: '30px',
           fontSize: '11px', color: 'var(--gray-300)',
         }}>
-          CRM Arriendos · LOG 2.0.7
+          CRM Arriendos Â· LOG 2.0.7
         </p>
       </div>
     </main>
   )
 }
+
+

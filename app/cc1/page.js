@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { TopNav } from '../components/ui/TopNav'
@@ -21,6 +21,14 @@ const estadoMap = {
   O:        { bg: '#ecfeff', color: '#0891b2' },
   Inactiva: { bg: '#fef2f2', color: '#dc2626' },
 }
+
+// Opciones especiales del botón Operaciones
+const opEspecialesCC1 = [
+  { label: 'Creación y edición de Contratos',              href: '/op/contratos' },
+  { label: 'Preparación liquidación de Paola',             href: '/op/liquidacion-paola' },
+  { label: 'Actualización mensual de Comunidad Feliz',     href: '/op/comunidad-feliz' },
+  { label: 'Consolidación y explotación datos de Cartolas', href: '/op/cartolas' },
+]
 
 function EstadoBadge({ estado }) {
   const s = estadoMap[estado] || { bg: '#f3f4f6', color: '#6b7280' }
@@ -49,6 +57,94 @@ function ActionBtn({ label, bg, icon, onClick }) {
     >
       {icon}{label}
     </button>
+  )
+}
+
+// Botón Operaciones con dropdown
+function OperacionesBtn({ opciones, router }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
+        {/* Parte izquierda — label */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 10px 7px 13px', border: 'none',
+            background: '#c2410c', color: '#fff', fontSize: 12, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        >
+          {Ico.gear} Operaciones
+        </button>
+        {/* Parte derecha — flecha */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          style={{
+            padding: '7px 9px', border: 'none',
+            borderLeft: '1px solid rgba(255,255,255,0.25)',
+            background: '#c2410c', color: '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+            style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            <path d="M6 9l6 6 6-6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 4,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          minWidth: 290, zIndex: 100, overflow: 'hidden',
+        }}>
+          {/* Cabecera del dropdown */}
+          <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Operaciones especiales CC1
+            </div>
+          </div>
+          <div style={{ padding: 4 }}>
+            {opciones.map((op, i) => (
+              <button key={i}
+                onClick={() => { setOpen(false); router.push(op.href) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  width: '100%', padding: '9px 12px', borderRadius: 7,
+                  fontSize: 12, fontWeight: 400, color: 'var(--gray-700)',
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#c2410c', flexShrink: 0 }} />
+                {op.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -88,30 +184,15 @@ export default function CC1Page() {
   const [total, setTotal] = useState(0)
   const [kpis, setKpis] = useState({ total: 0, activos: 0, termino: 0, vacios: 0 })
 
-  useEffect(() => {
-    loadKpis()
-  }, [])
-
-  useEffect(() => {
-    setPage(1)
-  }, [search, filtroEstado])
-
-  useEffect(() => {
-    loadData()
-  }, [page, search, filtroEstado])
+  useEffect(() => { loadKpis() }, [])
+  useEffect(() => { setPage(1) }, [search, filtroEstado])
+  useEffect(() => { loadData() }, [page, search, filtroEstado])
 
   async function loadKpis() {
-    const { count: total } = await supabase
-      .from('datos_arriendos').select('*', { count: 'exact', head: true })
-    const { count: activos } = await supabase
-      .from('datos_arriendos').select('*', { count: 'exact', head: true })
-      .eq('estado', 'S')
-    const { count: termino } = await supabase
-      .from('datos_arriendos').select('*', { count: 'exact', head: true })
-      .eq('estado', 'Q')
-    const { count: vacios } = await supabase
-      .from('datos_arriendos').select('*', { count: 'exact', head: true })
-      .eq('estado', 'P')
+    const { count: total }   = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true })
+    const { count: activos } = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true }).eq('estado', 'S')
+    const { count: termino } = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true }).eq('estado', 'Q')
+    const { count: vacios }  = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true }).eq('estado', 'P')
     setKpis({ total: total || 0, activos: activos || 0, termino: termino || 0, vacios: vacios || 0 })
   }
 
@@ -125,20 +206,11 @@ export default function CC1Page() {
       .order('inmueble', { ascending: true })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-    if (search) {
-      query = query.or(
-        `idadmon.ilike.%${search}%,inmueble.ilike.%${search}%,propietario.ilike.%${search}%,arrendatario.ilike.%${search}%`
-      )
-    }
-    if (filtroEstado) {
-      query = query.eq('estado', filtroEstado)
-    }
+    if (search) query = query.or(`idadmon.ilike.%${search}%,inmueble.ilike.%${search}%,propietario.ilike.%${search}%,arrendatario.ilike.%${search}%`)
+    if (filtroEstado) query = query.eq('estado', filtroEstado)
 
     const { data, count, error } = await query
-    if (!error) {
-      setPropiedades(data || [])
-      setTotal(count || 0)
-    }
+    if (!error) { setPropiedades(data || []); setTotal(count || 0) }
     setLoading(false)
   }
 
@@ -150,61 +222,36 @@ export default function CC1Page() {
       <TopNav />
 
       {/* Breadcrumb */}
-      <div style={{
-        padding: '10px 24px 12px', background: 'var(--surface)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <Link href="/panel" style={{
-          fontSize: 12, color: 'var(--gray-400)', textDecoration: 'none',
-          display: 'flex', alignItems: 'center', gap: 4,
-        }}>
+      <div style={{ padding: '10px 24px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Link href="/panel" style={{ fontSize: 12, color: 'var(--gray-400)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
           {Ico.back} Volver al panel
         </Link>
         <span style={{ color: 'var(--border)', fontSize: 14 }}>|</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 30, height: 30, background: '#1a56db', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>
-            CC1 Administración
-          </h1>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>CC1 Administración</h1>
         </div>
       </div>
 
-      {/* KPI bar — datos reales */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4,1fr) 200px',
-        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-      }}>
+      {/* KPI bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr) 200px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         {[
-          { label: 'Total contratos',  value: kpis.total,   color: 'var(--gray-800)' },
-          { label: 'Activos (S)',      value: kpis.activos, color: '#16a34a' },
-          { label: 'En término (Q)',   value: kpis.termino, color: '#d97706' },
-          { label: 'Vacíos (P)',       value: kpis.vacios,  color: '#dc2626' },
+          { label: 'Total contratos', value: kpis.total,   color: 'var(--gray-800)' },
+          { label: 'Activos (S)',     value: kpis.activos, color: '#16a34a' },
+          { label: 'En término (Q)', value: kpis.termino, color: '#d97706' },
+          { label: 'Vacíos (P)',     value: kpis.vacios,  color: '#dc2626' },
         ].map((k, i) => (
           <div key={i} style={{ padding: '10px 20px', borderRight: '1px solid var(--border)', cursor: 'pointer' }}
-            onClick={() => setFiltroEstado(filtroEstado === ['','S','Q','P'][i] ? '' : ['','S','Q','P'][i])}
-          >
+            onClick={() => setFiltroEstado(filtroEstado === ['','S','Q','P'][i] ? '' : ['','S','Q','P'][i])}>
             <div style={{ fontSize: 10, color: 'var(--gray-400)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: k.color }}>{k.value}</div>
-            {filtroEstado === ['','S','Q','P'][i] && filtroEstado !== '' && (
-              <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>● Filtro activo</div>
-            )}
+            {filtroEstado === ['','S','Q','P'][i] && filtroEstado !== '' && <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>● Filtro activo</div>}
           </div>
         ))}
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center' }}>
-          <select
-            value={filtroEstado}
-            onChange={e => setFiltroEstado(e.target.value)}
-            style={{
-              width: '100%', padding: '6px 10px', borderRadius: 8,
-              border: '1px solid var(--border)', background: 'var(--gray-50)',
-              fontSize: 12, color: 'var(--gray-700)', fontFamily: 'inherit', cursor: 'pointer',
-            }}
-          >
+          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--gray-50)', fontSize: 12, color: 'var(--gray-700)', fontFamily: 'inherit', cursor: 'pointer' }}>
             <option value="">Todos los estados</option>
             <option value="S">S — Activos</option>
             <option value="P">P — Vacíos</option>
@@ -230,30 +277,18 @@ export default function CC1Page() {
       </div>
 
       {/* Barra de acciones */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-        padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-      }}>
-        <ActionBtn label="Nuevo / Modificar arriendo" bg="#1a56db" icon={Ico.edit} onClick={irAFormulario} />
-        <ActionBtn label="Propietarios"   bg="#16a34a" icon={Ico.users} onClick={() => {}} />
-        <ActionBtn label="Inmuebles"      bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
-        <ActionBtn label="Calcular ajustes" bg="#d97706" icon={Ico.calc} onClick={() => {}} />
-        <ActionBtn label="Operaciones"    bg="#c2410c" icon={Ico.gear}  onClick={() => {}} />
-        <ActionBtn label="Cierre"         bg="#dc2626" icon={Ico.lock}  onClick={() => {}} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <ActionBtn label="Nuevo / Modificar arriendo" bg="#1a56db" icon={Ico.edit}  onClick={irAFormulario} />
+        <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => {}} />
+        <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
+        <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => {}} />
+        <OperacionesBtn opciones={opEspecialesCC1} router={router} />
+        <ActionBtn label="Cierre"                     bg="#dc2626" icon={Ico.lock}  onClick={() => {}} />
         <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
-          <button onClick={irAFormulario} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px', background: '#1a56db', color: '#fff',
-            border: 'none', fontSize: 12, fontWeight: 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}>
+          <button onClick={irAFormulario} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#1a56db', color: '#fff', border: 'none', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
             {Ico.plus} Nuevo / Asignar arriendo
           </button>
-          <button style={{
-            padding: '7px 10px', background: '#1447c3', color: '#fff',
-            border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)',
-            cursor: 'pointer', fontSize: 13,
-          }}>▾</button>
+          <button style={{ padding: '7px 10px', background: '#1447c3', color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 13 }}>▾</button>
         </div>
       </div>
 
@@ -268,33 +303,15 @@ export default function CC1Page() {
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', display: 'flex' }}>
-                {Ico.search}
-              </span>
-              <input
-                type="text" placeholder="IDADMON, inmueble, propietario…"
-                value={search} onChange={e => setSearch(e.target.value)}
-                style={{
-                  paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
-                  borderRadius: 8, border: '1px solid var(--border)',
-                  background: 'var(--gray-50)', fontSize: 12,
-                  color: 'var(--gray-700)', fontFamily: 'inherit', width: 240, outline: 'none',
-                }}
+              <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', display: 'flex' }}>{Ico.search}</span>
+              <input type="text" placeholder="IDADMON, inmueble, propietario…" value={search} onChange={e => setSearch(e.target.value)}
+                style={{ paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--gray-50)', fontSize: 12, color: 'var(--gray-700)', fontFamily: 'inherit', width: 240, outline: 'none' }}
               />
             </div>
             {(search || filtroEstado) && (
-              <button onClick={() => { setSearch(''); setFiltroEstado('') }} style={{
-                padding: '7px 12px', borderRadius: 8,
-                border: '1px solid var(--border)', background: 'transparent',
-                fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer', fontFamily: 'inherit',
-              }}>Limpiar</button>
+              <button onClick={() => { setSearch(''); setFiltroEstado('') }} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer', fontFamily: 'inherit' }}>Limpiar</button>
             )}
-            <button onClick={irAFormulario} style={{
-              padding: '7px 14px', background: '#1a56db', color: '#fff',
-              border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 500,
-              cursor: 'pointer', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}>
+            <button onClick={irAFormulario} style={{ padding: '7px 14px', background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
               {Ico.plus} Nuevo arriendo
             </button>
           </div>
@@ -309,64 +326,35 @@ export default function CC1Page() {
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
                 {['IDADMON', 'Inmueble', 'Propietario', 'Estado', 'Cuota', 'Término actual', ''].map((h, i) => (
-                  <th key={i} style={{
-                    padding: '9px 12px', textAlign: 'left',
-                    fontSize: 10, fontWeight: 600, color: 'var(--gray-400)',
-                    textTransform: 'uppercase', letterSpacing: '0.05em',
-                    borderBottom: '1px solid var(--border)',
-                  }}>{h}</th>
+                  <th key={i} style={{ padding: '9px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>
-                    Cargando datos...
-                  </td>
-                </tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Cargando datos...</td></tr>
               ) : propiedades.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>
-                    No se encontraron registros
-                  </td>
-                </tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
               ) : propiedades.map((p, i) => {
                 const alerta = alertaTermino(p.termino_actual)
                 return (
-                  <tr key={i}
-                    style={{ cursor: 'pointer' }}
+                  <tr key={i} style={{ cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     onClick={() => router.push(`/admin?idadmon=${p.idadmon}`)}
                   >
-                    <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)' }}>
-                      {p.idadmon}
-                    </td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.inmueble || '—'}
-                    </td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.propietario || '—'}
-                    </td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <EstadoBadge estado={p.estado} />
-                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)' }}>{p.idadmon}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.inmueble || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.propietario || '—'}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}><EstadoBadge estado={p.estado} /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
                       {p.cuota ? `${p.unid === 'UF' ? 'UF ' : '$'}${Number(p.cuota).toLocaleString('es-CL')}` : '—'}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: 12, borderBottom: '1px solid var(--border-subtle)' }}>
                       {p.termino_actual ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ color: 'var(--gray-700)' }}>
-                            {new Date(p.termino_actual).toLocaleDateString('es-CL')}
-                          </span>
-                          {alerta && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 600, padding: '1px 6px',
-                              borderRadius: 8, background: alerta.color + '20', color: alerta.color,
-                            }}>{alerta.text}</span>
-                          )}
+                          <span style={{ color: 'var(--gray-700)' }}>{new Date(p.termino_actual).toLocaleDateString('es-CL')}</span>
+                          {alerta && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: alerta.color + '20', color: alerta.color }}>{alerta.text}</span>}
                         </span>
                       ) : '—'}
                     </td>
@@ -380,29 +368,16 @@ export default function CC1Page() {
 
         {/* Paginador */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 16 }}>
-          <button onClick={() => setPage(1)} disabled={page === 1} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray-500)', fontSize: 12, cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.4 : 1 }}>«</button>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray-500)', fontSize: 12, cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.4 : 1 }}>‹</button>
-
+          <button onClick={() => setPage(1)} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>«</button>
+          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>‹</button>
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            const p = Math.max(1, Math.min(page - 2, totalPages - 4)) + i
-            if (p < 1 || p > totalPages) return null
-            return (
-              <button key={p} onClick={() => setPage(p)} style={{
-                width: 30, height: 30, borderRadius: 7,
-                border: '1px solid var(--border)',
-                background: p === page ? '#1a56db' : 'transparent',
-                color: p === page ? '#fff' : 'var(--gray-500)',
-                fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-              }}>{p}</button>
-            )
+            const p = Math.max(1, Math.min(page-2, totalPages-4))+i
+            if (p<1||p>totalPages) return null
+            return <button key={p} onClick={() => setPage(p)} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:p===page?'#1a56db':'transparent', color:p===page?'#fff':'var(--gray-500)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{p}</button>
           })}
-
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray-500)', fontSize: 12, cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.4 : 1 }}>›</button>
-          <button onClick={() => setPage(totalPages)} disabled={page === totalPages} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray-500)', fontSize: 12, cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.4 : 1 }}>»</button>
-
-          <span style={{ fontSize: 11, color: 'var(--gray-400)', marginLeft: 8 }}>
-            Página {page} de {totalPages} · {total} registros
-          </span>
+          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>›</button>
+          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>»</button>
+          <span style={{ fontSize:11, color:'var(--gray-400)', marginLeft:8 }}>Página {page} de {totalPages} · {total} registros</span>
         </div>
       </div>
     </div>
