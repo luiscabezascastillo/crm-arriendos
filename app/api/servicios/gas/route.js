@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { consultarServicio } from '../../../lib/scraping-servicios.js'
+import { consultarServicio } from '../../../../lib/scraping-servicios.js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
