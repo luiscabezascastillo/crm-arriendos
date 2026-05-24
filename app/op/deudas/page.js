@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 
@@ -32,6 +32,60 @@ function total(f) {
 
 const MESES = ['MAYO 2026','ABRIL 2026','MARZO 2026','FEBRERO 2026','ENERO 2026','DICIEMBRE 2025','NOVIEMBRE 2025','OCTUBRE 2025']
 
+// Componente dropdown de cabecera estilo Excel
+function ColFilter({ label, options, value, onChange, align = 'left' }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+  const activo = value !== ''
+  return (
+    <div ref={ref} style={{ position:'relative', display:'inline-block' }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        background:'none', border:'none', cursor:'pointer', padding:0,
+        display:'flex', alignItems:'center', gap:3, fontSize:11, fontWeight:500,
+        color: activo ? '#1D4ED8' : '#6B7280'
+      }}>
+        {label}
+        <span style={{ fontSize:9, color: activo ? '#1D4ED8' : '#9CA3AF' }}>
+          {activo ? '▼' : '⬍'}
+        </span>
+      </button>
+      {open && (
+        <div style={{
+          position:'absolute', top:'100%', [align === 'right' ? 'right' : 'left']:0,
+          marginTop:4, background:'#fff', border:'1px solid #E5E7EB',
+          borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.1)',
+          minWidth:180, zIndex:200, overflow:'hidden'
+        }}>
+          <div style={{ padding:4 }}>
+            <div onClick={() => { onChange(''); setOpen(false) }}
+              style={{ padding:'6px 10px', borderRadius:6, fontSize:12, cursor:'pointer',
+                       color: value==='' ? '#1D4ED8' : '#374151',
+                       background: value==='' ? '#EFF6FF' : 'transparent',
+                       fontWeight: value==='' ? 500 : 400 }}>
+              Todos
+            </div>
+            {options.map(opt => (
+              <div key={opt} onClick={() => { onChange(opt); setOpen(false) }}
+                style={{ padding:'6px 10px', borderRadius:6, fontSize:12, cursor:'pointer',
+                         color: value===opt ? '#1D4ED8' : '#374151',
+                         background: value===opt ? '#EFF6FF' : 'transparent',
+                         fontWeight: value===opt ? 500 : 400,
+                         whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:240 }}>
+                {opt}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Deudas() {
   const [mes, setMes] = useState('ABRIL 2026')
   const [filas, setFilas] = useState([])
@@ -39,6 +93,12 @@ export default function Deudas() {
   const [loading, setLoading] = useState(true)
   const [drawer, setDrawer] = useState(null)
   const [historial, setHistorial] = useState(null)
+
+  // Filtros dropdown
+  const [filtroIdadmon, setFiltroIdadmon] = useState('')
+  const [filtroProp, setFiltroProp] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroDeuda, setFiltroDeuda] = useState('') // 'condeuda' | 'sindeuda' | ''
 
   useEffect(() => {
     supabase.from('datos_arriendos')
@@ -54,6 +114,10 @@ export default function Deudas() {
   useEffect(() => {
     setLoading(true)
     setFilas([])
+    setFiltroIdadmon('')
+    setFiltroProp('')
+    setFiltroEstado('')
+    setFiltroDeuda('')
     supabase.from('ggcc_agua_luz')
       .select('idadmon,idinmue,estado,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas')
       .eq('mes', mes)
@@ -75,37 +139,65 @@ export default function Deudas() {
       .then(({ data }) => setHistorial(data || []))
   }
 
+  // Opciones únicas para dropdowns
+  const optsIdadmon = [...new Set(filas.map(f => f.idadmon))].sort()
+  const optsProp = [...new Set(filas.map(f => (contratos[f.idadmon]?.propietario)||'—'))].sort()
+  const optsEstado = [...new Set(filas.map(f => f.estado).filter(Boolean))].sort()
+
+  // Filtrar
+  const datos = filas.filter(f => {
+    const c = contratos[f.idadmon] || {}
+    if (filtroIdadmon && f.idadmon !== filtroIdadmon) return false
+    if (filtroProp && (c.propietario||'—') !== filtroProp) return false
+    if (filtroEstado && f.estado !== filtroEstado) return false
+    if (filtroDeuda === 'condeuda' && total(f) === 0) return false
+    if (filtroDeuda === 'sindeuda' && total(f) > 0) return false
+    return true
+  })
+
+  const hayFiltros = filtroIdadmon || filtroProp || filtroEstado || filtroDeuda
   const conDeuda = filas.filter(f => total(f) > 0).length
   const sinDeuda = filas.filter(f => total(f) === 0).length
   const totDeuda = filas.reduce((s,f) => s+total(f), 0)
 
   return (
     <div style={{ padding:'24px 32px', maxWidth:1300, margin:'0 auto', fontFamily:'var(--font-sans,sans-serif)' }}>
-      {/* Breadcrumb */}
+
+      {/* Breadcrumb + volver */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontSize:13 }}>
-        <Link href="/cc1"
-          style={{ background:'none', border:'none', cursor:'pointer', color:'#6B7280', padding:'4px 8px',
-                   borderRadius:6, display:'flex', alignItems:'center', gap:4, fontSize:13, textDecoration:'none' }}>
-          ← Volver a CC1
+        <Link href="/cc1" style={{ color:'#6B7280', textDecoration:'none', display:'flex', alignItems:'center', gap:4,
+                                    padding:'4px 8px', borderRadius:6 }}>
+          ← CC1 Admin
         </Link>
         <span style={{ color:'#D1D5DB' }}>/</span>
-        <span style={{ color:'#6B7280' }}>Deudas de servicios</span>
+        <span style={{ color:'#374151' }}>Deudas de servicios</span>
       </div>
 
+      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:500, margin:0 }}>Deudas de servicios</h1>
           <p style={{ color:'#6B7280', fontSize:13, marginTop:4 }}>GGCC · Luz · Agua · Gas</p>
         </div>
-        <select value={mes} onChange={e => setMes(e.target.value)}
-          style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #D1D5DB', fontSize:14 }}>
-          {MESES.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {hayFiltros && (
+            <button onClick={() => { setFiltroIdadmon(''); setFiltroProp(''); setFiltroEstado(''); setFiltroDeuda('') }}
+              style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #E5E7EB', background:'#FEF3C7',
+                       fontSize:12, cursor:'pointer', color:'#92400E' }}>
+              ✕ Limpiar filtros
+            </button>
+          )}
+          <select value={mes} onChange={e => setMes(e.target.value)}
+            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #D1D5DB', fontSize:14 }}>
+            {MESES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
       </div>
 
+      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
         {[
-          { label:'Contratos', val:filas.length, color:'#185FA5' },
+          { label:'Contratos', val:filas.length, sub: datos.length !== filas.length ? `${datos.length} filtrados` : null, color:'#185FA5' },
           { label:'Con deuda', val:conDeuda, color:'#A32D2D' },
           { label:'Sin deuda', val:sinDeuda, color:'#3B6D11' },
           { label:'Deuda total', val:'$'+Math.round(totDeuda/1000)+'k', color:'#A32D2D' },
@@ -113,10 +205,12 @@ export default function Deudas() {
           <div key={k.label} style={{ background:'#F9FAFB', borderRadius:8, padding:'12px 16px', border:'0.5px solid #E5E7EB' }}>
             <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>{k.label}</div>
             <div style={{ fontSize:24, fontWeight:500, color:k.color }}>{k.val}</div>
+            {k.sub && <div style={{ fontSize:11, color:'#1D4ED8' }}>{k.sub}</div>}
           </div>
         ))}
       </div>
 
+      {/* Tabla */}
       <div style={{ background:'#fff', border:'0.5px solid #E5E7EB', borderRadius:10, overflow:'hidden' }}>
         {loading ? (
           <div style={{ padding:'2rem', textAlign:'center', color:'#9CA3AF' }}>Cargando...</div>
@@ -125,33 +219,46 @@ export default function Deudas() {
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr style={{ background:'#F9FAFB' }}>
-                  {['IDADMON','Propietario / Inmueble','Est.','Servicios','GGCC','Luz','Agua','Gas','Total'].map((h,i) => (
-                    <th key={i} style={{ padding:'8px 12px', textAlign:i>=4?'right':'left', fontSize:11,
-                                         fontWeight:500, color:'#6B7280', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap' }}>
-                      {h}
-                    </th>
-                  ))}
+                  <th style={thS}>
+                    <ColFilter label="IDADMON" options={optsIdadmon} value={filtroIdadmon} onChange={setFiltroIdadmon} />
+                  </th>
+                  <th style={thS}>
+                    <ColFilter label="Propietario / Inmueble" options={optsProp} value={filtroProp} onChange={setFiltroProp} />
+                  </th>
+                  <th style={thS}>
+                    <ColFilter label="Est." options={optsEstado} value={filtroEstado} onChange={setFiltroEstado} />
+                  </th>
+                  <th style={thS}>Servicios</th>
+                  <th style={{ ...thS, textAlign:'right' }}>GGCC</th>
+                  <th style={{ ...thS, textAlign:'right' }}>Luz</th>
+                  <th style={{ ...thS, textAlign:'right' }}>Agua</th>
+                  <th style={{ ...thS, textAlign:'right' }}>Gas</th>
+                  <th style={{ ...thS, textAlign:'right' }}>
+                    <ColFilter label="Total" options={['Con deuda','Sin deuda']} value={
+                      filtroDeuda === 'condeuda' ? 'Con deuda' : filtroDeuda === 'sindeuda' ? 'Sin deuda' : ''
+                    } onChange={v => setFiltroDeuda(v === 'Con deuda' ? 'condeuda' : v === 'Sin deuda' ? 'sindeuda' : '')} align="right" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f,i) => {
+                {datos.map((f,i) => {
                   const c = contratos[f.idadmon] || {}
                   const tot = total(f)
                   return (
                     <tr key={f.idadmon+i} onClick={() => abrirDrawer(f)}
                       style={{ background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA', cursor:'pointer' }}>
-                      <td style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6', fontWeight:500 }}>{f.idadmon}</td>
-                      <td style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+                      <td style={tdS}><span style={{ fontWeight:500 }}>{f.idadmon}</span></td>
+                      <td style={tdS}>
                         <div>{c.propietario||'—'}</div>
                         <div style={{ fontSize:11, color:'#6B7280' }}>{c.inmueble||f.idinmue}</div>
                       </td>
-                      <td style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+                      <td style={tdS}>
                         <span style={{ fontSize:10, padding:'2px 7px', borderRadius:8, fontWeight:500,
                                        background:f.estado==='S'?'#EAF3DE':'#FAEEDA', color:f.estado==='S'?'#3B6D11':'#854F0B' }}>
                           {f.estado}
                         </span>
                       </td>
-                      <td style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+                      <td style={tdS}>
                         <div style={{ display:'flex', gap:4 }}>
                           <Dot val={f.deuda_gastos_comunes} />
                           <Dot val={f.deuda_vigente_electricidad} />
@@ -160,27 +267,28 @@ export default function Deudas() {
                         </div>
                       </td>
                       {[f.deuda_gastos_comunes,f.deuda_vigente_electricidad,f.deuda_vigente_agua,f.deuda_vigente_gas].map((v,vi) => (
-                        <td key={vi} style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6', textAlign:'right',
-                                              fontWeight:500, color:fmt(v)>0?'#A32D2D':fmt(v)===0?'#3B6D11':'#9CA3AF' }}>
+                        <td key={vi} style={{ ...tdS, textAlign:'right', fontWeight:500,
+                                              color:fmt(v)>0?'#A32D2D':fmt(v)===0?'#3B6D11':'#9CA3AF' }}>
                           {v===null?'—':fmtPeso(fmt(v))}
                         </td>
                       ))}
-                      <td style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6', textAlign:'right',
-                                   fontWeight:600, color:tot>0?'#A32D2D':'#3B6D11' }}>
+                      <td style={{ ...tdS, textAlign:'right', fontWeight:600, color:tot>0?'#A32D2D':'#3B6D11' }}>
                         {fmtPeso(tot)}
                       </td>
                     </tr>
                   )
                 })}
                 <tr style={{ background:'#F3F4F6' }}>
-                  <td colSpan={4} style={{ padding:'8px 12px', fontSize:12, color:'#6B7280', fontWeight:500 }}>{filas.length} contratos</td>
+                  <td colSpan={4} style={{ padding:'8px 12px', fontSize:12, color:'#6B7280', fontWeight:500 }}>
+                    {datos.length} de {filas.length} contratos
+                  </td>
                   {['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas'].map((col,i) => (
                     <td key={i} style={{ padding:'8px 12px', textAlign:'right', fontWeight:600, fontSize:12, color:'#A32D2D' }}>
-                      {fmtPeso(filas.reduce((s,f) => s+(fmt(f[col])||0), 0))}
+                      {fmtPeso(datos.reduce((s,f) => s+(fmt(f[col])||0), 0))}
                     </td>
                   ))}
                   <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, fontSize:13, color:'#A32D2D' }}>
-                    {fmtPeso(filas.reduce((s,f) => s+total(f), 0))}
+                    {fmtPeso(datos.reduce((s,f) => s+total(f), 0))}
                   </td>
                 </tr>
               </tbody>
@@ -189,6 +297,7 @@ export default function Deudas() {
         )}
       </div>
 
+      {/* Drawer */}
       {drawer && (
         <>
           <div onClick={() => { setDrawer(null); setHistorial(null) }}
@@ -240,6 +349,7 @@ export default function Deudas() {
                 <span style={{ fontSize:20, fontWeight:600, color:total(drawer)>0?'#A32D2D':'#3B6D11' }}>{fmtPeso(total(drawer))}</span>
               </div>
 
+              {/* Gráfico evolución */}
               {historial && historial.length > 0 && (() => {
                 const meses = [...historial].reverse()
                 const cols = ['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas']
@@ -248,51 +358,39 @@ export default function Deudas() {
                 const totales = meses.map(h => cols.reduce((s,c) => s+(fmt(h[c])||0), 0))
                 const allVals = [...cols.flatMap(c => meses.map(h => fmt(h[c])||0)), ...totales]
                 const maxV = Math.max(...allVals, 1)
-                const W = 360, H = 160, padL = 50, padR = 10, padT = 10, padB = 30
-                const xStep = (W - padL - padR) / Math.max(meses.length - 1, 1)
-                const yScale = v => padT + (H - padT - padB) * (1 - v / maxV)
-                const pts = (vals) => vals.map((v,i) => `${padL + i*xStep},${yScale(v)}`).join(' ')
+                const W=360, H=160, padL=50, padR=10, padT=10, padB=30
+                const xStep = (W-padL-padR) / Math.max(meses.length-1, 1)
+                const yScale = v => padT + (H-padT-padB) * (1 - v/maxV)
+                const pts = vals => vals.map((v,i) => `${padL+i*xStep},${yScale(v)}`).join(' ')
                 return (
                   <div style={{ marginBottom:20 }}>
                     <div style={{ fontSize:11, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
                       Evolución de deudas
                     </div>
                     <svg width={W} height={H} style={{ overflow:'visible' }}>
-                      {/* Grid lines */}
                       {[0,0.25,0.5,0.75,1].map((p,i) => (
                         <g key={i}>
-                          <line x1={padL} y1={yScale(maxV*p)} x2={W-padR} y2={yScale(maxV*p)}
-                            stroke="#F3F4F6" strokeWidth="1" />
+                          <line x1={padL} y1={yScale(maxV*p)} x2={W-padR} y2={yScale(maxV*p)} stroke="#F3F4F6" strokeWidth="1" />
                           <text x={padL-4} y={yScale(maxV*p)+4} textAnchor="end" fontSize="9" fill="#9CA3AF">
                             {'$'+Math.round(maxV*p/1000)+'k'}
                           </text>
                         </g>
                       ))}
-                      {/* Líneas por servicio */}
                       {cols.map((col,ci) => {
                         const vals = meses.map(h => fmt(h[col])||0)
-                        if (vals.every(v => v === 0)) return null
-                        return (
-                          <polyline key={ci} fill="none" stroke={colors[ci]} strokeWidth="1.5"
-                            strokeDasharray="4,2" opacity="0.8"
-                            points={pts(vals)} />
-                        )
+                        if (vals.every(v => v===0)) return null
+                        return <polyline key={ci} fill="none" stroke={colors[ci]} strokeWidth="1.5" strokeDasharray="4,2" opacity="0.8" points={pts(vals)} />
                       })}
-                      {/* Línea total — más gruesa */}
-                      <polyline fill="none" stroke="#1F3864" strokeWidth="2.5"
-                        points={pts(totales)} />
-                      {/* Puntos en total */}
+                      <polyline fill="none" stroke="#1F3864" strokeWidth="2.5" points={pts(totales)} />
                       {totales.map((v,i) => (
                         <circle key={i} cx={padL+i*xStep} cy={yScale(v)} r="3" fill="#1F3864" />
                       ))}
-                      {/* Etiquetas eje X */}
                       {meses.map((h,i) => (
                         <text key={i} x={padL+i*xStep} y={H-2} textAnchor="middle" fontSize="8" fill="#9CA3AF">
                           {(h.mes||'').split(' ')[0].slice(0,3)}
                         </text>
                       ))}
                     </svg>
-                    {/* Leyenda */}
                     <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:6 }}>
                       {[...labels.map((l,i) => ({ label:l, color:colors[i] })), { label:'Total', color:'#1F3864' }].map((item,i) => (
                         <div key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'#6B7280' }}>
@@ -304,6 +402,11 @@ export default function Deudas() {
                   </div>
                 )
               })()}
+
+              {/* Historial barras */}
+              <div style={{ fontSize:11, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>
+                Historial GGCC
+              </div>
               {historial ? historial.map((h,i) => {
                 const v = fmt(h.deuda_gastos_comunes)||0
                 const max = Math.max(...historial.map(d => fmt(d.deuda_gastos_comunes)||0), 1)
@@ -324,3 +427,6 @@ export default function Deudas() {
     </div>
   )
 }
+
+const thS = { padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:500, color:'#6B7280', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap' }
+const tdS = { padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }
