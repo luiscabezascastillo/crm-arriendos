@@ -13,78 +13,161 @@ function fmt(n) {
   const num = parseInt(n)
   return isNaN(num) ? null : num
 }
-
 function fmtPeso(n) {
   if (n === null || n === undefined) return '—'
   return '$' + Number(n).toLocaleString('es-CL')
 }
-
 function Dot({ val }) {
   const v = fmt(val)
   const color = v === null ? '#B4B2A9' : v === 0 ? '#639922' : '#E24B4A'
   return <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
 }
-
-function total(f) {
-  return (fmt(f.deuda_gastos_comunes)||0) + (fmt(f.deuda_vigente_electricidad)||0) +
-         (fmt(f.deuda_vigente_agua)||0) + (fmt(f.deuda_vigente_gas)||0)
+function totalF(f) {
+  return (fmt(f.deuda_gastos_comunes)||0)+(fmt(f.deuda_vigente_electricidad)||0)+
+         (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
 const MESES = ['MAYO 2026','ABRIL 2026','MARZO 2026','FEBRERO 2026','ENERO 2026','DICIEMBRE 2025','NOVIEMBRE 2025','OCTUBRE 2025']
 
-// Componente dropdown de cabecera estilo Excel
-function ColFilter({ label, options, value, onChange, align = 'left' }) {
+// Filtro estilo Excel completo
+function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
+  // type: 'text' | 'number'
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState(value.selected || [])
+  const [sortDir, setSortDir] = useState(value.sort || null) // 'asc' | 'desc' | null
+  const [minVal, setMinVal] = useState(value.min ?? '')
+  const [maxVal, setMaxVal] = useState(value.max ?? '')
   const ref = useRef(null)
+
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
-  const activo = value !== ''
+
+  const activo = (value.selected?.length > 0) || value.sort || value.min !== '' || value.max !== ''
+
+  const filteredOpts = options.filter(o => String(o).toLowerCase().includes(search.toLowerCase()))
+
+  function toggleAll() {
+    if (selected.length === options.length) setSelected([])
+    else setSelected([...options])
+  }
+
+  function toggle(opt) {
+    setSelected(s => s.includes(opt) ? s.filter(x => x !== opt) : [...s, opt])
+  }
+
+  function apply() {
+    onApply({ selected, sort: sortDir, min: minVal, max: maxVal })
+    setOpen(false)
+  }
+
+  function clear() {
+    setSelected([])
+    setSortDir(null)
+    setMinVal('')
+    setMaxVal('')
+    onApply({ selected: [], sort: null, min: '', max: '' })
+    setOpen(false)
+  }
+
   return (
-    <div ref={ref} style={{ position:'relative', display:'inline-block' }}>
+    <div ref={ref} style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:3 }}>
       <button onClick={() => setOpen(v => !v)} style={{
         background:'none', border:'none', cursor:'pointer', padding:0,
         display:'flex', alignItems:'center', gap:3, fontSize:11, fontWeight:500,
         color: activo ? '#1D4ED8' : '#6B7280'
       }}>
         {label}
-        <span style={{ fontSize:9, color: activo ? '#1D4ED8' : '#9CA3AF' }}>
-          {activo ? '▼' : '⬍'}
+        <span style={{ fontSize:10, color: activo ? '#1D4ED8' : '#9CA3AF' }}>
+          {value.sort === 'asc' ? ' ↑' : value.sort === 'desc' ? ' ↓' : ' ⬍'}
         </span>
       </button>
+
       {open && (
         <div style={{
-          position:'absolute', top:'100%', [align === 'right' ? 'right' : 'left']:0,
-          marginTop:4, background:'#fff', border:'1px solid #E5E7EB',
-          borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.1)',
-          minWidth:180, zIndex:200, overflow:'hidden'
+          position:'absolute', top:'100%', [align==='right'?'right':'left']:0, marginTop:4,
+          background:'#fff', border:'1px solid #E5E7EB', borderRadius:8,
+          boxShadow:'0 8px 24px rgba(0,0,0,0.12)', minWidth:220, zIndex:300
         }}>
-          <div style={{ padding:4 }}>
-            <div onClick={() => { onChange(''); setOpen(false) }}
-              style={{ padding:'6px 10px', borderRadius:6, fontSize:12, cursor:'pointer',
-                       color: value==='' ? '#1D4ED8' : '#374151',
-                       background: value==='' ? '#EFF6FF' : 'transparent',
-                       fontWeight: value==='' ? 500 : 400 }}>
-              Todos
+          {/* Ordenar */}
+          <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+            <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:500, marginBottom:6, textTransform:'uppercase' }}>Ordenar</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {[['asc', type==='number'?'Menor → Mayor':'A → Z'], ['desc', type==='number'?'Mayor → Menor':'Z → A']].map(([dir, lbl]) => (
+                <button key={dir} onClick={() => setSortDir(d => d===dir ? null : dir)} style={{
+                  flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid',
+                  fontSize:11, cursor:'pointer',
+                  background: sortDir===dir ? '#EFF6FF' : '#F9FAFB',
+                  borderColor: sortDir===dir ? '#BFDBFE' : '#E5E7EB',
+                  color: sortDir===dir ? '#1D4ED8' : '#374151'
+                }}>{lbl}</button>
+              ))}
             </div>
-            {options.map(opt => (
-              <div key={opt} onClick={() => { onChange(opt); setOpen(false) }}
-                style={{ padding:'6px 10px', borderRadius:6, fontSize:12, cursor:'pointer',
-                         color: value===opt ? '#1D4ED8' : '#374151',
-                         background: value===opt ? '#EFF6FF' : 'transparent',
-                         fontWeight: value===opt ? 500 : 400,
-                         whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:240 }}>
-                {opt}
+          </div>
+
+          {/* Filtro numérico */}
+          {type === 'number' && (
+            <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+              <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:500, marginBottom:6, textTransform:'uppercase' }}>Rango</div>
+              <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                <input placeholder="Mín" value={minVal} onChange={e => setMinVal(e.target.value)} type="number"
+                  style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid #E5E7EB', fontSize:12 }} />
+                <span style={{ color:'#9CA3AF', fontSize:12 }}>—</span>
+                <input placeholder="Máx" value={maxVal} onChange={e => setMaxVal(e.target.value)} type="number"
+                  style={{ flex:1, padding:'4px 8px', borderRadius:6, border:'1px solid #E5E7EB', fontSize:12 }} />
+              </div>
+            </div>
+          )}
+
+          {/* Buscar en opciones */}
+          <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }}>
+            <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
+              style={{ width:'100%', padding:'4px 8px', borderRadius:6, border:'1px solid #E5E7EB', fontSize:12, boxSizing:'border-box' }} />
+          </div>
+
+          {/* Lista opciones */}
+          <div style={{ maxHeight:180, overflowY:'auto', padding:'4px' }}>
+            <div onClick={toggleAll} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px',
+                                              borderRadius:6, cursor:'pointer', fontSize:12 }}
+              onMouseEnter={e => e.currentTarget.style.background='#F3F4F6'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+              <input type="checkbox" readOnly checked={selected.length === options.length} style={{ margin:0 }} />
+              <span style={{ fontWeight:500 }}>Seleccionar todo</span>
+            </div>
+            {filteredOpts.map(opt => (
+              <div key={opt} onClick={() => toggle(opt)}
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px',
+                         borderRadius:6, cursor:'pointer', fontSize:12, whiteSpace:'nowrap',
+                         overflow:'hidden', textOverflow:'ellipsis' }}
+                onMouseEnter={e => e.currentTarget.style.background='#F3F4F6'}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <input type="checkbox" readOnly checked={selected.includes(opt)} style={{ margin:0 }} />
+                <span>{opt === null || opt === '' ? '(vacío)' : String(opt)}</span>
               </div>
             ))}
+          </div>
+
+          {/* Botones acción */}
+          <div style={{ padding:'8px 12px', borderTop:'0.5px solid #F3F4F6', display:'flex', gap:6 }}>
+            <button onClick={clear} style={{ flex:1, padding:'5px', borderRadius:6, border:'1px solid #E5E7EB',
+                                             background:'#fff', fontSize:12, cursor:'pointer', color:'#6B7280' }}>
+              Limpiar
+            </button>
+            <button onClick={apply} style={{ flex:1, padding:'5px', borderRadius:6, border:'none',
+                                              background:'#1D4ED8', fontSize:12, cursor:'pointer', color:'#fff', fontWeight:500 }}>
+              Aplicar
+            </button>
           </div>
         </div>
       )}
     </div>
   )
 }
+
+const emptyF = { selected:[], sort:null, min:'', max:'' }
 
 export default function Deudas() {
   const [mes, setMes] = useState('ABRIL 2026')
@@ -94,19 +177,22 @@ export default function Deudas() {
   const [drawer, setDrawer] = useState(null)
   const [historial, setHistorial] = useState(null)
 
-  // Filtros dropdown
-  const [filtroIdadmon, setFiltroIdadmon] = useState('')
-  const [filtroProp, setFiltroProp] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState('')
-  const [filtroDeuda, setFiltroDeuda] = useState('') // 'condeuda' | 'sindeuda' | ''
+  const [fIdadmon, setFIdadmon] = useState(emptyF)
+  const [fProp, setFProp] = useState(emptyF)
+  const [fEstado, setFEstado] = useState(emptyF)
+  const [fGGCC, setFGGCC] = useState(emptyF)
+  const [fLuz, setFLuz] = useState(emptyF)
+  const [fAgua, setFAgua] = useState(emptyF)
+  const [fGas, setFGas] = useState(emptyF)
+  const [fTotal, setFTotal] = useState(emptyF)
+  const [sortCol, setSortCol] = useState(null)
+  const [sortDir, setSortDir] = useState(null)
 
   useEffect(() => {
-    supabase.from('datos_arriendos')
-      .select('idadmon,propietario,inmueble')
-      .in('estado', ['S','P'])
-      .then(({ data }) => {
+    supabase.from('datos_arriendos').select('idadmon,propietario,inmueble').in('estado',['S','P'])
+      .then(({data}) => {
         const map = {}
-        if (data) data.forEach(c => { map[c.idadmon] = c })
+        if (data) data.forEach(c => { map[c.idadmon]=c })
         setContratos(map)
       })
   }, [])
@@ -114,181 +200,223 @@ export default function Deudas() {
   useEffect(() => {
     setLoading(true)
     setFilas([])
-    setFiltroIdadmon('')
-    setFiltroProp('')
-    setFiltroEstado('')
-    setFiltroDeuda('')
+    setFIdadmon(emptyF); setFProp(emptyF); setFEstado(emptyF)
+    setFGGCC(emptyF); setFLuz(emptyF); setFAgua(emptyF); setFGas(emptyF); setFTotal(emptyF)
+    setSortCol(null); setSortDir(null)
     supabase.from('ggcc_agua_luz')
       .select('idadmon,idinmue,estado,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas')
-      .eq('mes', mes)
-      .limit(500)
-      .then(({ data }) => {
-        setFilas((data || []).filter(f => f.idadmon && !f.idadmon.startsWith('.')))
+      .eq('mes', mes).limit(500)
+      .then(({data}) => {
+        setFilas((data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.')))
         setLoading(false)
       })
   }, [mes])
 
   function abrirDrawer(f) {
-    setDrawer(f)
-    setHistorial(null)
+    setDrawer(f); setHistorial(null)
     supabase.from('ggcc_agua_luz')
       .select('mes,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas')
-      .eq('idadmon', f.idadmon)
-      .order('aamm', { ascending: false })
-      .limit(6)
-      .then(({ data }) => setHistorial(data || []))
+      .eq('idadmon', f.idadmon).order('aamm',{ascending:false}).limit(6)
+      .then(({data}) => setHistorial(data||[]))
   }
 
-  // Opciones únicas para dropdowns
+  function applyFilter(f, setter, newVal) {
+    setter(newVal)
+    if (newVal.sort) { setSortCol(f); setSortDir(newVal.sort) }
+  }
+
+  // Opciones únicas
   const optsIdadmon = [...new Set(filas.map(f => f.idadmon))].sort()
-  const optsProp = [...new Set(filas.map(f => (contratos[f.idadmon]?.propietario)||'—'))].sort()
+  const optsProp = [...new Set(filas.map(f => contratos[f.idadmon]?.propietario||'—'))].sort()
   const optsEstado = [...new Set(filas.map(f => f.estado).filter(Boolean))].sort()
 
-  // Filtrar
-  const datos = filas.filter(f => {
-    const c = contratos[f.idadmon] || {}
-    if (filtroIdadmon && f.idadmon !== filtroIdadmon) return false
-    if (filtroProp && (c.propietario||'—') !== filtroProp) return false
-    if (filtroEstado && f.estado !== filtroEstado) return false
-    if (filtroDeuda === 'condeuda' && total(f) === 0) return false
-    if (filtroDeuda === 'sindeuda' && total(f) > 0) return false
+  function inRange(val, f) {
+    const v = fmt(val)||0
+    if (f.min !== '' && v < Number(f.min)) return false
+    if (f.max !== '' && v > Number(f.max)) return false
+    return true
+  }
+  function inSelected(val, f) {
+    if (!f.selected || f.selected.length === 0) return true
+    return f.selected.includes(val)
+  }
+
+  let datos = filas.filter(f => {
+    const c = contratos[f.idadmon]||{}
+    if (!inSelected(f.idadmon, fIdadmon)) return false
+    if (!inSelected(c.propietario||'—', fProp)) return false
+    if (!inSelected(f.estado, fEstado)) return false
+    if (!inRange(f.deuda_gastos_comunes, fGGCC)) return false
+    if (!inRange(f.deuda_vigente_electricidad, fLuz)) return false
+    if (!inRange(f.deuda_vigente_agua, fAgua)) return false
+    if (!inRange(f.deuda_vigente_gas, fGas)) return false
+    if (!inRange(totalF(f), fTotal)) return false
     return true
   })
 
-  const hayFiltros = filtroIdadmon || filtroProp || filtroEstado || filtroDeuda
-  const conDeuda = filas.filter(f => total(f) > 0).length
-  const sinDeuda = filas.filter(f => total(f) === 0).length
-  const totDeuda = filas.reduce((s,f) => s+total(f), 0)
+  // Ordenar
+  const activeSortCol = sortCol || (fIdadmon.sort?'idadmon':fProp.sort?'prop':fEstado.sort?'estado':
+    fGGCC.sort?'ggcc':fLuz.sort?'luz':fAgua.sort?'agua':fGas.sort?'gas':fTotal.sort?'total':null)
+  const activeSortDir = sortDir || fIdadmon.sort||fProp.sort||fEstado.sort||fGGCC.sort||fLuz.sort||fAgua.sort||fGas.sort||fTotal.sort
+
+  if (activeSortCol) {
+    datos = [...datos].sort((a,b) => {
+      const c1=contratos[a.idadmon]||{}, c2=contratos[b.idadmon]||{}
+      let va, vb
+      if (activeSortCol==='idadmon') { va=a.idadmon; vb=b.idadmon }
+      else if (activeSortCol==='prop') { va=c1.propietario||''; vb=c2.propietario||'' }
+      else if (activeSortCol==='estado') { va=a.estado||''; vb=b.estado||'' }
+      else if (activeSortCol==='ggcc') { va=fmt(a.deuda_gastos_comunes)||0; vb=fmt(b.deuda_gastos_comunes)||0 }
+      else if (activeSortCol==='luz') { va=fmt(a.deuda_vigente_electricidad)||0; vb=fmt(b.deuda_vigente_electricidad)||0 }
+      else if (activeSortCol==='agua') { va=fmt(a.deuda_vigente_agua)||0; vb=fmt(b.deuda_vigente_agua)||0 }
+      else if (activeSortCol==='gas') { va=fmt(a.deuda_vigente_gas)||0; vb=fmt(b.deuda_vigente_gas)||0 }
+      else { va=totalF(a); vb=totalF(b) }
+      if (typeof va==='string') return activeSortDir==='asc'?va.localeCompare(vb):vb.localeCompare(va)
+      return activeSortDir==='asc'?va-vb:vb-va
+    })
+  }
+
+  const hayFiltros = fIdadmon.selected.length||fProp.selected.length||fEstado.selected.length||
+    fGGCC.min!==''||fGGCC.max!==''||fLuz.min!==''||fLuz.max!==''||
+    fAgua.min!==''||fAgua.max!==''||fGas.min!==''||fGas.max!==''||
+    fTotal.min!==''||fTotal.max!==''
+
+  function limpiarTodo() {
+    setFIdadmon(emptyF);setFProp(emptyF);setFEstado(emptyF)
+    setFGGCC(emptyF);setFLuz(emptyF);setFAgua(emptyF);setFGas(emptyF);setFTotal(emptyF)
+    setSortCol(null);setSortDir(null)
+  }
+
+  const conDeuda = filas.filter(f=>totalF(f)>0).length
+  const sinDeuda = filas.filter(f=>totalF(f)===0).length
+  const totDeuda = filas.reduce((s,f)=>s+totalF(f),0)
 
   return (
-    <div style={{ padding:'24px 32px', maxWidth:1300, margin:'0 auto', fontFamily:'var(--font-sans,sans-serif)' }}>
-
-      {/* Breadcrumb + volver */}
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontSize:13 }}>
-        <Link href="/cc1" style={{ color:'#6B7280', textDecoration:'none', display:'flex', alignItems:'center', gap:4,
-                                    padding:'4px 8px', borderRadius:6 }}>
+    <div style={{padding:'24px 32px',maxWidth:1400,margin:'0 auto',fontFamily:'var(--font-sans,sans-serif)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,fontSize:13}}>
+        <Link href="/cc1" style={{color:'#6B7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:6}}>
           ← CC1 Admin
         </Link>
-        <span style={{ color:'#D1D5DB' }}>/</span>
-        <span style={{ color:'#374151' }}>Deudas de servicios</span>
+        <span style={{color:'#D1D5DB'}}>/</span>
+        <span style={{color:'#374151'}}>Deudas de servicios</span>
       </div>
 
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
         <div>
-          <h1 style={{ fontSize:22, fontWeight:500, margin:0 }}>Deudas de servicios</h1>
-          <p style={{ color:'#6B7280', fontSize:13, marginTop:4 }}>GGCC · Luz · Agua · Gas</p>
+          <h1 style={{fontSize:22,fontWeight:500,margin:0}}>Deudas de servicios</h1>
+          <p style={{color:'#6B7280',fontSize:13,marginTop:4}}>GGCC · Luz · Agua · Gas</p>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
           {hayFiltros && (
-            <button onClick={() => { setFiltroIdadmon(''); setFiltroProp(''); setFiltroEstado(''); setFiltroDeuda('') }}
-              style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #E5E7EB', background:'#FEF3C7',
-                       fontSize:12, cursor:'pointer', color:'#92400E' }}>
+            <button onClick={limpiarTodo} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #E5E7EB',
+              background:'#FEF3C7',fontSize:12,cursor:'pointer',color:'#92400E'}}>
               ✕ Limpiar filtros
             </button>
           )}
-          <select value={mes} onChange={e => setMes(e.target.value)}
-            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #D1D5DB', fontSize:14 }}>
-            {MESES.map(m => <option key={m} value={m}>{m}</option>)}
+          <select value={mes} onChange={e=>setMes(e.target.value)}
+            style={{padding:'6px 12px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:14}}>
+            {MESES.map(m=><option key={m} value={m}>{m}</option>)}
           </select>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:20}}>
         {[
-          { label:'Contratos', val:filas.length, sub: datos.length !== filas.length ? `${datos.length} filtrados` : null, color:'#185FA5' },
-          { label:'Con deuda', val:conDeuda, color:'#A32D2D' },
-          { label:'Sin deuda', val:sinDeuda, color:'#3B6D11' },
-          { label:'Deuda total', val:'$'+Math.round(totDeuda/1000)+'k', color:'#A32D2D' },
-        ].map(k => (
-          <div key={k.label} style={{ background:'#F9FAFB', borderRadius:8, padding:'12px 16px', border:'0.5px solid #E5E7EB' }}>
-            <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>{k.label}</div>
-            <div style={{ fontSize:24, fontWeight:500, color:k.color }}>{k.val}</div>
-            {k.sub && <div style={{ fontSize:11, color:'#1D4ED8' }}>{k.sub}</div>}
+          {label:'Contratos',val:filas.length,sub:datos.length!==filas.length?`${datos.length} filtrados`:null,color:'#185FA5'},
+          {label:'Con deuda',val:conDeuda,color:'#A32D2D'},
+          {label:'Sin deuda',val:sinDeuda,color:'#3B6D11'},
+          {label:'Deuda total',val:'$'+Math.round(totDeuda/1000)+'k',color:'#A32D2D'},
+        ].map(k=>(
+          <div key={k.label} style={{background:'#F9FAFB',borderRadius:8,padding:'12px 16px',border:'0.5px solid #E5E7EB'}}>
+            <div style={{fontSize:11,color:'#6B7280',marginBottom:4}}>{k.label}</div>
+            <div style={{fontSize:24,fontWeight:500,color:k.color}}>{k.val}</div>
+            {k.sub&&<div style={{fontSize:11,color:'#1D4ED8'}}>{k.sub}</div>}
           </div>
         ))}
       </div>
 
-      {/* Tabla */}
-      <div style={{ background:'#fff', border:'0.5px solid #E5E7EB', borderRadius:10, overflow:'hidden' }}>
+      <div style={{background:'#fff',border:'0.5px solid #E5E7EB',borderRadius:10,overflow:'hidden'}}>
         {loading ? (
-          <div style={{ padding:'2rem', textAlign:'center', color:'#9CA3AF' }}>Cargando...</div>
+          <div style={{padding:'2rem',textAlign:'center',color:'#9CA3AF'}}>Cargando...</div>
         ) : (
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead>
-                <tr style={{ background:'#F9FAFB' }}>
+                <tr style={{background:'#F9FAFB'}}>
                   <th style={thS}>
-                    <ColFilter label="IDADMON" options={optsIdadmon} value={filtroIdadmon} onChange={setFiltroIdadmon} />
+                    <ExcelFilter label="IDADMON" type="text" options={optsIdadmon} value={fIdadmon} onApply={v=>{setFIdadmon(v);if(v.sort){setSortCol('idadmon');setSortDir(v.sort)}}} />
                   </th>
                   <th style={thS}>
-                    <ColFilter label="Propietario / Inmueble" options={optsProp} value={filtroProp} onChange={setFiltroProp} />
+                    <ExcelFilter label="Propietario / Inmueble" type="text" options={optsProp} value={fProp} onApply={v=>{setFProp(v);if(v.sort){setSortCol('prop');setSortDir(v.sort)}}} />
                   </th>
                   <th style={thS}>
-                    <ColFilter label="Est." options={optsEstado} value={filtroEstado} onChange={setFiltroEstado} />
+                    <ExcelFilter label="Est." type="text" options={optsEstado} value={fEstado} onApply={v=>{setFEstado(v);if(v.sort){setSortCol('estado');setSortDir(v.sort)}}} />
                   </th>
                   <th style={thS}>Servicios</th>
-                  <th style={{ ...thS, textAlign:'right' }}>GGCC</th>
-                  <th style={{ ...thS, textAlign:'right' }}>Luz</th>
-                  <th style={{ ...thS, textAlign:'right' }}>Agua</th>
-                  <th style={{ ...thS, textAlign:'right' }}>Gas</th>
-                  <th style={{ ...thS, textAlign:'right' }}>
-                    <ColFilter label="Total" options={['Con deuda','Sin deuda']} value={
-                      filtroDeuda === 'condeuda' ? 'Con deuda' : filtroDeuda === 'sindeuda' ? 'Sin deuda' : ''
-                    } onChange={v => setFiltroDeuda(v === 'Con deuda' ? 'condeuda' : v === 'Sin deuda' ? 'sindeuda' : '')} align="right" />
+                  <th style={{...thS,textAlign:'right'}}>
+                    <ExcelFilter label="GGCC" type="number" options={[]} value={fGGCC} onApply={v=>{setFGGCC(v);if(v.sort){setSortCol('ggcc');setSortDir(v.sort)}}} align="right" />
+                  </th>
+                  <th style={{...thS,textAlign:'right'}}>
+                    <ExcelFilter label="Luz" type="number" options={[]} value={fLuz} onApply={v=>{setFLuz(v);if(v.sort){setSortCol('luz');setSortDir(v.sort)}}} align="right" />
+                  </th>
+                  <th style={{...thS,textAlign:'right'}}>
+                    <ExcelFilter label="Agua" type="number" options={[]} value={fAgua} onApply={v=>{setFAgua(v);if(v.sort){setSortCol('agua');setSortDir(v.sort)}}} align="right" />
+                  </th>
+                  <th style={{...thS,textAlign:'right'}}>
+                    <ExcelFilter label="Gas" type="number" options={[]} value={fGas} onApply={v=>{setFGas(v);if(v.sort){setSortCol('gas');setSortDir(v.sort)}}} align="right" />
+                  </th>
+                  <th style={{...thS,textAlign:'right'}}>
+                    <ExcelFilter label="Total" type="number" options={[]} value={fTotal} onApply={v=>{setFTotal(v);if(v.sort){setSortCol('total');setSortDir(v.sort)}}} align="right" />
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {datos.map((f,i) => {
-                  const c = contratos[f.idadmon] || {}
-                  const tot = total(f)
+                {datos.map((f,i)=>{
+                  const c=contratos[f.idadmon]||{}
+                  const tot=totalF(f)
                   return (
-                    <tr key={f.idadmon+i} onClick={() => abrirDrawer(f)}
-                      style={{ background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA', cursor:'pointer' }}>
-                      <td style={tdS}><span style={{ fontWeight:500 }}>{f.idadmon}</span></td>
+                    <tr key={f.idadmon+i} onClick={()=>abrirDrawer(f)}
+                      style={{background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA',cursor:'pointer'}}>
+                      <td style={tdS}><span style={{fontWeight:500}}>{f.idadmon}</span></td>
                       <td style={tdS}>
                         <div>{c.propietario||'—'}</div>
-                        <div style={{ fontSize:11, color:'#6B7280' }}>{c.inmueble||f.idinmue}</div>
+                        <div style={{fontSize:11,color:'#6B7280'}}>{c.inmueble||f.idinmue}</div>
                       </td>
                       <td style={tdS}>
-                        <span style={{ fontSize:10, padding:'2px 7px', borderRadius:8, fontWeight:500,
-                                       background:f.estado==='S'?'#EAF3DE':'#FAEEDA', color:f.estado==='S'?'#3B6D11':'#854F0B' }}>
+                        <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,fontWeight:500,
+                          background:f.estado==='S'?'#EAF3DE':'#FAEEDA',color:f.estado==='S'?'#3B6D11':'#854F0B'}}>
                           {f.estado}
                         </span>
                       </td>
                       <td style={tdS}>
-                        <div style={{ display:'flex', gap:4 }}>
-                          <Dot val={f.deuda_gastos_comunes} />
-                          <Dot val={f.deuda_vigente_electricidad} />
-                          <Dot val={f.deuda_vigente_agua} />
-                          <Dot val={f.deuda_vigente_gas} />
+                        <div style={{display:'flex',gap:4}}>
+                          <Dot val={f.deuda_gastos_comunes}/><Dot val={f.deuda_vigente_electricidad}/>
+                          <Dot val={f.deuda_vigente_agua}/><Dot val={f.deuda_vigente_gas}/>
                         </div>
                       </td>
-                      {[f.deuda_gastos_comunes,f.deuda_vigente_electricidad,f.deuda_vigente_agua,f.deuda_vigente_gas].map((v,vi) => (
-                        <td key={vi} style={{ ...tdS, textAlign:'right', fontWeight:500,
-                                              color:fmt(v)>0?'#A32D2D':fmt(v)===0?'#3B6D11':'#9CA3AF' }}>
+                      {[f.deuda_gastos_comunes,f.deuda_vigente_electricidad,f.deuda_vigente_agua,f.deuda_vigente_gas].map((v,vi)=>(
+                        <td key={vi} style={{...tdS,textAlign:'right',fontWeight:500,
+                          color:fmt(v)>0?'#A32D2D':fmt(v)===0?'#3B6D11':'#9CA3AF'}}>
                           {v===null?'—':fmtPeso(fmt(v))}
                         </td>
                       ))}
-                      <td style={{ ...tdS, textAlign:'right', fontWeight:600, color:tot>0?'#A32D2D':'#3B6D11' }}>
+                      <td style={{...tdS,textAlign:'right',fontWeight:600,color:tot>0?'#A32D2D':'#3B6D11'}}>
                         {fmtPeso(tot)}
                       </td>
                     </tr>
                   )
                 })}
-                <tr style={{ background:'#F3F4F6' }}>
-                  <td colSpan={4} style={{ padding:'8px 12px', fontSize:12, color:'#6B7280', fontWeight:500 }}>
+                <tr style={{background:'#F3F4F6'}}>
+                  <td colSpan={4} style={{padding:'8px 12px',fontSize:12,color:'#6B7280',fontWeight:500}}>
                     {datos.length} de {filas.length} contratos
                   </td>
-                  {['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas'].map((col,i) => (
-                    <td key={i} style={{ padding:'8px 12px', textAlign:'right', fontWeight:600, fontSize:12, color:'#A32D2D' }}>
-                      {fmtPeso(datos.reduce((s,f) => s+(fmt(f[col])||0), 0))}
+                  {['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas'].map((col,i)=>(
+                    <td key={i} style={{padding:'8px 12px',textAlign:'right',fontWeight:600,fontSize:12,color:'#A32D2D'}}>
+                      {fmtPeso(datos.reduce((s,f)=>s+(fmt(f[col])||0),0))}
                     </td>
                   ))}
-                  <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, fontSize:13, color:'#A32D2D' }}>
-                    {fmtPeso(datos.reduce((s,f) => s+total(f), 0))}
+                  <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,fontSize:13,color:'#A32D2D'}}>
+                    {fmtPeso(datos.reduce((s,f)=>s+totalF(f),0))}
                   </td>
                 </tr>
               </tbody>
@@ -300,101 +428,98 @@ export default function Deudas() {
       {/* Drawer */}
       {drawer && (
         <>
-          <div onClick={() => { setDrawer(null); setHistorial(null) }}
-            style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.2)', zIndex:40 }} />
-          <div style={{ position:'fixed', top:0, right:0, bottom:0, width:420, background:'#fff',
-                        zIndex:50, boxShadow:'-4px 0 24px rgba(0,0,0,0.1)', overflowY:'auto' }}>
-            <div style={{ padding:'20px 24px', borderBottom:'0.5px solid #E5E7EB', display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background:'#EFF6FF', display:'flex',
-                            alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:500, color:'#185FA5' }}>
+          <div onClick={()=>{setDrawer(null);setHistorial(null)}}
+            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:40}}/>
+          <div style={{position:'fixed',top:0,right:0,bottom:0,width:420,background:'#fff',
+            zIndex:50,boxShadow:'-4px 0 24px rgba(0,0,0,0.1)',overflowY:'auto'}}>
+            <div style={{padding:'20px 24px',borderBottom:'0.5px solid #E5E7EB',display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:44,height:44,borderRadius:'50%',background:'#EFF6FF',display:'flex',
+                alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:500,color:'#185FA5'}}>
                 {(contratos[drawer.idadmon]?.propietario||'??').split(' ').map(w=>w[0]).slice(0,2).join('')}
               </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:500, fontSize:16 }}>{drawer.idadmon}</div>
-                <div style={{ fontSize:12, color:'#6B7280' }}>{contratos[drawer.idadmon]?.propietario||'—'}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:500,fontSize:16}}>{drawer.idadmon}</div>
+                <div style={{fontSize:12,color:'#6B7280'}}>{contratos[drawer.idadmon]?.propietario||'—'}</div>
               </div>
-              <button onClick={() => { setDrawer(null); setHistorial(null) }}
-                style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#9CA3AF' }}>✕</button>
+              <button onClick={()=>{setDrawer(null);setHistorial(null)}}
+                style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'#9CA3AF'}}>✕</button>
             </div>
-            <div style={{ padding:'20px 24px' }}>
-              <div style={{ fontSize:13, color:'#6B7280', marginBottom:16 }}>
-                {contratos[drawer.idadmon]?.inmueble || drawer.idinmue}
+            <div style={{padding:'20px 24px'}}>
+              <div style={{fontSize:13,color:'#6B7280',marginBottom:16}}>
+                {contratos[drawer.idadmon]?.inmueble||drawer.idinmue}
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
                 {[
-                  { label:'G. Comunes', val:drawer.deuda_gastos_comunes, meta:drawer.fecha_hecho_ggcc },
-                  { label:'Electricidad', val:drawer.deuda_vigente_electricidad, meta:drawer.codigo_ele },
-                  { label:'Agua', val:drawer.deuda_vigente_agua, meta:drawer.codigo_agua },
-                  { label:'Gas', val:drawer.deuda_vigente_gas, meta:null },
-                ].map((s,i) => {
-                  const v = fmt(s.val)
+                  {label:'G. Comunes',val:drawer.deuda_gastos_comunes,meta:drawer.fecha_hecho_ggcc},
+                  {label:'Electricidad',val:drawer.deuda_vigente_electricidad,meta:drawer.codigo_ele},
+                  {label:'Agua',val:drawer.deuda_vigente_agua,meta:drawer.codigo_agua},
+                  {label:'Gas',val:drawer.deuda_vigente_gas,meta:null},
+                ].map((s,i)=>{
+                  const v=fmt(s.val)
                   return (
-                    <div key={i} style={{ background:'#F9FAFB', borderRadius:8, padding:'12px 14px', border:'0.5px solid #E5E7EB' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
-                        <Dot val={s.val} />
-                        <span style={{ fontSize:11, color:'#6B7280', fontWeight:500 }}>{s.label}</span>
+                    <div key={i} style={{background:'#F9FAFB',borderRadius:8,padding:'12px 14px',border:'0.5px solid #E5E7EB'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                        <Dot val={s.val}/>
+                        <span style={{fontSize:11,color:'#6B7280',fontWeight:500}}>{s.label}</span>
                       </div>
-                      <div style={{ fontSize:18, fontWeight:500, color:v===null?'#9CA3AF':v===0?'#3B6D11':'#A32D2D' }}>
+                      <div style={{fontSize:18,fontWeight:500,color:v===null?'#9CA3AF':v===0?'#3B6D11':'#A32D2D'}}>
                         {v===null?'Sin datos':v===0?'Sin deuda':fmtPeso(v)}
                       </div>
-                      {s.meta && s.meta !== 'estacionamiento' && s.meta !== 'bodega' &&
-                        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{s.meta}</div>}
+                      {s.meta&&s.meta!=='estacionamiento'&&s.meta!=='bodega'&&
+                        <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{s.meta}</div>}
                     </div>
                   )
                 })}
               </div>
-              <div style={{ background:total(drawer)>0?'#FCEBEB':'#EAF3DE', borderRadius:8, padding:'12px 16px',
-                            marginBottom:20, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span style={{ fontSize:13, fontWeight:500, color:total(drawer)>0?'#A32D2D':'#3B6D11' }}>Total deuda</span>
-                <span style={{ fontSize:20, fontWeight:600, color:total(drawer)>0?'#A32D2D':'#3B6D11' }}>{fmtPeso(total(drawer))}</span>
+              <div style={{background:totalF(drawer)>0?'#FCEBEB':'#EAF3DE',borderRadius:8,padding:'12px 16px',
+                marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:13,fontWeight:500,color:totalF(drawer)>0?'#A32D2D':'#3B6D11'}}>Total deuda</span>
+                <span style={{fontSize:20,fontWeight:600,color:totalF(drawer)>0?'#A32D2D':'#3B6D11'}}>{fmtPeso(totalF(drawer))}</span>
               </div>
-
-              {/* Gráfico evolución */}
-              {historial && historial.length > 0 && (() => {
-                const meses = [...historial].reverse()
-                const cols = ['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas']
-                const labels = ['GGCC','Luz','Agua','Gas']
-                const colors = ['#378ADD','#F59E0B','#10B981','#8B5CF6']
-                const totales = meses.map(h => cols.reduce((s,c) => s+(fmt(h[c])||0), 0))
-                const allVals = [...cols.flatMap(c => meses.map(h => fmt(h[c])||0)), ...totales]
-                const maxV = Math.max(...allVals, 1)
-                const W=360, H=160, padL=50, padR=10, padT=10, padB=30
-                const xStep = (W-padL-padR) / Math.max(meses.length-1, 1)
-                const yScale = v => padT + (H-padT-padB) * (1 - v/maxV)
-                const pts = vals => vals.map((v,i) => `${padL+i*xStep},${yScale(v)}`).join(' ')
+              {historial&&historial.length>0&&(()=>{
+                const meses=[...historial].reverse()
+                const cols=['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas']
+                const colors=['#378ADD','#F59E0B','#10B981','#8B5CF6']
+                const labels=['GGCC','Luz','Agua','Gas']
+                const totales=meses.map(h=>cols.reduce((s,c)=>s+(fmt(h[c])||0),0))
+                const maxV=Math.max(...cols.flatMap(c=>meses.map(h=>fmt(h[c])||0)),...totales,1)
+                const W=360,H=160,padL=50,padR=10,padT=10,padB=30
+                const xStep=(W-padL-padR)/Math.max(meses.length-1,1)
+                const yS=v=>padT+(H-padT-padB)*(1-v/maxV)
+                const pts=vals=>vals.map((v,i)=>`${padL+i*xStep},${yS(v)}`).join(' ')
                 return (
-                  <div style={{ marginBottom:20 }}>
-                    <div style={{ fontSize:11, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:11,fontWeight:600,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
                       Evolución de deudas
                     </div>
-                    <svg width={W} height={H} style={{ overflow:'visible' }}>
-                      {[0,0.25,0.5,0.75,1].map((p,i) => (
+                    <svg width={W} height={H} style={{overflow:'visible'}}>
+                      {[0,0.25,0.5,0.75,1].map((p,i)=>(
                         <g key={i}>
-                          <line x1={padL} y1={yScale(maxV*p)} x2={W-padR} y2={yScale(maxV*p)} stroke="#F3F4F6" strokeWidth="1" />
-                          <text x={padL-4} y={yScale(maxV*p)+4} textAnchor="end" fontSize="9" fill="#9CA3AF">
+                          <line x1={padL} y1={yS(maxV*p)} x2={W-padR} y2={yS(maxV*p)} stroke="#F3F4F6" strokeWidth="1"/>
+                          <text x={padL-4} y={yS(maxV*p)+4} textAnchor="end" fontSize="9" fill="#9CA3AF">
                             {'$'+Math.round(maxV*p/1000)+'k'}
                           </text>
                         </g>
                       ))}
-                      {cols.map((col,ci) => {
-                        const vals = meses.map(h => fmt(h[col])||0)
-                        if (vals.every(v => v===0)) return null
-                        return <polyline key={ci} fill="none" stroke={colors[ci]} strokeWidth="1.5" strokeDasharray="4,2" opacity="0.8" points={pts(vals)} />
+                      {cols.map((col,ci)=>{
+                        const vals=meses.map(h=>fmt(h[col])||0)
+                        if(vals.every(v=>v===0))return null
+                        return <polyline key={ci} fill="none" stroke={colors[ci]} strokeWidth="1.5" strokeDasharray="4,2" opacity="0.8" points={pts(vals)}/>
                       })}
-                      <polyline fill="none" stroke="#1F3864" strokeWidth="2.5" points={pts(totales)} />
-                      {totales.map((v,i) => (
-                        <circle key={i} cx={padL+i*xStep} cy={yScale(v)} r="3" fill="#1F3864" />
+                      <polyline fill="none" stroke="#1F3864" strokeWidth="2.5" points={pts(totales)}/>
+                      {totales.map((v,i)=>(
+                        <circle key={i} cx={padL+i*xStep} cy={yS(v)} r="3" fill="#1F3864"/>
                       ))}
-                      {meses.map((h,i) => (
+                      {meses.map((h,i)=>(
                         <text key={i} x={padL+i*xStep} y={H-2} textAnchor="middle" fontSize="8" fill="#9CA3AF">
                           {(h.mes||'').split(' ')[0].slice(0,3)}
                         </text>
                       ))}
                     </svg>
-                    <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:6 }}>
-                      {[...labels.map((l,i) => ({ label:l, color:colors[i] })), { label:'Total', color:'#1F3864' }].map((item,i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'#6B7280' }}>
-                          <div style={{ width:16, height:i===4?3:2, background:item.color, borderRadius:1 }} />
+                    <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:6}}>
+                      {[...labels.map((l,i)=>({label:l,color:colors[i]})),{label:'Total',color:'#1F3864'}].map((item,i)=>(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#6B7280'}}>
+                          <div style={{width:16,height:i===4?3:2,background:item.color,borderRadius:1}}/>
                           {item.label}
                         </div>
                       ))}
@@ -402,24 +527,22 @@ export default function Deudas() {
                   </div>
                 )
               })()}
-
-              {/* Historial barras */}
-              <div style={{ fontSize:11, fontWeight:600, color:'#6B7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>
+              <div style={{fontSize:11,fontWeight:600,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}}>
                 Historial GGCC
               </div>
-              {historial ? historial.map((h,i) => {
-                const v = fmt(h.deuda_gastos_comunes)||0
-                const max = Math.max(...historial.map(d => fmt(d.deuda_gastos_comunes)||0), 1)
+              {historial?historial.map((h,i)=>{
+                const v=fmt(h.deuda_gastos_comunes)||0
+                const max=Math.max(...historial.map(d=>fmt(d.deuda_gastos_comunes)||0),1)
                 return (
-                  <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'0.5px solid #F3F4F6', fontSize:12 }}>
-                    <span style={{ width:110, color:'#6B7280', fontSize:11 }}>{h.mes}</span>
-                    <div style={{ flex:1, height:6, background:'#F3F4F6', borderRadius:3, overflow:'hidden' }}>
-                      <div style={{ width:`${Math.round(v/max*100)}%`, height:6, background:'#378ADD', borderRadius:3 }} />
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'0.5px solid #F3F4F6',fontSize:12}}>
+                    <span style={{width:110,color:'#6B7280',fontSize:11}}>{h.mes}</span>
+                    <div style={{flex:1,height:6,background:'#F3F4F6',borderRadius:3,overflow:'hidden'}}>
+                      <div style={{width:`${Math.round(v/max*100)}%`,height:6,background:'#378ADD',borderRadius:3}}/>
                     </div>
-                    <span style={{ width:80, textAlign:'right', fontWeight:500 }}>{fmtPeso(v)}</span>
+                    <span style={{width:80,textAlign:'right',fontWeight:500}}>{fmtPeso(v)}</span>
                   </div>
                 )
-              }) : <div style={{ color:'#9CA3AF', fontSize:12 }}>Cargando...</div>}
+              }):<div style={{color:'#9CA3AF',fontSize:12}}>Cargando...</div>}
             </div>
           </div>
         </>
@@ -428,5 +551,5 @@ export default function Deudas() {
   )
 }
 
-const thS = { padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:500, color:'#6B7280', borderBottom:'1px solid #E5E7EB', whiteSpace:'nowrap' }
-const tdS = { padding:'8px 12px', borderBottom:'0.5px solid #F3F4F6' }
+const thS={padding:'8px 12px',textAlign:'left',fontSize:11,fontWeight:500,color:'#6B7280',borderBottom:'1px solid #E5E7EB',whiteSpace:'nowrap'}
+const tdS={padding:'8px 12px',borderBottom:'0.5px solid #F3F4F6'}
