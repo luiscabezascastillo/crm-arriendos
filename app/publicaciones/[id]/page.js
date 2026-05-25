@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import { TopNav } from '../../components/ui/TopNav'
+import TopNav from '../../components/ui/TopNav'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,

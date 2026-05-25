@@ -1,13 +1,13 @@
-ï»¿export default async function AuthError({ searchParams }) {
+export default async function AuthError({ searchParams }) {
   const params = await searchParams
   const error = params?.error
   const mensajes = {
     AccessDenied: 'Tu cuenta no tiene acceso al CRM. Contacta al administrador.',
-    Default: 'OcurriÃ³ un error al iniciar sesiÃ³n. IntÃ©ntalo de nuevo.',
+    Default: 'Ocurrió un error al iniciar sesión. Inténtalo de nuevo.',
   }
   return (
     <div style={{ padding: '2rem', textAlign: 'center' }}>
-      <h1>Error de autenticaciÃ³n</h1>
+      <h1>Error de autenticación</h1>
       <p>{mensajes[error] || mensajes.Default}</p>
       <a href="/">Volver al inicio</a>
     </div>

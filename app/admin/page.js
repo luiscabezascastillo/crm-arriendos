@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import { TopNav } from '../components/ui/TopNav'
+import TopNav from '../components/ui/TopNav'
 import Link from 'next/link'
 
 const supabase = createClient(

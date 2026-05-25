@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { signIn } from 'next-auth/react'
 
@@ -48,7 +48,7 @@ export default function LoginPage() {
             CRM Arriendos
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--gray-500)', margin: 0 }}>
-            Fondo Capital · Gestión de propiedades
+            Fondo Capital � Gesti�n de propiedades
           </p>
         </div>
 
@@ -116,7 +116,7 @@ export default function LoginPage() {
           textAlign: 'center', marginTop: '30px',
           fontSize: '11px', color: 'var(--gray-300)',
         }}>
-          CRM Arriendos Â· LOG 2.0.7
+          CRM Arriendos · LOG 2.0.7
         </p>
       </div>
     </main>

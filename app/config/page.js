@@ -1,4 +1,4 @@
-ï»¿"use client"
+"use client"
 import { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 
@@ -60,7 +60,7 @@ export default function Config() {
         <button onClick={() => setShowForm(!showForm)} style={{ fontSize:13, padding:"8px 16px" }}>+ Nuevo usuario</button>
       </div>
 
-      {msg && <div style={{ background:"#f0fdf4", border:"0.5px solid #86efac", borderRadius:8, padding:"8px 14px", fontSize:13, color:"#166534", marginBottom:"1rem" }}>{msg} <button onClick={()=>setMsg("")} style={{ border:"none", background:"none", cursor:"pointer", float:"right" }}>Ã—</button></div>}
+      {msg && <div style={{ background:"#f0fdf4", border:"0.5px solid #86efac", borderRadius:8, padding:"8px 14px", fontSize:13, color:"#166534", marginBottom:"1rem" }}>{msg} <button onClick={()=>setMsg("")} style={{ border:"none", background:"none", cursor:"pointer", float:"right" }}>×</button></div>}
 
       {showForm && (
         <div style={{ background:"#fff", border:"0.5px solid #e5e7eb", borderRadius:12, padding:"1.25rem", marginBottom:"1.5rem" }}>
@@ -76,7 +76,7 @@ export default function Config() {
             <div><label style={{ fontSize:12, color:"#666" }}>Tipo de acceso</label><br/>
               <select value={nuevo.auth_provider} onChange={e=>setNuevo({...nuevo,auth_provider:e.target.value})} style={{ width:"100%" }}>
                 <option value="google">Google Workspace</option>
-                <option value="credentials">Usuario/contraseÃ±a</option>
+                <option value="credentials">Usuario/contraseña</option>
               </select>
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function Config() {
             <tr style={{ background:"#f9fafb" }}>
               <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Usuario</th>
               <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Rol</th>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>MÃ³dulos</th>
+              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Módulos</th>
               <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Acceso</th>
               <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Estado</th>
               <th style={{ padding:"10px 16px", borderBottom:"0.5px solid #e5e7eb" }}></th>

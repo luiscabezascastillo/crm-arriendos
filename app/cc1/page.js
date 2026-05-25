@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import { TopNav } from '../components/ui/TopNav'
+import TopNav from '../components/ui/TopNav'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
