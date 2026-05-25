@@ -48,7 +48,7 @@ export default function LoginPage() {
             CRM Arriendos
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--gray-500)', margin: 0 }}>
-            Fondo Capital · Gestión de propiedades
+            Fondo Capital ï¿½ Gestiï¿½n de propiedades
           </p>
         </div>
 

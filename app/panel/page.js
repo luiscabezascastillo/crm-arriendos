@@ -51,11 +51,7 @@ function AreaCard({ color, icon, title, rows, alert, href, actionLabel }) {
             {row.labelHref ? (
               <a href={row.labelHref} style={{ fontSize: 12, color: 'var(--gray-500)', textDecoration: 'none', cursor: 'pointer', borderBottom: '1px dashed var(--gray-400)' }}>{row.label}</a>
             ) : (
-              {row.labelHref ? (
-              <a href={row.labelHref} style={{ fontSize: 12, color: 'var(--gray-500)', textDecoration: 'none', cursor: 'pointer', borderBottom: '1px dashed var(--gray-400)' }}>{row.label}</a>
-            ) : (
               <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>{row.label}</span>
-            )}
             )}
             <span style={{
               fontSize: 13, fontWeight: 500,
