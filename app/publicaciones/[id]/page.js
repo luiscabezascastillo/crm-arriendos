@@ -72,6 +72,8 @@ function MapaLeaflet({ lat, lng, onChange }) {
   return <div ref={mapRef} style={{ width: '100%', height: 320, borderRadius: 10, overflow: 'hidden', zIndex: 0 }} />
 }
 
+function sinBr(txt) { return (txt||'').split(/<br\s*\/?>/i).join('\n'); }
+
 export default function FichaPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -122,7 +124,7 @@ export default function FichaPage() {
             estacionamientos: data.estacionamientos || '', bodegas: data.bodegas || '',
             orientacion: data.orientacion || '', amoblado: data.amoblado || '',
             valor: data.valor || '', tipo_moneda: data.tipo_moneda || 'UF',
-            ggcc: data.ggcc || '', vendedor: data.vendedor || '',
+            ggcc: data.ggcc || '', vendedor: data.vendedor || '', captador: data.captador || '',
             observaciones: data.observaciones || '', video: data.video || '',
             ksuitable_for_pets: data.ksuitable_for_pets || '',
           })
@@ -244,7 +246,7 @@ export default function FichaPage() {
       bodegas: form.bodegas ? Number(form.bodegas) : null,
       orientacion: form.orientacion, amoblado: form.amoblado,
       valor: form.valor ? Number(form.valor) : null, tipo_moneda: form.tipo_moneda,
-      ggcc: form.ggcc ? Number(form.ggcc) : null, vendedor: form.vendedor,
+      ggcc: form.ggcc ? Number(form.ggcc) : null, vendedor: form.vendedor, captador: form.captador,
       observaciones: form.observaciones, video: form.video,
       ksuitable_for_pets: form.ksuitable_for_pets,
       updated_at: new Date().toISOString(),
@@ -389,7 +391,7 @@ export default function FichaPage() {
               {pub.observaciones && (
                 <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                   <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Descripción</div>
-                  <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{pub.observaciones}</p>
+                  <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{sinBr(pub.observaciones)}</p>
                 </div>
               )}
               {imagenes.length > 0 && (
@@ -465,7 +467,7 @@ export default function FichaPage() {
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Datos del propietario</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Dirección',pub.direccion||'—'],['Captador',pub.vendedor||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
+                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Dirección',pub.direccion||'—'],['Vendedor',pub.vendedor||'—'],['Captador',pub.captador||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
                   <div key={l}><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{v}</div></div>
                 ))}
               </div>
@@ -562,7 +564,7 @@ export default function FichaPage() {
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:14 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Tipo y Operación</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-                  {[['Tipo', 'tipo', TIPOS], ['Captador', 'vendedor', EJECUTIVOS]].map(([label, field, opts]) => (
+                  {[['Tipo', 'tipo', TIPOS], ['Vendedor', 'vendedor', EJECUTIVOS], ['Captador', 'captador', EJECUTIVOS]].map(([label, field, opts]) => (
                     <div key={field}>
                       <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{label}</div>
                       <select value={form[field] || ''} onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))} style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--gray-50)', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', cursor:'pointer' }}>
@@ -666,7 +668,7 @@ export default function FichaPage() {
               </div>
               {/* Botones */}
               <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
-                <button onClick={() => setForm({ tipo:pub.tipo||'', objetivo:pub.objetivo||'', direccion:pub.direccion||'', comuna:pub.comuna||'', region:pub.region||'', numero:pub.numero||'', latitud:pub.latitud||'', longitud:pub.longitud||'', dormitorios:pub.dormitorios||'', banos:pub.banos||'', mt2_const:pub.mt2_const||'', mt2_terreno:pub.mt2_terreno||'', estacionamientos:pub.estacionamientos||'', bodegas:pub.bodegas||'', orientacion:pub.orientacion||'', amoblado:pub.amoblado||'', valor:pub.valor||'', tipo_moneda:pub.tipo_moneda||'UF', ggcc:pub.ggcc||'', vendedor:pub.vendedor||'', observaciones:pub.observaciones||'', video:pub.video||'', ksuitable_for_pets:pub.ksuitable_for_pets||'' })} style={{ padding:'9px 20px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit', color:'var(--gray-500)' }}>
+                <button onClick={() => setForm({ tipo:pub.tipo||'', objetivo:pub.objetivo||'', direccion:pub.direccion||'', comuna:pub.comuna||'', region:pub.region||'', numero:pub.numero||'', latitud:pub.latitud||'', longitud:pub.longitud||'', dormitorios:pub.dormitorios||'', banos:pub.banos||'', mt2_const:pub.mt2_const||'', mt2_terreno:pub.mt2_terreno||'', estacionamientos:pub.estacionamientos||'', bodegas:pub.bodegas||'', orientacion:pub.orientacion||'', amoblado:pub.amoblado||'', valor:pub.valor||'', tipo_moneda:pub.tipo_moneda||'UF', ggcc:pub.ggcc||'', vendedor:pub.vendedor||'', captador:pub.captador||'', observaciones:pub.observaciones||'', video:pub.video||'', ksuitable_for_pets:pub.ksuitable_for_pets||'' })} style={{ padding:'9px 20px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit', color:'var(--gray-500)' }}>
                   Descartar cambios
                 </button>
                 <button onClick={guardarEditar} disabled={guardandoEditar} style={{ padding:'9px 24px', borderRadius:8, border:'none', background:guardandoEditar?'#9ca3af':'#16a34a', color:'#fff', fontSize:12, fontWeight:600, cursor:guardandoEditar?'not-allowed':'pointer', fontFamily:'inherit' }}>

@@ -97,7 +97,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, pi, yapo, goplaceit, web, proppit, activo, estado, imagen1, mt2_const', { count:'exact' })
+      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, imagen1, mt2_const', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
@@ -350,7 +350,7 @@ export default function PublicacionesPage() {
               </colgroup>
               <thead>
                 <tr style={{ background:'var(--gray-50)' }}>
-                  {['Imagen','Código','Tipo','Operación','Estado','Captador','Dirección','Precio','Comuna', modo==='historicas'?'Acción':'Acciones'].map((h,i) => (
+                  {['Imagen','Código','Tipo','Operación','Estado','Captador','Vendedor','Dirección','Precio','Comuna', modo==='historicas'?'Acción':'Acciones'].map((h,i) => (
                     <th key={i} style={{ padding:'9px 10px', textAlign:'left', fontSize:10, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -392,7 +392,10 @@ export default function PublicacionesPage() {
                         )}
                       </td>
                       <td style={{ padding:'8px 10px', fontSize:11, color:'var(--gray-600)', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {p.vendedor||p.propietario||'—'}
+                        {p.captador||'—'}
+                      </td>
+                      <td style={{ padding:'8px 10px', fontSize:11, color:'var(--gray-600)', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {p.vendedor||'—'}
                       </td>
                       <td style={{ padding:'8px 10px', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top' }}>
                         <div style={{ fontSize:12, fontWeight:500, color:'var(--gray-800)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.direccion||'—'}</div>
