@@ -40,7 +40,7 @@ function AreaCard({ color, icon, title, rows, alert, href, actionLabel }) {
         <GridDots />
       </div>
 
-      {/* MÃ©tricas */}
+      {/* Métricas */}
       <div style={{ padding: '0 16px' }}>
         {rows.map((row, i) => (
           <div key={i} style={{
@@ -125,9 +125,9 @@ export default function PanelPage() {
         background: 'var(--surface)', borderBottom: '1px solid var(--border)',
       }}>
         {[
-          { label: 'Ingresos totales', value: 'â‚¬120,500', color: 'var(--success-600)' },
-          { label: 'Costes totales',   value: 'â‚¬84,300',  color: 'var(--warning-600)' },
-          { label: 'Resultado neto',   value: 'â‚¬36,200',  color: 'var(--success-600)' },
+          { label: 'Ingresos totales', value: '$120.500', color: 'var(--success-600)' },
+          { label: 'Costes totales',   value: '$84.300',  color: 'var(--warning-600)' },
+          { label: 'Resultado neto',   value: '$36.200',  color: 'var(--success-600)' },
           { label: 'Propiedades',      value: '152',       color: 'var(--gray-800)'    },
           { label: 'Alertas activas',  value: '4',         color: 'var(--danger-600)'  },
         ].map((k, i) => (
@@ -145,16 +145,16 @@ export default function PanelPage() {
 
       <div style={{ padding: '20px 24px' }}>
 
-        {/* OPERACIÃ“N */}
+        {/* OPERACIÁ“N */}
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-          OperaciÃ³n
+          Operación
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
-          <AreaCard color="blue"  icon={<IcoHome />}   title="CC1 AdministraciÃ³n"   href="/cc1"  actionLabel="+ Nueva propiedad"
+          <AreaCard color="blue"  icon={<IcoHome />}   title="CC1 Administración"   href="/cc1"  actionLabel="+ Nueva propiedad"
             rows={[
               { label: 'Propiedades', value: '95' },
-              { label: 'Ingresos',    value: 'â‚¬78,200' },
-              { label: 'Costes',      value: 'â‚¬45,000' },
+              { label: 'Ingresos',    value: '$78.200' },
+              { label: 'Costes',      value: '$45.000' },
               { label: 'Morosos',     value: '8 (8,4%)', highlight: 'danger', labelHref: '/op/morosidad' },
             ]}
             alert={{ type: 'danger', text: 'Aviso por morosidad' }}
@@ -162,17 +162,17 @@ export default function PanelPage() {
           <AreaCard color="amber" icon={<IcoKey />}    title="CC2 Arriendos Admon"  href="/cc2"  actionLabel="+ Nuevo arriendo"
             rows={[
               { label: 'Cerrados',     value: '18' },
-              { label: 'Ingresos',     value: 'â‚¬10,500' },
-              { label: 'ConversiÃ³n',   value: '45%' },
-              { label: 'Prop. vacÃ­as', value: '6 (6,3%)', highlight: 'warning' },
+              { label: 'Ingresos',     value: '$10.500' },
+              { label: 'Conversión',   value: '45%' },
+              { label: 'Prop. vacías', value: '6 (6,3%)', highlight: 'warning' },
             ]}
             alert={{ type: 'warning', text: 'Pendientes de firma' }}
           />
           <AreaCard color="red"   icon={<IcoWrench />} title="CC3 Mantenimiento"    href="/cc3"  actionLabel="+ Nueva incidencia"
             rows={[
               { label: 'Abiertas',    value: '12' },
-              { label: 'FacturaciÃ³n', value: 'â‚¬6,800' },
-              { label: 'Coste',       value: 'â‚¬10,200' },
+              { label: 'Facturación', value: '$6.800' },
+              { label: 'Coste',       value: '$10.200' },
               { label: 'Margen',      value: '12%', highlight: 'warning' },
             ]}
             alert={{ type: 'danger', text: '3 urgencias pendientes' }}
@@ -187,16 +187,16 @@ export default function PanelPage() {
           <AreaCard color="green"  icon={<IcoUsers />} title="BB2 Arriendos" href="/bb2" actionLabel="+ Nuevo arriendo"
             rows={[
               { label: 'Operaciones',    value: '24' },
-              { label: 'Ingresos',       value: 'â‚¬22,500' },
-              { label: 'Coste',          value: 'â‚¬8,000' },
-              { label: 'ConversiÃ³n CC1', value: '55%' },
+              { label: 'Ingresos',       value: '$22.500' },
+              { label: 'Coste',          value: '$8,000' },
+              { label: 'Conversión CC1', value: '55%' },
             ]}
           />
           <AreaCard color="orange" icon={<IcoTrend />} title="BB1 Ventas" href="/bb1" actionLabel="+ Nueva venta"
             rows={[
               { label: 'Ventas',         value: '3' },
-              { label: 'Ingresos',       value: 'â‚¬95,000' },
-              { label: 'ComisiÃ³n media', value: 'â‚¬12,000' },
+              { label: 'Ingresos',       value: '$95.000' },
+              { label: 'Comisión media', value: '$12.000' },
               { label: 'Pipeline',       value: 'Sin activo', highlight: 'warning' },
             ]}
             alert={{ type: 'warning', text: 'Sin pipeline activo' }}
@@ -206,8 +206,8 @@ export default function PanelPage() {
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 10 }}>Actividad reciente</div>
             {[
-              { dot: '#1a56db', text: 'Laura cerrÃ³ alquiler Cj. Calle Luna' },
-              { dot: '#16a34a', text: 'Pedro creÃ³ incidencia en DepÃ³sito' },
+              { dot: '#1a56db', text: 'Laura cerró alquiler Cj. Calle Luna' },
+              { dot: '#16a34a', text: 'Pedro creó incidencia en Depósito' },
               { dot: '#d97706', text: 'Cambio de estado en Propiedad Alfa' },
               { dot: '#1a56db', text: 'Sync Excel â€” 838 registros' },
             ].map((item, i) => (
@@ -225,7 +225,7 @@ export default function PanelPage() {
           {/* Tareas pendientes */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 10 }}>Tareas pendientes</div>
-            {['ReparaciÃ³n urgente pendiente', 'Firma de contrato retrasada', 'RevisiÃ³n pagos propietarios'].map((task, i) => (
+            {['Reparación urgente pendiente', 'Firma de contrato retrasada', 'Revisión pagos propietarios'].map((task, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '5px 0',
