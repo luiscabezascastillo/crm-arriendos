@@ -103,6 +103,7 @@ export default function TopNav() {
       </Link>
 
       <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
+      <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
 
       <div ref={cc1Ref} style={{ position: 'relative' }}>
         <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
