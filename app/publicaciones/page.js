@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+const MapaPublicaciones = dynamic(() => import('./MapaPublicaciones'), { ssr: false })
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import TopNav from '../components/ui/TopNav'
@@ -59,6 +61,7 @@ export default function PublicacionesPage() {
   const [vista, setVista] = useState('tabla')
   const [modo, setModo] = useState('activas') // 'activas' | 'historicas'
   const [pubs, setPubs] = useState([])
+  const [pubsMapa, setPubsMapa] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -73,6 +76,22 @@ export default function PublicacionesPage() {
   useEffect(() => { fetch('https://mindicador.cl/api/uf').then(r=>r.json()).then(d=>setValorUF(d.serie?.[0]?.valor||null)).catch(()=>{}) }, [])
   useEffect(() => { setPage(1) }, [search, filtroPortal, filtroObjetivo, modo])
   useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo])
+
+  async function loadMapa() {
+    let query = supabase
+      .from('publicaciones')
+      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, latitud, longitud, dormitorios')
+      .eq('activo', 'active')
+      .not('latitud', 'is', null)
+      .neq('latitud', '')
+    if (filtroPortal) query = query.eq(filtroPortal, 'SI')
+    if (filtroObjetivo === 'arriendo') query = query.ilike('objetivo', '%arriendo%')
+    if (filtroObjetivo === 'venta') query = query.ilike('objetivo', '%venta%')
+    const { data } = await query
+    setPubsMapa(data || [])
+  }
+
+  useEffect(() => { if (vista === 'mapa') loadMapa() }, [vista, filtroPortal, filtroObjetivo])
 
   async function loadKpis() {
     const [
@@ -265,6 +284,7 @@ export default function PublicacionesPage() {
           <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
             <button onClick={() => setVista('tabla')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tabla'?'#1a56db':'transparent', color:vista==='tabla'?'#fff':'var(--gray-500)' }}>☰ Tabla</button>
             <button onClick={() => setVista('tarjetas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tarjetas'?'#1a56db':'transparent', color:vista==='tarjetas'?'#fff':'var(--gray-500)' }}>⊞ Tarjetas</button>
+              <button onClick={() => setVista('mapa')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='mapa'?'#1a56db':'transparent', color:vista==='mapa'?'#fff':'var(--gray-500)' }}>🗺 Mapa</button>
           </div>
           <button style={{ padding:'7px 16px', background:'#1a56db', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>+ Nueva publicación</button>
         </div>
@@ -338,6 +358,8 @@ export default function PublicacionesPage() {
           <div style={{ textAlign:'center', padding:40, fontSize:12, color:'var(--gray-400)' }}>Cargando...</div>
         ) : pubs.length === 0 ? (
           <div style={{ textAlign:'center', padding:40, fontSize:12, color:'var(--gray-400)' }}>No se encontraron publicaciones</div>
+        ) : vista === 'mapa' ? (
+          <MapaPublicaciones key={filtroPortal + '|' + filtroObjetivo + '|' + modo} pubs={pubsMapa} />
         ) : vista === 'tabla' ? (
 
           <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
