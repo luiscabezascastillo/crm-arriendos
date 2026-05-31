@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ENEL Bridge — CRM Arriendos",
-  "version": "1.0",
-  "description": "Proxy para consultas masivas de deuda ENEL desde CRM Arriendos",
+  "name": "CRM Bridge — Fondo Capital",
+  "version": "2.0",
+  "description": "Proxy para consultas ENEL y Aguas Andinas desde CRM Arriendos",
   "permissions": [
     "tabs",
     "scripting",
@@ -10,6 +10,7 @@
   ],
   "host_permissions": [
     "https://www.enel.cl/*",
+    "https://www.aguasandinas.cl/*",
     "http://localhost:3000/*",
     "https://crm-arriendos.vercel.app/*"
   ],
@@ -27,9 +28,14 @@
       "matches": ["https://www.enel.cl/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.aguasandinas.cl/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_title": "ENEL Bridge"
+    "default_title": "CRM Bridge"
   }
 }
