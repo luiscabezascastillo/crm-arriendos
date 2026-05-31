@@ -1,38 +1,23 @@
 // background.js
-// Coordina mensajes entre el CRM (localhost:3000) y el content script de ENEL
-
-// Escucha mensajes del CRM via chrome.runtime.sendMessage
-// El CRM usa chrome.runtime.sendMessage con el extensionId
+// Recibe token ya resuelto por 2captcha y ejecuta el fetch desde la pestaña ENEL
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  if (message.type === 'CONSULTAR_ENEL') {
-    handleConsultarEnel(message, sendResponse)
-    return true // Mantener canal abierto para respuesta async
-  }
-
   if (message.type === 'PING') {
-    sendResponse({ ok: true, version: '1.0' })
+    sendResponse({ ok: true, version: '1.1' })
     return false
   }
-})
 
-// También escucha mensajes internos (del content script)
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'ENEL_RESULT') {
-    // Reenviar resultado al CRM que está esperando
-    const tabId = sender.tab?.id
-    if (tabId) {
-      // Almacenar resultado temporalmente
-      chrome.storage.session.set({ [`result_${message.requestId}`]: message })
-    }
+  if (message.type === 'CONSULTAR_ENEL') {
+    handleConsultarEnel(message, sendResponse)
+    return true // mantener canal abierto para respuesta async
   }
 })
 
 async function handleConsultarEnel(message, sendResponse) {
-  const { codigo, token, requestId } = message
+  const { codigo, token } = message
 
   try {
-    // Buscar la pestaña de ENEL abierta
+    // Buscar pestaña ENEL abierta
     const tabs = await chrome.tabs.query({ url: 'https://www.enel.cl/*' })
 
     if (tabs.length === 0) {
@@ -42,7 +27,7 @@ async function handleConsultarEnel(message, sendResponse) {
 
     const enelTab = tabs[0]
 
-    // Ejecutar el fetch desde la pestaña de ENEL (mismo origen = sin CORS)
+    // Ejecutar fetch desde la pestaña ENEL (mismo origen = sin CORS, sin Akamai)
     const results = await chrome.scripting.executeScript({
       target: { tabId: enelTab.id },
       func: async (codigoEle, recaptchaToken) => {
@@ -58,17 +43,12 @@ async function handleConsultarEnel(message, sendResponse) {
             'https://www.enel.cl/es/clientes/servicios-en-linea/pago-de-cuenta.mdwedgeohl.getDebtsCl.html',
             {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: formData.toString(),
             }
           )
 
-          if (!response.ok) {
-            return { ok: false, error: `HTTP ${response.status}` }
-          }
-
+          if (!response.ok) return { ok: false, error: `HTTP ${response.status}` }
           const data = await response.json()
           return { ok: true, data }
         } catch (e) {
@@ -79,7 +59,6 @@ async function handleConsultarEnel(message, sendResponse) {
     })
 
     const result = results[0]?.result
-
     if (!result) {
       sendResponse({ ok: false, error: 'No se pudo ejecutar script en pestaña ENEL' })
       return

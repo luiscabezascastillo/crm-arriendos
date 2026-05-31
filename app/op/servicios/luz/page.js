@@ -13,160 +13,133 @@ const MESES_DISPONIBLES = [
   'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
 ]
 
-const AAMM_MAP = {
-  'MAYO 2026': '2605', 'ABRIL 2026': '2604', 'MARZO 2026': '2603',
-  'FEBRERO 2026': '2602', 'ENERO 2026': '2601', 'DICIEMBRE 2025': '2512',
-  'NOVIEMBRE 2025': '2511', 'OCTUBRE 2025': '2510'
+async function obtenerToken() {
+  const res = await fetch('/api/servicios/luz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'get_token' }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  return data.token
 }
 
-// Consulta ENEL via extensión Chrome (evita CORS y Akamai)
 function consultarENELviaExtension(extensionId, codigo, token) {
   return new Promise((resolve, reject) => {
-    if (!window.chrome?.runtime?.sendMessage) {
-      reject(new Error('API de extensión no disponible'))
-      return
-    }
-    const timeout = setTimeout(() => reject(new Error('Timeout — extensión no respondió')), 15000)
+    const timeout = setTimeout(() => reject(new Error('Timeout extensión')), 15000)
     window.chrome.runtime.sendMessage(
       extensionId,
       { type: 'CONSULTAR_ENEL', codigo, token },
       (response) => {
         clearTimeout(timeout)
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message))
-        } else {
-          resolve(response)
-        }
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+        else resolve(response)
       }
     )
   })
 }
 
-function interpretarRespuestaENEL(data) {
-  if (data.result !== 'OK') return { ok: false, motivo: 'result_ko' }
-  if (data.beResultCode === '005') {
-    return { ok: true, deuda: 0, fecha: new Date().toISOString().split('T')[0] }
-  }
-  if (data.debtAmount !== undefined) {
-    const deuda = parseFloat(String(data.debtAmount).replace(/[^0-9.]/g, '')) || 0
-    const fecha = data.dueDate || new Date().toISOString().split('T')[0]
-    return { ok: true, deuda, fecha }
-  }
-  return { ok: true, deuda: 0, fecha: new Date().toISOString().split('T')[0], raw: JSON.stringify(data) }
+async function guardarResultado(mes, idadmon, idinmue, deuda, fecha) {
+  const res = await fetch('/api/servicios/luz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'guardar', mes, idadmon, idinmue, deuda, fecha }),
+  })
+  const data = await res.json()
+  if (!data.ok) throw new Error(data.error || 'Error guardando')
 }
 
-async function guardarEnSupabase(supabase, mes, idadmon, idinmue, deuda, fecha) {
-  const { error } = await supabase
-    .from('ggcc_agua_luz')
-    .update({
-      deuda_vigente_electricidad: deuda,
-      fecha_hecho_luz: fecha,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('mes', mes)
-    .eq('idadmon', idadmon)
-    .eq('idinmue', idinmue)
-  if (error) throw new Error(error.message)
+function interpretarRespuestaENEL(data) {
+  if (data.result !== 'OK') return { ok: false, motivo: data.result || 'KO' }
+  if (data.beResultCode === '005') return { ok: true, deuda: 0, fecha: new Date().toISOString().split('T')[0] }
+  if (data.debtAmount !== undefined) {
+    const deuda = parseFloat(String(data.debtAmount).replace(/[^0-9.]/g, '')) || 0
+    return { ok: true, deuda, fecha: data.dueDate || new Date().toISOString().split('T')[0] }
+  }
+  return { ok: true, deuda: 0, fecha: new Date().toISOString().split('T')[0] }
 }
 
 export default function ServiciosLuzPage() {
   const router = useRouter()
-
   const [mes, setMes] = useState('MAYO 2026')
+  const [soloPendientes, setSoloPendientes] = useState(false)
   const [codigos, setCodigos] = useState([])
   const [totalCodigos, setTotalCodigos] = useState(0)
+  const [totalPendientes, setTotalPendientes] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [extensionId, setExtensionId] = useState('')
   const [extensionOk, setExtensionOk] = useState(false)
-
   const [fase, setFase] = useState('idle')
-  const [tokenCaptcha, setTokenCaptcha] = useState(null)
   const [progreso, setProgreso] = useState({ procesados: 0, exitosos: 0, fallidos: 0 })
-  const [resultados, setResultados] = useState([])
   const [log, setLog] = useState([])
+  const [resultados, setResultados] = useState([])
   const procesandoRef = useRef(false)
   const logRef = useRef(null)
 
-  useEffect(() => {
-    cargarCodigos()
-  }, [mes])
-
+  useEffect(() => { cargarCodigos() }, [mes, soloPendientes])
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [log])
+
+  // Al cambiar mes, cargar también el conteo de pendientes
+  useEffect(() => {
+    cargarContPendientes()
+  }, [mes])
 
   async function cargarCodigos() {
     setCargando(true)
     setCodigos([])
     setTotalCodigos(0)
     try {
-      const { data, error } = await supabase
-        .from('ggcc_agua_luz')
-        .select('idadmon, idinmue, codigo_ele, deuda_vigente_electricidad, fecha_hecho_luz')
-        .eq('mes', mes)
-        .not('codigo_ele', 'is', null)
-        .neq('codigo_ele', '')
-        .order('idadmon')
-      if (error) throw error
-      const filtrado = (data || []).filter(row => !row.idinmue?.startsWith('.'))
-      setCodigos(filtrado)
-      setTotalCodigos(filtrado.length)
-    } catch (e) {
-      addLog('error', `Error cargando códigos: ${e.message}`)
-    }
+      const url = `/api/servicios/luz?mes=${encodeURIComponent(mes)}&solo_pendientes=${soloPendientes}`
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.codigos) { setCodigos(data.codigos); setTotalCodigos(data.total) }
+    } catch (e) { addLog('error', `Error cargando: ${e.message}`) }
     setCargando(false)
   }
 
-  async function verificarExtension() {
-    if (!extensionId.trim()) {
-      addLog('error', 'Ingresa el ID de la extensión')
-      return
-    }
+  async function cargarContPendientes() {
     try {
-      addLog('info', `Verificando extensión ${extensionId.trim()}...`)
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Sin respuesta — verifica el ID')), 5000)
-        window.chrome.runtime.sendMessage(
-          extensionId.trim(),
-          { type: 'PING' },
-          (response) => {
-            clearTimeout(timeout)
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
-            else resolve(response)
-          }
-        )
-      })
-      setExtensionOk(true)
-      addLog('ok', '✓ Extensión conectada correctamente')
-    } catch (e) {
-      setExtensionOk(false)
-      addLog('error', `Error: ${e.message}`)
-    }
+      const res = await fetch(`/api/servicios/luz?mes=${encodeURIComponent(mes)}&solo_pendientes=true`)
+      const data = await res.json()
+      setTotalPendientes(data.total || 0)
+    } catch (e) { }
   }
 
   function addLog(tipo, mensaje) {
     setLog(prev => [...prev, { tipo, mensaje, ts: new Date().toLocaleTimeString('es-CL') }])
   }
 
-  function pegarToken(token) {
-    const t = token?.trim()
-    if (t && t.length > 100) {
-      setTokenCaptcha(t)
-      setFase('listo')
-      addLog('ok', `Token capturado (${t.substring(0, 20)}...) ✓`)
-    } else {
-      addLog('error', 'Token inválido — debe tener más de 100 caracteres')
+  async function verificarExtension() {
+    if (!extensionId.trim()) { addLog('error', 'Ingresa el ID de la extensión'); return }
+    try {
+      addLog('info', 'Verificando extensión...')
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Sin respuesta')), 5000)
+        window.chrome.runtime.sendMessage(extensionId.trim(), { type: 'PING' }, (response) => {
+          clearTimeout(timeout)
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+          else resolve(response)
+        })
+      })
+      setExtensionOk(true)
+      addLog('ok', '✓ Extensión conectada')
+    } catch (e) {
+      setExtensionOk(false)
+      addLog('error', `Error: ${e.message}`)
     }
   }
 
   async function iniciarConsulta() {
-    if (!tokenCaptcha || codigos.length === 0 || procesandoRef.current) return
-    if (!extensionOk) { addLog('error', 'Conecta la extensión primero'); return }
-
+    if (!extensionOk || codigos.length === 0 || procesandoRef.current) return
     procesandoRef.current = true
     setFase('procesando')
     setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 })
     setResultados([])
+
+    const modo = soloPendientes ? 'SOLO PENDIENTES' : 'TODOS'
+    addLog('info', `Iniciando consulta ${modo} — ${codigos.length} códigos`)
 
     let procesados = 0, exitosos = 0, fallidos = 0
     const todosResultados = []
@@ -174,45 +147,26 @@ export default function ServiciosLuzPage() {
     for (let i = 0; i < codigos.length; i++) {
       const { idadmon, idinmue, codigo_ele } = codigos[i]
 
-      if (i % 5 === 0) {
-        addLog('info', `Consultando ${i + 1} / ${codigos.length} — ${codigo_ele}`)
-      }
+      if (i % 5 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length} — obteniendo token...`)
 
       try {
-        // Consultar ENEL via extensión (desde contexto de la pestaña ENEL)
-        const result = await consultarENELviaExtension(extensionId.trim(), codigo_ele, tokenCaptcha)
+        const token = await obtenerToken()
+        const result = await consultarENELviaExtension(extensionId.trim(), codigo_ele, token)
 
         if (!result?.ok) {
-          const msg = result?.error || 'error desconocido'
-          if (msg.includes('result_ko') || msg.toLowerCase().includes('ko')) {
-            addLog('warn', `⚠️ Token expirado en código ${i + 1}. Proceso detenido.`)
-            setFase('token_expirado')
-            procesandoRef.current = false
-            setProgreso({ procesados: i, exitosos, fallidos })
-            setResultados(todosResultados)
-            return
-          }
-          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: msg })
+          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: result?.error || 'sin respuesta' })
           fallidos++
         } else {
           const interpretado = interpretarRespuestaENEL(result.data)
-
           if (!interpretado.ok) {
-            addLog('warn', `⚠️ Token expirado en código ${i + 1}. Proceso detenido.`)
-            setFase('token_expirado')
-            procesandoRef.current = false
-            setProgreso({ procesados: i, exitosos, fallidos })
-            setResultados(todosResultados)
-            return
+            todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: `ENEL KO: ${interpretado.motivo}` })
+            fallidos++
+          } else {
+            await guardarResultado(mes, idadmon, idinmue, interpretado.deuda, interpretado.fecha)
+            todosResultados.push({ idadmon, codigo_ele, status: 'ok', deuda: interpretado.deuda })
+            exitosos++
+            if (exitosos % 5 === 0) addLog('ok', `${exitosos} registros guardados en Supabase`)
           }
-
-          if (interpretado.raw) {
-            addLog('warn', `Respuesta inesperada para ${codigo_ele}: ${interpretado.raw}`)
-          }
-
-          await guardarEnSupabase(supabase, mes, idadmon, idinmue, interpretado.deuda, interpretado.fecha)
-          todosResultados.push({ idadmon, codigo_ele, status: 'ok', deuda: interpretado.deuda })
-          exitosos++
         }
       } catch (e) {
         todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: e.message })
@@ -222,16 +176,14 @@ export default function ServiciosLuzPage() {
       procesados++
       setProgreso({ procesados, exitosos, fallidos })
       setResultados([...todosResultados])
-
-      await new Promise(r => setTimeout(r, 350))
+      await new Promise(r => setTimeout(r, 200))
     }
 
     addLog('ok', `✓ Completado: ${exitosos} exitosos, ${fallidos} fallidos de ${procesados} total`)
     setFase('completado')
     procesandoRef.current = false
+    cargarContPendientes() // Actualizar conteo de pendientes al terminar
   }
-
-  // ─── Estilos ──────────────────────────────────────────────────────────────
 
   const s = {
     page: { minHeight: '100vh', background: '#0f1117', color: '#e2e8f0', fontFamily: "'DM Mono', 'Courier New', monospace" },
@@ -243,35 +195,33 @@ export default function ServiciosLuzPage() {
     section: { background: '#1a1d27', border: '1px solid #2d3149', borderRadius: '8px', padding: '16px' },
     sectionTitle: { fontSize: '11px', fontWeight: '600', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px' },
     select: { width: '100%', background: '#0f1117', border: '1px solid #3d4266', color: '#e2e8f0', padding: '8px 10px', borderRadius: '6px', fontSize: '13px', fontFamily: 'inherit' },
-    kpiRow: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' },
+    kpiRow: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '10px' },
     kpi: { background: '#0f1117', border: '1px solid #2d3149', borderRadius: '6px', padding: '10px', textAlign: 'center' },
-    kpiVal: { fontSize: '22px', fontWeight: '700', color: '#f1f5f9', lineHeight: 1 },
+    kpiVal: { fontSize: '20px', fontWeight: '700', color: '#f1f5f9', lineHeight: 1 },
     kpiLabel: { fontSize: '10px', color: '#64748b', marginTop: '4px', letterSpacing: '0.05em' },
-    btn: (color, disabled) => ({ width: '100%', padding: '11px', background: disabled ? '#1e2235' : color, color: disabled ? '#475569' : '#fff', border: 'none', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', letterSpacing: '0.05em' }),
+    btn: (color, disabled) => ({ width: '100%', padding: '12px', background: disabled ? '#1e2235' : color, color: disabled ? '#475569' : '#fff', border: 'none', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }),
+    toggleRow: { display: 'flex', gap: '8px', marginBottom: '0' },
+    toggleBtn: (activo) => ({ flex: 1, padding: '8px', background: activo ? '#1e3a5f' : '#0f1117', border: activo ? '1px solid #3b82f6' : '1px solid #2d3149', color: activo ? '#60a5fa' : '#64748b', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: activo ? '600' : '400', fontFamily: 'inherit', transition: 'all 0.15s' }),
     progressBar: { background: '#0f1117', borderRadius: '4px', height: '6px', overflow: 'hidden' },
     progressFill: (pct) => ({ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #3b82f6, #06b6d4)', transition: 'width 0.3s', borderRadius: '4px' }),
-    log: { background: '#0a0c14', border: '1px solid #2d3149', borderRadius: '6px', padding: '10px', maxHeight: '200px', overflowY: 'auto', fontSize: '11px', lineHeight: '1.7' },
+    log: { background: '#0a0c14', border: '1px solid #2d3149', borderRadius: '6px', padding: '10px', maxHeight: '220px', overflowY: 'auto', fontSize: '11px', lineHeight: '1.7' },
     logLine: (tipo) => ({ color: tipo === 'error' ? '#f87171' : tipo === 'ok' ? '#4ade80' : tipo === 'warn' ? '#fbbf24' : '#94a3b8' }),
-    input: { width: '100%', background: '#0f1117', border: '1px solid #3d4266', color: '#e2e8f0', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', fontFamily: 'inherit', boxSizing: 'border-box' },
-    tokenInput: { width: '100%', background: '#0f1117', border: '1px solid #3d4266', color: '#e2e8f0', padding: '8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'inherit', resize: 'vertical', minHeight: '60px', boxSizing: 'border-box', marginTop: '6px' },
-    code: { background: '#0a0c14', border: '1px solid #2d3149', borderRadius: '4px', padding: '8px 10px', fontSize: '11px', color: '#06b6d4', fontFamily: 'inherit', display: 'block', marginTop: '6px', userSelect: 'all' },
-    paso: { background: '#0f1117', border: '1px solid #2d3149', borderRadius: '6px', padding: '10px 12px', marginBottom: '8px' },
-    pasoNum: { display: 'inline-block', background: '#3b82f6', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', textAlign: 'center', lineHeight: '18px', fontSize: '10px', fontWeight: '700', marginRight: '8px' },
     row: { display: 'flex', gap: '8px' },
+    input: { flex: 1, background: '#0f1117', border: '1px solid #3d4266', color: '#e2e8f0', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', fontFamily: 'inherit' },
   }
 
   const pct = totalCodigos > 0 ? Math.round((progreso.procesados / totalCodigos) * 100) : 0
+  const tiempoEstimado = Math.round(totalCodigos * 22 / 60)
 
   return (
     <div style={s.page}>
       <div style={s.header}>
         <button style={s.backBtn} onClick={() => router.push('/op/deudas')}>← Deudas</button>
         <h1 style={s.title}>⚡ CONSULTA MASIVA LUZ — ENEL</h1>
+        <span style={s.badge('#6366f1')}>2CAPTCHA + EXTENSIÓN</span>
         {extensionOk && <span style={s.badge('#22c55e')}>EXTENSIÓN ✓</span>}
-        {!extensionOk && <span style={s.badge('#ef4444')}>SIN EXTENSIÓN</span>}
         {fase === 'procesando' && <span style={s.badge('#3b82f6')}>EN PROCESO</span>}
         {fase === 'completado' && <span style={s.badge('#22c55e')}>COMPLETADO</span>}
-        {fase === 'token_expirado' && <span style={s.badge('#f59e0b')}>TOKEN EXPIRADO</span>}
       </div>
 
       <div style={s.body}>
@@ -279,37 +229,62 @@ export default function ServiciosLuzPage() {
         {/* Mes */}
         <div style={s.section}>
           <div style={s.sectionTitle}>Mes a procesar</div>
-          <select style={s.select} value={mes} onChange={e => setMes(e.target.value)} disabled={fase === 'procesando'}>
+          <select style={s.select} value={mes}
+            onChange={e => { setMes(e.target.value); setFase('idle'); setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 }) }}
+            disabled={fase === 'procesando'}>
             {MESES_DISPONIBLES.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+        </div>
+
+        {/* Modo vuelta */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>Modo de consulta</div>
+          <div style={s.toggleRow}>
+            <button style={s.toggleBtn(!soloPendientes)}
+              onClick={() => { if (fase !== 'procesando') setSoloPendientes(false) }}>
+              📋 Todos los códigos ({totalCodigos > 0 && !soloPendientes ? totalCodigos : '...'})
+            </button>
+            <button style={s.toggleBtn(soloPendientes)}
+              onClick={() => { if (fase !== 'procesando') setSoloPendientes(true) }}>
+              🔄 Solo pendientes {totalPendientes !== null ? `(${totalPendientes})` : '(...)'}
+            </button>
+          </div>
+          {soloPendientes && totalPendientes === 0 && (
+            <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '10px' }}>
+              ✓ No hay pendientes — todos los códigos tienen fecha_hecho_luz registrada.
+            </div>
+          )}
+          {soloPendientes && totalPendientes > 0 && (
+            <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>
+              ⚠️ {totalPendientes} códigos sin consultar en {mes}
+            </div>
+          )}
         </div>
 
         {/* Progreso */}
         <div style={s.section}>
           <div style={s.sectionTitle}>Progreso</div>
           <div style={s.kpiRow}>
-            <div style={s.kpi}><div style={s.kpiVal}>{cargando ? '...' : totalCodigos}</div><div style={s.kpiLabel}>TOTAL</div></div>
+            <div style={s.kpi}><div style={s.kpiVal}>{cargando ? '...' : totalCodigos}</div><div style={s.kpiLabel}>A PROCESAR</div></div>
             <div style={s.kpi}><div style={{ ...s.kpiVal, color: '#4ade80' }}>{progreso.exitosos}</div><div style={s.kpiLabel}>EXITOSOS</div></div>
             <div style={s.kpi}><div style={{ ...s.kpiVal, color: '#f87171' }}>{progreso.fallidos}</div><div style={s.kpiLabel}>FALLIDOS</div></div>
+            <div style={s.kpi}><div style={{ ...s.kpiVal, color: '#64748b' }}>{totalPendientes ?? '...'}</div><div style={s.kpiLabel}>PENDIENTES</div></div>
           </div>
           <div style={s.progressBar}><div style={s.progressFill(pct)} /></div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', textAlign: 'right' }}>{progreso.procesados} / {totalCodigos} ({pct}%)</div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', textAlign: 'right' }}>
+            {progreso.procesados} / {totalCodigos} ({pct}%)
+          </div>
         </div>
 
-        {/* Paso 0 — Extensión */}
+        {/* Extensión */}
         <div style={s.section}>
-          <div style={s.sectionTitle}>Paso 1 — Conectar extensión Chrome</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px', lineHeight: '1.6' }}>
-            Instala la extensión <strong style={{ color: '#e2e8f0' }}>ENEL Bridge</strong> en Chrome (modo desarrollador).
-            Luego copia su ID desde <code style={{ color: '#06b6d4' }}>chrome://extensions</code> y pégalo aquí:
+          <div style={s.sectionTitle}>Extensión Chrome</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>
+            Mantén una pestaña de ENEL abierta en Chrome.
           </div>
           <div style={s.row}>
-            <input
-              style={{ ...s.input, flex: 1 }}
-              placeholder="ID de la extensión (ej: abcdefghijklmnopqrstuvwxyz123456)"
-              value={extensionId}
-              onChange={e => { setExtensionId(e.target.value); setExtensionOk(false) }}
-            />
+            <input style={s.input} placeholder="ID de la extensión ENEL Bridge"
+              value={extensionId} onChange={e => { setExtensionId(e.target.value); setExtensionOk(false) }} />
             <button style={{ ...s.btn('#3b82f6', false), width: 'auto', padding: '8px 16px' }} onClick={verificarExtension}>
               Verificar
             </button>
@@ -317,66 +292,40 @@ export default function ServiciosLuzPage() {
           {extensionOk && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '8px' }}>✓ Extensión conectada</div>}
         </div>
 
-        {/* Paso 1 — Token */}
-        {(fase === 'idle' || fase === 'token_expirado') && extensionOk && (
+        {/* Acción */}
+        {fase === 'idle' && extensionOk && totalCodigos > 0 && (
           <div style={s.section}>
-            <div style={s.sectionTitle}>
-              {fase === 'token_expirado' ? '⚠️ Token expirado — obtener nuevo' : 'Paso 2 — Obtener token reCAPTCHA'}
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '14px', lineHeight: '1.6' }}>
+              <strong style={{ color: '#e2e8f0' }}>
+                {soloPendientes ? `Reintentando ${totalCodigos} códigos pendientes` : `Procesando ${totalCodigos} códigos`}
+              </strong><br />
+              Tiempo estimado: <strong style={{ color: '#fbbf24' }}>~{tiempoEstimado} minutos</strong>
             </div>
+            <button style={s.btn('#22c55e', false)} onClick={iniciarConsulta}>
+              ▶ {soloPendientes ? `Reintentar pendientes (${totalCodigos})` : `Iniciar consulta completa (${totalCodigos})`}
+            </button>
+          </div>
+        )}
 
-            <div style={s.paso}>
-              <span style={s.pasoNum}>1</span>
-              <a href="https://www.enel.cl/es/clientes/servicios-en-linea/pago-de-cuenta.html"
-                target="_blank" rel="noreferrer"
-                style={{ fontSize: '12px', color: '#3b82f6' }}>
-                Abre el portal ENEL ↗
-              </a>
-            </div>
-
-            <div style={s.paso}>
-              <span style={s.pasoNum}>2</span>
-              <span style={{ fontSize: '12px', color: '#e2e8f0' }}>Ingresa cualquier código de cliente y resuelve el reCAPTCHA ✓</span>
-            </div>
-
-            <div style={s.paso}>
-              <span style={s.pasoNum}>3</span>
-              <div style={{ fontSize: '12px', color: '#e2e8f0' }}>
-                En DevTools → Console (escribe <code style={{ color: '#fbbf24' }}>allow pasting</code> → Enter si es la primera vez), luego:
-                <code style={s.code}>copy(document.querySelector('textarea[name="g-recaptcha-response"]').value)</code>
-              </div>
-            </div>
-
-            <div style={s.paso}>
-              <span style={s.pasoNum}>4</span>
-              <div style={{ fontSize: '12px', color: '#e2e8f0' }}>
-                Pega el token aquí (Ctrl+V):
-                <textarea
-                  style={s.tokenInput}
-                  placeholder="Pega aquí el token reCAPTCHA..."
-                  onPaste={e => { setTimeout(() => pegarToken(e.target.value), 100) }}
-                  onBlur={e => e.target.value && pegarToken(e.target.value)}
-                />
-              </div>
+        {fase === 'idle' && extensionOk && totalCodigos === 0 && soloPendientes && (
+          <div style={s.section}>
+            <div style={{ fontSize: '12px', color: '#4ade80' }}>
+              ✓ Sin pendientes — todos los códigos de {mes} están consultados.
             </div>
           </div>
         )}
 
-        {/* Botón iniciar */}
-        {fase === 'listo' && (
+        {fase === 'idle' && !extensionOk && (
           <div style={s.section}>
-            <div style={{ fontSize: '12px', color: '#4ade80', marginBottom: '12px' }}>
-              ✓ Todo listo. La extensión ejecutará los {totalCodigos} fetches desde la pestaña ENEL.
-            </div>
-            <button style={s.btn('#22c55e', false)} onClick={iniciarConsulta}>
-              ▶ Iniciar consulta masiva ({totalCodigos} códigos)
-            </button>
+            <div style={{ fontSize: '12px', color: '#64748b' }}>Conecta la extensión para iniciar.</div>
           </div>
         )}
 
         {fase === 'procesando' && (
           <div style={s.section}>
-            <div style={{ fontSize: '12px', color: '#3b82f6' }}>
-              ⏳ Consultando via extensión... No cierres la pestaña ENEL ni esta pestaña.
+            <div style={{ fontSize: '12px', color: '#3b82f6', lineHeight: '1.6' }}>
+              ⏳ Procesando automáticamente...<br />
+              No cierres esta pestaña ni la pestaña de ENEL.
             </div>
           </div>
         )}
@@ -384,11 +333,25 @@ export default function ServiciosLuzPage() {
         {fase === 'completado' && (
           <div style={s.section}>
             <div style={{ fontSize: '12px', color: '#4ade80', marginBottom: '12px' }}>
-              ✓ {progreso.exitosos} registros actualizados en Supabase.
+              ✓ {progreso.exitosos} registros actualizados.
+              {totalPendientes > 0 && (
+                <span style={{ color: '#fbbf24' }}> Aún quedan {totalPendientes} pendientes.</span>
+              )}
             </div>
             <div style={s.row}>
-              <button style={{ ...s.btn('#3b82f6', false), flex: 1 }} onClick={() => { setFase('idle'); setTokenCaptcha(null); setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 }); setResultados([]) }}>🔄 Nueva consulta</button>
-              <button style={{ ...s.btn('#6366f1', false), flex: 1 }} onClick={() => router.push('/op/deudas')}>→ Ver en Deudas</button>
+              {totalPendientes > 0 && (
+                <button style={{ ...s.btn('#f59e0b', false), flex: 1 }}
+                  onClick={() => { setSoloPendientes(true); setFase('idle'); setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 }); setResultados([]) }}>
+                  🔄 Reintentar pendientes ({totalPendientes})
+                </button>
+              )}
+              <button style={{ ...s.btn('#3b82f6', false), flex: 1 }}
+                onClick={() => { setFase('idle'); setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 }); setResultados([]) }}>
+                Nueva consulta
+              </button>
+              <button style={{ ...s.btn('#6366f1', false), flex: 1 }} onClick={() => router.push('/op/deudas')}>
+                → Ver en Deudas
+              </button>
             </div>
           </div>
         )}

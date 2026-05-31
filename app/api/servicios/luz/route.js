@@ -6,161 +6,107 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// POST /api/servicios/luz
-// Body: { mes, aamm, recaptchaToken, codigos }
-// - mes: 'MAYO 2026'
-// - aamm: '2605'
-// - recaptchaToken: token capturado del portal ENEL
-// - codigos: array de { idadmon, idinmue, codigo_ele }
+const TWOCAPTCHA_API_KEY = process.env.TWOCAPTCHA_API_KEY
+const ENEL_SITE_KEY = '6LeORoMUAAAAACZSDgr4cfCzNdcFoy5vzlLT7zib'
+const ENEL_PAGE_URL = 'https://www.enel.cl/es/clientes/servicios-en-linea/pago-de-cuenta.html'
+
+function esCodigoENELvalido(codigo) {
+  if (!codigo) return false
+  return /^[\d-]+$/.test(codigo.trim())
+}
+
+async function obtenerTokenDe2captcha() {
+  const inRes = await fetch(
+    `https://2captcha.com/in.php?key=${TWOCAPTCHA_API_KEY}&method=userrecaptcha&googlekey=${ENEL_SITE_KEY}&pageurl=${ENEL_PAGE_URL}&enterprise=1&json=1`
+  )
+  const inData = await inRes.json()
+  if (inData.status !== 1) throw new Error(`2captcha crear tarea: ${inData.request}`)
+  const taskId = inData.request
+  for (let i = 0; i < 24; i++) {
+    await new Promise(r => setTimeout(r, 5000))
+    const outRes = await fetch(
+      `https://2captcha.com/res.php?key=${TWOCAPTCHA_API_KEY}&action=get&id=${taskId}&json=1`
+    )
+    const outData = await outRes.json()
+    if (outData.status === 1) return outData.request
+    if (outData.request !== 'CAPCHA_NOT_READY') throw new Error(`2captcha: ${outData.request}`)
+  }
+  throw new Error('2captcha timeout')
+}
+
+async function guardar(mes, idadmon, idinmue, deuda, fecha) {
+  const { error } = await supabase
+    .from('ggcc_agua_luz')
+    .update({
+      deuda_vigente_electricidad: deuda,
+      fecha_hecho_luz: fecha,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('mes', mes)
+    .eq('idadmon', idadmon)
+    .eq('idinmue', idinmue)
+  if (error) throw new Error(error.message)
+}
+
 export async function POST(request) {
   try {
-    const { mes, aamm, recaptchaToken, codigos } = await request.json()
+    const body = await request.json()
 
-    if (!recaptchaToken) {
-      return Response.json({ error: 'Token reCAPTCHA requerido' }, { status: 400 })
-    }
-    if (!codigos || codigos.length === 0) {
-      return Response.json({ error: 'No hay códigos para consultar' }, { status: 400 })
-    }
-
-    const resultados = []
-    let exitosos = 0
-    let fallidos = 0
-
-    // Consultar cada código contra la API interna de ENEL
-    for (const item of codigos) {
-      const { idadmon, idinmue, codigo_ele } = item
-
-      try {
-        const formData = new URLSearchParams()
-        formData.append('searchType', 'nro_suministro')
-        formData.append('client', codigo_ele)
-        formData.append('g-recaptcha-response', recaptchaToken)
-        formData.append('company', '1')
-        formData.append('minutesT', 'TIME-SLOT-4')
-
-        const response = await fetch(
-          'https://www.enel.cl/es/clientes/servicios-en-linea/pago-de-cuenta.mdwedgeohl.getDebtsCl.html',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Origin': 'https://www.enel.cl',
-              'Referer': 'https://www.enel.cl/es/clientes/servicios-en-linea/pago-de-cuenta.html',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            body: formData.toString(),
-          }
-        )
-
-        if (!response.ok) {
-          resultados.push({ idadmon, idinmue, codigo_ele, status: 'error', mensaje: `HTTP ${response.status}` })
-          fallidos++
-          continue
-        }
-
-        const data = await response.json()
-
-        // Interpretar respuesta ENEL
-        // result: "OK" + beResultCode: "005" = sin deuda
-        // result: "OK" + debtAmount presente = con deuda
-        let deudaVigente = 0
-        let fechaHecho = null
-        let statusConsulta = 'ok'
-
-        if (data.result === 'OK') {
-          if (data.beResultCode === '005') {
-            // Sin deuda vigente
-            deudaVigente = 0
-            fechaHecho = new Date().toISOString().split('T')[0]
-          } else if (data.debtAmount !== undefined) {
-            // Con deuda — ENEL devuelve el monto en pesos como número o string
-            deudaVigente = parseFloat(String(data.debtAmount).replace(/[^0-9.]/g, '')) || 0
-            fechaHecho = data.dueDate || new Date().toISOString().split('T')[0]
-          } else {
-            // Respuesta OK pero estructura inesperada — guardar raw para debugging
-            statusConsulta = 'ok_unknown'
-            deudaVigente = 0
-          }
-        } else {
-          // getDebts KO u otro error de negocio
-          statusConsulta = 'error_negocio'
-          fallidos++
-          resultados.push({ idadmon, idinmue, codigo_ele, status: statusConsulta, raw: data })
-          continue
-        }
-
-        // Actualizar ggcc_agua_luz
-        const { error: upsertError } = await supabase
-          .from('ggcc_agua_luz')
-          .update({
-            deuda_vigente_electricidad: deudaVigente,
-            fecha_hecho_luz: fechaHecho,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('mes', mes)
-          .eq('idadmon', idadmon)
-          .eq('idinmue', idinmue)
-
-        if (upsertError) {
-          resultados.push({ idadmon, idinmue, codigo_ele, status: 'error_db', mensaje: upsertError.message })
-          fallidos++
-        } else {
-          resultados.push({ idadmon, idinmue, codigo_ele, status: 'ok', deuda: deudaVigente })
-          exitosos++
-        }
-
-        // Pausa pequeña entre requests para no saturar ENEL
-        await new Promise(r => setTimeout(r, 300))
-
-      } catch (err) {
-        resultados.push({ idadmon, idinmue, codigo_ele, status: 'error', mensaje: err.message })
-        fallidos++
+    if (body.action === 'get_token') {
+      if (!TWOCAPTCHA_API_KEY) {
+        return Response.json({ error: 'TWOCAPTCHA_API_KEY no configurada' }, { status: 500 })
       }
+      const token = await obtenerTokenDe2captcha()
+      return Response.json({ token })
     }
 
-    return Response.json({
-      total: codigos.length,
-      exitosos,
-      fallidos,
-      resultados,
-    })
+    if (body.action === 'guardar') {
+      const { mes, idadmon, idinmue, deuda, fecha } = body
+      await guardar(mes, idadmon, idinmue, deuda, fecha)
+      return Response.json({ ok: true })
+    }
 
-  } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 })
+    return Response.json({ error: 'Acción no reconocida' }, { status: 400 })
+
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 })
   }
 }
 
-// GET /api/servicios/luz?mes=MAYO 2026
-// Devuelve los códigos pendientes de consultar para el mes
+// GET /api/servicios/luz?mes=MAYO 2026&solo_pendientes=true
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url)
     const mes = searchParams.get('mes')
+    const soloPendientes = searchParams.get('solo_pendientes') === 'true'
 
-    if (!mes) {
-      return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
-    }
+    if (!mes) return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
 
-    // Traer filas resumen (sin punto en idadmon) con codigo_ele del mes
-    const { data, error } = await supabase
+    let query = supabase
       .from('ggcc_agua_luz')
       .select('idadmon, idinmue, codigo_ele, deuda_vigente_electricidad, fecha_hecho_luz, edificio_proyecto, inmueble')
       .eq('mes', mes)
       .not('codigo_ele', 'is', null)
       .neq('codigo_ele', '')
+      .not('idinmue', 'like', '.%')
       .order('idadmon')
 
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 })
+    if (soloPendientes) {
+      query = query.is('fecha_hecho_luz', null)
     }
 
-    // Filtrar filas detalle (idinmue con punto) — solo filas resumen por contrato
-    const filtrado = data.filter(row => !row.idinmue?.startsWith('.'))
+    const { data, error } = await query
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+
+    // Filtrar códigos no válidos (bodega, estacionamiento, etc.)
+    const filtrado = (data || []).filter(row => {
+      if (!row.codigo_ele) return false
+      return /^[\d-]+$/.test(row.codigo_ele.trim())
+    })
 
     return Response.json({ codigos: filtrado, total: filtrado.length })
 
-  } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 })
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 })
   }
 }
