@@ -44,6 +44,15 @@ export default function TopNav() {
       transition: 'all 0.12s',
       whiteSpace: 'nowrap',
     }),
+    linkBold: (active) => ({
+      padding: '6px 12px', borderRadius: 6,
+      fontSize: 13, fontWeight: 700,
+      color: active ? '#185FA5' : '#555',
+      background: active ? '#E6F1FB' : 'transparent',
+      textDecoration: 'none', border: 'none', cursor: 'pointer',
+      transition: 'all 0.12s',
+      whiteSpace: 'nowrap',
+    }),
     dropBtn: (active) => ({
       padding: '6px 12px', borderRadius: 6,
       fontSize: 13, fontWeight: active ? 600 : 400,
@@ -98,12 +107,13 @@ export default function TopNav() {
 
   return (
     <nav style={s.nav}>
-      <Link href="/panel" style={s.brand}>
+      {/* CRM → placeholder manual de procesos */}
+      <a href="#" style={s.brand} title="Manual de procesos (próximamente)">
         <span>CRM</span>
-      </Link>
+      </a>
 
-      <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
-      <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
+      <Link href="/panel" style={s.linkBold(isActive('/panel'))}>Dashboard</Link>
+      <Link href="/procesos" style={s.linkBold(isActive('/procesos'))}>Trabajo</Link>
 
       <div ref={cc1Ref} style={{ position: 'relative' }}>
         <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
@@ -130,9 +140,15 @@ export default function TopNav() {
         {opOpen && (
           <div style={s.dropdown}>
             <div style={s.dropLabel}>Operacion</div>
-            <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setOpOpen(false)}>Comunidad Feliz</Link>
             <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setOpOpen(false)}>Liquidacion Paola</Link>
             <Link href="/op/morosidad" style={s.dropItem} onClick={() => setOpOpen(false)}>Morosidad</Link>
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>Servicios</div>
+            <Link href="/op/deudas" style={{ ...s.dropItem, fontSize: 14, fontWeight: 600, color: '#185FA5' }} onClick={() => setOpOpen(false)}>📊 Visualizar Deudas</Link>
+            <div style={s.dropDivider}/>
+            <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setOpOpen(false)}>🏢 Cargar ggcc CF</Link>
+            <Link href="/op/servicios/luz" style={s.dropItem} onClick={() => setOpOpen(false)}>⚡ Cargar Luz</Link>
+            <Link href="/op/servicios/agua" style={s.dropItem} onClick={() => setOpOpen(false)}>💧 Cargar Agua</Link>
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Pendientes</div>
             {['Contratos','Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
