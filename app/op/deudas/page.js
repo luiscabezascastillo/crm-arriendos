@@ -1,4 +1,5 @@
 'use client'
+import * as XLSX from 'xlsx'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -180,7 +181,7 @@ export default function Deudas() {
     setFGGCC(emptyF); setFLuz(emptyF); setFAgua(emptyF); setFGas(emptyF); setFTotal(emptyF)
     setSortCol(null); setSortDir(null)
     supabase.from('ggcc_agua_luz')
-      .select('idadmon,idinmue,estado,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
+      .select('idadmon,idinmue,estado,aamm,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
       .eq('mes', mes).limit(500)
       .then(({data}) => {
         setFilas((data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.')))
@@ -322,6 +323,48 @@ export default function Deudas() {
     fAgua.min!==''||fAgua.max!==''||fGas.min!==''||fGas.max!==''||
     fTotal.min!==''||fTotal.max!==''
 
+
+  function exportarExcel() {
+    const rows = datos.map(f => {
+      const c = contratos[f.idadmon] || {}
+      return {
+        'IDADMON': f.idadmon,
+        'Edificio/Proyecto': f.edificio_proyecto || '',
+        'Propietario': c.propietario || '',
+        'Inmueble': c.inmueble || f.idinmue || '',
+        'Arrendatario': f.arrendatario || '',
+        'Estado': f.estado || '',
+        'AAMM': f.aamm || '',
+        'Cód. Luz': f.codigo_ele || '',
+        'Cód. Agua': f.codigo_agua || '',
+        'Cód. Gas': f.codigo_gas || '',
+        'GGCC': fmt(f.deuda_gastos_comunes) ?? '',
+        'Fecha GGCC': f.fecha_hecho_ggcc || '',
+        'Comentario GGCC': f.comentarios_se_han_dejado_los_comentarios_mes_anterior || '',
+        'Luz': fmt(f.deuda_vigente_electricidad) ?? '',
+        'Fecha Luz': f.fecha_hecho_luz || '',
+        'Comentario Luz': f.comentarios_y_fecha_corte || '',
+        'Agua': fmt(f.deuda_vigente_agua) ?? '',
+        'Fecha Agua': f.fecha_hecho_agua || '',
+        'Comentario Agua': f.deuda_anterior_agua || '',
+        'Gas': fmt(f.deuda_vigente_gas) ?? '',
+        'Fecha Gas': f.fecha_hecho_gas || '',
+        'Total': totalF(f),
+      }
+    })
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Deudas')
+
+    // Ancho de columnas automático
+    const colWidths = Object.keys(rows[0]).map(key => ({
+      wch: Math.max(key.length, ...rows.map(r => String(r[key] ?? '').length)) + 2
+    }))
+    ws['!cols'] = colWidths
+
+    XLSX.writeFile(wb, 'deudas_' + mes.replace(' ', '_') + '.xlsx')
+  }
   function limpiarTodo() {
     setFIdadmon(emptyF);setFProp(emptyF);setFEstado(emptyF)
     setFGGCC(emptyF);setFLuz(emptyF);setFAgua(emptyF);setFGas(emptyF);setFTotal(emptyF)
@@ -354,6 +397,11 @@ export default function Deudas() {
               ✕ Limpiar filtros
             </button>
           )}
+          <button onClick={exportarExcel} style={{padding:'6px 14px',borderRadius:8,
+            border:'1px solid #D1D5DB',background:'#fff',fontSize:13,cursor:'pointer',
+            color:'#374151',fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
+            ⬇ Excel (.xlsx)
+          </button>
           <select value={mes} onChange={e=>setMes(e.target.value)}
             style={{padding:'6px 12px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:14}}>
             {MESES.map(m=><option key={m} value={m}>{m}</option>)}
