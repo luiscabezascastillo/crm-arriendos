@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { redirect } from 'next/navigation'
@@ -22,7 +22,7 @@ function calcularPrecio(c: Record<string, unknown>): number {
   const reajustes = [
     c.cantidad_reajuste1, c.cantidad_reajuste2, c.cantidad_reajuste3,
     c.cantidad_reajuste4, c.cantidad_reajuste5, c.cantidad_reajuste6,
-  ].reduce((s, r) => s + (parseFloat(String(r ?? 0)) || 0), 0)
+  ].reduce((s: number, r) => s + (parseFloat(String(r ?? 0)) || 0), 0)
   return Math.round(cuota + reajustes)
 }
 

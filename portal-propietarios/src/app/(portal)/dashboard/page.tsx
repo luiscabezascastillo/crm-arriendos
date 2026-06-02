@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { redirect } from 'next/navigation'
@@ -16,7 +16,7 @@ function calcularPrecio(c: Record<string, unknown>): number {
   const reajustes = [
     c.cantidad_reajuste1, c.cantidad_reajuste2, c.cantidad_reajuste3,
     c.cantidad_reajuste4, c.cantidad_reajuste5, c.cantidad_reajuste6,
-  ].reduce((s, r) => s + (parseFloat(String(r ?? 0)) || 0), 0)
+  ].reduce((s: number, r) => s + (parseFloat(String(r ?? 0)) || 0), 0)
   return Math.round(cuota + reajustes)
 }
 
@@ -77,7 +77,7 @@ export default async function DashboardPage() {
 
   const totalMorosidad = alertasMorosos.reduce((s, a) => s + a.saldo, 0)
 
-  // Servicios más recientes
+  // Servicios m�s recientes
   const svcMap = new Map<string, Record<string, unknown>>()
   for (const s of (ggccData || [])) {
     if (!svcMap.has(s.idadmon as string)) svcMap.set(s.idadmon as string, s as Record<string, unknown>)
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
   const totalLuz  = idadmons.reduce((s, id) => s + (parseFloat(String(svcMap.get(id)?.deuda_vigente_electricidad ?? 0)) || 0), 0)
   const totalAgua = idadmons.reduce((s, id) => s + (parseFloat(String(svcMap.get(id)?.deuda_vigente_agua ?? 0)) || 0), 0)
 
-  // Ingresos por mes (últimos 12)
+  // Ingresos por mes (�ltimos 12)
   const ingresosMap = new Map<string, number>()
   for (const m of (movimientos || [])) {
     if (!m.fecha || !m.abono) continue
@@ -121,7 +121,7 @@ export default async function DashboardPage() {
     ggcc: ggccMesMap.get(mes) || 0,
   }))
 
-  // Contratos por vencer en 90 días
+  // Contratos por vencer en 90 d�as
   const hoy = new Date()
   const en90 = new Date(hoy.getTime() + 90 * 24 * 60 * 60 * 1000)
   const alertasVencimiento = todos

@@ -11,6 +11,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
+const PORTAL_URL = 'https://portal-propietarios-rose.vercel.app'
 const PAGE_SIZE = 15
 
 const estadoMap = {
@@ -23,10 +24,10 @@ const estadoMap = {
 }
 
 const opEspecialesCC1 = [
-  { label: 'Creaci\u00f3n y edici\u00f3n de Contratos',              href: '/op/contratos' },
-  { label: 'Preparaci\u00f3n liquidaci\u00f3n de Paola',             href: '/op/liquidacion-paola' },
-  { label: 'Actualizaci\u00f3n mensual de Comunidad Feliz',          href: '/op/comunidad-feliz' },
-  { label: 'Consolidaci\u00f3n y explotaci\u00f3n datos de Cartolas', href: '/op/cartolas' },
+  { label: 'Creación y edición de Contratos',              href: '/op/contratos' },
+  { label: 'Preparación liquidación de Paola',             href: '/op/liquidacion-paola' },
+  { label: 'Actualización mensual de Comunidad Feliz',          href: '/op/comunidad-feliz' },
+  { label: 'Consolidación y explotación datos de Cartolas', href: '/op/cartolas' },
   { label: 'Deudas de servicios',                                    href: '/op/deudas' },
 ]
 
@@ -35,7 +36,7 @@ function EstadoBadge({ estado }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color, fontSize: 11, fontWeight: 600 }}>
-      {estado || '\u2014'}
+      {estado || '—'}
     </span>
   )
 }
@@ -110,7 +111,6 @@ function OperacionesBtn({ opciones, router }) {
   )
 }
 
-// Filtro estilo Excel para cabeceras
 function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, align='left' }) {
   const [open, setOpen] = useState(false)
   const [localSearch, setLocalSearch] = useState(searchVal)
@@ -128,7 +128,7 @@ function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, 
         color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
         <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
-          {sortCol === col && sortDir === 'asc' ? ' \u2191' : sortCol === col && sortDir === 'desc' ? ' \u2193' : ' \u2BEC'}
+          {sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
         </span>
       </button>
       {open && (
@@ -137,7 +137,7 @@ function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, 
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 200, zIndex: 300, padding: 8 }}>
           <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {[['asc', 'A \u2192 Z'], ['desc', 'Z \u2192 A']].map(([dir, lbl]) => (
+            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
               <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{
                 flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid',
                 fontSize: 11, cursor: 'pointer',
@@ -171,7 +171,6 @@ function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, 
   )
 }
 
-// Filtro de estado con checkboxes
 function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -189,7 +188,7 @@ function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
         color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         Estado
         <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
-          {sortCol === col && sortDir === 'asc' ? ' \u2191' : sortCol === col && sortDir === 'desc' ? ' \u2193' : ' \u2BEC'}
+          {sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
         </span>
       </button>
       {open && (
@@ -198,7 +197,7 @@ function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 180, zIndex: 300, padding: 8 }}>
           <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {[['asc', 'A \u2192 Z'], ['desc', 'Z \u2192 A']].map(([dir, lbl]) => (
+            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
               <button key={dir} onClick={() => { onSort(col, dir) }} style={{
                 flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid',
                 fontSize: 11, cursor: 'pointer',
@@ -242,9 +241,10 @@ const Ico = {
   plus:  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
   search:<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
   back:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="15 18 9 12 15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  portal:<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="15 3 21 3 21 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
 }
 
-const tabs = ['Datos base', 'Operaci\u00f3n', 'Ajustes', 'Cierre']
+const tabs = ['Datos base', 'Operación', 'Ajustes', 'Cierre']
 
 function alertaTermino(fecha) {
   if (!fecha) return null
@@ -272,6 +272,8 @@ export default function CC1Page() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [kpis, setKpis] = useState({ total: 0, activos: 0, termino: 0, vacios: 0 })
+  const [portalLoading, setPortalLoading] = useState(null) // idadmon cargando
+  const [idpropMap, setIdpropMap] = useState({}) // idadmon -> idprop
 
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { setPage(1) }, [search, filtroEstado, filtroIdadmon, filtroInmueble, filtroPropietario, sortCol, sortDir])
@@ -289,7 +291,7 @@ export default function CC1Page() {
     setLoading(true)
     let query = supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, propietario, inmueble, cuota, unid, termino_actual', { count: 'exact' })
+      .select('idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual', { count: 'exact' })
       .order(sortCol, { ascending: sortDir === 'asc' })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
@@ -300,14 +302,44 @@ export default function CC1Page() {
     if (filtroPropietario) query = query.ilike('propietario', `%${filtroPropietario}%`)
 
     const { data, count, error } = await query
-    if (!error) { setPropiedades(data || []); setTotal(count || 0) }
+    if (!error) {
+      setPropiedades(data || [])
+      setTotal(count || 0)
+      // Construir mapa idadmon -> idprop
+      const map = {}
+      ;(data || []).forEach(p => { if (p.idprop) map[p.idadmon] = p.idprop })
+      setIdpropMap(prev => ({ ...prev, ...map }))
+    }
     setLoading(false)
   }
 
-  function handleSort(col, dir) {
-    setSortCol(col)
-    setSortDir(dir)
+  async function verPortal(e, idadmon, idprop) {
+    e.stopPropagation()
+    if (!idprop) {
+      alert('Este contrato no tiene propietario asignado (sin IDPROP)')
+      return
+    }
+    setPortalLoading(idadmon)
+    try {
+      const res = await fetch('/api/portal/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idprop }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'Error al acceder al portal')
+        return
+      }
+      window.open(data.portalUrl, '_blank')
+    } catch (err) {
+      alert('Error de conexión')
+    } finally {
+      setPortalLoading(null)
+    }
   }
+
+  function handleSort(col, dir) { setSortCol(col); setSortDir(dir) }
 
   function limpiarTodo() {
     setSearch(''); setFiltroEstado(''); setFiltroIdadmon('')
@@ -323,7 +355,6 @@ export default function CC1Page() {
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
 
-      {/* Breadcrumb */}
       <div style={{ padding: '10px 24px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Link href="/panel" style={{ fontSize: 12, color: 'var(--gray-400)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
           {Ico.back} Volver al panel
@@ -333,23 +364,22 @@ export default function CC1Page() {
           <div style={{ width: 30, height: 30, background: '#1a56db', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>CC1 Administraci\u00f3n</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>CC1 Administración</h1>
         </div>
       </div>
 
-      {/* KPI bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr) 200px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         {[
           { label: 'Total contratos', value: kpis.total,   color: 'var(--gray-800)', estado: '' },
           { label: 'Activos (S)',     value: kpis.activos, color: '#16a34a',          estado: 'S' },
-          { label: 'En t\u00e9rmino (Q)', value: kpis.termino, color: '#d97706',     estado: 'Q' },
-          { label: 'Vac\u00edos (P)',  value: kpis.vacios,  color: '#dc2626',         estado: 'P' },
+          { label: 'En término (Q)', value: kpis.termino, color: '#d97706',     estado: 'Q' },
+          { label: 'Vacíos (P)',  value: kpis.vacios,  color: '#dc2626',         estado: 'P' },
         ].map((k, i) => (
           <div key={i} style={{ padding: '10px 20px', borderRight: '1px solid var(--border)', cursor: 'pointer' }}
             onClick={() => setFiltroEstado(filtroEstado === k.estado ? '' : k.estado)}>
             <div style={{ fontSize: 10, color: 'var(--gray-400)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: k.color }}>{k.value}</div>
-            {filtroEstado === k.estado && k.estado !== '' && <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>\u25cf Filtro activo</div>}
+            {filtroEstado === k.estado && k.estado !== '' && <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>● Filtro activo</div>}
           </div>
         ))}
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center' }}>
@@ -357,16 +387,15 @@ export default function CC1Page() {
             style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
               background: 'var(--gray-50)', fontSize: 12, color: 'var(--gray-700)', fontFamily: 'inherit', cursor: 'pointer' }}>
             <option value="">Todos los estados</option>
-            <option value="S">S \u2013 Activos</option>
-            <option value="P">P \u2013 Vac\u00edos</option>
-            <option value="Q">Q \u2013 En t\u00e9rmino</option>
+            <option value="S">S – Activos</option>
+            <option value="P">P – Vacíos</option>
+            <option value="Q">Q – En término</option>
             <option value="SQ">SQ</option>
             <option value="O">O</option>
           </select>
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
         {tabs.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
@@ -377,7 +406,6 @@ export default function CC1Page() {
         ))}
       </div>
 
-      {/* Barra de acciones */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <ActionBtn label="Nuevo / Modificar arriendo" bg="#1a56db" icon={Ico.edit}  onClick={irAFormulario} />
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => {}} />
@@ -391,23 +419,22 @@ export default function CC1Page() {
             {Ico.plus} Nuevo / Asignar arriendo
           </button>
           <button style={{ padding: '7px 10px', background: '#1447c3', color: '#fff', border: 'none',
-            borderLeft: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 13 }}>\u25be</button>
+            borderLeft: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 13 }}>▾</button>
         </div>
       </div>
 
-      {/* Tabla */}
       <div style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray-800)', margin: 0 }}>
             Listado de propiedades administradas
             <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400, marginLeft: 8 }}>
-              ({total} registros{filtroEstado ? ` \u00b7 estado ${filtroEstado}` : ''})
+              ({total} registros{filtroEstado ? ` · estado ${filtroEstado}` : ''})
             </span>
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', display: 'flex' }}>{Ico.search}</span>
-              <input type="text" placeholder="IDADMON, inmueble, propietario\u2026" value={search} onChange={e => setSearch(e.target.value)}
+              <input type="text" placeholder="IDADMON, inmueble, propietario…" value={search} onChange={e => setSearch(e.target.value)}
                 style={{ paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7, borderRadius: 8,
                   border: '1px solid var(--border)', background: 'var(--gray-50)', fontSize: 12,
                   color: 'var(--gray-700)', fontFamily: 'inherit', width: 240, outline: 'none' }} />
@@ -415,7 +442,7 @@ export default function CC1Page() {
             {hayFiltros && (
               <button onClick={limpiarTodo} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)',
                 background: '#FEF3C7', fontSize: 12, color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>
-                \u2715 Limpiar filtros
+                ✕ Limpiar filtros
               </button>
             )}
             <button onClick={irAFormulario} style={{ padding: '7px 14px', background: '#1a56db', color: '#fff', border: 'none',
@@ -429,8 +456,15 @@ export default function CC1Page() {
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: 100 }} /><col /><col style={{ width: 170 }} />
-              <col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 130 }} /><col style={{ width: 28 }} />
+              <col style={{ width: 85 }} />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 65 }} />
+              <col style={{ width: 95 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 65 }} />
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
@@ -450,29 +484,32 @@ export default function CC1Page() {
                   <ColFilter label="Cuota" col="cuota" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilter label="T\u00e9rmino actual" col="termino_actual" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
+                  <ColFilter label="Término actual" col="termino_actual" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
-                <th style={{ padding: '9px 12px', borderBottom: '1px solid var(--border)' }}></th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase' }}>Portal</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Cargando datos...</td></tr>
+                <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Cargando datos...</td></tr>
               ) : propiedades.length === 0 ? (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
+                <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
               ) : propiedades.map((p, i) => {
                 const alerta = alertaTermino(p.termino_actual)
+                const cargando = portalLoading === p.idadmon
                 return (
                   <tr key={i} style={{ cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => router.push(`/admin?idadmon=${p.idadmon}`)}>
+                    onClick={(e) => { if (!e.defaultPrevented) router.push(`/admin?idadmon=${p.idadmon}`) }}>
                     <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)' }}>{p.idadmon}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.inmueble || '\u2014'}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.propietario || '\u2014'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.inmueble || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}><EstadoBadge estado={p.estado} /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
-                      {p.cuota ? `${p.unid === 'UF' ? 'UF ' : '$'}${Number(p.cuota).toLocaleString('es-CL')}` : '\u2014'}
+                      {p.cuota ? `${p.unid === 'UF' ? 'UF ' : '$'}${Number(p.cuota).toLocaleString('es-CL')}` : '—'}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: 12, borderBottom: '1px solid var(--border-subtle)' }}>
                       {p.termino_actual ? (
@@ -480,9 +517,32 @@ export default function CC1Page() {
                           <span style={{ color: 'var(--gray-700)' }}>{new Date(p.termino_actual).toLocaleDateString('es-CL')}</span>
                           {alerta && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: alerta.color + '20', color: alerta.color }}>{alerta.text}</span>}
                         </span>
-                      ) : '\u2014'}
+                      ) : '—'}
                     </td>
-                    <td style={{ padding: '9px 8px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--gray-300)', fontSize: 16, textAlign: 'center' }}>\u203a</td>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace' }}>{p.idprop || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace' }}>{p.idlinmue || '—'}</td>
+                    <td style={{ padding: '9px 8px', borderBottom: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                      {p.idprop ? (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); verPortal(e, p.idadmon, p.idprop) }}
+                          disabled={cargando}
+                          title={`Ver portal como ${p.propietario}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '4px 8px', borderRadius: 6, border: '1px solid #BFDBFE',
+                            background: cargando ? '#EFF6FF' : '#EFF6FF',
+                            color: '#1a56db', fontSize: 11, cursor: cargando ? 'wait' : 'pointer',
+                            fontFamily: 'inherit', fontWeight: 500,
+                          }}
+                          onMouseEnter={e => { if (!cargando) e.currentTarget.style.background = '#DBEAFE' }}
+                          onMouseLeave={e => e.currentTarget.style.background = '#EFF6FF'}
+                        >
+                          {cargando ? '...' : <>{Ico.portal} Portal</>}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--gray-300)', fontSize: 11 }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -490,18 +550,17 @@ export default function CC1Page() {
           </table>
         </div>
 
-        {/* Paginador */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 16 }}>
-          <button onClick={() => setPage(1)} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>\u00ab</button>
-          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>\u2039</button>
+          <button onClick={() => setPage(1)} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>«</button>
+          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>‹</button>
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
             const p = Math.max(1, Math.min(page-2, totalPages-4))+i
             if (p<1||p>totalPages) return null
             return <button key={p} onClick={() => setPage(p)} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:p===page?'#1a56db':'transparent', color:p===page?'#fff':'var(--gray-500)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{p}</button>
           })}
-          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>\u203a</button>
-          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>\u00bb</button>
-          <span style={{ fontSize:11, color:'var(--gray-400)', marginLeft:8 }}>P\u00e1gina {page} de {totalPages} \u00b7 {total} registros</span>
+          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>›</button>
+          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>»</button>
+          <span style={{ fontSize:11, color:'var(--gray-400)', marginLeft:8 }}>Página {page} de {totalPages} · {total} registros</span>
         </div>
       </div>
     </div>
