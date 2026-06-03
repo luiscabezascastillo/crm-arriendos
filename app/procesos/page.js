@@ -40,7 +40,7 @@ const PROCESOS_MASIVOS = [
 const PROCESOS_INDIVIDUALES = [
   { key: 'publicacion', titulo: 'Publicación', descripcion: 'Depto vacío → candidato',            etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'],                       conecta: 'Inicios',     href: '/publicaciones' },
   { key: 'inicios',     titulo: 'Inicios',     descripcion: 'Contrato, firma y ciclo mensual',    etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'],                                conecta: null,          href: null },
-  { key: 'termino',     titulo: 'Término',     descripcion: 'Aviso legal, recepción y garantías', etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Publicación', href: null },
+  { key: 'termino',     titulo: 'Término',     descripcion: 'Aviso legal, recepción y garantías', etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
   { key: 'cobranza',    titulo: 'Cobranza',    descripcion: 'Impago → pago o acción legal',       etapas: ['Detectar', 'Aviso 1', 'Gestión', 'Legal', 'Cierre'],                             conecta: null,          href: '/op/deudas' },
   { key: 'incidencia',  titulo: 'Incidencia',  descripcion: 'Reporte, resolución y cierre',       etapas: ['Reporte', 'Clasificar', 'Validar', 'Resolver', 'Cierre'],                        conecta: null,          href: null },
 ]

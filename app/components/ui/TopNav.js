@@ -11,13 +11,18 @@ export default function TopNav() {
   const pathname = usePathname();
   const [cc1Open, setCc1Open] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
+  const [crmOpen, setCrmOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState(null);
   const cc1Ref = useRef(null);
   const opRef = useRef(null);
+  const crmRef = useRef(null);
 
   useEffect(() => {
     function handleClick(e) {
       if (cc1Ref.current && !cc1Ref.current.contains(e.target)) setCc1Open(false);
       if (opRef.current && !opRef.current.contains(e.target)) setOpOpen(false);
+      if (crmRef.current && !crmRef.current.contains(e.target)) setCrmOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -25,6 +30,12 @@ export default function TopNav() {
 
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
+
+  function abrirModal(tipo) {
+    setModalContent(tipo);
+    setModalOpen(true);
+    setCrmOpen(false);
+  }
 
   const s = {
     nav: {
@@ -35,8 +46,10 @@ export default function TopNav() {
     },
     brand: {
       fontSize: 15, fontWeight: 700, color: '#1a1a2e',
-      marginRight: 16, textDecoration: 'none',
-      display: 'flex', alignItems: 'center', gap: 6,
+      marginRight: 4, textDecoration: 'none',
+      display: 'flex', alignItems: 'center', gap: 4,
+      background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px',
+      borderRadius: 6,
     },
     link: (active) => ({
       padding: '6px 12px', borderRadius: 6,
@@ -72,7 +85,7 @@ export default function TopNav() {
     dropItem: {
       display: 'block', padding: '8px 16px',
       fontSize: 13, color: '#444', textDecoration: 'none',
-      transition: 'background 0.1s',
+      transition: 'background 0.1s', cursor: 'pointer',
     },
     dropDivider: { height: 1, background: '#F0EEE8', margin: '4px 0' },
     dropLabel: {
@@ -98,64 +111,116 @@ export default function TopNav() {
   const opActive = isActive('/op/comunidad-feliz') || isActive('/op/liquidacion-paola') || isActive('/op/morosidad');
 
   return (
-    <nav style={s.nav}>
-      <Link href="/panel" style={s.brand}><span>CRM</span></Link>
+    <>
+      <nav style={s.nav}>
 
-      {esDireccion && (
-        <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
-      )}
+        {/* CRM dropdown con modal */}
+        <div ref={crmRef} style={{ position: 'relative', marginRight: 8 }}>
+          <button style={s.brand} onClick={() => setCrmOpen(v => !v)}>
+            <span>CRM</span>
+            <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
+          </button>
+          {crmOpen && (
+            <div style={s.dropdown}>
+              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+                onClick={() => abrirModal('reglamento')}>
+                📋 Reglamento Interno
+              </button>
+              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+                onClick={() => abrirModal('procesos')}>
+                🗺 Mapa de Procesos
+              </button>
+            </div>
+          )}
+        </div>
 
-      <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
-      <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
+        {esDireccion && (
+          <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
+        )}
 
-      <div ref={cc1Ref} style={{ position: 'relative' }}>
-        <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
-          CC1 Admin <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-        </button>
-        {cc1Open && (
-          <div style={s.dropdown}>
-            <Link href="/cc1" style={s.dropItem} onClick={() => setCc1Open(false)}>CC1 Admin</Link>
-            <Link href="/op/deudas" style={s.dropItem} onClick={() => setCc1Open(false)}>Deudas servicios</Link>
-            <Link href="/op/morosidad" style={s.dropItem} onClick={() => setCc1Open(false)}>Morosidad</Link>
+        <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
+        <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
+
+        <div ref={cc1Ref} style={{ position: 'relative' }}>
+          <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
+            CC1 Admin <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+          </button>
+          {cc1Open && (
+            <div style={s.dropdown}>
+              <Link href="/cc1" style={s.dropItem} onClick={() => setCc1Open(false)}>CC1 Admin</Link>
+              <Link href="/op/deudas" style={s.dropItem} onClick={() => setCc1Open(false)}>Deudas servicios</Link>
+              <Link href="/op/morosidad" style={s.dropItem} onClick={() => setCc1Open(false)}>Morosidad</Link>
+            </div>
+          )}
+        </div>
+
+        <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
+        <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
+
+        <div ref={opRef} style={{ position: 'relative' }}>
+          <button style={s.dropBtn(opActive)} onClick={() => { setOpOpen(v => !v); setCc1Open(false); }}>
+            Op. especiales <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+          </button>
+          {opOpen && (
+            <div style={s.dropdown}>
+              <div style={s.dropLabel}>Operacion</div>
+              <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setOpOpen(false)}>Comunidad Feliz</Link>
+              <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setOpOpen(false)}>Liquidacion Paola</Link>
+              <Link href="/op/morosidad" style={s.dropItem} onClick={() => setOpOpen(false)}>Morosidad</Link>
+              <div style={s.dropDivider}/>
+              <div style={s.dropLabel}>Pendientes</div>
+              {['Contratos','Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
+                <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
+        <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+        <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
+
+        <div style={s.spacer}/>
+        <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
+
+        {session?.user && (
+          <div style={s.user}>
+            <span>{session.user.email?.split('@')[0]}</span>
+            <button style={s.signout} onClick={() => signOut()}>salir</button>
           </div>
         )}
-      </div>
+      </nav>
 
-      <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
-      <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
-
-      <div ref={opRef} style={{ position: 'relative' }}>
-        <button style={s.dropBtn(opActive)} onClick={() => { setOpOpen(v => !v); setCc1Open(false); }}>
-          Op. especiales <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-        </button>
-        {opOpen && (
-          <div style={s.dropdown}>
-            <div style={s.dropLabel}>Operacion</div>
-            <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setOpOpen(false)}>Comunidad Feliz</Link>
-            <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setOpOpen(false)}>Liquidacion Paola</Link>
-            <Link href="/op/morosidad" style={s.dropItem} onClick={() => setOpOpen(false)}>Morosidad</Link>
-            <div style={s.dropDivider}/>
-            <div style={s.dropLabel}>Pendientes</div>
-            {['Contratos','Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
-              <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
-            ))}
+      {/* Modal CRM */}
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setModalOpen(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '90%', maxWidth: modalContent === 'procesos' ? 1100 : 800, height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8E6E0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>
+                {modalContent === 'reglamento' ? '📋 Reglamento Interno' : '🗺 Mapa de Procesos 2026'}
+              </span>
+              <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              {modalContent === 'reglamento' && (
+                <iframe
+                  src="https://drive.google.com/file/d/1P4z9A8CDHLzqDPce-ZNK3p_yEwvnMzpS/preview"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  allow="autoplay"
+                />
+              )}
+              {modalContent === 'procesos' && (
+                <iframe
+                  src="/procesos-2026.html"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+            </div>
           </div>
-        )}
-      </div>
-
-      <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
-      <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
-      <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
-
-      <div style={s.spacer}/>
-      <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
-
-      {session?.user && (
-        <div style={s.user}>
-          <span>{session.user.email?.split('@')[0]}</span>
-          <button style={s.signout} onClick={() => signOut()}>salir</button>
         </div>
       )}
-    </nav>
+    </>
   );
 }
