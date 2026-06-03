@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import TopNav from '../components/ui/TopNav'
 
@@ -9,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const ROLES = ['propietario', 'cliente', 'arrendatario', 'proveedor', 'otro']
+const ROLES = ['propietario', 'cliente', 'arrendatario', 'inversor', 'maestro', 'conserje', 'proveedor']
 const TIPOS_DOC = ['RUT', 'PASAPORTE', 'RUN_EXT', 'EN_TRAMITE']
 const ORIGENES = ['Portal', 'Referido', 'Directo', 'Redes sociales', 'Llamada', 'Otro']
 const emptyF = { selected: [], sort: null }
@@ -122,6 +123,7 @@ function ExcelFilter({ label, options, value, onApply }) {
 }
 
 function ModalContacto({ contacto, onClose, onSaved }) {
+  const { data: session } = useSession()
   const esNuevo = !contacto?.id
   const [form, setForm] = useState({
     tipo_doc: contacto?.tipo_doc || 'RUT',
@@ -156,7 +158,8 @@ function ModalContacto({ contacto, onClose, onSaved }) {
   async function guardar() {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return }
     setGuardando(true); setError(null)
-    const payload = { ...form, updated_at: new Date().toISOString() }
+    const userEmail = session?.user?.email || 'desconocido'
+    const payload = { ...form, updated_at: new Date().toISOString(), modificado_por: userEmail, ...(esNuevo ? { creado_por: userEmail } : {}) }
     const { error: err } = esNuevo
       ? await supabase.from('contactos').insert(payload)
       : await supabase.from('contactos').update(payload).eq('id', contacto.id)

@@ -29,7 +29,7 @@ const TIPO_COLOR = {
   pago:     { bg: '#EAF3DE', border: '#B8DFA5', color: '#0F6E56' },
 }
 
-const ROLES = ['propietario', 'cliente', 'arrendatario', 'proveedor', 'otro']
+const ROLES = ['propietario', 'cliente', 'arrendatario', 'inversor', 'maestro', 'conserje', 'proveedor']
 const TIPOS_DOC = ['RUT', 'PASAPORTE', 'RUN_EXT', 'EN_TRAMITE']
 const ORIGENES = ['Portal', 'Referido', 'Directo', 'Redes sociales', 'Llamada', 'Otro']
 const TABS = ['Resumen', 'Historial', 'Propiedades', 'Documentos']
@@ -102,7 +102,8 @@ export default function ContactoPage() {
   async function guardarEdicion() {
     if (!form?.nombre?.trim()) return
     setGuardando(true)
-    await supabase.from('contactos').update({ ...form, updated_at: new Date().toISOString() }).eq('id', id)
+    const userEmail = session?.user?.email || 'desconocido'
+    await supabase.from('contactos').update({ ...form, updated_at: new Date().toISOString(), modificado_por: userEmail }).eq('id', id)
     setContacto(form)
     setEditando(false)
     setGuardando(false)
@@ -241,6 +242,8 @@ export default function ContactoPage() {
                 ['Origen', contacto.origen || '—'],
                 ['Empresa', contacto.empresa || '—'],
                 ['Cargo', contacto.cargo || '—'],
+                ['Creado por', contacto.creado_por || '—'],
+                ['Modificado por', contacto.modificado_por || '—'],
               ].map(([l, v]) => (
                 <div key={l} style={s.dato}>
                   <span style={{ fontSize: 11, color: '#aaa' }}>{l}</span>
