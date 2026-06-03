@@ -19,12 +19,47 @@ const ROL_COLORS = {
   propietario:  { bg: '#EAF3DE', color: '#3B6D11' },
   cliente:      { bg: '#E6F1FB', color: '#185FA5' },
   arrendatario: { bg: '#FAEEDA', color: '#854F0B' },
-  proveedor:    { bg: '#F3E8FF', color: '#7C3AED' },
-  otro:         { bg: '#F1EFE8', color: '#888' },
+  inversor:     { bg: '#FDF1EE', color: '#E8593C' },
+  maestro:      { bg: '#F3E8FF', color: '#7C3AED' },
+  conserje:     { bg: '#E1F5EE', color: '#0F6E56' },
+  proveedor:    { bg: '#F1EFE8', color: '#888' },
 }
 
+// ── Validaciones ─────────────────────────────────────────────────────────────
+function validarRUT(rut) {
+  if (!rut) return false
+  const limpio = rut.replace(/\./g, '').replace(/-/g, '').toUpperCase().trim()
+  if (limpio.length < 2) return false
+  const cuerpo = limpio.slice(0, -1)
+  const dv = limpio.slice(-1)
+  if (!/^\d+$/.test(cuerpo)) return false
+  let suma = 0, mul = 2
+  for (let i = cuerpo.length - 1; i >= 0; i--) {
+    suma += parseInt(cuerpo[i]) * mul
+    mul = mul === 7 ? 2 : mul + 1
+  }
+  const dvCalc = 11 - (suma % 11)
+  const dvEsp = dvCalc === 11 ? '0' : dvCalc === 10 ? 'K' : String(dvCalc)
+  return dv === dvEsp
+}
+
+function validarEmail(email) {
+  if (!email) return true
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())
+}
+
+function formatRUT(valor) {
+  const limpio = valor.replace(/\./g, '').replace(/-/g, '').replace(/[^0-9kK]/g, '')
+  if (limpio.length <= 1) return limpio
+  const cuerpo = limpio.slice(0, -1)
+  const dv = limpio.slice(-1).toUpperCase()
+  const conPuntos = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return conPuntos + '-' + dv
+}
+
+// ── Componentes auxiliares ────────────────────────────────────────────────────
 function RolBadge({ rol }) {
-  const c = ROL_COLORS[rol] || ROL_COLORS.otro
+  const c = ROL_COLORS[rol] || { bg: '#F1EFE8', color: '#888' }
   return (
     <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 600, background: c.bg, color: c.color, marginRight: 3, whiteSpace: 'nowrap' }}>
       {rol}
@@ -58,7 +93,6 @@ function ExcelFilter({ label, options, value, onApply }) {
 
   const activo = (value.selected && value.selected.length > 0) || value.sort
   const filteredOpts = options.filter(o => String(o || '').toLowerCase().includes(search.toLowerCase()))
-
   function toggleAll() { setSelected(selected.length === options.length ? [] : [...options]) }
   function toggle(opt) { setSelected(s => s.includes(opt) ? s.filter(x => x !== opt) : [...s, opt]) }
   function apply() { onApply({ selected, sort: sortDir }); setOpen(false) }
@@ -66,15 +100,9 @@ function ExcelFilter({ label, options, value, onApply }) {
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-        display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
-        color: activo ? '#1D4ED8' : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em'
-      }}>
+      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: activo ? '#1D4ED8' : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
-        <span style={{ fontSize: 9, color: activo ? '#1D4ED8' : '#9CA3AF' }}>
-          {value.sort === 'asc' ? ' ↑' : value.sort === 'desc' ? ' ↓' : ' ⬇'}
-        </span>
+        <span style={{ fontSize: 9, color: activo ? '#1D4ED8' : '#9CA3AF' }}>{value.sort === 'asc' ? ' ↑' : value.sort === 'desc' ? ' ↓' : ' ⬇'}</span>
       </button>
       {open && (
         <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 220, zIndex: 300 }}>
@@ -82,31 +110,22 @@ function ExcelFilter({ label, options, value, onApply }) {
             <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
-                <button key={dir} onClick={() => setSortDir(d => d === dir ? null : dir)} style={{
-                  flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer',
-                  background: sortDir === dir ? '#EFF6FF' : '#F9FAFB',
-                  borderColor: sortDir === dir ? '#BFDBFE' : '#E5E7EB',
-                  color: sortDir === dir ? '#1D4ED8' : '#374151'
-                }}>{lbl}</button>
+                <button key={dir} onClick={() => setSortDir(d => d === dir ? null : dir)} style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer', background: sortDir === dir ? '#EFF6FF' : '#F9FAFB', borderColor: sortDir === dir ? '#BFDBFE' : '#E5E7EB', color: sortDir === dir ? '#1D4ED8' : '#374151' }}>{lbl}</button>
               ))}
             </div>
           </div>
           <div style={{ padding: '8px 12px', borderBottom: '0.5px solid #F3F4F6' }}>
-            <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
-              style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box' }} />
+            <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box' }} />
           </div>
           <div style={{ maxHeight: 180, overflowY: 'auto', padding: '4px' }}>
             <div onClick={toggleAll} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
               <input type="checkbox" readOnly checked={selected.length === options.length && options.length > 0} style={{ margin: 0 }} />
               <span style={{ fontWeight: 500 }}>Seleccionar todo</span>
             </div>
             {filteredOpts.map(opt => (
-              <div key={String(opt)} onClick={() => toggle(opt)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <div key={String(opt)} onClick={() => toggle(opt)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <input type="checkbox" readOnly checked={selected.includes(opt)} style={{ margin: 0 }} />
                 <span>{opt || '(vacío)'}</span>
               </div>
@@ -122,55 +141,84 @@ function ExcelFilter({ label, options, value, onApply }) {
   )
 }
 
+// ── Modal Nuevo/Editar ────────────────────────────────────────────────────────
 function ModalContacto({ contacto, onClose, onSaved }) {
   const { data: session } = useSession()
   const esNuevo = !contacto?.id
-  const [form, setForm] = useState({
-    tipo_doc: contacto?.tipo_doc || 'RUT',
-    numero_doc: contacto?.numero_doc || '',
-    nombre: contacto?.nombre || '',
-    apellido: contacto?.apellido || '',
-    roles: contacto?.roles || [],
-    email: contacto?.email || '',
-    email_2: contacto?.email_2 || '',
-    telefono: contacto?.telefono || '',
-    telefono_2: contacto?.telefono_2 || '',
-    whatsapp: contacto?.whatsapp || '',
-    fecha_nacimiento: contacto?.fecha_nacimiento || '',
-    nacionalidad: contacto?.nacionalidad || 'Chilena',
-    genero: contacto?.genero || '',
-    direccion: contacto?.direccion || '',
-    comuna: contacto?.comuna || '',
-    pais: contacto?.pais || 'Chile',
-    empresa: contacto?.empresa || '',
-    cargo: contacto?.cargo || '',
-    notas: contacto?.notas || '',
-    origen: contacto?.origen || '',
-    comercial_asignado: contacto?.comercial_asignado || '',
-    activo: contacto?.activo !== false,
-  })
-  const [guardando, setGuardando] = useState(false)
-  const [error, setError] = useState(null)
 
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+  const [form, setForm] = useState({
+    tipo_doc:            contacto?.tipo_doc || 'RUT',
+    numero_doc:          contacto?.numero_doc || '',
+    nombre:              contacto?.nombre || '',
+    apellido:            contacto?.apellido || '',
+    roles:               contacto?.roles || [],
+    email:               contacto?.email || '',
+    email_2:             contacto?.email_2 || '',
+    telefono:            contacto?.telefono || '',
+    telefono_2:          contacto?.telefono_2 || '',
+    whatsapp:            contacto?.whatsapp || '',
+    fecha_nacimiento:    contacto?.fecha_nacimiento || '',
+    nacionalidad:        contacto?.nacionalidad || 'Chilena',
+    genero:              contacto?.genero || '',
+    direccion:           contacto?.direccion || '',
+    comuna:              contacto?.comuna || '',
+    pais:                contacto?.pais || 'Chile',
+    empresa:             contacto?.empresa || '',
+    cargo:               contacto?.cargo || '',
+    notas:               contacto?.notas || '',
+    origen:              contacto?.origen || '',
+    comercial_asignado:  contacto?.comercial_asignado || '',
+    activo:              contacto?.activo !== false,
+  })
+
+  const [errores, setErrores] = useState({})
+  const [guardando, setGuardando] = useState(false)
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })); setErrores(e => ({ ...e, [k]: null })) }
   function toggleRol(rol) { set('roles', form.roles.includes(rol) ? form.roles.filter(r => r !== rol) : [...form.roles, rol]) }
 
+  function validar() {
+    const e = {}
+    if (!form.nombre.trim()) e.nombre = 'El nombre es obligatorio'
+    if (form.tipo_doc === 'RUT' && form.numero_doc && !validarRUT(form.numero_doc)) e.numero_doc = 'RUT inválido'
+    if (form.email && !validarEmail(form.email)) e.email = 'Email inválido'
+    if (form.email_2 && !validarEmail(form.email_2)) e.email_2 = 'Email inválido'
+    setErrores(e)
+    setTimeout(() => {
+      const el = document.querySelector('[data-error="true"]')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
+    return Object.keys(e).length === 0
+  }
+
   async function guardar() {
-    if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return }
-    setGuardando(true); setError(null)
+    if (!validar()) return
+    setGuardando(true)
     const userEmail = session?.user?.email || 'desconocido'
-    const payload = { ...form, updated_at: new Date().toISOString(), modificado_por: userEmail, ...(esNuevo ? { creado_por: userEmail } : {}) }
-    const { error: err } = esNuevo
+    const formLimpio = { ...form }
+    if (!formLimpio.fecha_nacimiento) formLimpio.fecha_nacimiento = null
+    const payload = {
+      ...formLimpio,
+      updated_at: new Date().toISOString(),
+      modificado_por: userEmail,
+      ...(esNuevo ? { creado_por: userEmail } : {}),
+    }
+    const { error } = esNuevo
       ? await supabase.from('contactos').insert(payload)
       : await supabase.from('contactos').update(payload).eq('id', contacto.id)
-    if (err) { setError(err.message); setGuardando(false); return }
+    if (error) { setErrores({ general: error.message }); setGuardando(false); return }
     onSaved()
   }
 
-  const inp = { width: '100%', padding: '7px 10px', border: '1px solid #E0DDD8', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }
+  const inp = (campo) => ({
+    width: '100%', padding: '7px 10px', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
+    border: errores[campo] ? '1px solid #E8593C' : '1px solid #E0DDD8',
+    outline: 'none',
+  })
   const lbl = { fontSize: 11, color: '#888', marginBottom: 3, display: 'block' }
   const g2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }
-  const sec = { fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, marginTop: 8, paddingTop: 8, borderTop: '1px solid #F5F3EF' }
+  const sec = { fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, marginTop: 8, paddingTop: 12, borderTop: '1px solid #F5F3EF' }
+  const err = (campo) => errores[campo] ? <div style={{ fontSize: 11, color: '#E8593C', marginTop: 3 }}>{errores[campo]}</div> : null
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -180,24 +228,40 @@ function ModalContacto({ contacto, onClose, onSaved }) {
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>{esNuevo ? '+ Nuevo contacto' : 'Editar contacto'}</h2>
           <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: '#bbb' }}>×</button>
         </div>
+
         <div style={{ padding: '20px 24px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Identificación</div>
           <div style={g2}>
-            <div><label style={lbl}>Tipo documento</label>
-              <select value={form.tipo_doc} onChange={e => set('tipo_doc', e.target.value)} style={inp}>
+            <div>
+              <label style={lbl}>Tipo documento</label>
+              <select value={form.tipo_doc} onChange={e => set('tipo_doc', e.target.value)} style={inp('tipo_doc')}>
                 {TIPOS_DOC.map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
-            <div><label style={lbl}>Número documento</label>
-              <input style={inp} value={form.numero_doc} onChange={e => set('numero_doc', e.target.value)} placeholder="12345678-9" />
+            <div>
+              <label style={lbl}>Número documento {form.tipo_doc === 'RUT' && <span style={{ color: '#E8593C' }}>*</span>}</label>
+              <input
+                data-error={!!errores.numero_doc}
+                style={inp('numero_doc')}
+                value={form.numero_doc}
+                onChange={e => {
+                  const val = form.tipo_doc === 'RUT' ? formatRUT(e.target.value) : e.target.value
+                  set('numero_doc', val)
+                }}
+                placeholder={form.tipo_doc === 'RUT' ? '12.345.678-9' : 'Número documento'}
+              />
+              {err('numero_doc')}
             </div>
           </div>
           <div style={g2}>
-            <div><label style={lbl}>Nombre *</label>
-              <input style={inp} value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Nombre(s)" />
+            <div>
+              <label style={lbl}>Nombre <span style={{ color: '#E8593C' }}>*</span></label>
+              <input data-error={!!errores.nombre} style={inp('nombre')} value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Nombre(s)" />
+              {err('nombre')}
             </div>
-            <div><label style={lbl}>Apellido(s)</label>
-              <input style={inp} value={form.apellido} onChange={e => set('apellido', e.target.value)} placeholder="Apellidos" />
+            <div>
+              <label style={lbl}>Apellido(s)</label>
+              <input style={inp('apellido')} value={form.apellido} onChange={e => set('apellido', e.target.value)} placeholder="Apellidos" />
             </div>
           </div>
           <div style={{ marginBottom: 14 }}>
@@ -217,74 +281,89 @@ function ModalContacto({ contacto, onClose, onSaved }) {
 
           <div style={sec}>Contacto</div>
           <div style={g2}>
-            <div><label style={lbl}>Email principal</label>
-              <input style={inp} type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@ejemplo.com" />
+            <div>
+              <label style={lbl}>Email principal</label>
+              <input data-error={!!errores.email} style={inp('email')} value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@ejemplo.com" />
+              {err('email')}
             </div>
-            <div><label style={lbl}>Email secundario</label>
-              <input style={inp} type="email" value={form.email_2} onChange={e => set('email_2', e.target.value)} />
+            <div>
+              <label style={lbl}>Email secundario</label>
+              <input style={inp('email_2')} value={form.email_2} onChange={e => set('email_2', e.target.value)} />
+              {err('email_2')}
             </div>
           </div>
           <div style={g2}>
-            <div><label style={lbl}>Teléfono</label>
-              <input style={inp} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="+56 9 xxxx xxxx" />
+            <div>
+              <label style={lbl}>Teléfono</label>
+              <input style={inp('telefono')} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="+56 9 xxxx xxxx" />
             </div>
-            <div><label style={lbl}>WhatsApp</label>
-              <input style={inp} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="+56 9 xxxx xxxx" />
+            <div>
+              <label style={lbl}>WhatsApp</label>
+              <input style={inp('whatsapp')} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="+56 9 xxxx xxxx" />
             </div>
           </div>
 
           <div style={sec}>Datos personales</div>
           <div style={g2}>
-            <div><label style={lbl}>Fecha nacimiento</label>
-              <input style={inp} type="date" value={form.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} />
+            <div>
+              <label style={lbl}>Fecha nacimiento</label>
+              <input style={inp('fecha_nacimiento')} type="date" value={form.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} />
             </div>
-            <div><label style={lbl}>Nacionalidad</label>
-              <input style={inp} value={form.nacionalidad} onChange={e => set('nacionalidad', e.target.value)} />
+            <div>
+              <label style={lbl}>Nacionalidad</label>
+              <input style={inp('nacionalidad')} value={form.nacionalidad} onChange={e => set('nacionalidad', e.target.value)} />
             </div>
           </div>
 
           <div style={sec}>Domicilio</div>
           <div style={{ marginBottom: 14 }}>
             <label style={lbl}>Dirección</label>
-            <input style={inp} value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Calle, número, depto" />
+            <input style={inp('direccion')} value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Calle, número, depto" />
           </div>
           <div style={g2}>
-            <div><label style={lbl}>Comuna</label>
-              <input style={inp} value={form.comuna} onChange={e => set('comuna', e.target.value)} placeholder="Comuna" />
+            <div>
+              <label style={lbl}>Comuna</label>
+              <input style={inp('comuna')} value={form.comuna} onChange={e => set('comuna', e.target.value)} placeholder="Comuna" />
             </div>
-            <div><label style={lbl}>País</label>
-              <input style={inp} value={form.pais} onChange={e => set('pais', e.target.value)} />
+            <div>
+              <label style={lbl}>País</label>
+              <input style={inp('pais')} value={form.pais} onChange={e => set('pais', e.target.value)} />
             </div>
           </div>
 
           <div style={sec}>Empresa (opcional)</div>
           <div style={g2}>
-            <div><label style={lbl}>Empresa</label>
-              <input style={inp} value={form.empresa} onChange={e => set('empresa', e.target.value)} />
+            <div>
+              <label style={lbl}>Empresa</label>
+              <input style={inp('empresa')} value={form.empresa} onChange={e => set('empresa', e.target.value)} />
             </div>
-            <div><label style={lbl}>Cargo</label>
-              <input style={inp} value={form.cargo} onChange={e => set('cargo', e.target.value)} />
+            <div>
+              <label style={lbl}>Cargo</label>
+              <input style={inp('cargo')} value={form.cargo} onChange={e => set('cargo', e.target.value)} />
             </div>
           </div>
 
           <div style={sec}>CRM</div>
           <div style={g2}>
-            <div><label style={lbl}>Origen</label>
-              <select value={form.origen} onChange={e => set('origen', e.target.value)} style={inp}>
+            <div>
+              <label style={lbl}>Origen</label>
+              <select value={form.origen} onChange={e => set('origen', e.target.value)} style={inp('origen')}>
                 <option value="">— Seleccionar —</option>
                 {ORIGENES.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
-            <div><label style={lbl}>Comercial asignado</label>
-              <input style={inp} value={form.comercial_asignado} onChange={e => set('comercial_asignado', e.target.value)} placeholder="Nombre ejecutivo" />
+            <div>
+              <label style={lbl}>Comercial asignado</label>
+              <input style={inp('comercial_asignado')} value={form.comercial_asignado} onChange={e => set('comercial_asignado', e.target.value)} placeholder="Nombre ejecutivo" />
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={lbl}>Notas</label>
-            <textarea style={{ ...inp, height: 70, resize: 'vertical' }} value={form.notas} onChange={e => set('notas', e.target.value)} placeholder="Observaciones, preferencias, etc." />
+            <textarea style={{ ...inp('notas'), height: 70, resize: 'vertical' }} value={form.notas} onChange={e => set('notas', e.target.value)} placeholder="Observaciones, preferencias, etc." />
           </div>
 
-          {error && <div style={{ color: '#E8593C', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          {errores.general && <div style={{ color: '#E8593C', fontSize: 12, marginBottom: 12, padding: '8px 12px', background: '#FDF1EE', borderRadius: 6 }}>{errores.general}</div>}
+
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #E0DDD8', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#666' }}>Cancelar</button>
             <button onClick={guardar} disabled={guardando} style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: guardando ? '#9ca3af' : '#1D4ED8', color: '#fff', fontSize: 13, fontWeight: 600, cursor: guardando ? 'not-allowed' : 'pointer' }}>
@@ -297,6 +376,7 @@ function ModalContacto({ contacto, onClose, onSaved }) {
   )
 }
 
+// ── Página principal ──────────────────────────────────────────────────────────
 export default function ContactosPage() {
   const router = useRouter()
   const [contactos, setContactos] = useState([])
