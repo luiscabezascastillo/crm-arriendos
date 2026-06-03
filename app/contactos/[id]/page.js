@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useParams, useRouter } from 'next/navigation'
 import TopNav from '../../components/ui/TopNav'
+import OrdenVisitaModal from '../../components/ui/OrdenVisitaModal'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -63,6 +64,7 @@ export default function ContactoPage() {
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [ovOpen, setOvOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -177,9 +179,10 @@ export default function ContactoPage() {
               <div style={{ marginTop: 6, fontSize: 12, color: '#aaa' }}>Comercial asignado: <b>{contacto.comercial_asignado}</b></div>
             )}
           </div>
-          <button onClick={() => setEditando(true)} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid #1D4ED8', background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            Editar
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setOvOpen(true)} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid #0F6E56', background: '#E1F5EE', color: '#0F6E56', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Orden de Visita</button>
+            <button onClick={() => setEditando(true)} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid #1D4ED8', background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Editar</button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -362,6 +365,18 @@ export default function ContactoPage() {
       </div>
 
       {/* Modal edición inline */}
+      {ovOpen && contacto && (
+        <OrdenVisitaModal
+          contacto={contacto}
+          onClose={() => setOvOpen(false)}
+          onCreated={() => {
+            setOvOpen(false)
+            // Recargar historial
+            supabase.from('contactos_historial').select('*').eq('contacto_id', id).order('fecha', { ascending: false }).then(({ data }) => setHistorial(data || []))
+          }}
+        />
+      )}
+
       {editando && form && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={e => e.target === e.currentTarget && setEditando(false)}>
