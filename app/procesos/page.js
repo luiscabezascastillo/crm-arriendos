@@ -21,10 +21,10 @@ const PROCESOS_MASIVOS = [
     href: '/op/deudas',
     links: [
       { label: '📊 Visualizar Deudas', href: '/op/deudas' },
-      { label: '🏢 Cargar ggcc CF', href: '/op/comunidad-feliz' },
-      { label: '⚡ Cargar Luz', href: '/op/servicios/luz' },
-      { label: '💧 Cargar Agua', href: '/op/servicios/agua' },
-      { label: '📧 Email grandes deudores', href: null },
+      { label: '🏢 Cargar ggcc CF-Luis', href: '/op/comunidad-feliz' },
+      { label: '⚡ Cargar Luz-Luis', href: '/op/servicios/luz' },
+      { label: '💧 Cargar Agua-Luis', href: '/op/servicios/agua' },
+      { label: '📧 Email grandes deudores', href: '/op/email-deudores' },
     ]
   },
   { key: 'liquidacion',    titulo: 'Liquidación',    descripcion: 'Cruce cartola, neto propietarios',        etapas: ['Cruce cartola', 'No pagados', 'Revisión', 'Generar', 'Envío'],                  conecta: 'Cobranza',         href: '/op/liquidacion-paola' },
