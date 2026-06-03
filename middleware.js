@@ -7,6 +7,7 @@ const RUTAS = {
   '/publicaciones':['admin', 'comercial', 'legal'],
   '/op':           ['admin', 'operaciones', 'finanzas', 'legal'],
   '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
 }
 export async function middleware(req) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -22,5 +23,5 @@ export async function middleware(req) {
   return NextResponse.next()
 }
 export const config = {
-  matcher: ['/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/op/:path*', '/info/:path*']
+  matcher: ['/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
 }
