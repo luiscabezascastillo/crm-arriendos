@@ -1,8 +1,10 @@
-'use client';
+﻿'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com','karina.morales@fondocapital.com'];
 
 export default function TopNav() {
   const { data: session } = useSession();
@@ -22,6 +24,7 @@ export default function TopNav() {
   }, []);
 
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
+  const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
 
   const s = {
     nav: {
@@ -40,6 +43,14 @@ export default function TopNav() {
       fontSize: 13, fontWeight: active ? 600 : 400,
       color: active ? '#185FA5' : '#555',
       background: active ? '#E6F1FB' : 'transparent',
+      textDecoration: 'none', border: 'none', cursor: 'pointer',
+      transition: 'all 0.12s', whiteSpace: 'nowrap',
+    }),
+    linkDir: (active) => ({
+      padding: '6px 12px', borderRadius: 6,
+      fontSize: 13, fontWeight: active ? 700 : 600,
+      color: active ? '#fff' : '#1a1a2e',
+      background: active ? '#1a1a2e' : '#F0EEE8',
       textDecoration: 'none', border: 'none', cursor: 'pointer',
       transition: 'all 0.12s', whiteSpace: 'nowrap',
     }),
@@ -90,6 +101,10 @@ export default function TopNav() {
     <nav style={s.nav}>
       <Link href="/panel" style={s.brand}><span>CRM</span></Link>
 
+      {esDireccion && (
+        <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
+      )}
+
       <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
       <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
 
@@ -108,8 +123,6 @@ export default function TopNav() {
 
       <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
       <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
-      <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>BB1</Link>
-      <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>BB2</Link>
 
       <div ref={opRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(opActive)} onClick={() => { setOpOpen(v => !v); setCc1Open(false); }}>

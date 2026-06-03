@@ -182,26 +182,6 @@ export default function PanelPage() {
         {/* COMERCIAL */}
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
           Comercial
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 240px 240px', gap: 14, alignItems: 'start' }}>
-          <AreaCard color="green"  icon={<IcoUsers />} title="BB2 Arriendos" href="/bb2" actionLabel="+ Nuevo arriendo"
-            rows={[
-              { label: 'Operaciones',    value: '24' },
-              { label: 'Ingresos',       value: '$22.500' },
-              { label: 'Coste',          value: '$8,000' },
-              { label: 'Conversión CC1', value: '55%' },
-            ]}
-          />
-          <AreaCard color="orange" icon={<IcoTrend />} title="BB1 Ventas" href="/bb1" actionLabel="+ Nueva venta"
-            rows={[
-              { label: 'Ventas',         value: '3' },
-              { label: 'Ingresos',       value: '$95.000' },
-              { label: 'Comisión media', value: '$12.000' },
-              { label: 'Pipeline',       value: 'Sin activo', highlight: 'warning' },
-            ]}
-            alert={{ type: 'warning', text: 'Sin pipeline activo' }}
-          />
-
           {/* Actividad reciente */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 10 }}>Actividad reciente</div>
