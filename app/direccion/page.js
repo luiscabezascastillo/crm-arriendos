@@ -159,6 +159,19 @@ export default function DireccionPage() {
               </div>
             </div>
           </Link>
+          <Link href='/op/ml-notificaciones' style={{ textDecoration: 'none' }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}>
+              <div style={{ background: '#0891b2', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🏢</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>Notificaciones ML</span>
+                <GridDots />
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>Actividad Portal Inmobiliario en tiempo real</div>
+                <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 6, background: '#0891b2', color: '#fff', fontSize: 12, fontWeight: 500 }}>Ver actividad</div>
+              </div>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
