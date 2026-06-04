@@ -16,20 +16,22 @@ export async function GET() {
     const token = rows?.[0]?.valor
     if (!token) return NextResponse.json({ error: 'Sin token' }, { status: 400 })
 
-    // Consultar info del usuario y sus scopes
-    const [resUser, resItem] = await Promise.all([
-      fetch('https://api.mercadolibre.com/users/me', {
+    // Intentar varios endpoints VIS
+    const [r1, r2] = await Promise.all([
+      fetch('https://api.mercadolibre.com/vis/leads/0b238eb5-4a90-44f5-8f80-f692addf96cb', {
         headers: { 'Authorization': `Bearer ${token}` }
       }),
-      fetch('https://api.mercadolibre.com/items/MLC3995228830', {
+      fetch('https://api.mercadolibre.com/users/330114447/leads', {
         headers: { 'Authorization': `Bearer ${token}` }
-      })
+      }),
     ])
 
-    const user = await resUser.json()
-    const item = await resItem.json()
-
-    return NextResponse.json({ user_id: user.id, nickname: user.nickname, item_status: item.status, item_title: item.title })
+    return NextResponse.json({
+      lead_status: r1.status,
+      lead_body: await r1.json(),
+      user_leads_status: r2.status,
+      user_leads_body: await r2.json(),
+    })
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
