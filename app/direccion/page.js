@@ -128,7 +128,7 @@ export default function DireccionPage() {
         </div>
 
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Comercial</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
           <AreaCard color="green"  icon={<IcoUsers />} title="BB2 Arriendos" href="/bb2" actionLabel="+ Nuevo arriendo"
             rows={[
               { label: 'Operaciones',    value: '24' },
@@ -146,6 +146,19 @@ export default function DireccionPage() {
             ]}
             alert={{ type: 'warning', text: 'Sin pipeline activo' }}
           />
+          <Link href='/direccion/control-asistencia' style={{ textDecoration: 'none' }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}>
+              <div style={{ background: '#6366f1', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>👥</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>Control de Asistencia</span>
+                <GridDots />
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>Registro y seguimiento de asistencia del personal</div>
+                <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 6, background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 500 }}>Ver detalle →</div>
+              </div>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
