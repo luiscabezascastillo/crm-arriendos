@@ -14,23 +14,21 @@ export async function GET() {
       .eq('clave', 'ml_access_token')
     
     const token = rows?.[0]?.valor
-    if (!token) return NextResponse.json({ error: 'Sin token' }, { status: 400 })
 
-    // Intentar varios endpoints VIS
-    const [r1, r2] = await Promise.all([
-      fetch('https://api.mercadolibre.com/vis/leads/0b238eb5-4a90-44f5-8f80-f692addf96cb', {
+    const [rVisitas, rItem] = await Promise.all([
+      fetch('https://api.mercadolibre.com/items/visits?ids=MLC3995228830&date_from=2026-06-01&date_to=2026-06-05', {
         headers: { 'Authorization': `Bearer ${token}` }
       }),
-      fetch('https://api.mercadolibre.com/users/330114447/leads', {
+      fetch('https://api.mercadolibre.com/items/MLC3995228830', {
         headers: { 'Authorization': `Bearer ${token}` }
       }),
     ])
 
     return NextResponse.json({
-      lead_status: r1.status,
-      lead_body: await r1.json(),
-      user_leads_status: r2.status,
-      user_leads_body: await r2.json(),
+      visitas_status: rVisitas.status,
+      visitas: await rVisitas.json(),
+      item_status: rItem.status,
+      item: await rItem.json(),
     })
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 })
