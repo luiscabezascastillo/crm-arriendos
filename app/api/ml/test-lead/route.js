@@ -10,25 +10,27 @@ export async function GET() {
   try {
     const { data: rows } = await supabase
       .from('configuracion')
-      .select('clave, valor')
+      .select('valor')
       .eq('clave', 'ml_access_token')
+      .single()
     
-    const token = rows?.[0]?.valor
+    const token = rows?.valor
 
-    const [rVisitas, rItem] = await Promise.all([
-      fetch('https://api.mercadolibre.com/items/visits?ids=MLC3995228830&date_from=2026-06-01&date_to=2026-06-05', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }),
-      fetch('https://api.mercadolibre.com/items/MLC3995228830', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }),
-    ])
-
-    return NextResponse.json({
-      visitas_status: rVisitas.status,
-      visitas: await rVisitas.json(),
-      item_status: rItem.status,
-      item: await rItem.json(),
+    const res = await fetch('https://api.mercadolibre.com/categories/MLC183186/attributes', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const data = await res.json()
+    
+    // Filtrar solo atributos relevantes
+    const relevantes = data.filter(a => 
+      ['PICTURES', 'BEDROOMS', 'FLOOR', 'ANTIQUITY', 'ORIENTATION', 
+       'HAS_BALCONY', 'HAS_TERRACE', 'BUILDING_FLOORS', 'UNITS_PER_FLOOR',
+       'APARTMENT_NUMBER', 'PROPERTY_REGISTRATION_NUMBER'].includes(a.id)
+    )
+    
+    return NextResponse.json({ 
+      total_atributos: data.length,
+      relevantes 
     })
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 })
