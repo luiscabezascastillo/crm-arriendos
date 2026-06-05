@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -141,7 +141,7 @@ function buildPayload(p) {
   const titulo = `${p.objetivo || ''}, ${p.tipo || ''}, ${p.comuna || ''}. ${p.dormitorios || '0'}D/${p.banos || '0'}B`
 
   let descripcion = p.observaciones || ''
-  descripcion += `<br>- ${p.codigo} - <br><br>metros aproximados proporcionados por el dueño`
+  descripcion += `<br>- ${p.codigo} - <br><br>metros aproximados proporcionados por el dueno`
   descripcion = descripcion
     .replace(/<br>/g, '\n ').replace(/<\/br>/g, '\n ')
     .replace(/á/g, '\u00E1').replace(/é/g, '\u00E9')
@@ -157,6 +157,36 @@ function buildPayload(p) {
     if (!img) break
     imagenes.push({ source: `https://www.fondocapital.com/propiedades/${img}` })
   }
+
+  const bool = (val) => (val || '').toUpperCase() === 'SI' ? { id: '242085', name: 'Si' } : { id: '242084', name: 'No' }
+
+  const attributes = [
+    { id: 'CMG_SITE', value_name: 'POI', attribute_group_id: 'OTHERS', attribute_group_name: 'Otros' },
+    { id: 'PROPERTY_CODE', value_name: String(p.codigo), hierarchy: 'ITEM', relevance: 1, value_type: 'string' },
+    { id: 'BEDROOMS',             value_name: String(p.dormitorios      || '0') },
+    { id: 'FULL_BATHROOMS',       value_name: String(p.banos            || '0') },
+    { id: 'PARKING_LOTS',         value_name: String(p.estacionamientos || '0') },
+    { id: 'WAREHOUSES',           value_name: String(p.bodegas          || '0') },
+    { id: 'COVERED_AREA',         value_name: `${p.mt2_const || '0'} m²` },
+    { id: 'TOTAL_AREA',           value_name: `${p.mt2_terreno || p.mt2_const || '0'} m²` },
+    { id: 'MAINTENANCE_FEE',      value_name: String(p.ggcc             || '0') },
+    { id: 'IS_SUITABLE_FOR_PETS', value_name: p.ksuitable_for_pets      || 'No' },
+    { id: 'FURNISHED',            values: [bool(p.amoblado)] },
+    // Nivel Estandar
+    ...(p.unit_floor                 ? [{ id: 'UNIT_FLOOR',                 value_name: String(p.unit_floor) }] : []),
+    ...(p.property_age               ? [{ id: 'PROPERTY_AGE',               value_name: String(p.property_age) + ' anos' }] : []),
+    ...(p.floors                     ? [{ id: 'FLOORS',                     value_name: String(p.floors) }] : []),
+    ...(p.apartments_per_floor       ? [{ id: 'APARTMENTS_PER_FLOOR',       value_name: String(p.apartments_per_floor) }] : []),
+    ...(p.apartment_number           ? [{ id: 'APARTMENT_NUMBER',           value_name: String(p.apartment_number) }] : []),
+    ...(p.property_registration_code ? [{ id: 'PROPERTY_REGISTRATION_CODE', value_name: String(p.property_registration_code) }] : []),
+    ...(p.orientacion                ? [{ id: 'FACING',                     value_name: p.orientacion }] : []),
+    // Nivel Profesional
+    ...(p.has_balcony   ? [{ id: 'HAS_BALCONY',   values: [bool(p.has_balcony)]   }] : []),
+    ...(p.has_laundry   ? [{ id: 'HAS_LAUNDRY',   values: [bool(p.has_laundry)]   }] : []),
+    ...(p.has_maid_room ? [{ id: 'HAS_MAID_ROOM', values: [bool(p.has_maid_room)] }] : []),
+    ...(p.has_half_bath ? [{ id: 'HAS_HALF_BATH', values: [bool(p.has_half_bath)] }] : []),
+    ...(p.has_security  ? [{ id: 'HAS_SECURITY',  values: [bool(p.has_security)]  }] : []),
+  ]
 
   return {
     listing_type_id: 'silver',
@@ -184,29 +214,10 @@ function buildPayload(p) {
       other_info: ejec.email,
       email:      ejec.email,
     },
-    attributes: [
-      { id: 'CMG_SITE', value_name: 'POI', attribute_group_id: 'OTHERS', attribute_group_name: 'Otros' },
-      { id: 'PROPERTY_CODE', value_name: String(p.codigo), hierarchy: 'ITEM', relevance: 1, value_type: 'string' },
-      { id: 'BEDROOMS',             value_name: String(p.dormitorios      || '0') },
-      { id: 'FULL_BATHROOMS',       value_name: String(p.banos            || '0') },
-      { id: 'PARKING_LOTS',         value_name: String(p.estacionamientos || '0') },
-      { id: 'WAREHOUSES',           value_name: String(p.bodegas          || '0') },
-      { id: 'COVERED_AREA',         value_name: `${p.mt2_const || '0'} m²` },
-      { id: 'TOTAL_AREA',           value_name: `${p.mt2_terreno || p.mt2_const || '0'} m²` },
-      { id: 'MAINTENANCE_FEE',      value_name: String(p.ggcc             || '0') },
-      { id: 'IS_SUITABLE_FOR_PETS', value_name: p.ksuitable_for_pets      || 'No' },
-      {
-        id: 'FURNISHED',
-        values: [{
-          id:   (p.amoblado || '').toUpperCase() === 'SI' ? '242085' : '242084',
-          name: (p.amoblado || '').toUpperCase() === 'SI' ? 'Si' : 'No',
-        }]
-      },
-    ],
+    attributes,
     description: descripcion,
   }
 }
-
 export async function POST(request) {
   try {
     const { publicacionId } = await request.json()
