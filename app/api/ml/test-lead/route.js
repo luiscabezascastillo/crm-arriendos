@@ -21,17 +21,10 @@ export async function GET() {
     })
     const data = await res.json()
     
-    // Filtrar solo atributos relevantes
-    const relevantes = data.filter(a => 
-      ['PICTURES', 'BEDROOMS', 'FLOOR', 'ANTIQUITY', 'ORIENTATION', 
-       'HAS_BALCONY', 'HAS_TERRACE', 'BUILDING_FLOORS', 'UNITS_PER_FLOOR',
-       'APARTMENT_NUMBER', 'PROPERTY_REGISTRATION_NUMBER'].includes(a.id)
-    )
+    // Devolver todos con id y name para identificar los correctos
+    const todos = data.map(a => ({ id: a.id, name: a.name, group: a.attribute_group_name, type: a.value_type }))
     
-    return NextResponse.json({ 
-      total_atributos: data.length,
-      relevantes 
-    })
+    return NextResponse.json({ total: data.length, atributos: todos })
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
