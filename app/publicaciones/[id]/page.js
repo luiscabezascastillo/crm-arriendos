@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -665,6 +665,42 @@ export default function FichaPage() {
                 </div>
                 <textarea value={form.observaciones || ''} onChange={e => setForm(prev => ({ ...prev, observaciones: e.target.value }))} rows={8} style={{ width:'100%', padding:'10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--gray-50)', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', outline:'none', resize:'vertical', boxSizing:'border-box', lineHeight:1.6 }} placeholder="Descripción de la propiedad..." />
                 {!pub.codigo_pi && <div style={{ fontSize:10, color:'var(--gray-400)', marginTop:4, fontStyle:'italic' }}>El botón "Actualizar descripción en PI" aparece cuando la propiedad está publicada en Portal Inmobiliario</div>}
+              </div>
+              {/* Atributos PI */}
+              <div style={{ background:'var(--surface)', border:'1px solid #BFDBFE', borderRadius:12, padding:'16px 20px', marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'#1D4ED8', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Atributos Portal Inmobiliario</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:12 }}>Estos campos mejoran el score de calidad en PI (Estándar → Profesional)</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:14 }}>
+                  {[['Piso unidad','unit_floor','number'],['Antigüedad (años)','property_age','number'],['Pisos edificio','floors','number'],['Deptos por piso','apartments_per_floor','number'],['Nº departamento','apartment_number','text'],['ROL inmueble','property_registration_code','text']].map(([label, field, type]) => (
+                    <div key={field}>
+                      <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{label}</div>
+                      <input type={type} value={form[field] || ''} onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))} style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid #BFDBFE', background:'#EFF6FF', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', outline:'none', boxSizing:'border-box' }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Amenities (Sí / No)</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:14 }}>
+                  {[['Balcón','has_balcony'],['Logia','has_laundry'],['Dorm. servicio','has_maid_room'],['Baño visitas','has_half_bath'],['Conserjería','has_security']].map(([label, field]) => (
+                    <div key={field}>
+                      <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{label}</div>
+                      <select value={form[field] || ''} onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))} style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid #BFDBFE', background:'#EFF6FF', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', cursor:'pointer' }}>
+                        <option value=''>—</option>
+                        <option value='SI'>Sí</option>
+                        <option value='NO'>No</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Privacidad</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Ocultar dirección</div>
+                    <select value={form.hide_address || ''} onChange={e => setForm(prev => ({ ...prev, hide_address: e.target.value }))} style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid #BFDBFE', background:'#EFF6FF', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', cursor:'pointer' }}>
+                      <option value=''>— No ocultar —</option>
+                      <option value='SI'>Sí, ocultar</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               {/* Botones */}
               <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
