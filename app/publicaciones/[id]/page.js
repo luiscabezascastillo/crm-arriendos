@@ -209,7 +209,22 @@ export default function FichaPage() {
     setTimeout(() => setMsgGuardado(null), 3000)
   }
 
-  async function publicarEnPortal(apiKey) {
+  async function toggleWeb() {
+    const nuevoEstado = pub.web === 'SI' ? 'NO' : 'SI'
+    setPublicando(prev => ({ ...prev, web: true }))
+    setMsgPublicacion(null)
+    const { error } = await supabase.from('publicaciones').update({ web: nuevoEstado, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) {
+      setMsgPublicacion({ ok: false, text: 'Error: ' + error.message })
+    } else {
+      setPub(prev => ({ ...prev, web: nuevoEstado }))
+      setMsgPublicacion({ ok: true, text: nuevoEstado === 'SI' ? '✓ Publicado en Web fondocapital.com' : '✓ Retirado de la Web' })
+      setTimeout(() => setMsgPublicacion(null), 4000)
+    }
+    setPublicando(prev => ({ ...prev, web: false }))
+  }
+
+    async function publicarEnPortal(apiKey) {
     setPublicando(prev => ({ ...prev, [apiKey]: true }))
     setMsgPublicacion(null)
     try {
@@ -526,6 +541,20 @@ export default function FichaPage() {
                       )
                     }
 
+                                        // Web — toggle directo
+                    if (portal.key === 'web') {
+                      return (
+                        <div key='web' style={{ padding:'14px 16px', borderRadius:10, background:activo?portal.bg:'var(--gray-50)', border:1px solid \ }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:activo?portal.color:'var(--gray-500)', marginBottom:2 }}>{portal.label}</div>
+                          <div style={{ fontSize:11, color:activo?portal.color:'var(--gray-400)', fontWeight:500, marginBottom:10 }}>
+                            {activo ? '✓ Publicado en Web' : '— No publicado'}
+                          </div>
+                          <button onClick={toggleWeb} disabled={cargando} style={{ width:'100%', padding:'6px 0', borderRadius:7, border:'none', background:cargando?'#9ca3af':activo?'#dc2626':portal.color, color:'#fff', fontSize:11, fontWeight:600, cursor:cargando?'not-allowed':'pointer', fontFamily:'inherit' }}>
+                            {cargando ? '⏳...' : activo ? '🔴 Retirar de Web' : '🌐 Publicar en Web'}
+                          </button>
+                        </div>
+                      )
+                    }
                     // Resto de portales
                     return (
                       <div key={portal.key} style={{ padding:'14px 16px', borderRadius:10, background:activo?portal.bg:'var(--gray-50)', border:`1px solid ${activo?portal.color+'40':'var(--border)'}` }}>
