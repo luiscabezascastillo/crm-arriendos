@@ -7,9 +7,22 @@ const supabase = createClient(
 )
 
 export async function POST() {
+  // Obtener max codigo y max id
+  const { data: maxData } = await supabase
+    .from('publicaciones')
+    .select('id, codigo')
+    .order('id', { ascending: false })
+    .limit(1)
+    .single()
+
+  const newId = (maxData?.id || 0) + 1
+  const newCodigo = String((parseInt(maxData?.codigo || '16891') + 1))
+
   const { data, error } = await supabase
     .from('publicaciones')
     .insert({
+      id: newId,
+      codigo: newCodigo,
       tipo: 'DEPARTAMENTO',
       objetivo: 'Arriendo',
       tipo_moneda: 'UF',
