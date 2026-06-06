@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useSession } from 'next-auth/react'
@@ -50,19 +50,19 @@ function validarEmail(email) {
 
 function validarTelChile(tel) {
   if (!tel) return true
-  const limpio = tel.replace(/[s-().+]/g, '')
+  const limpio = tel.replace(/[s().+\-]/g, '')
   // Acepta: 56912345678, 912345678, +56912345678
   return /^(56)?[2-9]d{8}$/.test(limpio)
 }
 
 function validarTelIntl(tel) {
   if (!tel) return true
-  const limpio = tel.replace(/[s-().+]/g, '')
+  const limpio = tel.replace(/[s().+\-]/g, '')
   return /^d{7,15}$/.test(limpio)
 }
 
 function formatTelChile(tel) {
-  const limpio = tel.replace(/[s-().]/g, '').replace(/^+?56/, '')
+  const limpio = tel.replace(/[s().\-]/g, '').replace(/^+?56/, '')
   if (limpio.length === 0) return tel
   if (limpio.length <= 9) {
     // Móvil: 9 XXXX XXXX
