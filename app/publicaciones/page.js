@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React from 'react'
 
 import { useState, useEffect } from 'react'
@@ -25,6 +25,15 @@ const PORTALES = [
 ]
 
 function PortalBadge({ portal }) {
+  async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
   return (
     <span style={{ fontSize:10, padding:'2px 6px', borderRadius:5, background:portal.bg, color:portal.color, fontWeight:600 }}>
       {portal.code}
@@ -38,6 +47,15 @@ function activoEnPortales(pub) {
 
 function ObjetivoBadge({ objetivo }) {
   const esVenta = (objetivo||'').toLowerCase().includes('venta')
+  async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
   return (
     <span style={{ fontSize:10, padding:'2px 7px', borderRadius:8, fontWeight:500, background:esVenta?'#EAF3DE':'#E6F1FB', color:esVenta?'#3B6D11':'#1a56db' }}>
       {objetivo||'—'}
@@ -48,7 +66,16 @@ function ObjetivoBadge({ objetivo }) {
 function Miniatura({ imagen, direccion }) {
   const [error, setError] = useState(false)
   if (!imagen || error) {
-    return (
+    async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
       <div style={{ width:110, height:82, borderRadius:8, background:'var(--gray-100)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="var(--gray-300)" strokeWidth="1.5"/></svg>
       </div>
@@ -72,7 +99,16 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
   React.useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return () => document.removeEventListener('mousedown', handle)
   }, [])
 
   const activo = (value.selected && value.selected.length > 0) || value.sort || value.min !== '' || value.max !== ''
@@ -85,6 +121,15 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
   function clear() {
     setSelected([]); setSortDir(null); setMinVal(''); setMaxVal('')
     onApply({ selected: [], sort: null, min: '', max: '' }); setOpen(false)
+  }
+
+  async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -277,7 +322,16 @@ export default function PublicacionesPage() {
 
   function PrecioCell({ pub }) {
     const v = formatValor(pub)
-    return (
+    async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
       <div>
         <div style={{ fontSize:12, fontWeight:600, color:'var(--gray-800)' }}>{v.principal}</div>
         {v.secundario && <div style={{ fontSize:10, color:'var(--gray-400)', marginTop:2 }}>{v.secundario}</div>}
@@ -286,7 +340,16 @@ export default function PublicacionesPage() {
   }
 
   function BtnAccion({ label, color, bg, onClick, disabled }) {
-    return (
+    async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
       <button onClick={onClick} disabled={disabled} style={{
         display:'block', width:'100%', textAlign:'center', padding:'4px 0', borderRadius:6, marginBottom:3,
         border:`1px solid ${disabled?'#d1d5db':color}`, background:disabled?'#f9fafb':bg,
@@ -355,7 +418,16 @@ export default function PublicacionesPage() {
   }
 
   function Paginador() {
-    return (
+    async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginTop:20 }}>
         <button onClick={() => setPage(1)} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>«</button>
         <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>‹</button>
@@ -404,6 +476,15 @@ export default function PublicacionesPage() {
 
   const pubsFiltradas = applyExcelFilters(pubs)
 
+  async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
   return (
     <div style={{ minHeight:'100vh', background:'var(--background)' }}>
       <TopNav />
@@ -438,7 +519,7 @@ export default function PublicacionesPage() {
             <button onClick={() => setVista('tarjetas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tarjetas'?'#1a56db':'transparent', color:vista==='tarjetas'?'#fff':'var(--gray-500)' }}>⊞ Tarjetas</button>
               <button onClick={() => setVista('mapa')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='mapa'?'#1a56db':'transparent', color:vista==='mapa'?'#fff':'var(--gray-500)' }}>🗺 Mapa</button>
           </div>
-          <button style={{ padding:'7px 16px', background:'#1a56db', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>+ Nueva publicación</button>
+          <button style={{ padding:'7px 16px', background:'#1a56db', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }} onClick={nuevaPublicacion}>+ Nueva publicación</button>
         </div>
       </div>
 
@@ -553,7 +634,16 @@ export default function PublicacionesPage() {
                 {pubsFiltradas.map((p,i) => {
                   const activos = activoEnPortales(p)
                   const esHistorica = modo === 'historicas'
-                  return (
+                  async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
                     <tr key={i}
                       style={{ background:esHistorica?'#fafafa':'transparent' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
@@ -637,7 +727,16 @@ export default function PublicacionesPage() {
               const imgUrl = p.imagen1 ? IMG_BASE+p.imagen1 : null
               const v = formatValor(p)
               const esHistorica = modo === 'historicas'
-              return (
+              async function nuevaPublicacion() {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .select('id')
+      .single()
+    if (!error && data) router.push('/publicaciones/' + data.id)
+  }
+
+  return (
                 <div key={i} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden', opacity:esHistorica?0.85:1, transition:'border-color 0.15s, box-shadow 0.15s' }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor='#1a56db'; e.currentTarget.style.boxShadow='0 2px 12px rgba(26,86,219,0.1)' }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.boxShadow='none' }}
