@@ -48,6 +48,30 @@ function validarEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())
 }
 
+function validarTelChile(tel) {
+  if (!tel) return true
+  const limpio = tel.replace(/[s-().+]/g, '')
+  // Acepta: 56912345678, 912345678, +56912345678
+  return /^(56)?[2-9]d{8}$/.test(limpio)
+}
+
+function validarTelIntl(tel) {
+  if (!tel) return true
+  const limpio = tel.replace(/[s-().+]/g, '')
+  return /^d{7,15}$/.test(limpio)
+}
+
+function formatTelChile(tel) {
+  const limpio = tel.replace(/[s-().]/g, '').replace(/^+?56/, '')
+  if (limpio.length === 0) return tel
+  if (limpio.length <= 9) {
+    // Móvil: 9 XXXX XXXX
+    if (limpio.startsWith('9') && limpio.length === 9)
+      return '+56 ' + limpio[0] + ' ' + limpio.slice(1,5) + ' ' + limpio.slice(5)
+  }
+  return tel
+}
+
 function formatRUT(valor) {
   const limpio = valor.replace(/\./g, '').replace(/-/g, '').replace(/[^0-9kK]/g, '')
   if (limpio.length <= 1) return limpio
@@ -183,6 +207,8 @@ function ModalContacto({ contacto, onClose, onSaved }) {
     if (form.tipo_doc === 'RUT' && form.numero_doc && !validarRUT(form.numero_doc)) e.numero_doc = 'RUT inválido'
     if (form.email && !validarEmail(form.email)) e.email = 'Email inválido'
     if (form.email_2 && !validarEmail(form.email_2)) e.email_2 = 'Email inválido'
+    if (form.telefono && !validarTelChile(form.telefono)) e.telefono = 'Formato inválido — ej: +56 9 1234 5678'
+    if (form.whatsapp && !validarTelIntl(form.whatsapp)) e.whatsapp = 'Número inválido (7-15 dígitos)'
     setErrores(e)
     setTimeout(() => {
       const el = document.querySelector('[data-error="true"]')
@@ -295,11 +321,13 @@ function ModalContacto({ contacto, onClose, onSaved }) {
           <div style={g2}>
             <div>
               <label style={lbl}>Teléfono</label>
-              <input style={inp('telefono')} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="+56 9 xxxx xxxx" />
+              <input data-error={!!errores.telefono} style={inp('telefono')} value={form.telefono} onChange={e => set('telefono', e.target.value)} onBlur={e => { const f = formatTelChile(e.target.value); if (f !== e.target.value) set('telefono', f) }} placeholder="+56 9 xxxx xxxx" />
+              {errores.telefono && <div style={{fontSize:11,color:'#E8593C',marginTop:3}}>{errores.telefono}</div>}
             </div>
             <div>
               <label style={lbl}>WhatsApp</label>
-              <input style={inp('whatsapp')} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="+56 9 xxxx xxxx" />
+              <input data-error={!!errores.whatsapp} style={inp('whatsapp')} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="+56 9 xxxx xxxx" />
+              {errores.whatsapp && <div style={{fontSize:11,color:'#E8593C',marginTop:3}}>{errores.whatsapp}</div>}
             </div>
           </div>
 

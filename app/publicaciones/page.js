@@ -276,13 +276,8 @@ export default function PublicacionesPage() {
         query = query.or('pi.eq.SI,yapo.eq.SI,goplaceit.eq.SI,web.eq.SI,proppit.eq.SI')
       }
     } else {
-      // Históricas: ningún portal activo
-      query = query
-        .not('pi','eq','SI')
-        .not('yapo','eq','SI')
-        .not('goplaceit','eq','SI')
-        .not('web','eq','SI')
-        .not('proppit','eq','SI')
+      // Históricas: ningún portal activo + borradores
+      query = query.or('activo.eq.CREAR,and(pi.neq.SI,yapo.neq.SI,goplaceit.neq.SI,web.neq.SI,proppit.neq.SI)')
     }
 
     if (search) query = query.or(`direccion.ilike.%${search}%,comuna.ilike.%${search}%,propietario.ilike.%${search}%,codigo.ilike.%${search}%`)

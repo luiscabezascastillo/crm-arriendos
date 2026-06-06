@@ -94,6 +94,17 @@ export default function FichaPage() {
   const [guardandoEditar, setGuardandoEditar] = useState(false)
   const [msgEditar, setMsgEditar] = useState(null)
   const [actualizandoDesc, setActualizandoDesc] = useState(false)
+  const [copiando, setCopiando] = useState(false)
+
+  async function copiarPublicacion() {
+    if (!window.confirm('¿Copiar esta publicación con un nuevo código?')) return
+    setCopiando(true)
+    const res = await fetch('/api/publicaciones/copiar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicacionId: id }) })
+    const data = await res.json()
+    setCopiando(false)
+    if (data.id) router.push('/publicaciones/' + data.id)
+    else alert('Error: ' + data.error)
+  }
   const dragIdx = useRef(null)
   const dragOverIdx = useRef(null)
   const fileInputRef = useRef(null)
@@ -378,6 +389,11 @@ export default function FichaPage() {
               <span style={{ fontSize:11, color:'var(--gray-500)', marginRight:8 }}>{pub.objetivo}</span>
               <span style={{ fontSize:18, fontWeight:700, color:'#fff', background:'#1a56db', padding:'4px 14px', borderRadius:8 }}>{precioLabel}</span>
               {precioSecundario && <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:4 }}>{precioSecundario}</div>}
+              <div style={{ marginTop:8 }}>
+                <button onClick={copiarPublicacion} disabled={copiando} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid #d1d5db', background:'transparent', fontSize:11, fontWeight:500, cursor:copiando?'not-allowed':'pointer', fontFamily:'inherit', color:'var(--gray-600)' }}>
+                  {copiando ? '⏳ Copiando...' : '📋 Copiar publicación'}
+                </button>
+              </div>
             </div>
           </div>
 
