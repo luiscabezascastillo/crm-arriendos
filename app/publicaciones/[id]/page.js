@@ -562,14 +562,22 @@ export default function FichaPage() {
                         <div style={{ fontSize:11, color:activo?portal.color:'var(--gray-400)', fontWeight:500, marginBottom:10 }}>
                           {activo ? '✓ Publicado' : '— No publicado'}
                         </div>
-                        {portal.apiKey ? (
+                        {portal.key === 'yapo' ? (
+                          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                            <a href='/api/generar-yapo' download='APIYapo.xml' style={{ display:'block', width:'100%', padding:'6px 0', borderRadius:7, background:portal.color, color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'inherit', textAlign:'center', textDecoration:'none', boxSizing:'border-box' }}>
+                              📥 Descargar XML (manual)
+                            </a>
+                            <a href='https://www.yapo.cl/account/cnlmport/scheduledimport' target='_blank' rel='noopener noreferrer' style={{ display:'block', width:'100%', padding:'6px 0', borderRadius:7, background:'#92400e', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'inherit', textAlign:'center', textDecoration:'none', boxSizing:'border-box' }}>
+                              🔗 Ver importación programada
+                            </a>
+                          </div>
+                        ) : portal.apiKey ? (
                           <button onClick={() => publicarEnPortal(portal.apiKey)} disabled={cargando} style={{ width:'100%', padding:'6px 0', borderRadius:7, border:'none', background:cargando?'#9ca3af':portal.color, color:'#fff', fontSize:11, fontWeight:600, cursor:cargando?'not-allowed':'pointer', fontFamily:'inherit' }}>
                             {cargando ? '⏳ Publicando...' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
                           </button>
                         ) : (
                           <div style={{ fontSize:10, color:'var(--gray-400)', fontStyle:'italic' }}>{portal.nota}</div>
-                        )}
-                      </div>
+                        )                   </div>
                     )
                   })}
                 </div>
