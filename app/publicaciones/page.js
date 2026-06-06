@@ -26,12 +26,9 @@ const PORTALES = [
 
 function PortalBadge({ portal }) {
   async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -48,12 +45,9 @@ function activoEnPortales(pub) {
 function ObjetivoBadge({ objetivo }) {
   const esVenta = (objetivo||'').toLowerCase().includes('venta')
   async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -67,12 +61,9 @@ function Miniatura({ imagen, direccion }) {
   const [error, setError] = useState(false)
   if (!imagen || error) {
     async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -100,12 +91,9 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
     async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return () => document.removeEventListener('mousedown', handle)
@@ -124,12 +112,9 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
   }
 
   async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -323,12 +308,9 @@ export default function PublicacionesPage() {
   function PrecioCell({ pub }) {
     const v = formatValor(pub)
     async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -341,12 +323,9 @@ export default function PublicacionesPage() {
 
   function BtnAccion({ label, color, bg, onClick, disabled }) {
     async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -419,12 +398,9 @@ export default function PublicacionesPage() {
 
   function Paginador() {
     async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -477,12 +453,9 @@ export default function PublicacionesPage() {
   const pubsFiltradas = applyExcelFilters(pubs)
 
   async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -635,12 +608,9 @@ export default function PublicacionesPage() {
                   const activos = activoEnPortales(p)
                   const esHistorica = modo === 'historicas'
                   async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
@@ -728,12 +698,9 @@ export default function PublicacionesPage() {
               const v = formatValor(p)
               const esHistorica = modo === 'historicas'
               async function nuevaPublicacion() {
-    const { data, error } = await supabase
-      .from('publicaciones')
-      .insert({ tipo: 'DEPARTAMENTO', objetivo: 'Arriendo', tipo_moneda: 'UF', activo: 'CREAR', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .select('id')
-      .single()
-    if (!error && data) router.push('/publicaciones/' + data.id)
+    const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
+    const data = await res.json()
+    if (data.id) router.push('/publicaciones/' + data.id)
   }
 
   return (
