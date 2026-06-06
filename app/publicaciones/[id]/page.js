@@ -544,7 +544,7 @@ export default function FichaPage() {
                                         // Web — toggle directo
                     if (portal.key === 'web') {
                       return (
-                        <div key='web' style={{ padding:'14px 16px', borderRadius:10, background:activo?portal.bg:'var(--gray-50)', border:1px solid \ }}>
+                        <div key='web' style={{ padding:'14px 16px', borderRadius:10, background:activo?portal.bg:'var(--gray-50)', border:`1px solid ${activo?portal.color+'40':'var(--border)'}` }}>
                           <div style={{ fontSize:12, fontWeight:600, color:activo?portal.color:'var(--gray-500)', marginBottom:2 }}>{portal.label}</div>
                           <div style={{ fontSize:11, color:activo?portal.color:'var(--gray-400)', fontWeight:500, marginBottom:10 }}>
                             {activo ? '✓ Publicado en Web' : '— No publicado'}
