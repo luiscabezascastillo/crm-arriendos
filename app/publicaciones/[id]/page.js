@@ -577,7 +577,8 @@ export default function FichaPage() {
                           </button>
                         ) : (
                           <div style={{ fontSize:10, color:'var(--gray-400)', fontStyle:'italic' }}>{portal.nota}</div>
-                        )                   </div>
+                        )}
+                      </div>
                     )
                   })}
                 </div>
