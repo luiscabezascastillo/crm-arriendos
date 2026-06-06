@@ -62,7 +62,7 @@ function validarTelIntl(tel) {
 }
 
 function formatTelChile(tel) {
-  const limpio = tel.replace(/[s().\-]/g, '').replace(/^+?56/, '')
+  const limpio = tel.replace(/[s().\-]/g, '').replace(/^\+?56/, '')
   if (limpio.length === 0) return tel
   if (limpio.length <= 9) {
     // Móvil: 9 XXXX XXXX
