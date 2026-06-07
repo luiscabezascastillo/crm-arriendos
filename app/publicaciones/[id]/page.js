@@ -95,6 +95,26 @@ export default function FichaPage() {
   const [msgEditar, setMsgEditar] = useState(null)
   const [actualizandoDesc, setActualizandoDesc] = useState(false)
   const [copiando, setCopiando] = useState(false)
+  const [republicando, setRepublicando] = useState(false)
+
+  async function republicar() {
+    if (!window.confirm('¿Republicar esta publicación? Se cerrará en todos los portales y se creará una nueva con los mismos datos.')) return
+    setRepublicando(true)
+    setMsgPublicacion(null)
+    try {
+      const res = await fetch('/api/publicaciones/republicar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicacionId: id }) })
+      const data = await res.json()
+      if (data.ok) {
+        setMsgPublicacion({ ok: true, text: data.mensaje + ' — Navegando a la nueva ficha...' })
+        setTimeout(() => router.push('/publicaciones/' + data.id), 2000)
+      } else {
+        setMsgPublicacion({ ok: false, text: data.error || 'Error al republicar' })
+      }
+    } catch(e) {
+      setMsgPublicacion({ ok: false, text: 'Error: ' + e.message })
+    }
+    setRepublicando(false)
+  }
 
   async function copiarPublicacion() {
     if (!window.confirm('¿Copiar esta publicación con un nuevo código?')) return
@@ -602,6 +622,13 @@ export default function FichaPage() {
                 <div style={{ padding:'10px 14px', borderRadius:8, background:'#fffbeb', border:'1px solid #fcd34d', fontSize:11, color:'#92400e' }}>
                   <strong>Nota:</strong> Web y Yapo regeneran el feed completo. PI publica directamente en Portal Inmobiliario vía API de MercadoLibre.
                 </div>
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:14, marginTop:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Republicar</div>
+                <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:10 }}>Cierra esta publicación en todos los portales y crea una nueva con los mismos datos para mejorar el posicionamiento.</div>
+                <button onClick={republicar} disabled={republicando} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:republicando?'#9ca3af':'#d97706', color:'#fff', fontSize:12, fontWeight:600, cursor:republicando?'not-allowed':'pointer', fontFamily:'inherit' }}>
+                  {republicando ? '⏳ Republicando...' : '🔄 Republicar en todos los portales'}
+                </button>
+              </div>
               </div>
             </div>
           )}
