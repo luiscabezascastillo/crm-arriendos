@@ -95,6 +95,28 @@ export default function FichaPage() {
   const [msgEditar, setMsgEditar] = useState(null)
   const [actualizandoDesc, setActualizandoDesc] = useState(false)
   const [copiando, setCopiando] = useState(false)
+  const [busqProp, setBusqProp] = useState('')
+  const [resultadosProp, setResultadosProp] = useState([])
+  const [buscandoProp, setBuscandoProp] = useState(false)
+
+  async function buscarPropietario(q) {
+    setBusqProp(q)
+    if (q.length < 2) { setResultadosProp([]); return }
+    setBuscandoProp(true)
+    const { data } = await supabase.from('contactos')
+      .select('id, nombre, apellido, email, telefono')
+      .or('nombre.ilike.%' + q + '%,apellido.ilike.%' + q + '%,email.ilike.%' + q + '%')
+
+      .limit(8)
+    setResultadosProp(data || [])
+    setBuscandoProp(false)
+  }
+
+  function seleccionarPropietario(c) {
+    setForm(prev => ({ ...prev, propietario: (c.nombre + ' ' + (c.apellido||'')).trim(), telefono: c.telefono||'', email: c.email||'' }))
+    setBusqProp('')
+    setResultadosProp([])
+  }
   const [republicando, setRepublicando] = useState(false)
 
   async function republicar() {
@@ -784,7 +806,37 @@ export default function FichaPage() {
                 </div>
               </div>
               {/* Botones */}
-              <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+              {/* Propietario */}
+              <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Propietario</div>
+                <div style={{ position:'relative', marginBottom:12 }}>
+                  <input type='text' placeholder='Buscar por nombre, apellido o email...' value={busqProp} onChange={e => buscarPropietario(e.target.value)}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--gray-50)', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', outline:'none', boxSizing:'border-box' }} />
+                  {resultadosProp.length > 0 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'white', border:'1px solid var(--border)', borderRadius:8, zIndex:100, maxHeight:200, overflowY:'auto', boxShadow:'0 4px 12px rgba(0,0,0,0.1)' }}>
+                      {resultadosProp.map(c => (
+                        <div key={c.id} onClick={() => seleccionarPropietario(c)}
+                          style={{ padding:'8px 12px', cursor:'pointer', fontSize:12, borderBottom:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:2 }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f3f4f6'}
+                          onMouseLeave={e => e.currentTarget.style.background='white'}>
+                          <span style={{ fontWeight:600, color:'var(--gray-800)' }}>{c.nombre} {c.apellido}</span>
+                          <span style={{ color:'var(--gray-400)', fontSize:11 }}>{c.email} {c.telefono}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+                  {[['Propietario','propietario'],['Telefono','telefono'],['Email','email']].map(([label, field]) => (
+                    <div key={field}>
+                      <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{label}</div>
+                      <input type='text' value={form[field]||''} onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))}
+                        style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--gray-50)', fontSize:12, color:'var(--gray-800)', fontFamily:'inherit', outline:'none', boxSizing:'border-box' }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+<div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
                 <button onClick={() => setForm({ tipo:pub.tipo||'', objetivo:pub.objetivo||'', direccion:pub.direccion||'', comuna:pub.comuna||'', region:pub.region||'', numero:pub.numero||'', latitud:pub.latitud||'', longitud:pub.longitud||'', dormitorios:pub.dormitorios||'', banos:pub.banos||'', mt2_const:pub.mt2_const||'', mt2_terreno:pub.mt2_terreno||'', estacionamientos:pub.estacionamientos||'', bodegas:pub.bodegas||'', orientacion:pub.orientacion||'', amoblado:pub.amoblado||'', valor:pub.valor||'', tipo_moneda:pub.tipo_moneda||'UF', ggcc:pub.ggcc||'', vendedor:pub.vendedor||'', captador:pub.captador||'', observaciones:pub.observaciones||'', video:pub.video||'', ksuitable_for_pets:pub.ksuitable_for_pets||'' })} style={{ padding:'9px 20px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit', color:'var(--gray-500)' }}>
                   Descartar cambios
                 </button>
