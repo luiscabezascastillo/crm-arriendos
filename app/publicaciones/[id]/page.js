@@ -96,6 +96,25 @@ export default function FichaPage() {
   const [actualizandoDesc, setActualizandoDesc] = useState(false)
   const [copiando, setCopiando] = useState(false)
   const [busqProp, setBusqProp] = useState('')
+  const [nuevoContacto, setNuevoContacto] = useState(null)
+  const [guardandoContacto, setGuardandoContacto] = useState(false)
+
+  async function crearContacto() {
+    if (!nuevoContacto?.nombre) return
+    setGuardandoContacto(true)
+    const { data, error } = await supabase.from('contactos').insert({
+      nombre: nuevoContacto.nombre,
+      apellido: nuevoContacto.apellido || '',
+      telefono: nuevoContacto.telefono || '',
+      email: nuevoContacto.email || '',
+    }).select('id, nombre, apellido, email, telefono').single()
+    setGuardandoContacto(false)
+    if (!error && data) {
+      seleccionarPropietario(data)
+      setNuevoContacto(null)
+      setBusqProp('')
+    }
+  }
   const [resultadosProp, setResultadosProp] = useState([])
   const [buscandoProp, setBuscandoProp] = useState(false)
 
@@ -823,6 +842,38 @@ export default function FichaPage() {
                           <span style={{ color:'var(--gray-400)', fontSize:11 }}>{c.email} {c.telefono}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {busqProp.length >= 2 && resultadosProp.length === 0 && !buscandoProp && (
+                    <div style={{ marginTop:6 }}>
+                      <button onClick={() => setNuevoContacto({ nombre: busqProp, apellido:'', telefono:'', email:'' })}
+                        style={{ fontSize:11, color:'#1a56db', background:'transparent', border:'1px solid #1a56db', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:'inherit' }}>
+                        + Crear contacto '{busqProp}'
+                      </button>
+                    </div>
+                  )}
+                  {nuevoContacto && (
+                    <div style={{ marginTop:10, padding:'12px 14px', border:'1px solid #BFDBFE', borderRadius:8, background:'#EFF6FF' }}>
+                      <div style={{ fontSize:11, fontWeight:600, color:'#1D4ED8', marginBottom:10 }}>Nuevo contacto</div>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                        {[['Nombre *','nombre'],['Apellido','apellido'],['Teléfono','telefono'],['Email','email']].map(([label, field]) => (
+                          <div key={field}>
+                            <div style={{ fontSize:10, color:'#6B7280', marginBottom:3 }}>{label}</div>
+                            <input type='text' value={nuevoContacto[field]||''} onChange={e => setNuevoContacto(prev => ({ ...prev, [field]: e.target.value }))}
+                              style={{ width:'100%', padding:'6px 8px', borderRadius:6, border:'1px solid #BFDBFE', fontSize:12, fontFamily:'inherit', outline:'none', boxSizing:'border-box' }} />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <button onClick={crearContacto} disabled={guardandoContacto || !nuevoContacto.nombre}
+                          style={{ padding:'5px 14px', borderRadius:6, border:'none', background:guardandoContacto?'#9ca3af':'#1a56db', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+                          {guardandoContacto ? 'Guardando...' : '💾 Guardar contacto'}
+                        </button>
+                        <button onClick={() => setNuevoContacto(null)}
+                          style={{ padding:'5px 14px', borderRadius:6, border:'1px solid #d1d5db', background:'transparent', fontSize:11, cursor:'pointer', fontFamily:'inherit', color:'#6B7280' }}>
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
