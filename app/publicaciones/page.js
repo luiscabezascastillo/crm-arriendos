@@ -220,6 +220,7 @@ export default function PublicacionesPage() {
   const [kpis, setKpis] = useState({ total:0, arriendos:0, ventas:0, pi:0, yapo:0, historicas:0 })
   const [valorUF, setValorUF] = useState(null)
   const [republicando, setRepublicando] = useState(null)
+  const [copiando, setCopiando] = useState(null)
 
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { fetch('https://mindicador.cl/api/uf').then(r=>r.json()).then(d=>setValorUF(d.serie?.[0]?.valor||null)).catch(()=>{}) }, [])
@@ -364,7 +365,7 @@ export default function PublicacionesPage() {
       const nueva = { ...original }
       delete nueva.id
       nueva.codigo     = nuevoCodigo
-      nueva.fcha       = new Date().toISOString().split('T')[0]
+      nueva.fecha       = new Date().toISOString().split('T')[0]
       nueva.pi         = 'SI'
       nueva.web        = 'SI'
       nueva.yapo       = 'SI'
@@ -391,6 +392,25 @@ export default function PublicacionesPage() {
     setRepublicando(null)
   }
 
+// ── COPIAR PUBLICACIÓN (sin cerrar original, sin imágenes) ──
+  async function copiar(pub) {
+    if (!window.confirm(`¿Copiar la propiedad ${pub.codigo}?\n\nSe creará una nueva con los mismos datos (sin fotos). La original NO se modifica.`)) return
+    setCopiando(pub.id)
+    try {
+      const res = await fetch('/api/publicaciones/copiar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId: pub.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al copiar')
+      // Navegar directamente a la ficha de la copia
+      router.push(`/publicaciones/${data.id}`)
+    } catch (e) {
+      alert('Error al copiar: ' + e.message)
+    }
+    setCopiando(null)
+  }
   function Paginador() {
     async function nuevaPublicacion() {
     const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
@@ -661,21 +681,31 @@ export default function PublicacionesPage() {
                       <td style={{ padding:'8px 10px', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top' }}>
                         {esHistorica ? (
                           <>
-                            <BtnAccion label="Ficha" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}`)} />
+                          <BtnAccion label="Ficha" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}`)} />
+                            <BtnAccion
+                              label={copiando===p.id ? '⏳ Copiando...' : '📋 Copiar'}
+                              color="#7c3aed" bg="#f5f3ff"
+                              onClick={() => copiar(p)}
+                              disabled={copiando===p.id}
+                            />
                             <BtnAccion
                               label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
                               color="#16a34a" bg="#f0fdf4"
                               onClick={() => republicar(p)}
                               disabled={republicando===p.id}
-                            />
-                          </>
+                            />                          </>
                         ) : (
                           <>
                             <BtnAccion label="Editar"    color="#1a56db" bg="#eff6ff" onClick={() => {}} />
                             <BtnAccion label="Ficha"     color="#16a34a" bg="#f0fdf4" onClick={() => router.push(`/publicaciones/${p.id}`)} />
+                            <BtnAccion
+                              label={copiando===p.id ? '⏳ Copiando...' : '📋 Copiar'}
+                              color="#7c3aed" bg="#f5f3ff"
+                              onClick={() => copiar(p)}
+                              disabled={copiando===p.id}
+                            />
                             <BtnAccion label="Compartir" color="#dc2626" bg="#fef2f2" onClick={() => {}} />
-                          </>
-                        )}
+                          </>                        )}
                       </td>
                     </tr>
                   )
