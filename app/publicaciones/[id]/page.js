@@ -532,7 +532,8 @@ async function subirImagen(file) {
             </div>
           )}
 
-          {!['Resumen','Imágenes','Propietario','Publicación'].includes(seccion) && (
+          {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} />}
+              {!['Resumen','Imágenes','Propietario','Publicación','Editar'].includes(seccion) && (
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
               <div style={{ fontSize:13, color:'var(--gray-400)' }}>Sección <strong>{seccion}</strong> en desarrollo</div>
             </div>
