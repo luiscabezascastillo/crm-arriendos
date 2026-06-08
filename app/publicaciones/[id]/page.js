@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import  TopNav  from '../../components/ui/TopNav'
@@ -137,7 +138,8 @@ export default function FichaPage() {
   const [pub, setPub] = useState(null)
   const [loading, setLoading] = useState(true)
   const [valorUF, setValorUF] = useState(null)
-  const [seccion, setSeccion] = useState('Resumen')
+  const searchParams = useSearchParams()
+  const [seccion, setSeccion] = useState(searchParams.get('seccion') || 'Resumen')
   const [imagenes, setImagenes] = useState([])
   const [imgSeleccionada, setImgSeleccionada] = useState(null)
   const [guardando, setGuardando] = useState(false)
