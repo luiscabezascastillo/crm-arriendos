@@ -45,6 +45,19 @@ function SeccionEditar({ pub, id, onGuardado }) {
     observaciones: pub.observaciones || '',
     latitud:      pub.latitud      || '',
     longitud:     pub.longitud     || '',
+    orientacion:  pub.orientacion  || '',
+    unit_floor:   pub.unit_floor != null ? String(pub.unit_floor) : '',
+    property_age: pub.property_age != null ? String(pub.property_age) : '',
+    floors:       pub.floors != null ? String(pub.floors) : '',
+    apartments_per_floor: pub.apartments_per_floor != null ? String(pub.apartments_per_floor) : '',
+    apartment_number: pub.apartment_number || '',
+    property_registration_code: pub.property_registration_code || '',
+    has_balcony:  pub.has_balcony  || false,
+    has_laundry:  pub.has_laundry  || false,
+    has_maid_room: pub.has_maid_room || false,
+    has_half_bath: pub.has_half_bath || false,
+    has_security: pub.has_security || false,
+    hide_address: pub.hide_address || false,
   })
   const [guardando, setGuardando] = React.useState(false)
   const [msg, setMsg] = React.useState(null)
@@ -105,6 +118,36 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Bodegas', 'bodegas', 'number')}
         {inp('GGCC ($)', 'ggcc', 'number')}
         {inp('Amoblado', 'amoblado', 'text', ['No','Sí','Parcial'])}
+        {inp('Orientación', 'orientacion', 'text', ['Norte','Sur','Oriente','Poniente','Nororiente','Norponiente','Suroriente','Surponiente'])}
+
+        {sec('Atributos Portal Inmobiliario', '#0891b2')}
+        {inp('Piso', 'unit_floor')}
+        {inp('Antigüedad (años)', 'property_age')}
+        {inp('Pisos edificio', 'floors')}
+        {inp('Deptos por piso', 'apartments_per_floor')}
+        {inp('Nº depto', 'apartment_number')}
+        {inp('Rol propiedad', 'property_registration_code')}
+
+        <div style={{ gridColumn:'1/-1', borderBottom:'2px solid #0891b2', paddingBottom:4, marginTop:8 }}>
+          <span style={{ fontSize:12, fontWeight:700, color:'#0891b2', textTransform:'uppercase', letterSpacing:.8 }}>Características adicionales</span>
+        </div>
+        {[
+          ['has_balcony',  'Balcón'],
+          ['has_laundry',  'Lavandería'],
+          ['has_maid_room','Cuarto de servicio'],
+          ['has_half_bath','Baño de visitas'],
+          ['has_security', 'Seguridad 24h'],
+          ['hide_address', 'Ocultar dirección exacta'],
+        ].map(([key, label]) => (
+          <div key={key} style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>{label}</label>
+            <select value={form[key] ? 'true' : 'false'} onChange={e => set(key, e.target.value === 'true')}
+              style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
+              <option value="false">No</option>
+              <option value="true">Sí</option>
+            </select>
+          </div>
+        ))}
 
         {sec('Observaciones', '#7c3aed')}
         <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
