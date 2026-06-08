@@ -69,7 +69,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
           {opts.map(o => <option key={o}>{o}</option>)}
         </select>
       ) : (
-        <input type={type} value={form[key]} onChange={e => set(key, e.target.value)}
+        <input type="text" value={form[key]} onChange={e => set(key, e.target.value)}
           style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
       )}
     </div>
