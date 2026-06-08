@@ -270,18 +270,18 @@ export default function PublicacionesPage() {
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
-    if (modo === 'activas') {
-      if (filtroPortal) {
-        query = query.eq(filtroPortal, 'SI')
-      } else {
-        query = query.or('pi.eq.SI,yapo.eq.SI,goplaceit.eq.SI,web.eq.SI,proppit.eq.SI')
-      }
-    } else {
-      // Históricas: ningún portal activo + borradores
-      query = query.or('activo.eq.CREAR,and(pi.neq.SI,yapo.neq.SI,goplaceit.neq.SI,web.neq.SI,proppit.neq.SI)')
-    }
-
-    if (search) query = query.or(`direccion.ilike.%${search}%,comuna.ilike.%${search}%,propietario.ilike.%${search}%,codigo.ilike.%${search}%`)
+        if (modo === 'activas') {
+          query = query.neq('activo','CREAR')
+          if (filtroPortal) {
+            query = query.eq(filtroPortal, 'SI')
+          } else {
+            query = query.or('pi.eq.SI,yapo.eq.SI,goplaceit.eq.SI,web.eq.SI,proppit.eq.SI')
+          }
+        } else if (modo === 'borradores') {
+          query = query.eq('activo','CREAR')
+        } else {
+          // Históricas: ningún portal activo, excluye CREAR
+          query = query.neq('activo','CREAR').eq('pi','NO').eq('yapo','NO').eq('goplaceit','NO').eq('web','NO').eq('proppit','NO')
     if (filtroObjetivo) query = query.ilike('objetivo', `%${filtroObjetivo}%`)
 
     const { data, count, error } = await query
@@ -462,13 +462,13 @@ export default function PublicacionesPage() {
             <button onClick={() => setModo('activas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='activas'?'#1a56db':'transparent', color:modo==='activas'?'#fff':'var(--gray-500)' }}>
               ● Activas
             </button>
-            <button onClick={() => setModo('historicas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='historicas'?'#6b7280':'transparent', color:modo==='historicas'?'#fff':'var(--gray-500)' }}>
-              📁 Históricas ({kpis.historicas})
-            </button>
-          </div>
-          {/* Toggle tabla/tarjetas */}
-          <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
-            <button onClick={() => setVista('tabla')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tabla'?'#1a56db':'transparent', color:vista==='tabla'?'#fff':'var(--gray-500)' }}>☰ Tabla</button>
+                <button onClick={() => setModo('borradores')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='borradores'?'#d97706':'transparent', color:modo==='borradores'?'#fff':'var(--gray-500)' }}>
+                  ✏️ En preparación
+                </button>
+                <button onClick={() => setModo('historicas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='historicas'?'#6b7280':'transparent', color:modo==='historicas'?'#fff':'var(--gray-500)' }}>
+                  📁 Históricas ({kpis.historicas})
+                </button>
+              </div>
             <button onClick={() => setVista('tarjetas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tarjetas'?'#1a56db':'transparent', color:vista==='tarjetas'?'#fff':'var(--gray-500)' }}>⊞ Tarjetas</button>
               <button onClick={() => setVista('mapa')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='mapa'?'#1a56db':'transparent', color:vista==='mapa'?'#fff':'var(--gray-500)' }}>🗺 Mapa</button>
           </div>
