@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -22,6 +22,115 @@ const PORTALES = [
 
 const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitácora', 'Propietario', 'Publicación']
 
+
+// ── SECCIÓN EDITAR ──
+function SeccionEditar({ pub, id, onGuardado }) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
+  const [form, setForm] = React.useState({
+    direccion:    pub.direccion    || '',
+    numero:       pub.numero       || '',
+    comuna:       pub.comuna       || '',
+    region:       pub.region       || '',
+    objetivo:     pub.objetivo     || '',
+    tipo:         pub.tipo         || '',
+    valor:        pub.valor        || '',
+    tipo_moneda:  pub.tipo_moneda  || 'UF',
+    dormitorios:  pub.dormitorios  || '',
+    banos:        pub.banos        || '',
+    mt2_const:    pub.mt2_const    || '',
+    mt2_terreno:  pub.mt2_terreno  || '',
+    estacionamientos: pub.estacionamientos || '',
+    bodegas:      pub.bodegas      || '',
+    ggcc:         pub.ggcc         || '',
+    amoblado:     pub.amoblado     || 'No',
+    observaciones: pub.observaciones || '',
+    latitud:      pub.latitud      || '',
+    longitud:     pub.longitud     || '',
+  })
+  const [guardando, setGuardando] = React.useState(false)
+  const [msg, setMsg] = React.useState(null)
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function guardar() {
+    setGuardando(true)
+    setMsg(null)
+    const { data, error } = await createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ).from('publicaciones').update(form).eq('id', id).select().single()
+    setGuardando(false)
+    if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
+    else { onGuardado(data); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
+  }
+
+  const inp = (label, key, type='text', opts=null) => (
+    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+      <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>{label}</label>
+      {opts ? (
+        <select value={form[key]} onChange={e => set(key, e.target.value)}
+          style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
+          {opts.map(o => <option key={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input type={type} value={form[key]} onChange={e => set(key, e.target.value)}
+          style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
+      )}
+    </div>
+  )
+
+  const sec = (titulo, color='#1a56db') => (
+    <div style={{ gridColumn:'1/-1', borderBottom:'2px solid '+color, paddingBottom:4, marginTop:8 }}>
+      <span style={{ fontSize:12, fontWeight:700, color, textTransform:'uppercase', letterSpacing:.8 }}>{titulo}</span>
+    </div>
+  )
+
+  return (
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:28 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px,1fr))', gap:14 }}>
+        {sec('Ubicación')}
+        {inp('Dirección', 'direccion')}
+        {inp('Número', 'numero')}
+        {inp('Comuna', 'comuna')}
+        {inp('Región', 'region')}
+        {inp('Latitud', 'latitud')}
+        {inp('Longitud', 'longitud')}
+
+        {sec('Propiedad', '#16a34a')}
+        {inp('Operación', 'objetivo', 'text', ['Arriendo','Venta','Arriendo y Venta'])}
+        {inp('Tipo', 'tipo', 'text', ['Departamento','Casa','Oficina','Local Comercial','Bodega','Estacionamiento','Terreno','Otro'])}
+        {inp('Valor', 'valor', 'number')}
+        {inp('Moneda', 'tipo_moneda', 'text', ['UF','CLP','USD'])}
+        {inp('Dormitorios', 'dormitorios', 'number')}
+        {inp('Baños', 'banos', 'number')}
+        {inp('M² construidos', 'mt2_const', 'number')}
+        {inp('M² terreno', 'mt2_terreno', 'number')}
+        {inp('Estacionamientos', 'estacionamientos', 'number')}
+        {inp('Bodegas', 'bodegas', 'number')}
+        {inp('GGCC ($)', 'ggcc', 'number')}
+        {inp('Amoblado', 'amoblado', 'text', ['No','Sí','Parcial'])}
+
+        {sec('Observaciones', '#7c3aed')}
+        <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Descripción</label>
+          <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)} rows={5}
+            style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit', resize:'vertical' }} />
+        </div>
+      </div>
+
+      <div style={{ marginTop:20, display:'flex', alignItems:'center', gap:12 }}>
+        <button onClick={guardar} disabled={guardando}
+          style={{ padding:'9px 24px', borderRadius:8, border:'none', background:'#1a56db', color:'#fff', fontWeight:600, fontSize:13, cursor:guardando?'not-allowed':'pointer', fontFamily:'inherit' }}>
+          {guardando ? '⏳ Guardando...' : '💾 Guardar cambios'}
+        </button>
+        {msg && <span style={{ fontSize:13, color: msg.ok ? '#16a34a' : '#dc2626', fontWeight:500 }}>{msg.text}</span>}
+      </div>
+    </div>
+  )
+}
 export default function FichaPage() {
   const { id } = useParams()
   const router = useRouter()
