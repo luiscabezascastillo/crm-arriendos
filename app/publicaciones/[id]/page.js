@@ -13,7 +13,7 @@ const supabase = createClient(
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 
 const PORTALES = [
-  { key: 'pi',        label: 'Portal Inmobiliario', code: 'PI', bg: '#E6F1FB', color: '#1a56db', apiKey: null,   nota: 'Requiere API MercadoLibre (Fase 3)' },
+  { key: 'pi',        label: 'Portal Inmobiliario', code: 'PI', bg: '#E6F1FB', color: '#1a56db', apiKey: 'pi',   nota: null },
   { key: 'yapo',      label: 'Yapo',                code: 'Ya', bg: '#FAEEDA', color: '#854F0B', apiKey: 'yapo', nota: null },
   { key: 'goplaceit', label: 'GoPlaceIt',            code: 'Go', bg: '#EAF3DE', color: '#3B6D11', apiKey: null,   nota: 'Pendiente de implementar' },
   { key: 'web',       label: 'Web',                  code: 'We', bg: '#E6F1FB', color: '#0891b2', apiKey: 'web',  nota: null },
