@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import  TopNav  from '../../components/ui/TopNav'
@@ -25,10 +25,6 @@ const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitáco
 
 // ── SECCIÓN EDITAR ──
 function SeccionEditar({ pub, id, onGuardado }) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  )
   const [form, setForm] = React.useState({
     direccion:    pub.direccion    || '',
     numero:       pub.numero       || '',
@@ -58,10 +54,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
   async function guardar() {
     setGuardando(true)
     setMsg(null)
-    const { data, error } = await createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ).from('publicaciones').update(form).eq('id', id).select().single()
+    const { data, error } = await supabase.from('publicaciones').update(form).eq('id', id).select().single()
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
     else { onGuardado(data); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
@@ -137,12 +130,11 @@ export default function FichaPage() {
   const [pub, setPub] = useState(null)
   const [loading, setLoading] = useState(true)
   const [valorUF, setValorUF] = useState(null)
-  const [seccion, setSeccion] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return new URLSearchParams(window.location.search).get('seccion') || 'Resumen'
-    }
-    return 'Resumen'
-  })
+  const [seccion, setSeccion] = useState('Resumen')
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('seccion')
+    if (p) setSeccion(p)
+  }, [])
   const [imagenes, setImagenes] = useState([])
   const [imgSeleccionada, setImgSeleccionada] = useState(null)
   const [guardando, setGuardando] = useState(false)
