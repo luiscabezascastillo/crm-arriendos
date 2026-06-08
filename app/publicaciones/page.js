@@ -605,7 +605,7 @@ export default function PublicacionesPage() {
                             />                          </>
                         ) : (
                           <>
-                            <BtnAccion label="Editar"    color="#1a56db" bg="#eff6ff" onClick={() => router.push(/publicaciones/?seccion=Editar)} />
+                            <BtnAccion label="Editar"    color="#1a56db" bg="#eff6ff" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Editar`)} />
                             <BtnAccion label="Ficha"     color="#16a34a" bg="#f0fdf4" onClick={() => router.push(`/publicaciones/${p.id}`)} />
                             <BtnAccion
                               label={copiando===p.id ? '⏳ Copiando...' : '📋 Copiar'}
