@@ -186,6 +186,8 @@ export default function FichaPage() {
   const [msgSubida, setMsgSubida] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [publicando, setPublicando] = useState({})
+  const [descripcionando, setDescripcionando] = useState(false)
+  const [msgDescripcion, setMsgDescripcion] = useState(null)
   const [msgPublicacion, setMsgPublicacion] = useState(null)
   const dragIdx = useRef(null)
   const dragOverIdx = useRef(null)
@@ -291,6 +293,30 @@ async function subirImagen(file) {
     await supabase.from('publicaciones').update(payload).eq('id', id)
     setMsgGuardado({ ok: true, text: '✓ Imagen eliminada' })
     setTimeout(() => setMsgGuardado(null), 3000)
+  }
+
+  // ── Actualizar descripción en PI ──
+  async function actualizarDescripcionPI() {
+    if (!pub.codigo_pi) return alert('No hay código PI — publica primero en Portal Inmobiliario')
+    setDescripcionando(true)
+    setMsgDescripcion(null)
+    try {
+      const res = await fetch('/api/publicar-pi/descripcion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicacionId: id, codigoPI: pub.codigo_pi }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setMsgDescripcion({ ok: true, text: '✓ Descripción actualizada en Portal Inmobiliario' })
+      } else {
+        setMsgDescripcion({ ok: false, text: '✗ Error: ' + (data.error || 'Sin respuesta') })
+      }
+    } catch(e) {
+      setMsgDescripcion({ ok: false, text: '✗ Error de conexión: ' + e.message })
+    }
+    setDescripcionando(false)
+    setTimeout(() => setMsgDescripcion(null), 5000)
   }
 
   // ── Publicar en portal ──
@@ -522,6 +548,13 @@ async function subirImagen(file) {
                 </div>
               )}
 
+              {/* Mensaje descripción PI */}
+              {msgDescripcion && (
+                <div style={{ marginBottom:16, padding:'10px 16px', borderRadius:8, background:msgDescripcion.ok?'#f0fdf4':'#fef2f2', color:msgDescripcion.ok?'#16a34a':'#dc2626', border:`1px solid ${msgDescripcion.ok?'#86efac':'#fca5a5'}`, fontSize:12, fontWeight:500 }}>
+                  {msgDescripcion.text}
+                </div>
+              )}
+
               {/* Grid de portales */}
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:14 }}>
@@ -539,13 +572,24 @@ async function subirImagen(file) {
                           {activo ? '✓ Publicado' : '— No publicado'}
                         </div>
                         {disponible ? (
-                          <button onClick={() => publicarEnPortal(portal.apiKey)} disabled={cargando} style={{
-                            width:'100%', padding:'6px 0', borderRadius:7, border:'none',
-                            background:cargando?'#9ca3af':portal.color, color:'#fff',
-                            fontSize:11, fontWeight:600, cursor:cargando?'not-allowed':'pointer', fontFamily:'inherit',
-                          }}>
-                            {cargando ? '⏳ Publicando...' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
-                          </button>
+                          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                            <button onClick={() => publicarEnPortal(portal.apiKey)} disabled={cargando} style={{
+                              width:'100%', padding:'6px 0', borderRadius:7, border:'none',
+                              background:cargando?'#9ca3af':portal.color, color:'#fff',
+                              fontSize:11, fontWeight:600, cursor:cargando?'not-allowed':'pointer', fontFamily:'inherit',
+                            }}>
+                              {cargando ? '⏳ Publicando...' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
+                            </button>
+                            {portal.key === 'pi' && activo && (
+                              <button onClick={actualizarDescripcionPI} disabled={descripcionando} style={{
+                                width:'100%', padding:'6px 0', borderRadius:7, border:`1px solid ${portal.color}`,
+                                background:'transparent', color:portal.color,
+                                fontSize:11, fontWeight:600, cursor:descripcionando?'not-allowed':'pointer', fontFamily:'inherit',
+                              }}>
+                                {descripcionando ? '⏳ Actualizando...' : '📝 Actualizar descripción'}
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <div style={{ fontSize:10, color:'var(--gray-400)', fontStyle:'italic' }}>{portal.nota}</div>
                         )}
