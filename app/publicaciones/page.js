@@ -613,7 +613,7 @@ export default function PublicacionesPage() {
                               onClick={() => copiar(p)}
                               disabled={copiando===p.id}
                             />
-                            <BtnAccion label="Compartir" color="#dc2626" bg="#fef2f2" onClick={() => {}} />
+                            <BtnAccion label="Compartir" color="#dc2626" bg="#fef2f2" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Editar`)}  />
                           </>                        )}
                       </td>
                     </tr>
