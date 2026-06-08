@@ -334,63 +334,28 @@ export default function PublicacionesPage() {
     )
   }
 
-  // ── REPUBLICAR ──
-  async function republicar(pub) {
-    if (!window.confirm(`¿Republicar la propiedad ${pub.codigo}?\n\nSe creará una nueva con el siguiente código y la original quedará como histórica.`)) return
-
-    setRepublicando(pub.id)
-    try {
-      // 1 — Obtener todos los datos de la propiedad original
-      const { data: original } = await supabase.from('publicaciones').select('*').eq('id', pub.id).single()
-      if (!original) throw new Error('No se encontró la propiedad original')
-
-      // 2 — Obtener el código más alto actual
-      const { data: maxData } = await supabase
-        .from('publicaciones')
-        .select('codigo_num')
-        .order('codigo_num', { ascending: false })
-        .limit(1)
-        .single()
-      const nuevoCodigo = String((maxData?.codigo_num || 16866) + 1)
-
-      // 3 — Marcar original como histórica (todos portales NO, activo = CLOSE)
-      const updateOriginal = { pi:'NO', yapo:'NO', goplaceit:'NO', web:'NO', proppit:'NO' }
-      if (original.activo === 'active') updateOriginal.activo = 'CLOSE'
-      else if (original.activo === 'closed') updateOriginal.activo = 'CLOSE'
-      else if (original.activo === 'deleted' || original.activo === 'noexist') updateOriginal.activo = 'noexist'
-
-      await supabase.from('publicaciones').update(updateOriginal).eq('id', pub.id)
-
-      // 4 — Crear nueva propiedad con datos de la original
-      const nueva = { ...original }
-      delete nueva.id
-      nueva.codigo     = nuevoCodigo
-      nueva.fecha       = new Date().toISOString().split('T')[0]
-      nueva.pi         = 'SI'
-      nueva.web        = 'SI'
-      nueva.yapo       = 'SI'
-      nueva.goplaceit  = original.goplaceit || 'NO'
-      nueva.proppit    = 'NO'
-      nueva.activo     = 'CREAR'
-      nueva.estado_2   = ''
-      nueva.updated_at = new Date().toISOString()
-      nueva.sync_hash  = null
-      nueva.sync_id    = null
-
-      const { data: creada, error: errCreate } = await supabase.from('publicaciones').insert([nueva]).select().single()
-      if (errCreate) throw new Error(errCreate.message)
-
-      // 5 — Recargar datos y navegar a la ficha nueva
-      await loadKpis()
-      await loadData()
-      alert(`✓ Propiedad republicada con el código ${nuevoCodigo}`)
-      router.push(`/publicaciones/${creada.id}`)
-
-    } catch (e) {
-      alert('Error al republicar: ' + e.message)
+    // ── REPUBLICAR ──
+    async function republicar(pub) {
+      if (!window.confirm(`¿Republicar la propiedad ${pub.codigo}?\n\nSe creará una nueva con el siguiente código y la original quedará como histórica.`)) return
+      setRepublicando(pub.id)
+      try {
+        const res = await fetch('/api/publicaciones/republicar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceId: pub.id }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Error al republicar')
+        if (data.warning) alert('⚠️ ' + data.warning)
+        await loadKpis()
+        await loadData()
+        alert(`✓ Propiedad republicada con el código ${data.codigo}`)
+        router.push(`/publicaciones/${data.id}`)
+      } catch (e) {
+        alert('Error al republicar: ' + e.message)
+      }
+      setRepublicando(null)
     }
-    setRepublicando(null)
-  }
 
 // ── COPIAR PUBLICACIÓN (sin cerrar original, sin imágenes) ──
   async function copiar(pub) {
@@ -783,3 +748,4 @@ export default function PublicacionesPage() {
     </div>
   )
 }
+
