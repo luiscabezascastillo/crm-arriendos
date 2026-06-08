@@ -43,11 +43,11 @@ async function getValidToken() {
 }
 
 export async function POST(request) {
-  const { publicacionId } = await request.json()
+  const { sourceId, publicacionId } = await request.json()
 
   // Obtener publicacion original
   const { data: original, error: errOrig } = await supabase
-    .from('publicaciones').select('*').eq('id', publicacionId).single()
+    .from('publicaciones').select('*').eq('id', sourceId || publicacionId).single()
   if (errOrig || !original) return NextResponse.json({ error: 'Publicacion no encontrada' }, { status: 404 })
 
   const portalesActivos = {
@@ -71,7 +71,7 @@ export async function POST(request) {
   // 2. Marcar original como cerrada
   await supabase.from('publicaciones').update({
     pi: 'NO', yapo: 'NO', web: 'NO', activo: 'CLOSE',
-  }).eq('id', publicacionId)
+  }).eq('id', sourceId || publicacionId)
 
   // 3. Obtener max id y codigo
   const { data: maxData } = await supabase
