@@ -181,6 +181,7 @@ export default function TopNav() {
         <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
 
         <div style={s.spacer}/>
+        <Link href="/procesos/mis-tareas" style={s.infoLink(isActive('/procesos/mis-tareas'))}>📋 Mis tareas</Link>
         <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
 
         {session?.user && (
