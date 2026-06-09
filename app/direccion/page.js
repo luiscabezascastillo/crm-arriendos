@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -128,7 +128,7 @@ export default function DireccionPage() {
         </div>
 
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Comercial</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
           <AreaCard color="green"  icon={<IcoUsers />} title="BB2 Arriendos" href="/bb2" actionLabel="+ Nuevo arriendo"
             rows={[
               { label: 'Operaciones',    value: '24' },
@@ -172,6 +172,31 @@ export default function DireccionPage() {
               </div>
             </div>
           </Link>
+        </div>
+
+        {/* TAREAS */}
+        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Gestión de tareas</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+          {[
+            { email: 'karina.morales@fondocapital.com', nombre: 'Karina Morales', area: 'Controller', color: '#7c3aed', icon: '📊' },
+            { email: 'adalis@fondocapital.com',         nombre: 'Adalis',         area: 'Administración', color: '#0891b2', icon: '📋' },
+            { email: 'fabiola.guerra@fondocapital.com', nombre: 'Fabiola Guerra', area: 'Administración', color: '#0891b2', icon: '📋' },
+            { email: 'anthony@fondocapital.com',        nombre: 'Anthony',        area: 'Legal',          color: '#dc2626', icon: '⚖️' },
+          ].map(p => (
+            <Link key={p.email} href={`/direccion/tareas?responsable=${encodeURIComponent(p.email)}`} style={{ textDecoration: 'none' }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}>
+                <div style={{ background: p.color, padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>{p.icon}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>{p.nombre}</span>
+                  <GridDots />
+                </div>
+                <div style={{ padding: '12px 16px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--gray-400)', marginBottom: 8 }}>{p.area}</div>
+                  <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 6, background: p.color, color: '#fff', fontSize: 12, fontWeight: 500 }}>Ver tareas →</div>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
     </div>
