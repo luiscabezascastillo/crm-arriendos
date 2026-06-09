@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import React from 'react'
 
 import { useState, useEffect } from 'react'
@@ -254,6 +254,7 @@ export default function PublicacionesPage() {
           query = query.neq('activo','CREAR').eq('pi','NO').eq('yapo','NO').eq('goplaceit','NO').eq('web','NO').eq('proppit','NO')
         }
     if (filtroObjetivo) query = query.ilike('objetivo', `%${filtroObjetivo}%`)
+    if (search) query = query.or(`direccion.ilike.%${search}%,comuna.ilike.%${search}%,propietario.ilike.%${search}%,codigo.ilike.%${search}%`)
 
     const { data, count, error } = await query
     if (!error) { setPubs(data||[]); setTotal(count||0) }
@@ -335,6 +336,36 @@ export default function PublicacionesPage() {
     }
     setCopiando(null)
   }
+  const [dandoDeBaja, setDandoDeBaja] = useState(null)
+
+  async function darDeBaja(pub) {
+    if (!window.confirm(`¿Dar de baja la propiedad ${pub.codigo}?\n\nSe cerrará en todos los portales activos y pasará a Históricas.`)) return
+    setDandoDeBaja(pub.id)
+    try {
+      // Cerrar en PI via ML si está activa
+      if (pub.pi === 'SI' && pub.codigo_pi && pub.activo === 'active') {
+        try {
+          const res = await fetch('/api/publicar-pi/cerrar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ codigoPI: pub.codigo_pi }),
+          })
+        } catch(e) { console.log('Error cerrando PI:', e.message) }
+      }
+      // Marcar como CLOSE en Supabase
+      const { error } = await supabase.from('publicaciones').update({
+        pi: 'NO', yapo: 'NO', web: 'NO', goplaceit: 'NO', proppit: 'NO', activo: 'CLOSE'
+      }).eq('id', pub.id)
+      if (error) throw new Error(error.message)
+      await loadKpis()
+      await loadData()
+      alert(`✓ Propiedad ${pub.codigo} dada de baja correctamente`)
+    } catch(e) {
+      alert('Error al dar de baja: ' + e.message)
+    }
+    setDandoDeBaja(null)
+  }
+
   function Paginador() {
   return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginTop:20 }}>
@@ -589,22 +620,25 @@ export default function PublicacionesPage() {
                       </td>
                       <td style={{ padding:'8px 10px', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top' }}>
                         {esHistorica ? (
-                          <>
-                          <BtnAccion label="Ficha" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}`)} />
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:3 }}>
+                            <BtnAccion label="Ficha" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}`)} />
                             <BtnAccion
                               label={copiando===p.id ? '⏳ Copiando...' : '📋 Copiar'}
                               color="#7c3aed" bg="#f5f3ff"
                               onClick={() => copiar(p)}
                               disabled={copiando===p.id}
                             />
-                            <BtnAccion
-                              label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
-                              color="#16a34a" bg="#f0fdf4"
-                              onClick={() => republicar(p)}
-                              disabled={republicando===p.id}
-                            />                          </>
+                            <div style={{ gridColumn:'1/-1' }}>
+                              <BtnAccion
+                                label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
+                                color="#16a34a" bg="#f0fdf4"
+                                onClick={() => republicar(p)}
+                                disabled={republicando===p.id}
+                              />
+                            </div>
+                          </div>
                         ) : (
-                          <>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:3 }}>
                             <BtnAccion label="Editar"    color="#1a56db" bg="#eff6ff" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Editar`)} />
                             <BtnAccion label="Ficha"     color="#16a34a" bg="#f0fdf4" onClick={() => router.push(`/publicaciones/${p.id}`)} />
                             <BtnAccion
@@ -613,8 +647,17 @@ export default function PublicacionesPage() {
                               onClick={() => copiar(p)}
                               disabled={copiando===p.id}
                             />
-                            <BtnAccion label="Compartir" color="#dc2626" bg="#fef2f2" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Editar`)}  />
-                          </>                        )}
+                            <BtnAccion label="Compartir" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Publicación`)} />
+                            <div style={{ gridColumn:'1/-1' }}>
+                              <BtnAccion
+                                label={dandoDeBaja===p.id ? '⏳ Dando de baja...' : '🔴 Dar de baja'}
+                                color="#dc2626" bg="#fef2f2"
+                                onClick={() => darDeBaja(p)}
+                                disabled={dandoDeBaja===p.id}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
