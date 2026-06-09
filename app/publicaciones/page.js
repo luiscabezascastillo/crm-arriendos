@@ -77,6 +77,7 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
 
   const activo = (value.selected && value.selected.length > 0) || value.sort || value.min !== '' || value.max !== ''
   const filteredOpts = options.filter(o => String(o || '').toLowerCase().includes(search.toLowerCase()))
+  const searchNotInOpts = search.trim() !== '' && !options.some(o => String(o||'').toLowerCase() === search.trim().toLowerCase())
 
   function toggleAll() { setSelected(selected.length === options.length ? [] : [...options]) }
   function toggle(opt) { setSelected(s => s.includes(opt) ? s.filter(x => x !== opt) : [...s, opt]) }
@@ -134,6 +135,12 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
           <div style={{ padding: '8px 12px', borderBottom: '0.5px solid #F3F4F6' }}>
             <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box' }} />
+            {searchNotInOpts && (
+              <button onClick={() => { const v = search.trim(); setSelected(s => s.includes(v) ? s : [...s, v]); setSearch('') }} style={{
+                marginTop: 4, width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #BFDBFE',
+                background: '#EFF6FF', color: '#1D4ED8', fontSize: 11, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit'
+              }}>+ Usar &quot;{search.trim()}&quot;</button>
+            )}
           </div>
           <div style={{ maxHeight: 180, overflowY: 'auto', padding: '4px' }}>
             <div onClick={toggleAll} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
@@ -393,6 +400,11 @@ export default function PublicacionesPage() {
 
 
   const unicos = (campo) => [...new Set(pubs.map(p => p[campo]).filter(Boolean))].sort()
+  const OPTS_TIPO = ['Departamento','Casa','Oficina','Local Comercial','Bodega','Estacionamiento','Terreno','Otro']
+  const OPTS_ESTADO = ['active','closed','CLOSE','CREAR','noexist']
+  const OPTS_CAPTADOR = ['Alberto','Adalis','Fabiola','Lorena','Pedro','Neika','Tirza','Karina']
+  const OPTS_VENDEDOR = ['Alberto','Adalis','Fabiola','Lorena','Pedro','Neika','Tirza','Karina']
+  const OPTS_COMUNA = [...new Set([...pubs.map(p=>p.comuna)].filter(Boolean))].sort()
 
   function applyExcelFilters(lista) {
     let r = [...lista]
@@ -552,22 +564,22 @@ export default function PublicacionesPage() {
                       <ExcelFilter label="Código" type="text" options={unicos('codigo')} value={fCodigo} onApply={setFCodigo} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Tipo" type="text" options={unicos('tipo')} value={fTipo} onApply={setFTipo} />
+                      <ExcelFilter label="Tipo" type="text" options={OPTS_TIPO} value={fTipo} onApply={setFTipo} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)', whiteSpace:'nowrap', fontSize:10, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Operación</th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Estado" type="text" options={unicos('estado')} value={fEstado} onApply={setFEstado} />
+                      <ExcelFilter label="Estado" type="text" options={OPTS_ESTADO} value={fEstado} onApply={setFEstado} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Captador" type="text" options={unicos('captador')} value={fCaptador} onApply={setFCaptador} />
+                      <ExcelFilter label="Captador" type="text" options={OPTS_CAPTADOR} value={fCaptador} onApply={setFCaptador} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Vendedor" type="text" options={unicos('vendedor')} value={fVendedor} onApply={setFVendedor} />
+                      <ExcelFilter label="Vendedor" type="text" options={OPTS_VENDEDOR} value={fVendedor} onApply={setFVendedor} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)', whiteSpace:'nowrap', fontSize:10, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Dirección</th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}><ExcelFilter label="Precio" type="number" options={[]} value={fPrecio} onApply={setFPrecio} /></th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Comuna" type="text" options={unicos('comuna')} value={fComuna} onApply={setFComuna} />
+                      <ExcelFilter label="Comuna" type="text" options={OPTS_COMUNA} value={fComuna} onApply={setFComuna} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)', whiteSpace:'nowrap', fontSize:10, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em' }}>{modo==='historicas'?'Acción':'Acciones'}</th>
                 </tr>
