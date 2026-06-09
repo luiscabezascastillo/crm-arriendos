@@ -188,6 +188,11 @@ export default function FichaPage() {
   const [publicando, setPublicando] = useState({})
   const [descripcionando, setDescripcionando] = useState(false)
   const [msgDescripcion, setMsgDescripcion] = useState(null)
+  const [busqProp, setBusqProp] = useState('')
+  const [contactosEncontrados, setContactosEncontrados] = useState([])
+  const [buscandoProp, setBuscandoProp] = useState(false)
+  const [mostrarFormContacto, setMostrarFormContacto] = useState(false)
+  const [nuevoContacto, setNuevoContacto] = useState({ nombre:'', telefono:'', email:'' })
   const [msgPublicacion, setMsgPublicacion] = useState(null)
   const dragIdx = useRef(null)
   const dragOverIdx = useRef(null)
@@ -293,6 +298,45 @@ async function subirImagen(file) {
     await supabase.from('publicaciones').update(payload).eq('id', id)
     setMsgGuardado({ ok: true, text: '✓ Imagen eliminada' })
     setTimeout(() => setMsgGuardado(null), 3000)
+  }
+
+  // ── Buscar propietario en contactos ──
+  async function buscarPropietario(q) {
+    setBusqProp(q)
+    if (q.length < 2) { setContactosEncontrados([]); return }
+    setBuscandoProp(true)
+    const { data } = await supabase.from('contactos')
+      .select('id, nombre, telefono, email')
+      .ilike('nombre', `%${q}%`)
+      .limit(8)
+    setContactosEncontrados(data || [])
+    setBuscandoProp(false)
+  }
+
+  async function seleccionarPropietario(contacto) {
+    const { error } = await supabase.from('publicaciones').update({
+      propietario: contacto.nombre,
+      telefono: contacto.telefono || '',
+      email: contacto.email || '',
+    }).eq('id', id)
+    if (!error) {
+      setPub(prev => ({ ...prev, propietario: contacto.nombre, telefono: contacto.telefono || '', email: contacto.email || '' }))
+      setBusqProp('')
+      setContactosEncontrados([])
+      alert(`✓ Propietario actualizado a ${contacto.nombre}`)
+    }
+  }
+
+  async function crearYAsignarContacto() {
+    if (!nuevoContacto.nombre.trim()) return alert('El nombre es obligatorio')
+    const { data, error } = await supabase.from('contactos')
+      .insert([nuevoContacto])
+      .select().single()
+    if (error) return alert('Error al crear contacto: ' + error.message)
+    await seleccionarPropietario(data)
+    setMostrarFormContacto(false)
+    setNuevoContacto({ nombre:'', telefono:'', email:'' })
+    alert('✓ Contacto creado y asignado')
   }
 
   // ── Actualizar descripción en PI ──
@@ -530,11 +574,64 @@ async function subirImagen(file) {
           {seccion === 'Propietario' && (
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Datos del propietario</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Dirección',pub.direccion||'—'],['Captador',pub.vendedor||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Captador',pub.vendedor||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
                   <div key={l}><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{v}</div></div>
                 ))}
               </div>
+
+              {/* Buscador de propietario */}
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:16, marginBottom:12 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>Cambiar propietario</div>
+                <div style={{ position:'relative' }}>
+                  <input
+                    type="text" value={busqProp} onChange={e => buscarPropietario(e.target.value)}
+                    placeholder="Buscar por nombre..."
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, boxSizing:'border-box', fontFamily:'inherit' }}
+                  />
+                  {buscandoProp && <div style={{ position:'absolute', right:10, top:9, fontSize:11, color:'var(--gray-400)' }}>Buscando...</div>}
+                  {contactosEncontrados.length > 0 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1px solid var(--border)', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.1)', zIndex:100, maxHeight:200, overflowY:'auto' }}>
+                      {contactosEncontrados.map(c => (
+                        <div key={c.id} onClick={() => seleccionarPropietario(c)}
+                          style={{ padding:'8px 12px', cursor:'pointer', fontSize:12, borderBottom:'1px solid var(--border-subtle)' }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f3f4f6'}
+                          onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                        >
+                          <div style={{ fontWeight:500 }}>{c.nombre}</div>
+                          <div style={{ fontSize:11, color:'var(--gray-400)' }}>{c.email} {c.telefono ? `· ${c.telefono}` : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Crear contacto nuevo */}
+              <button onClick={() => setMostrarFormContacto(v => !v)} style={{
+                padding:'6px 14px', borderRadius:7, border:'1px solid #16a34a', background:'#f0fdf4',
+                color:'#16a34a', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginBottom: mostrarFormContacto ? 12 : 0
+              }}>
+                {mostrarFormContacto ? '✕ Cancelar' : '+ Crear contacto nuevo'}
+              </button>
+
+              {mostrarFormContacto && (
+                <div style={{ border:'1px solid var(--border)', borderRadius:8, padding:16, background:'var(--gray-50)' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                    {[['Nombre *','nombre'],['Teléfono','telefono'],['Email','email']].map(([label, key]) => (
+                      <div key={key} style={{ gridColumn: key==='nombre' ? '1/-1' : 'auto' }}>
+                        <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', display:'block', marginBottom:4 }}>{label}</label>
+                        <input type="text" value={nuevoContacto[key]} onChange={e => setNuevoContacto(p => ({...p, [key]: e.target.value}))}
+                          style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid var(--border)', fontSize:12, boxSizing:'border-box', fontFamily:'inherit' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={crearYAsignarContacto} style={{
+                    padding:'7px 18px', borderRadius:7, border:'none', background:'#16a34a', color:'#fff',
+                    fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit'
+                  }}>💾 Crear y asignar</button>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React from 'react'
 
 import { useState, useEffect } from 'react'
@@ -194,8 +194,8 @@ export default function PublicacionesPage() {
 
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { fetch('https://mindicador.cl/api/uf').then(r=>r.json()).then(d=>setValorUF(d.serie?.[0]?.valor||null)).catch(()=>{}) }, [])
-  useEffect(() => { setPage(1) }, [search, filtroPortal, filtroObjetivo, modo])
-  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo])
+  useEffect(() => { setPage(1) }, [search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio])
+  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio])
 
   async function loadMapa() {
     let query = supabase
@@ -255,6 +255,14 @@ export default function PublicacionesPage() {
         }
     if (filtroObjetivo) query = query.ilike('objetivo', `%${filtroObjetivo}%`)
     if (search) query = query.or(`direccion.ilike.%${search}%,comuna.ilike.%${search}%,propietario.ilike.%${search}%,codigo.ilike.%${search}%`)
+    if (fCodigo.selected.length) query = query.in('codigo', fCodigo.selected)
+    if (fTipo.selected.length) query = query.in('tipo', fTipo.selected)
+    if (fEstado.selected.length) query = query.in('estado', fEstado.selected)
+    if (fCaptador.selected.length) query = query.in('captador', fCaptador.selected)
+    if (fVendedor.selected.length) query = query.in('vendedor', fVendedor.selected)
+    if (fComuna.selected.length) query = query.in('comuna', fComuna.selected)
+    if (fCodigo.sort) query = query.order('codigo', { ascending: fCodigo.sort === 'asc' })
+    if (fComuna.sort) query = query.order('comuna', { ascending: fComuna.sort === 'asc' })
 
     const { data, count, error } = await query
     if (!error) { setPubs(data||[]); setTotal(count||0) }
