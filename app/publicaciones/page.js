@@ -136,7 +136,7 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
             <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box' }} />
             {searchNotInOpts && (
-              <button onClick={() => { const v = search.trim(); setSelected(s => s.includes(v) ? s : [...s, v]); setSearch('') }} style={{
+              <button onClick={() => { const v = search.trim(); const newSel = selected.includes(v) ? selected : [...selected, v]; setSelected(newSel); setSearch(''); onApply({ selected: newSel, sort: sortDir, min: minVal, max: maxVal }); setOpen(false) }} style={{
                 marginTop: 4, width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #BFDBFE',
                 background: '#EFF6FF', color: '#1D4ED8', fontSize: 11, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit'
               }}>+ Usar &quot;{search.trim()}&quot;</button>
