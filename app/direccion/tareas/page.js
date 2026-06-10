@@ -16,7 +16,7 @@ const RESPONSABLES = [
   { email: 'karina.morales@fondocapital.com', nombre: 'Karina Morales',  area: 'Controller' },
   { email: 'adalis@fondocapital.com',          nombre: 'Adalis',          area: 'Administración' },
   { email: 'fabiola.guerra@fondocapital.com',  nombre: 'Fabiola Guerra',  area: 'Administración' },
-  { email: 'anthony@fondocapital.com',         nombre: 'Anthony',         area: 'Legal' },
+  { email: 'anthony.mendoza@fondocapital.com',         nombre: 'Anthony Mendoza',         area: 'Legal' },
 ]
 
 const PRIORIDAD_COLOR = { ALTA: '#dc2626', MEDIA: '#d97706', BAJA: '#16a34a' }

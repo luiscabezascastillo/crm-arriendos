@@ -37,9 +37,13 @@ export default function MiPortalPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Permiso de acceso + redirección de externos a su portal
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.replace('/panel')
+    if (!session) { router.replace('/panel'); return }
+    supabase.from('colaboradores_externos')
+      .select('id').eq('email', session.user.email).eq('activo', true).maybeSingle()
+      .then(({ data }) => { if (data) router.replace('/portal-externo') })
   }, [session, status, router])
 
   useEffect(() => {
@@ -111,13 +115,19 @@ export default function MiPortalPage() {
             <div style={{ fontSize: 13, color: 'var(--gray-400)', marginTop: 4 }}>{nombre}</div>
           </div>
           {esDireccion && (
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', marginRight: 8 }}>Ver portal de:</label>
-              <select value={emailActivo || ''} onChange={e => setEmailActivo(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)' }}>
-                <option value={session.user.email}>Yo ({session.user.email})</option>
-                {trabajadores.map(t => <option key={t.id} value={t.email}>{t.nombre_real}</option>)}
-              </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', marginRight: 8 }}>Ver portal de:</label>
+                <select value={emailActivo || ''} onChange={e => setEmailActivo(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)' }}>
+                  <option value={session.user.email}>Yo ({session.user.email})</option>
+                  {trabajadores.map(t => <option key={t.id} value={t.email}>{t.nombre_real}</option>)}
+                </select>
+              </div>
+              <button onClick={() => router.push('/portal-externo')}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #7c2d12', background: '#fff7ed', color: '#7c2d12', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                Ver colaboradores externos →
+              </button>
             </div>
           )}
         </div>
@@ -204,13 +214,12 @@ export default function MiPortalPage() {
               </div>
             </div>
 
-            {/* ZONA DE INFORMACIÓN PERSONAL — fondo diferenciado */}
+            {/* ZONA DE INFORMACIÓN PERSONAL */}
             <div style={{ background: 'var(--gray-50)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 22px' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>
                 Información personal
               </div>
 
-              {/* Indicadores */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
                 <div style={{ ...card, padding: '16px 18px' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vacaciones tomadas (2026)</div>
@@ -230,7 +239,6 @@ export default function MiPortalPage() {
                 )}
               </div>
 
-              {/* Ausencias */}
               <div style={card}>
                 <div style={cardHead}><span>🏖️ Mis ausencias</span><span style={{ color: 'var(--gray-400)' }}>{ausencias.length}</span></div>
                 {ausencias.length === 0 ? (
