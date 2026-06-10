@@ -1,11 +1,11 @@
-'use client'
+﻿'use client'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import Link from 'next/link'
 import TopNav from '../components/ui/TopNav'
 
-const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com','karina.morales@fondocapital.com']
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com']
 
 const palette = {
   blue:   { header: '#1a56db' },

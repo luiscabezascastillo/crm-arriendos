@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com','karina.morales@fondocapital.com']
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com']
 
 const RESPONSABLES = [
   { email: 'karina.morales@fondocapital.com', nombre: 'Karina Morales',  area: 'Controller' },

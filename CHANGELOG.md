@@ -136,3 +136,28 @@ Historial de cambios por sesión de desarrollo.
 - Portal arrendatarios con link mágico por RUT
 - `idinmue`/`idadmon` en publicaciones — reconstruir vínculo (28/64)
 - `ggcc_agua_luz` — automatizar carga mensual
+## [2026-06-09] — Sesión 09/06
+
+### Módulo Tareas — nuevo
+- Tabla `tareas` creada en Supabase
+- `/direccion/tareas` — Dirección crea, edita, elimina y filtra tareas por responsable y estado
+- `/procesos/mis-tareas` — vista personal: cada trabajador ve solo sus tareas, puede iniciarlas y completarlas con link Drive
+- Botón "📋 Mis tareas" añadido al TopNav (visible para todos)
+- 5 tareas iniciales de Karina Morales cargadas vía SQL
+- Sección "Gestión de tareas" añadida al Panel Dirección con cards por persona
+
+### Módulo Publicaciones — fixes
+- Filtro Excel Código: botón "Usar valor" aplica búsqueda server-side en toda la BD
+- Filtros Tipo, Estado, Captador, Vendedor: opciones hardcodeadas (no dependen de la página actual)
+- Verificado funcionamiento en Activas e Históricas
+
+### Ficha publicación
+- Sección Propietario recuperada: buscador en tabla `contactos` + formulario crear contacto nuevo
+- APIs nuevas: `/api/publicar-pi/descripcion` y `/api/publicar-pi/cerrar`
+
+### Pendientes inmediatos
+- Probar y verificar filtros Tipo, Estado, Captador, Vendedor, Comuna en publicaciones
+- Navegación de vuelta tras aplicar filtro Excel
+- Botón toggle Yapo desde ficha
+- Yapo: actualizar URL importación programada
+- FTP fondocapital.com: eliminar archivos test
