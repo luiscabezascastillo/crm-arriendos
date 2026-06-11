@@ -33,7 +33,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
     objetivo:     pub.objetivo     || '',
     tipo:         pub.tipo         || '',
     valor:        pub.valor != null ? String(pub.valor) : '',
-    tipo_moneda:  pub.tipo_moneda  || 'UF',
+    tipo_moneda:  pub.tipo_moneda  || '',
     dormitorios:  pub.dormitorios != null ? String(pub.dormitorios) : '',
     banos:        pub.banos != null ? String(pub.banos) : '',
     mt2_const:    pub.mt2_const != null ? String(pub.mt2_const) : '',
@@ -109,7 +109,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Operación', 'objetivo', 'text', ['Arriendo','Venta','Arriendo y Venta'])}
         {inp('Tipo', 'tipo', 'text', ['Departamento','Casa','Oficina','Local Comercial','Bodega','Estacionamiento','Terreno','Otro'])}
         {inp('Valor', 'valor', 'number')}
-        {inp('Moneda', 'tipo_moneda', 'text', ['UF','CLP','USD'])}
+        {inp('Moneda', 'tipo_moneda', 'text', ['UF','Pesos','USD','UF/S'])}
         {inp('Dormitorios', 'dormitorios', 'number')}
         {inp('Baños', 'banos', 'number')}
         {inp('M² construidos', 'mt2_const', 'number')}
@@ -118,7 +118,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Bodegas', 'bodegas', 'number')}
         {inp('GGCC ($)', 'ggcc', 'number')}
         {inp('Amoblado', 'amoblado', 'text', ['No','Sí','Parcial'])}
-        {inp('Orientación', 'orientacion', 'text', ['Norte','Sur','Oriente','Poniente','Nororiente','Norponiente','Suroriente','Surponiente'])}
+        {inp('Orientación', 'orientacion', 'text', ['','Norte','Sur','Oriente','Poniente','Nororiente','Norponiente','Suroriente','Surponiente'])}
 
         {sec('Atributos Portal Inmobiliario', '#0891b2')}
         {inp('Piso', 'unit_floor')}
