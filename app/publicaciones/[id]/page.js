@@ -544,6 +544,27 @@ async function subirImagen(file) {
                   <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{pub.observaciones}</p>
                 </div>
               )}
+              {(pub.url_pi || pub.url_web || pub.url_yapo || pub.url_goplaceit || pub.url_proppit) && (
+                <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Enlaces a los avisos</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[
+                      { label:'Portal Inmobiliario', url:pub.url_pi,        color:'#1a56db' },
+                      { label:'Web',                 url:pub.url_web,       color:'#0891b2' },
+                      { label:'Yapo',                url:pub.url_yapo,      color:'#854F0B' },
+                      { label:'GoPlaceIt',           url:pub.url_goplaceit, color:'#3B6D11' },
+                      { label:'Proppit',             url:pub.url_proppit,   color:'#7C3AED' },
+                    ].filter(e => e.url).map(e => (
+                      <div key={e.label} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:e.color, minWidth:130 }}>{e.label}</span>
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:'var(--gray-600)', textDecoration:'none', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.url}</a>
+                        <button onClick={() => { navigator.clipboard.writeText(e.url); alert('Enlace copiado'); }} style={{ fontSize:11, fontWeight:600, color:e.color, background:'transparent', border:`1px solid ${e.color}`, borderRadius:6, padding:'3px 10px', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>Copiar</button>
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, fontWeight:600, color:'#fff', background:e.color, borderRadius:6, padding:'4px 10px', textDecoration:'none', whiteSpace:'nowrap' }}>Abrir</a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {imagenes.length > 0 && (
                 <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
