@@ -239,6 +239,20 @@ export default function PublicacionesPage() {
     setKpis({ total:total||0, arriendos:arriendos||0, ventas:ventas||0, pi:pi||0, yapo:yapo||0, historicas:historicas||0 })
   }
 
+  function cambiarModo(m) {
+    setModo(m)
+    setSearch('')
+    setFiltroPortal('')
+    setFiltroObjetivo('')
+    setFCodigo(emptyF)
+    setFTipo(emptyF)
+    setFEstado(emptyF)
+    setFCaptador(emptyF)
+    setFVendedor(emptyF)
+    setFComuna(emptyF)
+    setFPrecio(emptyF)
+    setPage(1)
+  }
   async function loadData() {
     setLoading(true)
     let query = supabase
@@ -463,9 +477,9 @@ export default function PublicacionesPage() {
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           {/* Toggle Activas / Borradores / Históricas */}
           <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
-            <button onClick={() => setModo('activas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='activas'?'#1a56db':'transparent', color:modo==='activas'?'#fff':'var(--gray-500)' }}>● Activas</button>
-            <button onClick={() => setModo('borradores')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='borradores'?'#d97706':'transparent', color:modo==='borradores'?'#fff':'var(--gray-500)' }}>✏️ En preparación</button>
-            <button onClick={() => setModo('historicas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='historicas'?'#6b7280':'transparent', color:modo==='historicas'?'#fff':'var(--gray-500)' }}>📁 Históricas ({kpis.historicas})</button>
+            <button onClick={() => cambiarModo('activas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='activas'?'#1a56db':'transparent', color:modo==='activas'?'#fff':'var(--gray-500)' }}>● Activas</button>
+            <button onClick={() => cambiarModo('borradores')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='borradores'?'#d97706':'transparent', color:modo==='borradores'?'#fff':'var(--gray-500)' }}>✏️ En preparación</button>
+            <button onClick={() => cambiarModo('historicas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:modo==='historicas'?'#6b7280':'transparent', color:modo==='historicas'?'#fff':'var(--gray-500)' }}>📁 Históricas ({kpis.historicas})</button>
           </div>
           {/* Toggle tabla/tarjetas/mapa */}
           <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
@@ -549,7 +563,7 @@ export default function PublicacionesPage() {
           <MapaPublicaciones key={filtroPortal + '|' + filtroObjetivo + '|' + modo} pubs={pubsMapa} />
         ) : vista === 'tabla' ? (
 
-          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'visible' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
               <colgroup>
                 <col style={{ width:126 }} /><col style={{ width:65 }} /><col style={{ width:100 }} />
