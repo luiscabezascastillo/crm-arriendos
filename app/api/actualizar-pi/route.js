@@ -132,8 +132,7 @@ export async function POST(request) {
       }
 
       // --- HUECO FASE 2: title, attributes (estacionamiento, bodega, amoblado) ---
-      // if (pub.titulo) body.title = pub.titulo
-      // if (atributos) body.attributes = atributos
+      if (pub.titulo && pub.titulo.trim()) body.title = pub.titulo.trim()      // if (atributos) body.attributes = atributos
 
       // Fotos: array 1..30 en orden (igual que publicar-pi, break al primer hueco)
       const imagenesPI = []

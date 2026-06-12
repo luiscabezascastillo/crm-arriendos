@@ -138,7 +138,7 @@ function buildPayload(p) {
   const ejec = EJECUTIVOS[p.vendedor] || EJECUTIVOS['Alberto']
   const comuna = getComuna(p.comuna)
   const esUF = (p.tipo_moneda || '').toUpperCase() === 'UF'
-  const titulo = `${p.objetivo || ''}, ${p.tipo || ''}, ${p.comuna || ''}. ${p.dormitorios || '0'}D/${p.banos || '0'}B`
+ const titulo = (p.titulo && p.titulo.trim()) ? p.titulo.trim() : `${p.objetivo || ''}, ${p.tipo || ''}, ${p.comuna || ''}. ${p.dormitorios || '0'}D/${p.banos|| '0'}B`
 
   let descripcion = p.observaciones || ''
   descripcion += `<br>- ${p.codigo} - <br><br>metros aproximados proporcionados por el dueno`

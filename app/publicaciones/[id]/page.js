@@ -27,6 +27,7 @@ const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitáco
 // ── SECCIÓN EDITAR ──
 function SeccionEditar({ pub, id, onGuardado }) {
   const [form, setForm] = React.useState({
+    titulo:       pub.titulo       || '',
     direccion:    pub.direccion    || '',
     numero:       pub.numero       || '',
     comuna:       pub.comuna       || '',
@@ -126,6 +127,15 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Longitud', 'longitud')}
 
         {sec('Propiedad', '#16a34a')}
+        <div style={{ display:'flex', flexDirection:'column', gap:4, gridColumn:'1/-1' }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>
+            Título <span style={{ color: (form.titulo||'').length > 60 ? '#dc2626' : 'var(--gray-400)', fontWeight:400 }}>({(form.titulo||'').length}/60)</span>
+          </label>
+          <input type="text" value={form.titulo || ''} maxLength={80} onChange={e => set('titulo', e.target.value)}
+            placeholder="Si lo dejas vacio se genera automatico"
+            style={{ padding:'8px 10px', borderRadius:7, border:(form.titulo||'').length > 60 ? '1px solid #dc2626' : '1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
+          <span style={{ fontSize:11, color:'var(--gray-400)' }}>Max. 60 caracteres en Portal Inmobiliario. Vacio = titulo automatico.</span>
+        </div>
         {inp('Operación', 'objetivo', 'text', ['Arriendo','Venta','Arriendo y Venta'])}
         {inp('Tipo', 'tipo', 'text', ['Departamento','Casa','Oficina','Local Comercial','Bodega','Estacionamiento','Terreno','Otro'])}
         {inp('Valor', 'valor', 'number')}
@@ -555,6 +565,27 @@ async function subirImagen(file) {
                 <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                   <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Descripción</div>
                   <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{pub.observaciones}</p>
+                </div>
+              )}
+              {(pub.url_pi || pub.url_web || pub.url_yapo || pub.url_goplaceit || pub.url_proppit) && (
+                <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Enlaces a los avisos</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[
+                      { label:'Portal Inmobiliario', url:pub.url_pi,        color:'#1a56db' },
+                      { label:'Web',                 url:pub.url_web,       color:'#0891b2' },
+                      { label:'Yapo',                url:pub.url_yapo,      color:'#854F0B' },
+                      { label:'GoPlaceIt',           url:pub.url_goplaceit, color:'#3B6D11' },
+                      { label:'Proppit',             url:pub.url_proppit,   color:'#7C3AED' },
+                    ].filter(e => e.url).map(e => (
+                      <div key={e.label} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:e.color, minWidth:130 }}>{e.label}</span>
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:'var(--gray-600)', textDecoration:'none', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.url}</a>
+                        <button onClick={() => { navigator.clipboard.writeText(e.url); alert('Enlace copiado'); }} style={{ fontSize:11, fontWeight:600, color:e.color, background:'transparent', border:'1px solid '+e.color, borderRadius:6, padding:'3px 10px', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>Copiar</button>
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, fontWeight:600, color:'#fff', background:e.color, borderRadius:6, padding:'4px 10px', textDecoration:'none', whiteSpace:'nowrap' }}>Abrir</a>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {imagenes.length > 0 && (
