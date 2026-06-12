@@ -29,6 +29,9 @@ function SeccionEditar({ pub, id, onGuardado }) {
   const [form, setForm] = React.useState({
     titulo:       pub.titulo       || '',
     direccion:    pub.direccion    || '',
+    calle:        pub.calle        || '',
+    numero_calle: pub.numero_calle || '',
+    departamento: pub.departamento || '',
     numero:       pub.numero       || '',
     comuna:       pub.comuna       || '',
     region:       pub.region       || '',
@@ -76,7 +79,8 @@ function SeccionEditar({ pub, id, onGuardado }) {
   async function guardar() {
     setGuardando(true)
     setMsg(null)
-    const { data, error } = await supabase.from('publicaciones').update(form).eq('id', id).select().single()
+    const direccionPublica = [form.calle, form.numero_calle].filter(Boolean).join(' ').trim()
+    const { data, error } = await supabase.from('publicaciones').update({ ...form, direccion: direccionPublica || form.direccion }).eq('id', id).select().single()
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
     else { onGuardado(data); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
@@ -107,8 +111,9 @@ function SeccionEditar({ pub, id, onGuardado }) {
     <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:28 }}>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px,1fr))', gap:14 }}>
         {sec('Ubicación')}
-        {inp('Dirección', 'direccion')}
-        {inp('Número', 'numero')}
+        {inp('Calle', 'calle')}
+        {inp('Número', 'numero_calle')}
+        {inp('Departamento', 'departamento')}
 <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
           <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Comuna</label>
           <select value={form.comuna || ''} onChange={e => { const c = e.target.value; set('comuna', c); if (regionDeComuna(c)) set('region', regionDeComuna(c)) }}
