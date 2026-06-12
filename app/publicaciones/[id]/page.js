@@ -13,10 +13,10 @@ const supabase = createClient(
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 
 const PORTALES = [
+  { key: 'web',       label: 'Web',                  code: 'We', bg: '#E6F1FB', color: '#0891b2', apiKey: 'web',  nota: null },
   { key: 'pi',        label: 'Portal Inmobiliario', code: 'PI', bg: '#E6F1FB', color: '#1a56db', apiKey: 'pi',   nota: null },
   { key: 'yapo',      label: 'Yapo',                code: 'Ya', bg: '#FAEEDA', color: '#854F0B', apiKey: 'yapo', nota: null },
   { key: 'goplaceit', label: 'GoPlaceIt',            code: 'Go', bg: '#EAF3DE', color: '#3B6D11', apiKey: null,   nota: 'Pendiente de implementar' },
-  { key: 'web',       label: 'Web',                  code: 'We', bg: '#E6F1FB', color: '#0891b2', apiKey: 'web',  nota: null },
   { key: 'proppit',   label: 'Proppit',              code: 'Pr', bg: '#F3E8FF', color: '#7C3AED', apiKey: null,   nota: 'Pendiente de implementar' },
 ]
 
@@ -727,32 +727,14 @@ async function subirImagen(file) {
                         </div>
                         {disponible ? (
                           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                            <button onClick={() => publicarEnPortal(portal.apiKey)} disabled={cargando} style={{
+                            <button onClick={() => (portal.key === 'pi' && activo) ? actualizarPI() : publicarEnPortal(portal.apiKey)} disabled={cargando || (portal.key === 'pi' && actualizandoPI)} style={{
                               width:'100%', padding:'6px 0', borderRadius:7, border:'none',
                               background:cargando?'#9ca3af':portal.color, color:'#fff',
                               fontSize:11, fontWeight:600, cursor:cargando?'not-allowed':'pointer', fontFamily:'inherit',
                             }}>
-                              {cargando ? '⏳ Publicando...' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
+                              {cargando ? '⏳ Publicando...' : actualizandoPI && portal.key === 'pi' ? '⏳ Actualizando...' : portal.key === 'web' ? '📤 Publicar' : (portal.key === 'pi' && activo) ? '🔄 Actualizar PI' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
                             </button>
-                            {portal.key === 'pi' && activo && (
-                              <>
-                              <button onClick={actualizarPI} disabled={actualizandoPI} style={{
-                                width:'100%', padding:'6px 0', borderRadius:7, border:'none',
-                                background:actualizandoPI?'#9ca3af':portal.color, color:'#fff',
-                                fontSize:11, fontWeight:600, cursor:actualizandoPI?'not-allowed':'pointer', fontFamily:'inherit', marginBottom:6,
-                              }}>
-                                {actualizandoPI ? 'Actualizando PI...' : 'Actualizar PI'}
-                              </button>
-                              <button onClick={actualizarDescripcionPI} disabled={descripcionando} style={{
-                                width:'100%', padding:'6px 0', borderRadius:7, border:`1px solid ${portal.color}`,
-                                background:'transparent', color:portal.color,
-                                fontSize:11, fontWeight:600, cursor:descripcionando?'not-allowed':'pointer', fontFamily:'inherit',
-                              }}>
-                                {descripcionando ? '⏳ Actualizando...' : '📝 Actualizar descripción'}
-                              </button>
-                              </>
-                            )}
-                          </div>
+                           </div>
                         ) : (
                           <div style={{ fontSize:10, color:'var(--gray-400)', fontStyle:'italic' }}>{portal.nota}</div>
                         )}
