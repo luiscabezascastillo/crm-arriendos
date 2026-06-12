@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -71,7 +71,7 @@ export async function POST(request) {
     // 1. Leer la publicacion
     const { data: pub, error: errPub } = await supabase
       .from('publicaciones')
-      .select('id, codigo, codigo_pi, activo, tipo_moneda, valor, video, observaciones')
+      .select('id, codigo, codigo_pi, activo, tipo_moneda, valor, video, observaciones, imagen1, imagen2, imagen3, imagen4, imagen5, imagen6, imagen7, imagen8, imagen9, imagen10, imagen11, imagen12, imagen13, imagen14, imagen15, imagen16, imagen17, imagen18, imagen19, imagen20, imagen21, imagen22, imagen23, imagen24, imagen25, imagen26, imagen27, imagen28, imagen29, imagen30')
       .eq('id', publicacionId)
       .single()
     if (errPub || !pub) return NextResponse.json({ error: 'Publicación no encontrada' }, { status: 404 })
@@ -134,6 +134,15 @@ export async function POST(request) {
       // --- HUECO FASE 2: title, attributes (estacionamiento, bodega, amoblado) ---
       // if (pub.titulo) body.title = pub.titulo
       // if (atributos) body.attributes = atributos
+
+      // Fotos: array 1..30 en orden (igual que publicar-pi, break al primer hueco)
+      const imagenesPI = []
+      for (let i = 1; i <= 30; i++) {
+        const img = pub[`imagen${i}`]
+        if (!img) break
+        imagenesPI.push({ source: `https://www.fondocapital.com/propiedades/${img}` })
+      }
+      if (imagenesPI.length > 0) body.pictures = imagenesPI
 
       if (Object.keys(body).length > 0) {
         const resPut = await fetch(`${ML_API}/items/${pub.codigo_pi}`, {

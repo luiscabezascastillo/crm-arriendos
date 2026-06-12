@@ -57,7 +57,25 @@ export async function POST(request) {
   }
 
   // 1. Cerrar en PI via API ML
-  if (original.codigo_pi && original.activo === 'active') {
+if (original.codigo_pi && (original.activo === 'active' || original.pi === 'SI')) {
+       try {
+         const token = await getValidToken()
+         await fetch(`${ML_API}/items/${original.codigo_pi}`, {
+           method: 'PUT',
+           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+           body: JSON.stringify({ status: 'paused' })
+         })
+         const resClose = await fetch(`${ML_API}/items/${original.codigo_pi}`, {
+           method: 'PUT',
+           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+           body: JSON.stringify({ status: 'closed' })
+         })
+         if (resClose.status !== 200) {
+           const errJson = await resClose.json()
+           console.log('Error cerrando PI:', resClose.status, JSON.stringify(errJson))
+         }
+       } catch(e) { console.log('Error cerrando PI:', e.message) }
+     }
     try {
       const token = await getValidToken()
       await fetch(`${ML_API}/items/${original.codigo_pi}`, {
