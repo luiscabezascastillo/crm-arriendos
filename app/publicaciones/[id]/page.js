@@ -58,9 +58,16 @@ function SeccionEditar({ pub, id, onGuardado }) {
     has_half_bath: pub.has_half_bath || false,
     has_security: pub.has_security || false,
     hide_address: pub.hide_address || false,
+    vendedor:     pub.vendedor     || '',
+    captador:     pub.captador     || '',
   })
   const [guardando, setGuardando] = React.useState(false)
   const [msg, setMsg] = React.useState(null)
+  const [usuarios, setUsuarios] = React.useState([])
+  React.useEffect(() => {
+    supabase.from('crm_users').select('nombre').order('nombre')
+      .then(({ data }) => { if (data) setUsuarios(data.map(u => u.nombre).filter(Boolean)) })
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -120,6 +127,9 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Amoblado', 'amoblado', 'text', ['No','Sí','Parcial'])}
         {inp('Orientación', 'orientacion', 'text', ['','Norte','Sur','Oriente','Poniente','Nororiente','Norponiente','Suroriente','Surponiente'])}
 
+        {sec('Gestion interna', '#7c2d12')}
+        {inp('Vendedor', 'vendedor', 'text', ['', ...usuarios])}
+        {inp('Captador', 'captador', 'text', ['', ...usuarios])}
         {sec('Atributos Portal Inmobiliario', '#0891b2')}
         {inp('Piso', 'unit_floor')}
         {inp('Antigüedad (años)', 'property_age')}
