@@ -188,6 +188,8 @@ export default function FichaPage() {
   const [publicando, setPublicando] = useState({})
   const [descripcionando, setDescripcionando] = useState(false)
   const [msgDescripcion, setMsgDescripcion] = useState(null)
+  const [actualizandoPI, setActualizandoPI] = useState(false)
+  const [msgActualizarPI, setMsgActualizarPI] = useState(null)
   const [busqProp, setBusqProp] = useState('')
   const [contactosEncontrados, setContactosEncontrados] = useState([])
   const [buscandoProp, setBuscandoProp] = useState(false)
@@ -364,6 +366,46 @@ async function subirImagen(file) {
   }
 
   // ── Publicar en portal ──
+  // -- Actualizar PI (precio, video, descripcion) --
+  async function actualizarPI() {
+    if (!pub.codigo_pi) return alert('No hay codigo PI -- publica primero en Portal Inmobiliario')
+    setActualizandoPI(true)
+    setMsgActualizarPI(null)
+    try {
+      const res = await fetch('/api/actualizar-pi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicacionId: id }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setMsgActualizarPI({ ok: true, text: data.mensaje || 'Actualizado en Portal Inmobiliario' })
+      } else if (data.necesitaRepublicar) {
+        setActualizandoPI(false)
+        if (window.confirm(data.mensaje + ' Republicar ahora con un codigo nuevo?')) {
+          const resRep = await fetch('/api/publicaciones/republicar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: id }),
+          })
+          const dataRep = await resRep.json()
+          if (dataRep.ok && dataRep.id) {
+            window.location.href = '/publicaciones/' + dataRep.id
+          } else {
+            setMsgActualizarPI({ ok: false, text: dataRep.error || 'Error al republicar' })
+          }
+        }
+        return
+      } else {
+        setMsgActualizarPI({ ok: false, text: (data.error || 'Error al actualizar') })
+      }
+    } catch (e) {
+      setMsgActualizarPI({ ok: false, text: 'Error de conexion: ' + e.message })
+    }
+    setActualizandoPI(false)
+    setTimeout(() => setMsgActualizarPI(null), 8000)
+  }
+
   async function publicarEnPortal(apiKey) {
     setPublicando(prev => ({ ...prev, [apiKey]: true }))
     setMsgPublicacion(null)
@@ -651,6 +693,11 @@ async function subirImagen(file) {
                   {msgDescripcion.text}
                 </div>
               )}
+              {msgActualizarPI && (
+                <div style={{ marginBottom:16, padding:'10px 16px', borderRadius:8, background:msgActualizarPI.ok?'#f0fdf4':'#fef2f2', color:msgActualizarPI.ok?'#16a34a':'#dc2626', border:`1px solid ${msgActualizarPI.ok?'#86efac':'#fca5a5'}`, fontSize:12, fontWeight:500 }}>
+                  {msgActualizarPI.text}
+                </div>
+              )}
 
               {/* Grid de portales */}
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
@@ -678,6 +725,14 @@ async function subirImagen(file) {
                               {cargando ? '⏳ Publicando...' : activo ? '🔄 Actualizar feed' : '📤 Publicar'}
                             </button>
                             {portal.key === 'pi' && activo && (
+                              <>
+                              <button onClick={actualizarPI} disabled={actualizandoPI} style={{
+                                width:'100%', padding:'6px 0', borderRadius:7, border:'none',
+                                background:actualizandoPI?'#9ca3af':portal.color, color:'#fff',
+                                fontSize:11, fontWeight:600, cursor:actualizandoPI?'not-allowed':'pointer', fontFamily:'inherit', marginBottom:6,
+                              }}>
+                                {actualizandoPI ? 'Actualizando PI...' : 'Actualizar PI'}
+                              </button>
                               <button onClick={actualizarDescripcionPI} disabled={descripcionando} style={{
                                 width:'100%', padding:'6px 0', borderRadius:7, border:`1px solid ${portal.color}`,
                                 background:'transparent', color:portal.color,
@@ -685,6 +740,7 @@ async function subirImagen(file) {
                               }}>
                                 {descripcionando ? '⏳ Actualizando...' : '📝 Actualizar descripción'}
                               </button>
+                              </>
                             )}
                           </div>
                         ) : (
