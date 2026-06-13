@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import TopNav from '../components/ui/TopNav'
 
@@ -152,6 +152,20 @@ function FichaEdificio({ edificio, onVolver }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const [subiendoFotos, setSubiendoFotos] = useState(false)
   const [msgFotos, setMsgFotos] = useState(null)
+  const dragIdx = useRef(null)
+  const dragOverIdx = useRef(null)
+  function reordenarFotos() {
+    const from = dragIdx.current, to = dragOverIdx.current
+    dragIdx.current = null; dragOverIdx.current = null
+    if (from === null || to === null || from === to) return
+    const fotos = []
+    for (let j = 1; j <= 15; j++) if (form['foto_comun_' + j]) fotos.push(form['foto_comun_' + j])
+    const [moved] = fotos.splice(from, 1)
+    fotos.splice(to, 0, moved)
+    const nuevo = {}
+    for (let j = 1; j <= 15; j++) nuevo['foto_comun_' + j] = fotos[j - 1] || null
+    setForm(f => ({ ...f, ...nuevo }))
+  }
 
   // Devuelve los indices 1..15 que estan vacios
   function huecosLibres() {
@@ -318,8 +332,11 @@ function FichaEdificio({ edificio, onVolver }) {
                   const val = form['foto_comun_' + i]
                   if (!val) return null
                   return (
-                    <div key={i} style={{ position: 'relative' }}>
-                      <img src={IMG_BASE + val} alt={`Foto ${i}`}
+<div key={i} draggable
+                      onDragStart={() => { dragIdx.current = i - 1 }}
+                      onDragOver={e => { e.preventDefault(); dragOverIdx.current = i - 1 }}
+                      onDrop={e => { e.preventDefault(); reordenarFotos() }}
+                      style={{ position: 'relative', cursor: 'grab' }}>                      <img src={IMG_BASE + val} alt={`Foto ${i}`}
                         style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border, #e5e7eb)' }}
                         onError={ev => { ev.target.style.opacity = 0.3 }} />
                       <button onClick={() => eliminarFoto(i)} title="Eliminar foto"
