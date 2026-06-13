@@ -150,6 +150,61 @@ function FichaEdificio({ edificio, onVolver }) {
   const [msg, setMsg] = useState(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const [subiendoFotos, setSubiendoFotos] = useState(false)
+  const [msgFotos, setMsgFotos] = useState(null)
+
+  // Devuelve los indices 1..15 que estan vacios
+  function huecosLibres() {
+    const libres = []
+    for (let i = 1; i <= 15; i++) if (!form['foto_comun_' + i]) libres.push(i)
+    return libres
+  }
+
+  async function subirFotos(fileList) {
+    const files = Array.from(fileList || []).filter(f => f.type.includes('jpeg') || f.type.includes('jpg'))
+    if (!files.length) { setMsgFotos({ ok: false, text: 'Solo se admiten archivos JPG.' }); return }
+    const libres = huecosLibres()
+    if (!libres.length) { setMsgFotos({ ok: false, text: 'Ya hay 15 fotos. Elimina alguna para añadir más.' }); return }
+
+    setSubiendoFotos(true)
+    setMsgFotos(null)
+    const cambios = {}
+    let idx = 0
+    for (const file of files) {
+      if (idx >= libres.length) break // no hay mas huecos
+      const slot = libres[idx]
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('publicacionId', 'EDI' + edificio.id)
+      fd.append('slot', slot + '-' + Date.now())
+      try {
+        const res = await fetch('/api/upload-imagen', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (data.ok && data.nombreArchivo) {
+          cambios['foto_comun_' + slot] = data.nombreArchivo
+          setForm(f => ({ ...f, ['foto_comun_' + slot]: data.nombreArchivo }))
+          idx++
+        }
+      } catch (e) { /* sigue con la siguiente */ }
+    }
+    setSubiendoFotos(false)
+    if (Object.keys(cambios).length) {
+      setMsgFotos({ ok: true, text: `✓ ${Object.keys(cambios).length} foto(s) subida(s). Recuerda Guardar.` })
+    } else {
+      setMsgFotos({ ok: false, text: 'No se pudo subir ninguna foto.' })
+    }
+    setTimeout(() => setMsgFotos(null), 4000)
+  }
+
+  function eliminarFoto(i) {
+    // quita la foto i y reordena las siguientes hacia arriba para no dejar huecos
+    const fotos = []
+    for (let j = 1; j <= 15; j++) if (j !== i && form['foto_comun_' + j]) fotos.push(form['foto_comun_' + j])
+    const nuevo = {}
+    for (let j = 1; j <= 15; j++) nuevo['foto_comun_' + j] = fotos[j - 1] || null
+    setForm(f => ({ ...f, ...nuevo }))
+  }
+
 
   async function guardar() {
     setGuardando(true)
@@ -244,26 +299,38 @@ function FichaEdificio({ edificio, onVolver }) {
                 style={{ ...field, resize: 'vertical', lineHeight: 1.5 }} />
             </div>
 
-            {sec('Fotos de espacios comunes', '#dc2626')}
+         {sec('Fotos de espacios comunes', '#dc2626')}
             <div style={{ gridColumn: '1/-1' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#fff', background: '#dc2626', borderRadius: 7, padding: '8px 14px', cursor: subiendoFotos ? 'default' : 'pointer', opacity: subiendoFotos ? 0.6 : 1 }}>
+                  {subiendoFotos ? 'Subiendo…' : '+ Subir fotos'}
+                  <input type="file" accept="image/jpeg" multiple disabled={subiendoFotos}
+                    onChange={e => { subirFotos(e.target.files); e.target.value = '' }}
+                    style={{ display: 'none' }} />
+                </label>
+                <span style={{ fontSize: 11, color: 'var(--gray-400, #9ca3af)' }}>JPG · hasta 15 fotos · se guardan al pulsar Guardar</span>
+              </div>
+              {msgFotos && (
+                <div style={{ marginBottom: 10, fontSize: 12, color: msgFotos.ok ? '#166534' : '#991b1b' }}>{msgFotos.text}</div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px,1fr))', gap: 10 }}>
                 {Array.from({ length: 15 }, (_, i) => i + 1).map(i => {
                   const val = form['foto_comun_' + i]
+                  if (!val) return null
                   return (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {val ? (
-                        <img src={IMG_BASE + val} alt={`Foto ${i}`}
-                          style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border, #e5e7eb)' }}
-                          onError={ev => { ev.target.style.opacity = 0.3 }} />
-                      ) : (
-                        <div style={{ width: '100%', height: 90, borderRadius: 6, border: '1px dashed var(--border, #d1d5db)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray-300, #d1d5db)', fontSize: 11 }}>Vacío</div>
-                      )}
-                      <input type="text" value={val || ''} onChange={e => set('foto_comun_' + i, e.target.value)}
-                        placeholder={`foto ${i}`} style={{ ...field, fontSize: 11, padding: '5px 8px' }} />
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img src={IMG_BASE + val} alt={`Foto ${i}`}
+                        style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border, #e5e7eb)' }}
+                        onError={ev => { ev.target.style.opacity = 0.3 }} />
+                      <button onClick={() => eliminarFoto(i)} title="Eliminar foto"
+                        style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(220,38,38,0.9)', color: '#fff', fontSize: 13, lineHeight: '22px', cursor: 'pointer', padding: 0 }}>×</button>
                     </div>
                   )
                 })}
               </div>
+              {huecosLibres().length === 15 && (
+                <div style={{ fontSize: 12, color: 'var(--gray-400, #9ca3af)', padding: '12px 0' }}>Sin fotos de espacios comunes. Usa "+ Subir fotos" para añadir.</div>
+              )}
             </div>
 
             {sec('Notas', '#6b7280')}
