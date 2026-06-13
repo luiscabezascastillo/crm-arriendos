@@ -71,7 +71,7 @@ export async function POST(request) {
     // 1. Leer la publicacion
     const { data: pub, error: errPub } = await supabase
       .from('publicaciones')
-      .select('id, codigo, codigo_pi, activo, tipo_moneda, valor, video, observaciones, imagen1, imagen2, imagen3, imagen4, imagen5, imagen6, imagen7, imagen8, imagen9, imagen10, imagen11, imagen12, imagen13, imagen14, imagen15, imagen16, imagen17, imagen18, imagen19, imagen20, imagen21, imagen22, imagen23, imagen24, imagen25, imagen26, imagen27, imagen28, imagen29, imagen30')
+      .select('*')
       .eq('id', publicacionId)
       .single()
     if (errPub || !pub) return NextResponse.json({ error: 'Publicación no encontrada' }, { status: 404 })
@@ -132,7 +132,33 @@ export async function POST(request) {
       }
 
       // --- HUECO FASE 2: title, attributes (estacionamiento, bodega, amoblado) ---
-      if (pub.titulo && pub.titulo.trim()) body.title = pub.titulo.trim()      // if (atributos) body.attributes = atributos
+      if (pub.titulo && pub.titulo.trim()) body.title = pub.titulo.trim()
+      // FASE 2: amenities del edificio -> atributos HAS_* del PI
+      const amen = []
+      const addAmen = (cond, id) => { if (cond) amen.push({ id, values: [{ id: '242085', name: 'Si' }] }) }
+      addAmen(pub.tiene_ascensor, 'HAS_LIFT')
+      addAmen(pub.tiene_piscina, 'HAS_SWIMMING_POOL')
+      addAmen(pub.tiene_gimnasio, 'HAS_GYM')
+      addAmen(pub.tiene_salon_fiestas, 'HAS_PARTY_ROOM')
+      addAmen(pub.tiene_sala_multiuso, 'HAS_MULTIPURPOSE_ROOM')
+      addAmen(pub.tiene_quincho_parrilla, 'HAS_GRILL')
+      addAmen(pub.tiene_juegos_infantiles, 'HAS_PLAYGROUND')
+      addAmen(pub.tiene_sauna, 'HAS_SAUNA')
+      addAmen(pub.tiene_jacuzzi, 'HAS_JACUZZI')
+      addAmen(pub.tiene_cowork, 'HAS_BUSINESS_CENTER')
+      addAmen(pub.tiene_cine, 'HAS_CINEMA_HALL')
+      addAmen(pub.tiene_playroom, 'HAS_PLAYROOM')
+      addAmen(pub.tiene_recepcion, 'HAS_FRONT_DESK')
+      addAmen(pub.tiene_lavanderia, 'HAS_COMMON_LAUNDRY')
+      addAmen(pub.tiene_estacionamiento_visitas, 'HAS_GUEST_PARKING')
+      addAmen(pub.tiene_cancha_paddle, 'HAS_PADDLE_COURT')
+      addAmen(pub.tiene_cancha_tenis, 'HAS_TENNIS_COURT')
+      addAmen(pub.tiene_cancha_multiuso, 'HAS_MULTIPLE_USE_COURT')
+      addAmen(pub.tiene_area_verde, 'WITH_GREEN_AREA')
+      addAmen(pub.tiene_azotea, 'HAS_ROOF_GARDEN')
+      addAmen(pub.tiene_generador, 'HAS_ELECTRIC_GENERATOR')
+      addAmen(pub.tiene_rampa_silla, 'WHEELCHAIR_RAMP')
+      if (amen.length > 0) body.attributes = amen
 
       // Fotos: array 1..30 en orden (igual que publicar-pi, break al primer hueco)
       const imagenesPI = []
