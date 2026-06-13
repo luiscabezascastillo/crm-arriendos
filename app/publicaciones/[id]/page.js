@@ -269,6 +269,59 @@ export default function FichaPage() {
          .then(({ data }) => setEdificio(data && data[0] ? data[0] : null))
      }, [pub])
 
+// ── Importar datos del edificio a la propiedad ──
+  const [importando, setImportando] = useState(false)
+  const [msgImportar, setMsgImportar] = useState(null)
+  async function importarEdificio() {
+    if (!edificio || !pub) return
+    setImportando(true)
+    setMsgImportar(null)
+    const cambios = {}
+
+    // 1) Amenities: copiar los 22 tiene_* del edificio (los que esten en true)
+    const AMEN = ['tiene_ascensor','tiene_piscina','tiene_gimnasio','tiene_salon_fiestas','tiene_sala_multiuso',
+      'tiene_quincho_parrilla','tiene_juegos_infantiles','tiene_sauna','tiene_jacuzzi','tiene_cowork','tiene_cine',
+      'tiene_playroom','tiene_recepcion','tiene_lavanderia','tiene_estacionamiento_visitas','tiene_cancha_paddle',
+      'tiene_cancha_tenis','tiene_cancha_multiuso','tiene_area_verde','tiene_azotea','tiene_generador','tiene_rampa_silla']
+    for (const k of AMEN) if (edificio[k] === true) cambios[k] = true
+
+    // 2) Fotos comunes: anadir al final de imagen1..50 (sin pisar las existentes)
+    const fotosEdif = []
+    for (let i = 1; i <= 15; i++) if (edificio['foto_comun_' + i]) fotosEdif.push(edificio['foto_comun_' + i])
+    if (fotosEdif.length) {
+      const actuales = []
+      for (let i = 1; i <= 50; i++) if (pub['imagen' + i]) actuales.push(pub['imagen' + i])
+      const yaEstan = new Set(actuales)
+      const nuevas = fotosEdif.filter(f => !yaEstan.has(f))
+      let slot = actuales.length + 1
+      for (const f of nuevas) { if (slot > 50) break; cambios['imagen' + slot] = f; slot++ }
+    }
+
+    // 3) Complemento de descripcion: anadir al final si no esta ya
+    if (edificio.complemento_descripcion && edificio.complemento_descripcion.trim()) {
+      const comp = edificio.complemento_descripcion.trim()
+      const desc = (pub.descripcion || '').trim()
+      if (!desc.includes(comp)) cambios.descripcion = desc ? (desc + '<br>' + comp) : comp
+    }
+
+    if (Object.keys(cambios).length === 0) {
+      setImportando(false)
+      setMsgImportar({ ok: true, text: 'No hay datos nuevos que importar del edificio.' })
+      setTimeout(() => setMsgImportar(null), 3000)
+      return
+    }
+
+    const { data, error } = await supabase.from('publicaciones').update(cambios).eq('id', id).select().single()
+    setImportando(false)
+    if (error) { setMsgImportar({ ok: false, text: 'Error: ' + error.message }) }
+    else {
+      setPub(data)
+      const imgs = Array.from({ length: 50 }, (_, i) => data['imagen' + (i+1)]).filter(Boolean)
+      setImagenes(imgs)
+      setMsgImportar({ ok: true, text: '✓ Datos del edificio importados. Revisa y ajusta lo que quieras, luego guarda.' })
+      setTimeout(() => setMsgImportar(null), 5000)
+    }
+  }
   // ── Drag & Drop reordenamiento ──
   function onDragStart(e, idx) { dragIdx.current = idx; e.dataTransfer.effectAllowed = 'move' }
   function onDragOver(e, idx) { e.preventDefault(); dragOverIdx.current = idx }
@@ -641,7 +694,9 @@ async function subirImagen(file) {
                         {edificio.complemento_descripcion && (
                           <div style={{ fontSize:12, color:'var(--gray-600)', lineHeight:1.5, borderLeft:'3px solid #e9d5ff', paddingLeft:10 }}>{edificio.complemento_descripcion}</div>
                         )}
+ <button onClick={importarEdificio} disabled={importando} style={{ marginTop:10, marginRight:8, fontSize:11, color:'#fff', background:'#7c3aed', border:'1px solid #7c3aed', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>{importando ? 'Importando…' : 'Importar datos del edificio'}</button>
                         <button onClick={() => window.open('/edificios','_blank')} style={{ marginTop:10, fontSize:11, color:'#7c3aed', background:'transparent', border:'1px solid #7c3aed', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:'inherit' }}>Ver / editar edificio</button>
+                        {msgImportar && <div style={{ marginTop:8, fontSize:12, color: msgImportar.ok ? '#166534' : '#991b1b' }}>{msgImportar.text}</div>}
                       </>
                     )
                   })()}
