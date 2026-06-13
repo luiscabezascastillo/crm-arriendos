@@ -27,6 +27,7 @@ const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitáco
 // ── SECCIÓN EDITAR ──
 function SeccionEditar({ pub, id, onGuardado }) {
   const [form, setForm] = React.useState({
+    ...pub,
     titulo:       pub.titulo       || '',
     direccion:    pub.direccion    || '',
     calle:        pub.calle        || '',
@@ -187,7 +188,28 @@ function SeccionEditar({ pub, id, onGuardado }) {
           </div>
         ))}
 
-        {sec('Observaciones', '#7c3aed')}
+        {sec('Amenities del edificio', '#7c3aed')}
+        <div style={{ gridColumn:'1/-1' }}>
+          <p style={{ fontSize:11, color:'var(--gray-400)', margin:'0 0 10px' }}>Normalmente se importan del edificio. Puedes ajustarlos a mano.</p>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(185px,1fr))', gap:8 }}>
+            {[
+              ['tiene_ascensor','Ascensor'],['tiene_piscina','Piscina'],['tiene_gimnasio','Gimnasio'],
+              ['tiene_salon_fiestas','Salón de fiestas'],['tiene_sala_multiuso','Sala multiuso'],
+              ['tiene_quincho_parrilla','Quincho / parrilla'],['tiene_juegos_infantiles','Juegos infantiles'],
+              ['tiene_sauna','Sauna'],['tiene_jacuzzi','Jacuzzi'],['tiene_cowork','Cowork'],
+              ['tiene_cine','Sala de cine'],['tiene_playroom','Playroom'],['tiene_recepcion','Recepción'],
+              ['tiene_lavanderia','Lavandería común'],['tiene_estacionamiento_visitas','Estac. visitas'],
+              ['tiene_cancha_paddle','Cancha paddle'],['tiene_cancha_tenis','Cancha tenis'],
+              ['tiene_cancha_multiuso','Cancha multiuso'],['tiene_area_verde','Área verde'],
+              ['tiene_azotea','Azotea'],['tiene_generador','Generador'],['tiene_rampa_silla','Rampa silla ruedas'],
+            ].map(([key, label]) => (
+              <label key={key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--gray-700)', cursor:'pointer', padding:'4px 0' }}>
+                <input type="checkbox" checked={form[key] === true} onChange={e => set(key, e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>{sec('Observaciones', '#7c3aed')}
         <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
           <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Descripción</label>
           <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)} rows={5}
