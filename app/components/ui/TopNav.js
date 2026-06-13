@@ -178,6 +178,7 @@ export default function TopNav() {
 
         <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
         <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+        <Link href="/edificios" style={s.link(isActive('/edificios'))}>Edificios</Link>
         <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
 
         <div style={s.spacer}/>
