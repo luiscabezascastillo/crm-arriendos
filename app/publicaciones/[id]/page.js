@@ -300,9 +300,8 @@ export default function FichaPage() {
     // 3) Complemento de descripcion: anadir al final si no esta ya
     if (edificio.complemento_descripcion && edificio.complemento_descripcion.trim()) {
       const comp = edificio.complemento_descripcion.trim()
-      const desc = (pub.descripcion || '').trim()
-      if (!desc.includes(comp)) cambios.descripcion = desc ? (desc + '<br>' + comp) : comp
-    }
+     const desc = (pub.observaciones || '').trim()
+    if (!desc.includes(comp)) cambios.observaciones = desc ? (desc + '<br>' + comp) : comp    }
 
     if (Object.keys(cambios).length === 0) {
       setImportando(false)
