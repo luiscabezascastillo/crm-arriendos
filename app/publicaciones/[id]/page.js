@@ -211,6 +211,7 @@ export default function FichaPage() {
   const [pub, setPub] = useState(null)
   const [loading, setLoading] = useState(true)
   const [valorUF, setValorUF] = useState(null)
+  const [edificio, setEdificio] = useState(null)
   const [seccion, setSeccion] = useState('Resumen')
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get('seccion')
@@ -258,6 +259,15 @@ export default function FichaPage() {
         setLoading(false)
       })
   }, [id])
+  // ── Buscar edificio asociado por calle + numero ──
+     useEffect(() => {
+       if (!pub || !pub.calle || !pub.numero_calle) { setEdificio(null); return }
+       supabase.from('edificios').select('*')
+         .ilike('calle', pub.calle.trim())
+         .eq('numero_calle', String(pub.numero_calle).trim())
+         .limit(1)
+         .then(({ data }) => setEdificio(data && data[0] ? data[0] : null))
+     }, [pub])
 
   // ── Drag & Drop reordenamiento ──
   function onDragStart(e, idx) { dragIdx.current = idx; e.dataTransfer.effectAllowed = 'move' }
@@ -593,7 +603,50 @@ async function subirImagen(file) {
                   </div>
                 </div>
               )}
-              {imagenes.length > 0 && (
+             {edificio && (
+                <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Edificio asociado</div>
+                  <div style={{ fontSize:14, fontWeight:600, color:'var(--gray-700)', marginBottom:8 }}>
+                    {edificio.calle} {edificio.numero_calle}
+                    {edificio.codigo_edi && <span style={{ fontSize:11, fontWeight:400, color:'var(--gray-400)', marginLeft:8 }}>({edificio.codigo_edi})</span>}
+                  </div>
+                  {(() => {
+                    const amenities = [
+                      ['tiene_ascensor','Ascensor'],['tiene_piscina','Piscina'],['tiene_gimnasio','Gimnasio'],
+                      ['tiene_salon_fiestas','Salon de fiestas'],['tiene_sala_multiuso','Sala multiuso'],
+                      ['tiene_quincho_parrilla','Quincho'],['tiene_juegos_infantiles','Juegos infantiles'],
+                      ['tiene_sauna','Sauna'],['tiene_jacuzzi','Jacuzzi'],['tiene_cowork','Cowork'],
+                      ['tiene_cine','Cine'],['tiene_playroom','Playroom'],['tiene_recepcion','Recepcion'],
+                      ['tiene_lavanderia','Lavanderia'],['tiene_estacionamiento_visitas','Estac. visitas'],
+                      ['tiene_cancha_paddle','Paddle'],['tiene_cancha_tenis','Tenis'],['tiene_cancha_multiuso','Cancha multiuso'],
+                      ['tiene_area_verde','Area verde'],['tiene_azotea','Azotea'],['tiene_generador','Generador'],
+                      ['tiene_rampa_silla','Rampa'],
+                    ].filter(([k]) => edificio[k] === true)
+                    let nfotos = 0
+                    for (let i=1;i<=15;i++) if (edificio['foto_comun_'+i]) nfotos++
+                    return (
+                      <>
+                        {amenities.length > 0 && (
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
+                            {amenities.map(([k,label]) => (
+                              <span key={k} style={{ fontSize:11, background:'#f3e8ff', color:'#7c3aed', borderRadius:6, padding:'3px 8px' }}>{label}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ display:'flex', gap:16, fontSize:12, color:'var(--gray-500)', marginBottom:8 }}>
+                          {nfotos > 0 && <span>{nfotos} fotos de espacios comunes</span>}
+                          {edificio.administrador && <span>Admin: {edificio.administrador}</span>}
+                          {edificio.tel_conserjeria && <span>Conserjeria: {edificio.tel_conserjeria}</span>}
+                        </div>
+                        {edificio.complemento_descripcion && (
+                          <div style={{ fontSize:12, color:'var(--gray-600)', lineHeight:1.5, borderLeft:'3px solid #e9d5ff', paddingLeft:10 }}>{edificio.complemento_descripcion}</div>
+                        )}
+                        <button onClick={() => window.open('/edificios','_blank')} style={{ marginTop:10, fontSize:11, color:'#7c3aed', background:'transparent', border:'1px solid #7c3aed', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:'inherit' }}>Ver / editar edificio</button>
+                      </>
+                    )
+                  })()}
+                </div>
+              )} {imagenes.length > 0 && (
                 <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
                     <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em' }}>{imagenes.length} imágenes</div>
