@@ -32,7 +32,7 @@ const PROCESOS_MASIVOS = [
   { key: 'mandato',        titulo: 'Mandato',        descripcion: 'Cuotas esperadas y deuda mensual',        etapas: ['Cuotas', 'Cartola BI', 'Vista deuda', 'Confirmar'],                           conecta: null,               href: null },
   { key: 'revision_log',   titulo: 'Revisión Log',   descripcion: 'BD_LOG Drive → Supabase',                etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'],                              conecta: null,               href: null },
   { key: 'nubox',          titulo: 'Nubox',          descripcion: 'Exportación contable mensual',            etapas: ['Exportar', 'Revisión', 'Carga Nubox', 'Cierre'],                              conecta: null,               href: null },
-  { key: 'bi_sa',          titulo: 'BI y SA',        descripcion: 'KPIs y reportes para dirección',          etapas: ['Consolidar', 'KPIs', 'Revisión', 'Distribuir'],                               conecta: null,               href: '/panel' },
+  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'KPIs y reportes para dirección',          etapas: ['Consolidar', 'KPIs', 'Revisión', 'Distribuir'],                               conecta: null,               href: '/panel' },
   { key: 'descuentos',     titulo: 'Descuentos',     descripcion: 'Descuentos a propietarios',               etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'],                               conecta: 'Liquidación',       href: null },
   { key: 'notificaciones', titulo: 'Notificaciones', descripcion: 'Avisos automáticos a arrendatarios',      etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'],                               conecta: null,               href: null },
 ]
