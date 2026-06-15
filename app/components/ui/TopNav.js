@@ -126,13 +126,26 @@ export default function TopNav() {
                 onClick={() => abrirModal('reglamento')}>
                 📋 Reglamento Interno
               </button>
-              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+<button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
                 onClick={() => abrirModal('procesos')}>
                 🗺 Mapa de Procesos
               </button>
+              <div style={s.dropDivider}/>
+              <div style={s.dropLabel}>Manuales</div>
+              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+                onClick={() => abrirModal('manual_deudas')}>
+                💧 Manual de Deudas de Servicios
+              </button>
+              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+                onClick={() => abrirModal('manual_terminos')}>
+                🔑 Guía de Términos
+              </button>
+              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+                onClick={() => abrirModal('manual_publicaciones')}>
+                🏠 Manual de Publicaciones
+              </button>
             </div>
-          )}
-        </div>
+          )}        </div>
 
         {esDireccion && (
           <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
@@ -204,8 +217,11 @@ export default function TopNav() {
             onClick={e => e.stopPropagation()}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8E6E0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>
-                {modalContent === 'reglamento' ? '📋 Reglamento Interno' : '🗺 Mapa de Procesos 2026'}
-              </span>
+              {modalContent === 'reglamento' ? '📋 Reglamento Interno'
+                  : modalContent === 'procesos' ? '🗺 Mapa de Procesos 2026'
+                  : modalContent === 'manual_deudas' ? '💧 Manual de Deudas de Servicios'
+                  : modalContent === 'manual_terminos' ? '🔑 Guía de Términos'
+                  : '🏠 Manual de Publicaciones'}              </span>
               <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>×</button>
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -217,8 +233,27 @@ export default function TopNav() {
                 />
               )}
               {modalContent === 'procesos' && (
+{modalContent === 'procesos' && (
                 <iframe
                   src="/procesos-2026.html"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+              {modalContent === 'manual_deudas' && (
+                <iframe
+                  src="https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+              {modalContent === 'manual_terminos' && (
+                <iframe
+                  src="https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+              {modalContent === 'manual_publicaciones' && (
+                <iframe
+                  src="https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview"
                   style={{ width: '100%', height: '100%', border: 'none' }}
                 />
               )}
