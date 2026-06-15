@@ -4,7 +4,8 @@ const RUTAS = {
   '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
   '/admin':        ['admin', 'operaciones', 'finanzas', 'legal'],
   '/cc1':          ['admin', 'finanzas', 'legal'],
-  '/publicaciones':['admin', 'comercial', 'legal'],
+  '/publicaciones': ['admin', 'comercial', 'ventas', 'legal'],
+  '/procesos':     ['admin', 'operaciones', 'finanzas', 'legal', 'ventas'],
   '/op':           ['admin', 'operaciones', 'finanzas', 'legal'],
   '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
   '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
@@ -15,7 +16,17 @@ export async function middleware(req) {
   if (!token) {
     return NextResponse.redirect(new URL('/', req.url))
   }
-  const rol = token.role
+const rol = token.role
+
+  // Aterrizaje por rol: si caen en el Panel y no es lo suyo, llevarlos a su sección
+  const DESTINO_POR_ROL = {
+    ventas: '/procesos',
+    comercial: '/publicaciones',
+  }
+  if (pathname === '/panel' && DESTINO_POR_ROL[rol]) {
+    return NextResponse.redirect(new URL(DESTINO_POR_ROL[rol], req.url))
+  }
+
   const rutaProtegida = Object.keys(RUTAS).find(r => pathname.startsWith(r))
   if (rutaProtegida && !RUTAS[rutaProtegida].includes(rol)) {
     return NextResponse.redirect(new URL('/sin-acceso', req.url))
@@ -23,5 +34,5 @@ export async function middleware(req) {
   return NextResponse.next()
 }
 export const config = {
-  matcher: ['/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
+matcher: ['/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/procesos/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
 }
