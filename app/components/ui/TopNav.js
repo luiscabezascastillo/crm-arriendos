@@ -233,7 +233,6 @@ export default function TopNav() {
                 />
               )}
               {modalContent === 'procesos' && (
-{modalContent === 'procesos' && (
                 <iframe
                   src="/procesos-2026.html"
                   style={{ width: '100%', height: '100%', border: 'none' }}
