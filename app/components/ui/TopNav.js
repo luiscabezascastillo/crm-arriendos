@@ -182,7 +182,10 @@ export default function TopNav() {
         <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
 
         <div style={s.spacer}/>
-        <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
+        {/* Mis tareas: oculto temporalmente salvo Dirección mientras se desarrolla. Para reabrir a todos, quitar el {esDireccion && (...)} */}
+        {esDireccion && (
+          <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
+        )}
         <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
 
         {session?.user && (
