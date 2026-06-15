@@ -67,7 +67,7 @@ export async function GET(request) {
       .eq('mes', mes)
       .not('codigo_agua', 'is', null)
       .neq('codigo_agua', '')
-      .not('idinmue', 'like', '.%')
+      .not('idadmon', 'like', '.%')
       .order('idadmon')
 
       if (soloPendientes) {
