@@ -450,6 +450,21 @@ export default function PublicacionesPage() {
 
   const pubsFiltradas = applyExcelFilters(pubs)
 
+  const [chequeandoPI, setChequeandoPI] = useState(false)
+  async function chequearPI() {
+    setChequeandoPI(true)
+    try {
+      const res = await fetch('/api/pi/chequear-estados', { method: 'POST' })
+      const data = await res.json()
+      if (!data.ok) { alert('Error al chequear PI: ' + (data.error || 'desconocido')) }
+      await loadData()
+      await loadKpis()
+    } catch (e) {
+      alert('Error de conexion al chequear PI: ' + e.message)
+    }
+    setChequeandoPI(false)
+  }
+
   async function nuevaPublicacion() {
     const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
     const data = await res.json()

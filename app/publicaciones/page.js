@@ -450,6 +450,21 @@ export default function PublicacionesPage() {
 
   const pubsFiltradas = applyExcelFilters(pubs)
 
+  const [chequeandoPI, setChequeandoPI] = useState(false)
+  async function chequearPI() {
+    setChequeandoPI(true)
+    try {
+      const res = await fetch('/api/pi/chequear-estados', { method: 'POST' })
+      const data = await res.json()
+      if (!data.ok) { alert('Error al chequear PI: ' + (data.error || 'desconocido')) }
+      await loadData()
+      await loadKpis()
+    } catch (e) {
+      alert('Error de conexion al chequear PI: ' + e.message)
+    }
+    setChequeandoPI(false)
+  }
+
   async function nuevaPublicacion() {
     const res = await fetch('/api/publicaciones/nueva', { method: 'POST' })
     const data = await res.json()
@@ -487,6 +502,11 @@ export default function PublicacionesPage() {
             <button onClick={() => setVista('tarjetas')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='tarjetas'?'#1a56db':'transparent', color:vista==='tarjetas'?'#fff':'var(--gray-500)' }}>⊞ Tarjetas</button>
             <button onClick={() => setVista('mapa')} style={{ padding:'6px 14px', border:'none', fontSize:11, fontWeight:500, cursor:'pointer', fontFamily:'inherit', background:vista==='mapa'?'#1a56db':'transparent', color:vista==='mapa'?'#fff':'var(--gray-500)' }}>🗺 Mapa</button>
           </div>
+          {modo === 'activas' && (
+            <button onClick={chequearPI} disabled={chequeandoPI} style={{ padding:'7px 16px', background:chequeandoPI?'#9ca3af':'#0891b2', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:chequeandoPI?'not-allowed':'pointer', fontFamily:'inherit' }}>
+              {chequeandoPI ? '⏳ Chequeando...' : '🔄 Chequear PI'}
+            </button>
+          )}
           <button style={{ padding:'7px 16px', background:'#1a56db', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }} onClick={nuevaPublicacion}>+ Nueva publicación</button>
         </div>
       </div>
