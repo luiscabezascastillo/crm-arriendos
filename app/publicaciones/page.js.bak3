@@ -257,7 +257,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, imagen1, mt2_const', { count:'exact' })
+      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 

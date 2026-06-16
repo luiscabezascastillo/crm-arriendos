@@ -257,7 +257,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, imagen1, mt2_const', { count:'exact' })
+      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
@@ -648,6 +648,12 @@ export default function PublicacionesPage() {
                         ) : (
                           <>
                             {p.activo && <span style={{ display:'inline-block', fontSize:10, padding:'2px 6px', borderRadius:6, fontWeight:500, marginBottom:4, background:p.activo==='active'?'#EAF3DE':'#f3f4f6', color:p.activo==='active'?'#3B6D11':'#6b7280' }}>{p.activo==='active'?'Activa':p.activo}</span>}
+                              {p.estado_pi && p.estado_pi !== 'active' && (
+                                <div style={{ fontSize:9, fontWeight:600, marginBottom:4,
+                                  color: p.estado_pi==='closed' ? '#b91c1c' : (p.estado_pi==='paused'||p.estado_pi==='under_review') ? '#b45309' : '#6b7280' }}>
+                                  PI: {p.estado_pi}{p.estado_pi_fecha ? ' · ' + new Date(p.estado_pi_fecha).toLocaleDateString('es-CL', {day:'2-digit', month:'2-digit'}) : ''}
+                                </div>
+                              )}
                             <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
                               {activos.map(portal => <PortalBadge key={portal.key} portal={portal} />)}
                             </div>
