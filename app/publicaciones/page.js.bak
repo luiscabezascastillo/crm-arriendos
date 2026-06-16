@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React from 'react'
 
 import { useState, useEffect } from 'react'
@@ -682,14 +682,6 @@ export default function PublicacionesPage() {
                               disabled={copiando===p.id}
                             />
                             <BtnAccion label="Compartir" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Publicación`)} />
-                            <div style={{ gridColumn:'1/-1' }}>
-                              <BtnAccion
-                                label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
-                                color="#16a34a" bg="#f0fdf4"
-                                onClick={() => republicar(p)}
-                                disabled={republicando===p.id}
-                              />
-                            </div>
                             <div style={{ gridColumn:'1/-1' }}>
                               <BtnAccion
                                 label={dandoDeBaja===p.id ? '⏳ Dando de baja...' : '🔴 Dar de baja'}
