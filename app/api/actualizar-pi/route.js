@@ -243,7 +243,13 @@ export async function POST(request) {
           baseUrl: FOTOS_BASE_URL,
         })
         resultados.fotos = r
-        if (r.ok && r.nuevaFotosMl) {
+        if (r.ok && r.pendientePortada && r.nuevaFotosMl) {
+          // Caso 4, primer tiempo: la foto nueva se subió al final y está procesándose.
+          // Guardamos el mapeo (con su id) PERO dejamos el cambio pendiente para que,
+          // al volver a pulsar Actualizar, se detecte y se mueva a portada.
+          nuevaFotosMl = r.nuevaFotosMl
+          fotosPendientes = true
+        } else if (r.ok && r.nuevaFotosMl) {
           nuevaFotosMl = r.nuevaFotosMl
         } else {
           // La sincronizacion no se complet\u00f3 (sin mapeo, error, o sin nuevaFotosMl):
@@ -268,15 +274,19 @@ export async function POST(request) {
       if (!resultados.descripcion.ok) fallos.push('descripción')
       if (resultados.fotos && !resultados.fotos.ok && resultados.fotos.error) fallos.push('fotos: ' + resultados.fotos.error)
 
-      // Aviso de fotos que no es fallo duro (sin mapeo: hay que republicar una vez)
-      const avisoFotos = (resultados.fotos && !resultados.fotos.ok && resultados.fotos.sinMapeo)
-        ? resultados.fotos.mensaje
-        : null
+      // Aviso de fotos que no es fallo duro:
+      //  - sinMapeo: hay que republicar una vez
+      //  - pendientePortada: la foto nueva se está procesando; volver a Actualizar luego
+      let avisoFotos = null
+      if (resultados.fotos) {
+        if (resultados.fotos.sinMapeo) avisoFotos = resultados.fotos.mensaje
+        else if (resultados.fotos.pendientePortada) avisoFotos = resultados.fotos.mensaje
+      }
 
       if (fallos.length === 0) {
         return NextResponse.json({
           ok: true,
-          mensaje: (resultados.fotos && resultados.fotos.ok)
+          mensaje: (resultados.fotos && resultados.fotos.ok && !resultados.fotos.pendientePortada)
             ? '✓ Cambios actualizados en Portal Inmobiliario (incluidas las fotos)'
             : '✓ Cambios actualizados en Portal Inmobiliario',
           avisoFotos,
