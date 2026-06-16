@@ -212,9 +212,24 @@ export async function POST(request) {
       // ───────────────────────────────────────────────────────────────────
       const firmaActual = calcularFirmaFotos(pub)
       const firmaGuardada = pub.fotos_firma || null
-      const fotosCambiaron = firmaGuardada !== null && firmaGuardada !== firmaActual
+      // Hay cambio si la firma guardada difiere de la actual.
+      // Si no hay firma guardada (null) pero SÍ hay mapeo fotos_ml, comparamos contra
+      // la firma que implican esas fotos: si difieren, hay cambio pendiente que sincronizar.
+      let fotosCambiaron = false
+      if (firmaGuardada !== null) {
+        fotosCambiaron = firmaGuardada !== firmaActual
+      } else if (Array.isArray(pub.fotos_ml) && pub.fotos_ml.length > 0) {
+        // Reconstruimos la firma "según ML" desde fotos_ml (nombres en orden, padding a 30)
+        const nombresMl = pub.fotos_ml.map(f => f && f.imagen ? f.imagen : '')
+        while (nombresMl.length < 30) nombresMl.push('')
+        const firmaSegunMl = nombresMl.slice(0, 30).join('|')
+        fotosCambiaron = firmaSegunMl !== firmaActual
+      }
 
       let nuevaFotosMl = null
+      // Marca si la sincronizacion de fotos qued\u00f3 pendiente/fallida, para NO guardar la firma
+      // (asi el cambio se vuelve a detectar la proxima vez y no queda enmascarado).
+      let fotosPendientes = false
 
       if (fotosCambiaron) {
         const fotosActuales = listaFotos(pub)
@@ -228,12 +243,20 @@ export async function POST(request) {
           baseUrl: FOTOS_BASE_URL,
         })
         resultados.fotos = r
-        if (r.ok && r.nuevaFotosMl) nuevaFotosMl = r.nuevaFotosMl
+        if (r.ok && r.nuevaFotosMl) {
+          nuevaFotosMl = r.nuevaFotosMl
+        } else {
+          // La sincronizacion no se complet\u00f3 (sin mapeo, error, o sin nuevaFotosMl):
+          // dejamos el cambio como pendiente para no enmascararlo guardando la firma.
+          fotosPendientes = true
+        }
       }
 
       // Guardar/actualizar firma (y mapeo si las fotos se sincronizaron con exito).
+      // CLAVE: NO guardamos la firma si la sincronizacion de fotos qued\u00f3 pendiente/fallida,
+      // para que el cambio se vuelva a detectar la proxima vez (no quede enmascarado).
       const updatePub = {}
-      if (firmaGuardada !== firmaActual) updatePub.fotos_firma = firmaActual
+      if (firmaGuardada !== firmaActual && !fotosPendientes) updatePub.fotos_firma = firmaActual
       if (nuevaFotosMl) updatePub.fotos_ml = nuevaFotosMl
       if (Object.keys(updatePub).length > 0) {
         await supabase.from('publicaciones').update(updatePub).eq('id', publicacionId)
