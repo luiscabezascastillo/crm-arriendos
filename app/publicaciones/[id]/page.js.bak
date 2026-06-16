@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -502,7 +502,6 @@ async function subirImagen(file) {
       const data = await res.json()
       if (data.ok) {
         setMsgActualizarPI({ ok: true, text: data.mensaje || 'Actualizado en Portal Inmobiliario' })
-        if (data.avisoFotos) alert(data.avisoFotos)
       } else if (data.necesitaRepublicar) {
         setActualizandoPI(false)
         if (window.confirm(data.mensaje + ' Republicar ahora con un codigo nuevo?')) {
