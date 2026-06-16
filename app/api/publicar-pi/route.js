@@ -49,21 +49,21 @@ const COMUNAS_ML = {
   'Vitacura': { id: 'TUxDQ1ZJVDM2MjFj', name: 'Vitacura', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'SANTIAGO': { id: 'TUxDQ1NBTjk4M2M', name: 'Santiago', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Santiago': { id: 'TUxDQ1NBTjk4M2M', name: 'Santiago', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'ÑUÑOA': { id: 'TUxDQ9FV0WU0MmM2', name: 'Ñuñoa', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'Ñuñoa': { id: 'TUxDQ9FV0WU0MmM2', name: 'Ñuñoa', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
+  'ÑUÑOA': { id: 'TUxDQ9FV0WU0MmM2', name: 'Ñuñoa', state_id: 'CL-RM', state_name: 'RM (Metropolitana)'},
+  'Ñuñoa': { id: 'TUxDQ9FV0WU0MmM2', name: 'Ñuñoa', state_id: 'CL-RM', state_name: 'RM (Metropolitana)'},
   'LA REINA': { id: 'TUxDQ0xBIDZlMWI5', name: 'La Reina', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'La Reina': { id: 'TUxDQ0xBIDZlMWI5', name: 'La Reina', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'LO BARNECHEA': { id: 'TUxDQ0xPIGUzZDM3', name: 'Lo Barnechea', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Lo Barnechea': { id: 'TUxDQ0xPIGUzZDM3', name: 'Lo Barnechea', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'HUECHURABA': { id: 'TUxDQ0hVRTdmZjlm', name: 'Huechuraba', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Huechuraba': { id: 'TUxDQ0hVRTdmZjlm', name: 'Huechuraba', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'MACUL': { id: 'TUxDQ01BQ3VsNGI0', name: 'Macul', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'Macul': { id: 'TUxDQ01BQ3VsNGI0', name: 'Macul', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
+  'MACUL': { id: 'TUxDQ01BQ3VsNGI0', name: 'Macul', state_id: 'CL-RM', state_name: 'RM (Metropolitana)'},
+  'Macul': { id: 'TUxDQ01BQ3VsNGI0', name: 'Macul', state_id: 'CL-RM', state_name: 'RM (Metropolitana)'},
   'Independencia': { id: 'TUxDQ0lORDIxMmU0', name: 'Independencia', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Recoleta': { id: 'TUxDQ1JFQzY4YjIw', name: 'Recoleta', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Peñalolén': { id: 'TUxDQ1BF0TRkNzFj', name: 'Peñalolén', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'La Florida': { id: 'TUxDQ0xBIGM5NzMz', name: 'La Florida', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'Maipú': { id: 'TUxDQ01BSWI5Y2M2', name: 'Maipú', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
+  'Maipú': { id: 'TUxDQ01BSWI5Y2M2', name: 'Maipú', state_id: 'CL-RM', state_name: 'RM (Metropolitana)'},
   'Puente Alto': { id: 'TUxDQ1BVRTZmOGZl', name: 'Puente Alto', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'San Miguel': { id: 'TUxDQ1NBTjcwNDU0', name: 'San Miguel', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'San Bernardo': { id: 'TUxDQ1NBTmIyZDBh', name: 'San Bernardo', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
@@ -72,9 +72,9 @@ const COMUNAS_ML = {
   'COLINA': { id: 'TUxDQ0NPTGNkMWZj', name: 'Colina', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Estación Central': { id: 'TUxDQ0VTVDY1ODUw', name: 'Estación Central', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
   'Pudahuel': { id: 'TUxDQ1BVRDg4OWIx', name: 'Pudahuel', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' },
-  'Curarrehue': { id: 'TUxDQ0NVUjkwYzI4', name: 'Curarrehue', state_id: 'TUxDUEFSQUE3YzVk', state_name: 'La Araucanía' },
+  'Curarrehue': { id: 'TUxDQ0NVUjkwYzI4', name: 'Curarrehue', state_id: 'TUxDUEFSQUE3YzVk', state_name:'La Araucanía' },
   'Pucón': { id: 'TUxDQ1BVQzU2NDFm', name: 'Pucón', state_id: 'TUxDUEFSQUE3YzVk', state_name: 'La Araucanía' },
-  'Villarrica': { id: 'TUxDQ1ZJTGMyNWU3', name: 'Villarrica', state_id: 'TUxDUEFSQUE3YzVk', state_name: 'La Araucanía' },
+  'Villarrica': { id: 'TUxDQ1ZJTGMyNWU3', name: 'Villarrica', state_id: 'TUxDUEFSQUE3YzVk', state_name:'La Araucanía' },
   'Antofagasta': { id: 'TUxDQ0FOVDc1YzM', name: 'Antofagasta', state_id: 'TUxDUEFOVEE3NWZk', state_name: 'Antofagasta' },
   'Puerto Varas': { id: 'TUxDQ1BVRTE5NDc3', name: 'Puerto Varas', state_id: 'TUxDUExPU1NmYjk5', state_name: 'Los Lagos' },
   'Valparaíso': { id: 'TUxDQ1ZBTDk4ZTg', name: 'Valparaíso', state_id: 'TUxDUFZBTE84MDVj', state_name: 'Valparaíso' },
@@ -279,11 +279,40 @@ export async function POST(request) {
       return NextResponse.json({ error: `Error ML ${res.status}: ${json.message || JSON.stringify(json)}` }, { status: 500 })
     }
 
+    // --- FASE 2: capturar el mapeo nombre_de_archivo <-> id de ML ---
+    // Reconstruimos la lista de nombres que mandamos (imagen1..30 en orden, break al primer hueco)
+    const nombresEnviados = []
+    for (let i = 1; i <= 30; i++) {
+      const img = p[`imagen${i}`]
+      if (!img) break
+      nombresEnviados.push(img)
+    }
+    // Los id que ML asignó, en el orden que devuelve
+    const picturesML = json.pictures || []
+    // Emparejamos por posición SOLO si coinciden las cantidades (si no, guardamos aviso para revisar)
+    const fotosFirma = nombresEnviados.join('|')
+    let fotosMl
+    if (picturesML.length === nombresEnviados.length) {
+      fotosMl = nombresEnviados.map((nombre, idx) => ({
+        imagen: nombre,
+        ml_id: picturesML[idx].id,
+      }))
+    } else {
+      fotosMl = {
+        _aviso: 'Desajuste al publicar: ML devolvió distinto número de fotos que las enviadas. Revisar.',
+        enviadas: nombresEnviados.length,
+        devueltas: picturesML.length,
+        ml_ids: picturesML.map(pic => pic.id),
+      }
+    }
+
     await supabase.from('publicaciones').update({
       pi: 'SI',
       codigo_pi: json.id,
       activo: 'active',
       url_pi: json.permalink || '',
+      fotos_ml: fotosMl,
+      fotos_firma: fotosFirma,
       updated_at: new Date().toISOString(),
     }).eq('id', publicacionId)
 
