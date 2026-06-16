@@ -6,6 +6,19 @@ import { usePathname } from 'next/navigation';
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com'];
 
+const RUTAS = {
+  '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/admin':        ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/cc1':          ['admin', 'finanzas', 'legal'],
+  '/op/deudas':    ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/op/morosidad': ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/op':           ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
+  '/procesos':     ['admin', 'operaciones', 'finanzas', 'legal', 'ventas'],
+  '/publicaciones':['admin', 'comercial', 'ventas', 'legal'],
+  '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
+};
+
 export default function TopNav() {
   const { data: session } = useSession();
   const pathname = usePathname();
@@ -30,6 +43,9 @@ export default function TopNav() {
 
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
+  const rol = session?.user?.role;
+  // ¿el rol actual puede ver esta ruta? Si la ruta no está en RUTAS, se muestra a todos.
+  const puede = (ruta) => !RUTAS[ruta] || (rol && RUTAS[ruta].includes(rol));
 
 function abrirModal(tipo) {
     const urls = {
@@ -157,25 +173,36 @@ function abrirModal(tipo) {
           <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
         )}
 
-        <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
-        <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
+        {puede('/panel') && (
+          <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
+        )}
+        {puede('/procesos') && (
+          <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
+        )}
 
+        {(puede('/cc1') || puede('/op/deudas') || puede('/op/morosidad')) && (
         <div ref={cc1Ref} style={{ position: 'relative' }}>
           <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
             CC1 Admin <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
           </button>
           {cc1Open && (
             <div style={s.dropdown}>
-              <Link href="/cc1" style={s.dropItem} onClick={() => setCc1Open(false)}>CC1 Admin</Link>
-              <Link href="/op/deudas" style={s.dropItem} onClick={() => setCc1Open(false)}>Deudas servicios</Link>
-              <Link href="/op/morosidad" style={s.dropItem} onClick={() => setCc1Open(false)}>Morosidad</Link>
+              {puede('/cc1') && <Link href="/cc1" style={s.dropItem} onClick={() => setCc1Open(false)}>CC1 Admin</Link>}
+              {puede('/op/deudas') && <Link href="/op/deudas" style={s.dropItem} onClick={() => setCc1Open(false)}>Deudas servicios</Link>}
+              {puede('/op/morosidad') && <Link href="/op/morosidad" style={s.dropItem} onClick={() => setCc1Open(false)}>Morosidad</Link>}
             </div>
           )}
         </div>
+        )}
 
-        <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
-        <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
+        {(rol === 'admin' || esDireccion) && (
+          <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
+        )}
+        {(rol === 'admin' || esDireccion) && (
+          <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
+        )}
 
+        {puede('/op') && (
         <div ref={opRef} style={{ position: 'relative' }}>
           <button style={s.dropBtn(opActive)} onClick={() => { setOpOpen(v => !v); setCc1Open(false); }}>
             Op. especiales <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
@@ -194,18 +221,27 @@ function abrirModal(tipo) {
             </div>
           )}
         </div>
+        )}
 
-        <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
-        <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+        {puede('/admin') && (
+          <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
+        )}
+        {puede('/publicaciones') && (
+          <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+        )}
         <Link href="/edificios" style={s.link(isActive('/edificios'))}>Edificios</Link>
-        <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
+        {puede('/contactos') && (
+          <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
+        )}
 
         <div style={s.spacer}/>
         {/* Mis tareas: oculto temporalmente salvo Dirección mientras se desarrolla. Para reabrir a todos, quitar el {esDireccion && (...)} */}
         {esDireccion && (
           <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
         )}
-        <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
+        {puede('/info') && (
+          <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
+        )}
 
         {session?.user && (
           <div style={s.user}>
