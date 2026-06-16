@@ -276,8 +276,7 @@ export async function POST(request) {
 
     const json = await res.json()
     if (res.status !== 201) {
-      const mlDetalle = json.cause ? JSON.stringify(json.cause) : (json.message || JSON.stringify(json))
-      return NextResponse.json({ error: `Error ML ${res.status}: ${json.message || 'error'}`, detalle: mlDetalle, mlRespuesta: json }, { status: 500 })
+      return NextResponse.json({ error: `Error ML ${res.status}: ${json.message || JSON.stringify(json)}` }, { status: 500 })
     }
 
     // --- FASE 2: capturar el mapeo nombre_de_archivo <-> id de ML ---
