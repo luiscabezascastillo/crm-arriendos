@@ -235,12 +235,9 @@ function abrirModal(tipo) {
         )}
 
         <div style={s.spacer}/>
-        {/* Mis tareas: oculto temporalmente salvo Dirección mientras se desarrolla. Para reabrir a todos, quitar el {esDireccion && (...)} */}
-        {esDireccion && (
+
+        {puede('/mi-portal') && (
           <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
-        )}
-        {puede('/info') && (
-          <Link href="/info" style={s.infoLink(isActive('/info'))}>Informacion</Link>
         )}
 
         {session?.user && (
