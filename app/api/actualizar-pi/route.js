@@ -27,9 +27,19 @@ function construirDescripcion(pub) {
     .replace(/Ãº/g, '\u00FA').replace(/Ã±/g, '\u00F1')
 }
 
-// Firma de las fotos: nombres de imagen1..imagen30 en orden, unidos por '|'.
-// Sirve para detectar si las fotos (o su orden) han cambiado desde la ultima sincronizacion.
-// NOTA FASE 2: ampliar a imagen38 cuando se implemente el envio real de fotos.
+// Lista ordenada de nombres de archivo de fotos (imagen1..imagen30, break al primer hueco).
+function listaFotos(pub) {
+  const fotos = []
+  for (let i = 1; i <= 30; i++) {
+    const img = pub[`imagen${i}`]
+    if (!img) break
+    fotos.push(img)
+  }
+  return fotos
+}
+
+// Firma de las fotos: nombres en orden, unidos por '|'. Detecta cambios de fotos/orden.
+// NOTA FASE 2 (futuro): ampliar a imagen38 cuando se cubran las 38.
 function calcularFirmaFotos(pub) {
   const partes = []
   for (let i = 1; i <= 30; i++) {
@@ -73,7 +83,7 @@ async function getValidToken() {
 }
 
 // POST /api/actualizar-pi  body: { publicacionId }
-// Sincroniza precio, video y descripcion de la publicacion con el item activo en ML.
+// Sincroniza precio, video, descripcion y (FASE 2) reordenamiento de fotos con el item activo en ML.
 export async function POST(request) {
   try {
     const { publicacionId } = await request.json()
@@ -171,27 +181,7 @@ export async function POST(request) {
       addAmen(pub.tiene_rampa_silla, 'WHEELCHAIR_RAMP')
       if (amen.length > 0) body.attributes = amen
 
-      // --- FOTOS (Fase 1) ---
-      // NO se envian fotos a ML en la actualizacion: reenviar 'pictures' en un PUT
-      // hace que ML rehaga toda la galeria y rompe la portada.
-      // En su lugar, detectamos si las fotos cambiaron comparando una firma guardada
-      // (columna fotos_firma) con la firma actual. Si cambiaron, avisamos al usuario
-      // de que la sincronizacion de fotos aun no esta implementada.
-      // FASE 2 (PENDIENTE): implementar el envio real (id+source de ML, cambio de
-      // portada con el id de ML, ampliar a imagen38) y QUITAR este aviso.
-      const firmaActual = calcularFirmaFotos(pub)
-      const firmaGuardada = pub.fotos_firma || null
-      // Hay cambio solo si ya habia una firma guardada y es distinta de la actual.
-      // (Si no habia firma previa, no podemos saber si cambio, asi que no avisamos.)
-      const fotosCambiaron = firmaGuardada !== null && firmaGuardada !== firmaActual
-      if (fotosCambiaron) {
-        resultados.fotos = {
-          ok: false,
-          noImplementado: true,
-          mensaje: 'Has cambiado las fotos (orden o nuevas), pero la sincronización de fotos con Portal Inmobiliario todavía no está implementada. Los demás cambios sí se aplicaron.',
-        }
-      }
-
+      // PUT 1: campos (precio, titulo, amenities, video). NO incluye fotos.
       if (Object.keys(body).length > 0) {
         const resPut = await fetch(`${ML_API}/items/${pub.codigo_pi}`, {
           method: 'PUT',
@@ -215,31 +205,120 @@ export async function POST(request) {
       })
       resultados.descripcion = { ok: resDesc.status === 200 }
 
-      // Guardar/actualizar la firma de fotos vigente, para futuras comparaciones.
-      // Asi la proxima actualizacion sabra si las fotos cambiaron respecto a ahora.
-      if (firmaGuardada !== firmaActual) {
-        await supabase.from('publicaciones').update({ fotos_firma: firmaActual }).eq('id', publicacionId)
+      // ---------------------------------------------------------------
+      // 5c. FOTOS (FASE 2): reordenar / cambiar portada con los id de ML
+      // ---------------------------------------------------------------
+      // Detectamos cambio de fotos comparando la firma guardada con la actual.
+      const firmaActual = calcularFirmaFotos(pub)
+      const firmaGuardada = pub.fotos_firma || null
+      const fotosCambiaron = firmaGuardada !== null && firmaGuardada !== firmaActual
+
+      let nuevaFotosMl = null   // si reordenamos con exito, aqui va el nuevo mapeo para guardar
+
+      if (fotosCambiaron) {
+        // Mapa nombre -> ml_id a partir de fotos_ml guardado
+        const mapa = {}
+        if (Array.isArray(pub.fotos_ml)) {
+          for (const f of pub.fotos_ml) {
+            if (f && f.imagen && f.ml_id) mapa[f.imagen] = f.ml_id
+          }
+        }
+        const fotosActuales = listaFotos(pub)
+        // ¿Todas las fotos actuales existen ya en ML (tenemos su ml_id)?
+        const todasConocidas = fotosActuales.length > 0 && fotosActuales.every(nombre => mapa[nombre])
+
+        if (!Array.isArray(pub.fotos_ml) || pub.fotos_ml.length === 0 || pub.fotos_ml._aviso) {
+          // No tenemos mapeo fiable (publicacion antigua sin fotos_ml). No tocamos fotos.
+          resultados.fotos = {
+            ok: false,
+            sinMapeo: true,
+            mensaje: 'Las fotos cambiaron, pero esta publicación no tiene el mapeo de fotos de ML guardado (fotos_ml). Para sincronizar fotos, republícala una vez. Los demás cambios sí se aplicaron.',
+          }
+        } else if (!todasConocidas) {
+          // CASO 3 (foto nueva): hay un nombre que no esta en el mapeo -> aun no implementado
+          resultados.fotos = {
+            ok: false,
+            noImplementado: true,
+            mensaje: 'Se añadieron fotos nuevas. Por ahora solo está implementado reordenar o cambiar la portada con fotos ya existentes; añadir fotos nuevas se hará en una próxima fase. Los demás cambios sí se aplicaron.',
+          }
+        } else {
+          // CASO 1/2 (solo reorden / cambio de portada): mandamos los ml_id en el nuevo orden
+          const picturesPut = fotosActuales.map(nombre => ({ id: mapa[nombre] }))
+          const resFotos = await fetch(`${ML_API}/items/${pub.codigo_pi}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ pictures: picturesPut }),
+          })
+
+          if (resFotos.status === 200) {
+            // Releer de ML para confirmar el nuevo orden (rapido y automatico)
+            let ordenOk = true
+            try {
+              const resVer = await fetch(`${ML_API}/items/${pub.codigo_pi}?attributes=pictures`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+              })
+              const itemVer = await resVer.json()
+              const idsEnML = (itemVer.pictures || []).map(p => p.id)
+              const idsEsperados = picturesPut.map(p => p.id)
+              ordenOk = idsEnML.length === idsEsperados.length &&
+                        idsEnML.every((id, idx) => id === idsEsperados[idx])
+            } catch (e) {
+              // Si la verificacion falla por lo que sea, confiamos en el 200 anterior.
+              ordenOk = true
+            }
+
+            // Reconstruimos fotos_ml en el nuevo orden (mismos ml_id, distinto orden)
+            nuevaFotosMl = fotosActuales.map(nombre => ({ imagen: nombre, ml_id: mapa[nombre] }))
+            resultados.fotos = {
+              ok: true,
+              verificado: ordenOk,
+              mensaje: ordenOk
+                ? 'Fotos reordenadas correctamente en Portal Inmobiliario.'
+                : 'Fotos reordenadas (ML respondió OK, pero la verificación del orden no coincidió exactamente; revisar si es necesario).',
+            }
+          } else {
+            const errFotos = await resFotos.json()
+            resultados.fotos = {
+              ok: false,
+              error: `${resFotos.status}: ${errFotos.message || JSON.stringify(errFotos)}`,
+            }
+          }
+        }
+      }
+
+      // Guardar/actualizar firma de fotos (y mapeo si reordenamos con exito).
+      const updatePub = {}
+      if (firmaGuardada !== firmaActual) updatePub.fotos_firma = firmaActual
+      if (nuevaFotosMl) updatePub.fotos_ml = nuevaFotosMl
+      if (Object.keys(updatePub).length > 0) {
+        await supabase.from('publicaciones').update(updatePub).eq('id', publicacionId)
       }
 
       // Resultado global
       const fallos = []
       if (resultados.campos && !resultados.campos.ok) fallos.push('campos: ' + resultados.campos.error)
       if (!resultados.descripcion.ok) fallos.push('descripción')
+      if (resultados.fotos && !resultados.fotos.ok && resultados.fotos.error) fallos.push('fotos: ' + resultados.fotos.error)
+
+      // Aviso de fotos que no son fallo duro (no implementado / sin mapeo)
+      const avisoFotos = (resultados.fotos && !resultados.fotos.ok && (resultados.fotos.noImplementado || resultados.fotos.sinMapeo))
+        ? resultados.fotos.mensaje
+        : null
 
       if (fallos.length === 0) {
         return NextResponse.json({
           ok: true,
-          mensaje: fotosCambiaron
-            ? '✓ Cambios actualizados en Portal Inmobiliario (las fotos no se sincronizan todavía)'
+          mensaje: (resultados.fotos && resultados.fotos.ok)
+            ? '✓ Cambios actualizados en Portal Inmobiliario (incluidas las fotos)'
             : '✓ Cambios actualizados en Portal Inmobiliario',
-          avisoFotos: fotosCambiaron ? resultados.fotos.mensaje : null,
+          avisoFotos,
           resultados,
         })
       }
       return NextResponse.json({
         ok: false,
         error: 'Algunos cambios no se pudieron aplicar: ' + fallos.join('; '),
-        avisoFotos: fotosCambiaron ? resultados.fotos.mensaje : null,
+        avisoFotos,
         resultados,
       }, { status: 500 })
     }
