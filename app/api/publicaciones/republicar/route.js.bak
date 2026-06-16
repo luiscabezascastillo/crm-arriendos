@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -82,7 +82,7 @@ export async function POST(request) {
   const newCodigo = String((parseInt(maxData?.codigo || '16891') + 1))
   // 4. Crear nueva publicacion
   const { id, codigo, codigo_pi, url_pi, url_yapo, url_web, url_goplaceit, url_proppit,
-          pi, yapo, web, goplaceit, proppit, activo, fecha_vencimiento_pi, fotos_ml, fotos_firma,
+          pi, yapo, web, goplaceit, proppit, activo, fecha_vencimiento_pi,
           sync_id, created_at, updated_at, ...resto } = original
   const { data: nueva, error: errNueva } = await supabase
     .from('publicaciones')
