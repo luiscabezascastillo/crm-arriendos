@@ -31,10 +31,16 @@ export default function TopNav() {
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
 
-  function abrirModal(tipo) {
-    setModalContent(tipo);
-    setModalOpen(true);
-    setCrmOpen(false);
+function abrirModal(tipo) {
+    const urls = {
+      reglamento: 'https://drive.google.com/file/d/1P4z9A8CDHLzqDPce-ZNK3p_yEwvnMzpS/preview',
+      procesos: '/procesos-2026.html',
+      manual_deudas: 'https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview',
+      manual_terminos: 'https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview',
+      manual_publicaciones: 'https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview',
+    };
+    const url = urls[tipo];
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   const s = {
