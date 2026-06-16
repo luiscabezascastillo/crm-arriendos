@@ -53,7 +53,7 @@ export async function POST(request) {
     nueva.activo     = 'CREAR'
     nueva.estado_2   = ''
     nueva.updated_at = new Date().toISOString()
-    nueva.sync_hash  = null
+    nueva.fotos_firma  = null
     nueva.sync_id    = null
 
     // La copia nace sin fotos (imagen1–imagen38)

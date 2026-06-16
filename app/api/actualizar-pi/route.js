@@ -23,8 +23,19 @@ function construirDescripcion(pub) {
   return descripcion
     .replace(/<br>/g, '\n ').replace(/<\/br>/g, '\n ')
     .replace(/Ã¡/g, '\u00E1').replace(/Ã©/g, '\u00E9')
-    .replace(/Ã­/g, '\u00ED').replace(/Ã³/g, '\u00F3')
+    .replace(/Ã/g, '\u00ED').replace(/Ã³/g, '\u00F3')
     .replace(/Ãº/g, '\u00FA').replace(/Ã±/g, '\u00F1')
+}
+
+// Firma de las fotos: nombres de imagen1..imagen30 en orden, unidos por '|'.
+// Sirve para detectar si las fotos (o su orden) han cambiado desde la ultima sincronizacion.
+// NOTA FASE 2: ampliar a imagen38 cuando se implemente el envio real de fotos.
+function calcularFirmaFotos(pub) {
+  const partes = []
+  for (let i = 1; i <= 30; i++) {
+    partes.push(pub[`imagen${i}`] || '')
+  }
+  return partes.join('|')
 }
 
 async function getValidToken() {
@@ -160,14 +171,26 @@ export async function POST(request) {
       addAmen(pub.tiene_rampa_silla, 'WHEELCHAIR_RAMP')
       if (amen.length > 0) body.attributes = amen
 
-      // Fotos: array 1..30 en orden (igual que publicar-pi, break al primer hueco)
-      const imagenesPI = []
-      for (let i = 1; i <= 30; i++) {
-        const img = pub[`imagen${i}`]
-        if (!img) break
-        imagenesPI.push({ source: `https://www.fondocapital.com/propiedades/${img}` })
+      // --- FOTOS (Fase 1) ---
+      // NO se envian fotos a ML en la actualizacion: reenviar 'pictures' en un PUT
+      // hace que ML rehaga toda la galeria y rompe la portada.
+      // En su lugar, detectamos si las fotos cambiaron comparando una firma guardada
+      // (columna fotos_firma) con la firma actual. Si cambiaron, avisamos al usuario
+      // de que la sincronizacion de fotos aun no esta implementada.
+      // FASE 2 (PENDIENTE): implementar el envio real (id+source de ML, cambio de
+      // portada con el id de ML, ampliar a imagen38) y QUITAR este aviso.
+      const firmaActual = calcularFirmaFotos(pub)
+      const firmaGuardada = pub.fotos_firma || null
+      // Hay cambio solo si ya habia una firma guardada y es distinta de la actual.
+      // (Si no habia firma previa, no podemos saber si cambio, asi que no avisamos.)
+      const fotosCambiaron = firmaGuardada !== null && firmaGuardada !== firmaActual
+      if (fotosCambiaron) {
+        resultados.fotos = {
+          ok: false,
+          noImplementado: true,
+          mensaje: 'Has cambiado las fotos (orden o nuevas), pero la sincronización de fotos con Portal Inmobiliario todavía no está implementada. Los demás cambios sí se aplicaron.',
+        }
       }
-      if (imagenesPI.length > 0) body.pictures = imagenesPI
 
       if (Object.keys(body).length > 0) {
         const resPut = await fetch(`${ML_API}/items/${pub.codigo_pi}`, {
@@ -192,6 +215,12 @@ export async function POST(request) {
       })
       resultados.descripcion = { ok: resDesc.status === 200 }
 
+      // Guardar/actualizar la firma de fotos vigente, para futuras comparaciones.
+      // Asi la proxima actualizacion sabra si las fotos cambiaron respecto a ahora.
+      if (firmaGuardada !== firmaActual) {
+        await supabase.from('publicaciones').update({ fotos_firma: firmaActual }).eq('id', publicacionId)
+      }
+
       // Resultado global
       const fallos = []
       if (resultados.campos && !resultados.campos.ok) fallos.push('campos: ' + resultados.campos.error)
@@ -200,13 +229,17 @@ export async function POST(request) {
       if (fallos.length === 0) {
         return NextResponse.json({
           ok: true,
-          mensaje: '✓ Cambios actualizados en Portal Inmobiliario',
+          mensaje: fotosCambiaron
+            ? '✓ Cambios actualizados en Portal Inmobiliario (las fotos no se sincronizan todavía)'
+            : '✓ Cambios actualizados en Portal Inmobiliario',
+          avisoFotos: fotosCambiaron ? resultados.fotos.mensaje : null,
           resultados,
         })
       }
       return NextResponse.json({
         ok: false,
         error: 'Algunos cambios no se pudieron aplicar: ' + fallos.join('; '),
+        avisoFotos: fotosCambiaron ? resultados.fotos.mensaje : null,
         resultados,
       }, { status: 500 })
     }
