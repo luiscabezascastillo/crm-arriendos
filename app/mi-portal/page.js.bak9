@@ -81,18 +81,6 @@ export default function MiPortalPage() {
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: ['PENDIENTE'] })
-  const [filtrosTar, setFiltrosTar] = useState({ titulo: [], estado: [], prioridad: [], fecha_limite: [] })
-  const [tarFiltroInit, setTarFiltroInit] = useState(false)
-
-  useEffect(() => {
-    if (tarFiltroInit) return
-    const tt = data?.tareas || []
-    if (tt.length === 0) return
-    const estados = [...new Set(tt.map(t => t.estado).filter(v => v != null))]
-    const sinCompletadas = estados.filter(e => e !== 'COMPLETADA')
-    if (sinCompletadas.length !== estados.length) setFiltrosTar(f => ({ ...f, estado: sinCompletadas }))
-    setTarFiltroInit(true)
-  }, [data, tarFiltroInit])
   const [tareaAbierta, setTareaAbierta] = useState(null)
   const [nuevaTarea, setNuevaTarea] = useState(null)
   const [creandoTarea, setCreandoTarea] = useState(false)
@@ -111,6 +99,16 @@ export default function MiPortalPage() {
   useEffect(() => {
     if (session?.user?.email && !emailActivo) setEmailActivo(session.user.email)
   }, [session, emailActivo])
+
+  useEffect(() => {
+    if (tarFiltroInit) return
+    const tt = data?.tareas || []
+    if (tt.length === 0) return
+    const estados = [...new Set(tt.map(t => t.estado).filter(v => v != null))]
+    const sinCompletadas = estados.filter(e => e !== 'COMPLETADA')
+    if (sinCompletadas.length !== estados.length) setFiltrosTar(f => ({ ...f, estado: sinCompletadas }))
+    setTarFiltroInit(true)
+  }, [data, tarFiltroInit])
 
   useEffect(() => {
     if (!esDireccion) return
