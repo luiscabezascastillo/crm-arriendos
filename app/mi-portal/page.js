@@ -241,7 +241,7 @@ export default function MiPortalPage() {
         {/* Cabecera */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--gray-800)', margin: 0 }}>Mi Portal Datos no validos, mientras dure el desarrollo</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--gray-800)', margin: 0 }}>Mi Portal</h1>
             <div style={{ fontSize: 13, color: 'var(--gray-400)', marginTop: 4 }}>{nombre}</div>
           </div>
           {esDireccion && (
