@@ -31,18 +31,11 @@ export async function GET(request) {
       .order('fecha_limite', { ascending: true, nullsFirst: false })
 
     // 2 — Tareas de workflow (por email)
-    const { data: areasResp } = await supabase
-      .from('workflow_area_responsables')
-      .select('area')
-      .eq('email', email)
-    const misAreas = (areasResp || []).map(a => a.area)
-    const { data: workflow } = misAreas.length
-      ? await supabase
-          .from('workflow_tasks')
-          .select('*')
-          .in('responsable', misAreas)
-          .order('fecha_limite', { ascending: true, nullsFirst: false })
-      : { data: [] }
+    const { data: workflow } = await supabase
+      .from('workflow_tasks')
+      .select('*')
+      .eq('responsable', email)
+      .order('fecha_limite', { ascending: true, nullsFirst: false })
 
     // 3 — Actividades periódicas (por email)
     const { data: periodicas } = await supabase
