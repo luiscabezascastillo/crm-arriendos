@@ -991,13 +991,83 @@ async function subirImagen(file) {
           )}
 
           {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} />}
-              {!['Resumen','Imágenes','Propietario','Publicación','Editar'].includes(seccion) && (
-            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
+             {/* BITACORA */}
+          {seccion === 'Bitácora' && (
+           <SeccionBitacora id={id} />
+            )}
+          {!['Resumen','Imágenes','Propietario','Publicación','Editar','Bitácora'].includes(seccion) && (            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
               <div style={{ fontSize:13, color:'var(--gray-400)' }}>Sección <strong>{seccion}</strong> en desarrollo</div>
             </div>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+// ── SECCIÓN BITÁCORA ──
+function SeccionBitacora({ id }) {
+  const [eventos, setEventos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let activo = true
+    setCargando(true)
+    fetch('/api/bitacora?idpublicacion=' + id)
+      .then(r => r.json())
+      .then(d => {
+        if (!activo) return
+        if (d.ok) setEventos(d.eventos || [])
+        else setError(d.error || 'Error al cargar la bitácora')
+      })
+      .catch(e => { if (activo) setError('Error de conexión: ' + e.message) })
+      .finally(() => { if (activo) setCargando(false) })
+    return () => { activo = false }
+  }, [id])
+
+  // Color del punto según el tipo de evento
+  function colorEvento(ev) {
+    const e = String(ev || '').toLowerCase()
+    if (e.includes('cerrar') || e.includes('retirar') || e.includes('baja')) return '#dc2626'
+    if (e.includes('republicar')) return '#2563eb'
+    if (e.includes('publicar')) return '#16a34a'
+    if (e.includes('precio') || e.includes('estado')) return '#d97706'
+    return '#6b7280'
+  }
+
+  function fechaLegible(iso) {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'20px 24px' }}>
+      <div style={{ fontSize:13, fontWeight:700, color:'var(--gray-700)', marginBottom:16, textTransform:'uppercase', letterSpacing:'0.05em' }}>Bitácora de la propiedad</div>
+      {cargando && <div style={{ fontSize:13, color:'var(--gray-400)' }}>Cargando…</div>}
+      {error && <div style={{ fontSize:13, color:'#dc2626' }}>{error}</div>}
+      {!cargando && !error && eventos.length === 0 && (
+        <div style={{ fontSize:13, color:'var(--gray-400)' }}>Aún no hay eventos registrados para esta propiedad.</div>
+      )}
+      {!cargando && !error && eventos.length > 0 && (
+        <div style={{ position:'relative', paddingLeft:8 }}>
+          {eventos.map((ev, i) => (
+            <div key={ev.id || i} style={{ display:'flex', gap:12, paddingBottom:16, position:'relative' }}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+                <div style={{ width:12, height:12, borderRadius:'50%', background:colorEvento(ev.evento), flexShrink:0, marginTop:3 }} />
+                {i < eventos.length - 1 && <div style={{ width:2, flex:1, background:'var(--border)', marginTop:2 }} />}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--gray-800)' }}>{ev.detalle || ev.evento}</div>
+                <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:2 }}>
+                  {fechaLegible(ev.created_at)}{ev.usuario ? ' · ' + ev.usuario : ''}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
