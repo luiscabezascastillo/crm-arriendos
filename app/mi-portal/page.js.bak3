@@ -26,51 +26,6 @@ const TIPO_AUS_COLOR = {
 }
 const FREC_LABEL = { DIARIA: 'Diaria', SEMANAL: 'Semanal', QUINCENAL: 'Quincenal', MENSUAL: 'Mensual' }
 
-function FiltroColumna({ titulo, valores, seleccionados, onChange }) {
-  const [abierto, setAbierto] = useState(false)
-  const [busca, setBusca] = useState('')
-  const todos = valores.length > 0 && seleccionados.length === valores.length
-  const filtrados = valores.filter(v => String(v).toLowerCase().includes(busca.toLowerCase()))
-  const activo = seleccionados.length > 0 && seleccionados.length < valores.length
-  function toggleUno(v) {
-    if (seleccionados.includes(v)) onChange(seleccionados.filter(x => x !== v))
-    else onChange([...seleccionados, v])
-  }
-  function toggleTodos() {
-    if (todos) onChange([]); else onChange([...valores])
-  }
-  return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      {titulo}
-      <button onClick={(e) => { e.stopPropagation(); setAbierto(a => !a) }}
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 2px', color: activo ? '#1a56db' : 'var(--gray-400)', fontWeight: 700 }} title="Filtrar">
-        {activo ? '\u25BC\u25CF' : '\u25BC'}
-      </button>
-      {abierto && (
-        <>
-          <div onClick={() => setAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, background: 'white', border: '1px solid #ced4da', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 8, width: 220, fontWeight: 400, textTransform: 'none' }}>
-            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar\u2026"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit' }} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
-              <input type="checkbox" checked={todos} onChange={toggleTodos} />
-              <strong>(Seleccionar todo)</strong>
-            </label>
-            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-              {filtrados.map(v => (
-                <label key={String(v)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px', fontSize: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={seleccionados.includes(v)} onChange={() => toggleUno(v)} />
-                  {String(v) || '(vac\u00edo)'}
-                </label>
-              ))}
-              {filtrados.length === 0 && (<div style={{ fontSize: 11, color: 'var(--gray-400)', padding: 4 }}>Sin coincidencias</div>)}
-            </div>
-          </div>
-        </>
-      )}
-    </span>
-  )
-}
 export default function MiPortalPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -80,7 +35,6 @@ export default function MiPortalPage() {
   const [trabajadores, setTrabajadores] = useState([])
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
-  const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: [] })
   const [loading, setLoading] = useState(true)
 
   // Permiso de acceso + redirección de externos a su portal
@@ -145,18 +99,6 @@ export default function MiPortalPage() {
   const tareas = data?.tareas || []
   const workflow = data?.workflow || []
   const periodicas = data?.periodicas || []
-  const wfValores = {
-    node_codigo: [...new Set(workflow.map(w => w.node_codigo).filter(v => v != null))].sort(),
-    idadmon:     [...new Set(workflow.map(w => w.idadmon).filter(v => v != null))].sort(),
-    nodo_nombre: [...new Set(workflow.map(w => w.nodo_nombre).filter(v => v != null))].sort(),
-    estado:      [...new Set(workflow.map(w => w.estado).filter(v => v != null))].sort(),
-  }
-  const wfFiltrado = workflow.filter(w =>
-    (filtrosWf.node_codigo.length === 0 || filtrosWf.node_codigo.includes(w.node_codigo)) &&
-    (filtrosWf.idadmon.length === 0     || filtrosWf.idadmon.includes(w.idadmon)) &&
-    (filtrosWf.nodo_nombre.length === 0 || filtrosWf.nodo_nombre.includes(w.nodo_nombre)) &&
-    (filtrosWf.estado.length === 0      || filtrosWf.estado.includes(w.estado))
-  )
   const asistencia = data?.asistencia || null
   const ausencias = data?.ausencias || []
   const nombre = data?.trabajador?.nombre_real || emailActivo
@@ -228,26 +170,16 @@ export default function MiPortalPage() {
                   <div style={{ padding: 18, fontSize: 13, color: 'var(--gray-400)' }}>Sin tareas de workflow</div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ background: 'var(--gray-50)' }}>
-                        <th style={th}><FiltroColumna titulo="Nodo" valores={wfValores.node_codigo} seleccionados={filtrosWf.node_codigo} onChange={v => setFiltrosWf(f => ({ ...f, node_codigo: v }))} /></th>
-                        <th style={th}><FiltroColumna titulo="IDADMON" valores={wfValores.idadmon} seleccionados={filtrosWf.idadmon} onChange={v => setFiltrosWf(f => ({ ...f, idadmon: v }))} /></th>
-                        <th style={th}><FiltroColumna titulo="Tarea" valores={wfValores.nodo_nombre} seleccionados={filtrosWf.nodo_nombre} onChange={v => setFiltrosWf(f => ({ ...f, nodo_nombre: v }))} /></th>
-                        <th style={th}><FiltroColumna titulo="Estado" valores={wfValores.estado} seleccionados={filtrosWf.estado} onChange={v => setFiltrosWf(f => ({ ...f, estado: v }))} /></th>
-                        <th style={th}>Inicio</th><th style={th}>Límite</th></tr></thead>
+                    <thead><tr style={{ background: 'var(--gray-50)' }}><th style={th}>Nodo</th><th style={th}>Estado</th><th style={th}>Inicio</th><th style={th}>Límite</th></tr></thead>
                     <tbody>
-                      {wfFiltrado.map(w => (
-                          <tr key={w.id}>
-                            <td style={td}>{w.node_codigo}</td>
-                            <td style={td}>{w.idadmon || '-'}</td>
-                            <td style={td}>{w.nodo_nombre}</td>
-                            <td style={td}>{w.estado}</td>
-                            <td style={td}>{fmtFecha(w.fecha_inicio)}</td>
-                            <td style={td}>{fmtFecha(w.fecha_limite)}</td>
-                          </tr>
-                        ))}
-                        {wfFiltrado.length === 0 && (
-                          <tr><td style={td} colSpan={6}><span style={{ color: 'var(--gray-400)', fontSize: 12 }}>Ninguna tarea coincide con el filtro</span></td></tr>
-                        )}
+                      {workflow.map(w => (
+                        <tr key={w.id}>
+                          <td style={td}>{w.node_codigo}</td>
+                          <td style={td}>{w.estado}</td>
+                          <td style={td}>{fmtFecha(w.fecha_inicio)}</td>
+                          <td style={td}>{fmtFecha(w.fecha_limite)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 )}
