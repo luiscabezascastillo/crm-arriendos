@@ -156,14 +156,13 @@ export default function GrafoTermino({ data, edges }) {
             );
           })}
 
-          {Object.keys(posiciones).map((code) => {
-            const pos = posiciones[code];
+          {data.map((t) => {
+            const pos = posiciones[t.node_codigo];
             if (!pos) return null;
-            const t = byCode[code] || { node_codigo: code };
 
-            const estadoReal = t.esta_retrasado ? "RETRASADO" : (t.task_estado || "PENDIENTE");
+            const estadoReal = t.esta_retrasado ? "RETRASADO" : t.task_estado;
             const color = svgColor[estadoReal] || svgColor.PENDIENTE;
-            const isActive = code === activeCode;
+            const isActive = t.node_codigo === activeCode;
 
             return (
               <g
