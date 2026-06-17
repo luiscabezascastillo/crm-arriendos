@@ -80,7 +80,7 @@ export default function MiPortalPage() {
   const [trabajadores, setTrabajadores] = useState([])
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
-  const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: ['PENDIENTE'] })
+  const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: [] })
   const [tareaAbierta, setTareaAbierta] = useState(null)
   const [nuevaTarea, setNuevaTarea] = useState(null)
   const [creandoTarea, setCreandoTarea] = useState(false)
