@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { registrarBitacora } from '@/lib/bitacora'
 import * as ftp from 'basic-ftp'
 
 const supabase = createClient(
@@ -181,9 +180,8 @@ export async function POST(request) {
 
     // 1 — Marcar propiedad como yapo='SI' en Supabase
     if (publicacionId) {
-        await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', publicacionId)
-        await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_yapo', detalle: 'Publicado en Yapo' })
-      }
+      await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', publicacionId)
+    }
 
     // 2 — Traer todas las propiedades con yapo='SI'
     const { data: propiedades, error } = await supabase

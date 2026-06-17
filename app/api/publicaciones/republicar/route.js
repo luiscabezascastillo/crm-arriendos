@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { registrarBitacora } from '@/lib/bitacora'
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -113,6 +114,9 @@ export async function POST(request) {
     await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', nuevoId)
     resultados.yapo = '✓'
   }
+  await registrarBitacora({ idpublicacion: (original.id), codigo: original.codigo, evento: 'republicar', detalle: 'Republicada (nuevo codigo ' + newCodigo + ')' })
+  await registrarBitacora({ idpublicacion: nuevoId, codigo: newCodigo, evento: 'republicar', detalle: 'Creada por republicacion desde ' + original.codigo })
+
   return NextResponse.json({
     ok: true,
     id: nuevoId,

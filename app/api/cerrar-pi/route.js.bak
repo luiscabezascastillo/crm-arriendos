@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { registrarBitacora } from '@/lib/bitacora'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -88,9 +87,7 @@ export async function POST(request) {
       updated_at: new Date().toISOString(),
     }).eq('id', publicacionId)
 
-    await registrarBitacora({ idpublicacion: publicacionId, codigo: p.codigo, evento: 'cerrar_pi', detalle: 'Cerrada en Portal Inmobiliario (' + p.codigo_pi + ')' })
-
-      return NextResponse.json({
+    return NextResponse.json({
       ok: true,
       mensaje: `✓ Propiedad ${p.codigo} cerrada en Portal Inmobiliario (${p.codigo_pi})`,
     })
