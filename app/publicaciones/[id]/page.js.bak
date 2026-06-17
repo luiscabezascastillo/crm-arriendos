@@ -412,56 +412,6 @@ async function subirImagen(file) {
   }
 
   // ── Eliminar imagen ──
-
-  // -- Subir VARIAS imagenes (secuencial, numeracion automatica) --
-  async function subirVarias(fileList) {
-    const files = Array.from(fileList || []).filter(f => f)
-    if (files.length === 0) return
-    for (const f of files) {
-      const esJpg = f.type.includes('jpeg') || f.type.includes('jpg') || f.name.toLowerCase().endsWith('.jpg')
-      if (!esJpg) { setMsgSubida({ ok: false, text: `"${f.name}" no es JPG. Solo se admiten archivos JPG.` }); return }
-      if (f.size > 10 * 1024 * 1024) { setMsgSubida({ ok: false, text: `"${f.name}" supera los 10MB.` }); return }
-    }
-    if (files.length === 1) { return subirImagen(files[0]) }
-
-    setSubiendo(true)
-    let acumuladas = [...imagenes]
-    let okCount = 0, errores = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      setMsgSubida({ ok: null, text: `Subiendo ${i + 1} de ${files.length}: "${file.name}"...` })
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('publicacionId', pub.codigo || id)
-      formData.append('slot', acumuladas.length + 1)
-      try {
-        const res = await fetch('/api/upload-imagen', { method: 'POST', body: formData })
-        const data = await res.json()
-        if (data.ok) {
-          acumuladas = [...acumuladas, data.nombreArchivo]
-          okCount++
-        } else {
-          errores.push(`${file.name}: ${data.error || 'error'}`)
-        }
-      } catch (e) {
-        errores.push(`${file.name}: ${e.message}`)
-      }
-    }
-    setImagenes(acumuladas)
-    if (acumuladas.length > 0) setImgSeleccionada(acumuladas[acumuladas.length - 1])
-    const payload = {}
-    for (let i = 0; i < 38; i++) payload[`imagen${i + 1}`] = acumuladas[i] || null
-    await supabase.from('publicaciones').update(payload).eq('id', id)
-
-    if (errores.length === 0) {
-      setMsgSubida({ ok: true, text: `${okCount} imagenes subidas correctamente` })
-    } else {
-      setMsgSubida({ ok: false, text: `${okCount} subidas. ${errores.length} con error: ${errores.join(' | ')}` })
-    }
-    setSubiendo(false)
-    setTimeout(() => setMsgSubida(null), 6000)
-  }
-
   async function eliminarImagen(idx) {
     if (!window.confirm(`¿Eliminar la imagen ${idx+1}? Solo se elimina de Supabase, no del servidor.`)) return
     const nuevas = imagenes.filter((_, i) => i !== idx)
@@ -809,7 +759,7 @@ async function subirImagen(file) {
                   )}
                   {msgGuardado && <span style={{ fontSize:11, fontWeight:500, color:msgGuardado.ok?'#16a34a':'#dc2626' }}>{msgGuardado.text}</span>}
                   <input ref={fileInputRef} type="file" accept=".jpg,.jpeg" style={{ display:'none' }}
-                    multiple onChange={e => { if (e.target.files.length) subirVarias(e.target.files); e.target.value='' }}
+                    onChange={e => { if (e.target.files[0]) subirImagen(e.target.files[0]); e.target.value='' }}
                   />
                   <button onClick={() => fileInputRef.current?.click()} disabled={subiendo} style={{ padding:'7px 16px', borderRadius:8, border:'none', background:subiendo?'#9ca3af':'#d97706', color:'#fff', fontSize:12, fontWeight:600, cursor:subiendo?'not-allowed':'pointer', fontFamily:'inherit' }}>
                     {subiendo ? 'Subiendo...' : '📤 Subir imagen'}
@@ -820,7 +770,7 @@ async function subirImagen(file) {
                 </div>
               </div>
               <div onDragOver={e => { e.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) subirVarias(e.dataTransfer.files) }}
+                onDrop={e => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files[0]; if (file) subirImagen(file) }}
                 onClick={() => fileInputRef.current?.click()}
                 style={{ border:`2px dashed ${dragOver?'#1a56db':'var(--border)'}`, borderRadius:10, padding:'16px', textAlign:'center', marginBottom:16, background:dragOver?'#eff6ff':'var(--gray-50)', cursor:'pointer', transition:'all 0.15s' }}
               >
