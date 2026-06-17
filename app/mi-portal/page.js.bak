@@ -170,13 +170,11 @@ export default function MiPortalPage() {
                   <div style={{ padding: 18, fontSize: 13, color: 'var(--gray-400)' }}>Sin tareas de workflow</div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ background: 'var(--gray-50)' }}><th style={th}>Nodo</th><th style={th}>IDADMON</th><th style={th}>Tarea</th><th style={th}>Estado</th><th style={th}>Inicio</th><th style={th}>Límite</th></tr></thead>
+                    <thead><tr style={{ background: 'var(--gray-50)' }}><th style={th}>Nodo</th><th style={th}>Estado</th><th style={th}>Inicio</th><th style={th}>Límite</th></tr></thead>
                     <tbody>
                       {workflow.map(w => (
                         <tr key={w.id}>
                           <td style={td}>{w.node_codigo}</td>
-                            <td style={td}>{w.idadmon || '-'}</td>
-                            <td style={td}>{w.nodo_nombre}</td>
                           <td style={td}>{w.estado}</td>
                           <td style={td}>{fmtFecha(w.fecha_inicio)}</td>
                           <td style={td}>{fmtFecha(w.fecha_limite)}</td>

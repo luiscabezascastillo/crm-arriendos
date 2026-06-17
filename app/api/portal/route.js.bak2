@@ -36,36 +36,13 @@ export async function GET(request) {
       .select('area')
       .eq('email', email)
     const misAreas = (areasResp || []).map(a => a.area)
-    let workflow = []
-    if (misAreas.length) {
-      const { data: wfTasks } = await supabase
-        .from('workflow_tasks')
-        .select('*')
-        .in('responsable', misAreas)
-        .order('fecha_limite', { ascending: true, nullsFirst: false })
-      const tasks = wfTasks || []
-
-      const instIds = [...new Set(tasks.map(t => t.workflow_instance_id).filter(Boolean))]
-      const nodeCods = [...new Set(tasks.map(t => t.node_codigo).filter(Boolean))]
-
-      const { data: insts } = instIds.length
-        ? await supabase.from('workflow_instances').select('id, idadmon').in('id', instIds)
-        : { data: [] }
-      const { data: nodes } = nodeCods.length
-        ? await supabase.from('workflow_nodes').select('codigo, nombre').in('codigo', nodeCods)
-        : { data: [] }
-
-      const idadmonPorInst = {}
-      for (const i of (insts || [])) idadmonPorInst[i.id] = i.idadmon
-      const nombrePorNodo = {}
-      for (const n of (nodes || [])) nombrePorNodo[n.codigo] = n.nombre
-
-      workflow = tasks.map(t => ({
-        ...t,
-        idadmon: idadmonPorInst[t.workflow_instance_id] || null,
-        nodo_nombre: nombrePorNodo[t.node_codigo] || t.node_codigo,
-      }))
-    }
+    const { data: workflow } = misAreas.length
+      ? await supabase
+          .from('workflow_tasks')
+          .select('*')
+          .in('responsable', misAreas)
+          .order('fecha_limite', { ascending: true, nullsFirst: false })
+      : { data: [] }
 
     // 3 — Actividades periódicas (por email)
     const { data: periodicas } = await supabase
