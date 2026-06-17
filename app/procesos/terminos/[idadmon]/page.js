@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/src/lib/supabase";
 import CompletarButton from "./CompletarButton";
+import GrafoTermino from "./GrafoTermino";
 
 const estadoStyle = {
   COMPLETADO: { background: "#d8f3dc", color: "#1b5e20" },
@@ -8,66 +9,6 @@ const estadoStyle = {
   RETRASADO: { background: "#f8d7da", color: "#842029" },
   BLOQUEADO: { background: "#ffe5b4", color: "#8a4b00" },
 };
-
-const svgColor = {
-  COMPLETADO: { fill: "#d8f3dc", stroke: "#2f9e44", text: "#1b5e20" },
-  ACTIVO: { fill: "#fff3cd", stroke: "#f59f00", text: "#7a4f00" },
-  PENDIENTE: { fill: "#e9ecef", stroke: "#adb5bd", text: "#495057" },
-  RETRASADO: { fill: "#f8d7da", stroke: "#e03131", text: "#842029" },
-  BLOQUEADO: { fill: "#ffe5b4", stroke: "#f08c00", text: "#8a4b00" },
-};
-
-const posiciones = {
-  N01: { x: 80, y: 40 },
-  N02: { x: 310, y: 40 },
-  N03: { x: 80, y: 150 },
-  N04: { x: 310, y: 150 },
-  N05: { x: 540, y: 150 },
-  N06: { x: 310, y: 260 },
-  N07: { x: 310, y: 370 },
-  N08: { x: 80, y: 500 },
-  N12: { x: 310, y: 500 },
-  N13: { x: 540, y: 500 },
-  N14: { x: 770, y: 500 },
-  N09: { x: 80, y: 630 },
-  N10: { x: 80, y: 740 },
-  N11: { x: 80, y: 850 },
-  N15: { x: 420, y: 850 },
-  N16: { x: 300, y: 980 },
-  N17: { x: 540, y: 980 },
-  N18: { x: 420, y: 1100 },
-  N19: { x: 300, y: 1230 },
-  N20: { x: 300, y: 1360 },
-  N21: { x: 540, y: 1230 },
-};
-
-function nombreCorto(codigo, nombre) {
-  const mapa = {
-    N01: "Aviso",
-    N02: "Expediente",
-    N03: "Publicación",
-    N04: "Legal inicial",
-    N05: "Ficha término",
-    N06: "Llaves / Q",
-    N07: "Inspección",
-    N08: "Presupuesto",
-    N09: "Aprobación",
-    N10: "Reparación",
-    N11: "Limpieza",
-    N12: "Servicios",
-    N13: "Garantía",
-    N14: "Deuda",
-    N15: "Liquidación",
-    N16: "Notif. propietario",
-    N17: "Notif. arrendatario",
-    N18: "Respuesta",
-    N19: "Pago / cobro",
-    N20: "Cierre",
-    N21: "Legal / DICOM",
-  };
-
-  return mapa[codigo] || nombre;
-}
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -216,105 +157,7 @@ export default async function TerminoPage({ params }) {
         </span>
       </div>
 
-      <section
-        style={{
-          background: "white",
-          border: "1px solid #dee2e6",
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 24,
-          overflowX: "auto",
-        }}
-      >
-        <h3>Grafo de dependencias</h3>
-
-        <svg width="1050" height="1480" viewBox="0 0 1050 1480">
-          <defs>
-            <marker
-              id="arrow"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
-              orient="auto"
-            >
-              <path d="M0,0 L0,6 L9,3 z" fill="#868e96" />
-            </marker>
-          </defs>
-
-          {edges.map((e) => {
-            const from = posiciones[e.parent_node];
-            const to = posiciones[e.child_node];
-
-            if (!from || !to) return null;
-
-            const x1 = from.x + 70;
-            const y1 = from.y + 25;
-            const x2 = to.x + 70;
-            const y2 = to.y + 25;
-
-            return (
-              <line
-                key={`${e.parent_node}-${e.child_node}`}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="#868e96"
-                strokeWidth="2"
-                markerEnd="url(#arrow)"
-              />
-            );
-          })}
-
-          {data.map((t) => {
-            const pos = posiciones[t.node_codigo];
-            if (!pos) return null;
-
-            const estadoReal = t.esta_retrasado
-              ? "RETRASADO"
-              : t.task_estado;
-
-            const color = svgColor[estadoReal] || svgColor.PENDIENTE;
-
-            return (
-              <g key={t.node_codigo}>
-                <rect
-                  x={pos.x}
-                  y={pos.y}
-                  width="140"
-                  height="58"
-                  rx="12"
-                  fill={color.fill}
-                  stroke={color.stroke}
-                  strokeWidth="2"
-                />
-
-                <text
-                  x={pos.x + 70}
-                  y={pos.y + 20}
-                  textAnchor="middle"
-                  fontSize="13"
-                  fontWeight="bold"
-                  fill={color.text}
-                >
-                  {t.node_codigo}
-                </text>
-
-                <text
-                  x={pos.x + 70}
-                  y={pos.y + 39}
-                  textAnchor="middle"
-                  fontSize="12"
-                  fill={color.text}
-                >
-                  {nombreCorto(t.node_codigo, t.nombre)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </section>
+      <GrafoTermino data={data} edges={edges} />
 
       <table cellPadding="8" style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
