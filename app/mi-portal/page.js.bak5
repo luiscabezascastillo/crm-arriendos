@@ -82,8 +82,6 @@ export default function MiPortalPage() {
   const [data, setData] = useState(null)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: [] })
   const [tareaAbierta, setTareaAbierta] = useState(null)
-  const [nuevaTarea, setNuevaTarea] = useState(null)
-  const [creandoTarea, setCreandoTarea] = useState(false)
   const [guardandoTarea, setGuardandoTarea] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -156,27 +154,6 @@ export default function MiPortalPage() {
       cargarPortal(emailActivo)
     }
 
-    async function crearTarea() {
-      if (!nuevaTarea || !(nuevaTarea.titulo || '').trim()) { alert('Escribe un titulo para la tarea.'); return }
-      setCreandoTarea(true)
-      await fetch('/api/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accion: 'tarea_crear',
-          titulo: nuevaTarea.titulo,
-          descripcion: nuevaTarea.descripcion || null,
-          responsable: emailActivo,
-          prioridad: nuevaTarea.prioridad || 'MEDIA',
-          fecha_limite: nuevaTarea.fecha_limite || null,
-          created_by: session.user.email,
-        }),
-      })
-      setCreandoTarea(false)
-      setNuevaTarea(null)
-      cargarPortal(emailActivo)
-    }
-
   function fmtFecha(f) {
     if (!f) return '—'
     const d = new Date(f)
@@ -246,7 +223,7 @@ export default function MiPortalPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18, marginBottom: 28 }}>
               {/* Tareas encargadas */}
               <div style={card}>
-                <div style={cardHead}><span>📋 Tareas encargadas</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{esDireccion && emailActivo && emailActivo !== session.user.email && (<button onClick={() => setNuevaTarea({ titulo: '', descripcion: '', prioridad: 'MEDIA', fecha_limite: '' })} style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: '#1a56db', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nueva tarea</button>)}<span style={{ color: 'var(--gray-400)' }}>{tareas.length}</span></span></div>
+                <div style={cardHead}><span>📋 Tareas encargadas</span><span style={{ color: 'var(--gray-400)' }}>{tareas.length}</span></div>
                 {tareas.length === 0 ? (
                   <div style={{ padding: 18, fontSize: 13, color: 'var(--gray-400)' }}>Sin tareas asignadas</div>
                 ) : (
@@ -410,49 +387,6 @@ export default function MiPortalPage() {
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
               <button onClick={guardarTarea} disabled={guardandoTarea}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{guardandoTarea ? 'Guardando…' : 'Guardar'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {nuevaTarea && (
-        <div onClick={() => setNuevaTarea(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(560px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 4 }}>Nueva tarea para {nombre}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Encargar tarea</div>
-
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Titulo</label>
-            <input value={nuevaTarea.titulo} onChange={e => setNuevaTarea({ ...nuevaTarea, titulo: e.target.value })}
-              placeholder="Titulo de la tarea"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14 }} />
-
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Descripcion</label>
-            <textarea value={nuevaTarea.descripcion} onChange={e => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
-              rows={3} placeholder="Detalle de lo que hay que hacer"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14, resize: 'vertical' }} />
-
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Prioridad</label>
-                <select value={nuevaTarea.prioridad} onChange={e => setNuevaTarea({ ...nuevaTarea, prioridad: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)' }}>
-                  <option value="ALTA">Alta</option>
-                  <option value="MEDIA">Media</option>
-                  <option value="BAJA">Baja</option>
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Fecha limite</label>
-                <input type="date" value={nuevaTarea.fecha_limite} onChange={e => setNuevaTarea({ ...nuevaTarea, fecha_limite: e.target.value })}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit' }} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setNuevaTarea(null)} disabled={creandoTarea}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
-              <button onClick={crearTarea} disabled={creandoTarea}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1a56db', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{creandoTarea ? 'Creando\u2026' : 'Crear tarea'}</button>
             </div>
           </div>
         </div>

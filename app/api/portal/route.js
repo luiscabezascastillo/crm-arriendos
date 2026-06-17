@@ -136,6 +136,21 @@ export async function POST(request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true })
     }
+
+    if (body.accion === 'tarea_crear') {
+      if (!body.titulo || !body.responsable) return NextResponse.json({ error: 'Falta titulo o responsable' }, { status: 400 })
+      const { error } = await supabase.from('tareas').insert({
+        titulo: body.titulo,
+        descripcion: body.descripcion || null,
+        responsable: body.responsable,
+        estado: 'PENDIENTE',
+        prioridad: body.prioridad || 'MEDIA',
+        fecha_limite: body.fecha_limite || null,
+        created_by: body.created_by || null,
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
     return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 })
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 })
