@@ -55,16 +55,6 @@ export async function POST(request) {
     nueva.updated_at = new Date().toISOString()
     nueva.fotos_firma  = null
     nueva.sync_id    = null
-    // Campos de portales (especificos del anuncio en ML/web): la copia nace sin ellos
-    nueva.codigo_pi            = null
-    nueva.url_pi               = null
-    nueva.fotos_ml             = null
-    nueva.fecha_vencimiento_pi = null
-    nueva.estado_pi            = null
-    nueva.url_web              = null
-    nueva.url_yapo             = null
-    nueva.url_goplaceit        = null
-    nueva.url_proppit          = null
 
     // La copia nace sin fotos (imagen1–imagen38)
     for (let i = 1; i <= 38; i++) nueva[`imagen${i}`] = null
