@@ -19,25 +19,6 @@ const EJECUTIVOS = {
   'Neika':   { nombre: 'Neika Duque',       phone: '+56 9 4274 9624', email: 'neika.duque@fondocapital.com' },
 }
 
-function facingValueId(orientacion) {
-  if (!orientacion) return null
-  let s = String(orientacion).toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\s\-_.]/g, '')
-  s = s.replace(/orientacion/g, '')
-  const mapa = {
-    'norte': '242327', 'n': '242327',
-    'sur': '242328', 's': '242328',
-    'oriente': '242329', 'o': '242329',
-    'poniente': '242330', 'p': '242330',
-    'nororiente': '2730831', 'no': '2730831',
-    'norponiente': '2730832', 'np': '2730832',
-    'suroriente': '2730833', 'so': '2730833',
-    'surponiente': '2730834', 'sp': '2730834',
-  }
-  return mapa[s] || null
-}
-
 function getCategoryId(objetivo, tipo) {
   const esVenta = String(objetivo || '').toLowerCase().includes('venta')
   const t = String(tipo || '').toUpperCase()
@@ -198,7 +179,7 @@ function buildPayload(p) {
     ...(p.apartments_per_floor       ? [{ id: 'APARTMENTS_PER_FLOOR',       value_name: String(p.apartments_per_floor) }] : []),
     ...(p.apartment_number           ? [{ id: 'APARTMENT_NUMBER',           value_name: String(p.apartment_number) }] : []),
     ...(p.property_registration_code ? [{ id: 'PROPERTY_REGISTRATION_CODE', value_name: String(p.property_registration_code) }] : []),
-    ...(facingValueId(p.orientacion) ? [{ id: 'FACING', value_id: facingValueId(p.orientacion) }] : []),
+    ...(p.orientacion                ? [{ id: 'FACING',                     value_name: p.orientacion }] : []),
     // Nivel Profesional
     ...(p.has_balcony   ? [{ id: 'HAS_BALCONY',   values: [bool(p.has_balcony)]   }] : []),
     ...(p.has_laundry   ? [{ id: 'HAS_LAUNDRY',   values: [bool(p.has_laundry)]   }] : []),
