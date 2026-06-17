@@ -81,8 +81,6 @@ export default function MiPortalPage() {
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: [] })
-  const [tareaAbierta, setTareaAbierta] = useState(null)
-  const [guardandoTarea, setGuardandoTarea] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Permiso de acceso + redirección de externos a su portal
@@ -130,29 +128,6 @@ export default function MiPortalPage() {
     })
     cargarPortal(emailActivo)
   }
-
-    async function guardarTarea() {
-      if (!tareaAbierta) return
-      if (tareaAbierta.estado === 'COMPLETADA' && !(tareaAbierta.comentario_cierre || '').trim()) {
-        alert('Para completar la tarea, escribe que se hizo.')
-        return
-      }
-      setGuardandoTarea(true)
-      await fetch('/api/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accion: 'tarea_guardar',
-          id: tareaAbierta.id,
-          estado: tareaAbierta.estado,
-          comentario_cierre: tareaAbierta.comentario_cierre || null,
-          link_resultado: tareaAbierta.link_resultado || null,
-        }),
-      })
-      setGuardandoTarea(false)
-      setTareaAbierta(null)
-      cargarPortal(emailActivo)
-    }
 
   function fmtFecha(f) {
     if (!f) return '—'
@@ -233,7 +208,7 @@ export default function MiPortalPage() {
                       {tareas.map(t => {
                         const ec = ESTADO_COLOR[t.estado] || { bg: '#f3f4f6', color: '#6b7280' }
                         return (
-                          <tr key={t.id} onClick={() => setTareaAbierta({ ...t })} style={{ cursor: 'pointer' }}>
+                          <tr key={t.id}>
                             <td style={td}>{t.titulo}</td>
                             <td style={td}><span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: ec.bg, color: ec.color }}>{t.estado}</span></td>
                             <td style={{ ...td, color: PRIORIDAD_COLOR[t.prioridad] || 'var(--gray-600)', fontWeight: 600 }}>{t.prioridad || '—'}</td>
@@ -357,40 +332,6 @@ export default function MiPortalPage() {
                 )}
               </div>
             </div>
-                  {tareaAbierta && (
-        <div onClick={() => setTareaAbierta(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(560px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 4 }}>Tarea encargada{tareaAbierta.idadmon ? ' · ' + tareaAbierta.idadmon : ''}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{tareaAbierta.titulo}</div>
-            {tareaAbierta.descripcion && <div style={{ fontSize: 13, color: 'var(--gray-600)', marginBottom: 16, lineHeight: 1.5 }}>{tareaAbierta.descripcion}</div>}
- 
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Estado</label>
-            <select value={tareaAbierta.estado || 'PENDIENTE'} onChange={e => setTareaAbierta({ ...tareaAbierta, estado: e.target.value })}
-              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14, background: 'var(--surface)' }}>
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="EN_PROCESO">En proceso</option>
-              <option value="COMPLETADA">Completada</option>
-            </select>
- 
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Qué se hizo</label>
-            <textarea value={tareaAbierta.comentario_cierre || ''} onChange={e => setTareaAbierta({ ...tareaAbierta, comentario_cierre: e.target.value })}
-              rows={4} placeholder="Explica qué se hizo…"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14, resize: 'vertical' }} />
- 
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Dónde se guardó / enlace <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>(opcional)</span></label>
-            <input value={tareaAbierta.link_resultado || ''} onChange={e => setTareaAbierta({ ...tareaAbierta, link_resultado: e.target.value })}
-              placeholder="Enlace a Drive, ruta, o vacío"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 20 }} />
- 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setTareaAbierta(null)} disabled={guardandoTarea}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
-              <button onClick={guardarTarea} disabled={guardandoTarea}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{guardandoTarea ? 'Guardando…' : 'Guardar'}</button>
-            </div>
-          </div>
-        </div>
-      )}
           </>
         )}
       </div>
