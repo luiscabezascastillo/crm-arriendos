@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { registrarBitacora } from '@/lib/bitacora'
+import { getServerSession } from 'next-auth'
 import * as ftp from 'basic-ftp'
 
 const supabase = createClient(
@@ -176,13 +177,15 @@ function generarXML(propiedades) {
 }
 
 export async function POST(request) {
-  try {
-    const { publicacionId } = await request.json()
+    try {
+      const session = await getServerSession()
+      const usuarioBitacora = session?.user?.name || session?.user?.email || null
+      const { publicacionId } = await request.json()
 
     // 1 — Marcar propiedad como yapo='SI' en Supabase
     if (publicacionId) {
         await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', publicacionId)
-        await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_yapo', detalle: 'Publicado en Yapo' })
+        await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_yapo', detalle: 'Publicado en Yapo', usuario: usuarioBitacora })
       }
 
     // 2 — Traer todas las propiedades con yapo='SI'

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { registrarBitacora } from '@/lib/bitacora'
+import { getServerSession } from 'next-auth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -54,8 +55,10 @@ async function getValidToken() {
 }
 
 export async function POST(request) {
-  try {
-    const { publicacionId } = await request.json()
+    try {
+      const session = await getServerSession()
+      const usuarioBitacora = session?.user?.name || session?.user?.email || null
+      const { publicacionId } = await request.json()
     if (!publicacionId) return NextResponse.json({ error: 'Falta publicacionId' }, { status: 400 })
 
     const { data: p, error } = await supabase
@@ -88,7 +91,7 @@ export async function POST(request) {
       updated_at: new Date().toISOString(),
     }).eq('id', publicacionId)
 
-    await registrarBitacora({ idpublicacion: publicacionId, codigo: p.codigo, evento: 'cerrar_pi', detalle: 'Cerrada en Portal Inmobiliario (' + p.codigo_pi + ')' })
+    await registrarBitacora({ idpublicacion: publicacionId, codigo: p.codigo, evento: 'cerrar_pi', detalle: 'Cerrada en Portal Inmobiliario (' + p.codigo_pi + ')', usuario: usuarioBitacora })
 
       return NextResponse.json({
       ok: true,

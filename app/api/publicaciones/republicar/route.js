@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { registrarBitacora } from '@/lib/bitacora'
+import { getServerSession } from 'next-auth'
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -40,6 +41,8 @@ async function getValidToken() {
   return newAccess
 }
 export async function POST(request) {
+  const session = await getServerSession()
+  const usuarioBitacora = session?.user?.name || session?.user?.email || null
   const { sourceId, publicacionId } = await request.json()
   // Obtener publicacion original
   const { data: original, error: errOrig } = await supabase
@@ -114,8 +117,8 @@ export async function POST(request) {
     await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', nuevoId)
     resultados.yapo = '✓'
   }
-  await registrarBitacora({ idpublicacion: (original.id), codigo: original.codigo, evento: 'republicar', detalle: 'Republicada (nuevo codigo ' + newCodigo + ')' })
-  await registrarBitacora({ idpublicacion: nuevoId, codigo: newCodigo, evento: 'republicar', detalle: 'Creada por republicacion desde ' + original.codigo })
+  await registrarBitacora({ idpublicacion: (original.id), codigo: original.codigo, evento: 'republicar', detalle: 'Republicada (nuevo codigo ' + newCodigo + ')', usuario: usuarioBitacora })
+  await registrarBitacora({ idpublicacion: nuevoId, codigo: newCodigo, evento: 'republicar', detalle: 'Creada por republicacion desde ' + original.codigo, usuario: usuarioBitacora })
 
   return NextResponse.json({
     ok: true,

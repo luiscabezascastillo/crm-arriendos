@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { registrarBitacora } from '@/lib/bitacora'
+import { getServerSession } from 'next-auth'
 import * as ftp from 'basic-ftp'
 import * as XLSX from 'xlsx'
 
@@ -23,13 +24,15 @@ const EJECUTIVOS = {
 }
 
 export async function POST(request) {
-  try {
-    const { publicacionId } = await request.json()
+    try {
+      const session = await getServerSession()
+      const usuarioBitacora = session?.user?.name || session?.user?.email || null
+      const { publicacionId } = await request.json()
 
     // 1 — Marcar propiedad como web='SI' en Supabase
     if (publicacionId) {
         await supabase.from('publicaciones').update({ web: 'SI' }).eq('id', publicacionId)
-        await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_web', detalle: 'Publicado en Web' })
+        await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_web', detalle: 'Publicado en Web', usuario: usuarioBitacora })
       }
 
     // 2 — Traer todas las propiedades con web='SI'
