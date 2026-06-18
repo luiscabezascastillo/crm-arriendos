@@ -86,6 +86,18 @@ async function getValidToken() {
   return newAccess
 }
 
+function boolPI(val) {
+  const s = String(val == null ? '' : val).trim().toLowerCase()
+  const si = (s === 'si' || s === 'sí' || s === 'true' || s === '1' || s === 'parcial' || s === 'yes')
+  return si ? { id: '242085', name: 'Si' } : { id: '242084', name: 'No' }
+}
+
+function maintenanceFeeTypeValueId(txt) {
+  const s = String(txt == null ? '' : txt).trim().toLowerCase()
+  const mapa = { 'sin cobro': '13522119', 'incluidos en el arriendo': '13522120', 'incluidos': '13522120', 'fijos': '13522121', 'aproximados': '13522122' }
+  return mapa[s] || null
+}
+
 // POST /api/actualizar-pi  body: { publicacionId }
 // Sincroniza precio, video, descripcion y (FASE 2) fotos con el item activo en ML.
 export async function POST(request) {
@@ -181,6 +193,13 @@ export async function POST(request) {
       addAmen(pub.tiene_azotea, 'HAS_ROOF_GARDEN')
       addAmen(pub.tiene_generador, 'HAS_ELECTRIC_GENERATOR')
       addAmen(pub.tiene_rampa_silla, 'WHEELCHAIR_RAMP')
+      // Atributos de la unidad (mascotas/amoblado obligatorios en PI) + extras
+      amen.push({ id: 'IS_SUITABLE_FOR_PETS', values: [boolPI(pub.ksuitable_for_pets)] })
+      amen.push({ id: 'FURNISHED', values: [boolPI(pub.amoblado)] })
+      if (pub.has_heating) amen.push({ id: 'HAS_HEATING', values: [boolPI(pub.has_heating)] })
+      if (pub.has_air_conditioning) amen.push({ id: 'HAS_AIR_CONDITIONING', values: [boolPI(pub.has_air_conditioning)] })
+      if (maintenanceFeeTypeValueId(pub.maintenance_fee_type)) amen.push({ id: 'MAINTENANCE_FEE_TYPE', value_id: maintenanceFeeTypeValueId(pub.maintenance_fee_type) })
+      if (pub.available_from) amen.push({ id: 'AVAILABLE', value_name: String(pub.available_from) })
       if (amen.length > 0) body.attributes = amen
 
       // PUT 1: campos (precio, titulo, amenities, video). NO incluye fotos.

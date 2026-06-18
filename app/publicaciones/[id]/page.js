@@ -166,6 +166,29 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Deptos por piso', 'apartments_per_floor')}
         {inp('Nº depto', 'apartment_number')}
         {inp('Rol propiedad', 'property_registration_code')}
+        {inp('Admite mascotas', 'ksuitable_for_pets', 'text', ['No','Sí'])}
+        {inp('Tipo de gastos comunes', 'maintenance_fee_type', 'text', ['','Sin cobro','Incluidos en el arriendo','Fijos','Aproximados'])}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Disponible desde</label>
+          <input type="date" value={form.available_from || ''} onChange={e => set('available_from', e.target.value)}
+            style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Calefacción</label>
+          <select value={(form.has_heating ?? false) ? 'true' : 'false'} onChange={e => set('has_heating', e.target.value === 'true')}
+            style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
+            <option value="false">No</option>
+            <option value="true">Sí</option>
+          </select>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Aire acondicionado</label>
+          <select value={(form.has_air_conditioning ?? false) ? 'true' : 'false'} onChange={e => set('has_air_conditioning', e.target.value === 'true')}
+            style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
+            <option value="false">No</option>
+            <option value="true">Sí</option>
+          </select>
+        </div>
 
         <div style={{ gridColumn:'1/-1', borderBottom:'2px solid #0891b2', paddingBottom:4, marginTop:8 }}>
           <span style={{ fontSize:12, fontWeight:700, color:'#0891b2', textTransform:'uppercase', letterSpacing:.8 }}>Características adicionales</span>
@@ -412,56 +435,6 @@ async function subirImagen(file) {
   }
 
   // ── Eliminar imagen ──
-
-  // -- Subir VARIAS imagenes (secuencial, numeracion automatica) --
-  async function subirVarias(fileList) {
-    const files = Array.from(fileList || []).filter(f => f)
-    if (files.length === 0) return
-    for (const f of files) {
-      const esJpg = f.type.includes('jpeg') || f.type.includes('jpg') || f.name.toLowerCase().endsWith('.jpg')
-      if (!esJpg) { setMsgSubida({ ok: false, text: `"${f.name}" no es JPG. Solo se admiten archivos JPG.` }); return }
-      if (f.size > 10 * 1024 * 1024) { setMsgSubida({ ok: false, text: `"${f.name}" supera los 10MB.` }); return }
-    }
-    if (files.length === 1) { return subirImagen(files[0]) }
-
-    setSubiendo(true)
-    let acumuladas = [...imagenes]
-    let okCount = 0, errores = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      setMsgSubida({ ok: null, text: `Subiendo ${i + 1} de ${files.length}: "${file.name}"...` })
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('publicacionId', pub.codigo || id)
-      formData.append('slot', acumuladas.length + 1)
-      try {
-        const res = await fetch('/api/upload-imagen', { method: 'POST', body: formData })
-        const data = await res.json()
-        if (data.ok) {
-          acumuladas = [...acumuladas, data.nombreArchivo]
-          okCount++
-        } else {
-          errores.push(`${file.name}: ${data.error || 'error'}`)
-        }
-      } catch (e) {
-        errores.push(`${file.name}: ${e.message}`)
-      }
-    }
-    setImagenes(acumuladas)
-    if (acumuladas.length > 0) setImgSeleccionada(acumuladas[acumuladas.length - 1])
-    const payload = {}
-    for (let i = 0; i < 38; i++) payload[`imagen${i + 1}`] = acumuladas[i] || null
-    await supabase.from('publicaciones').update(payload).eq('id', id)
-
-    if (errores.length === 0) {
-      setMsgSubida({ ok: true, text: `${okCount} imagenes subidas correctamente` })
-    } else {
-      setMsgSubida({ ok: false, text: `${okCount} subidas. ${errores.length} con error: ${errores.join(' | ')}` })
-    }
-    setSubiendo(false)
-    setTimeout(() => setMsgSubida(null), 6000)
-  }
-
   async function eliminarImagen(idx) {
     if (!window.confirm(`¿Eliminar la imagen ${idx+1}? Solo se elimina de Supabase, no del servidor.`)) return
     const nuevas = imagenes.filter((_, i) => i !== idx)
@@ -809,7 +782,7 @@ async function subirImagen(file) {
                   )}
                   {msgGuardado && <span style={{ fontSize:11, fontWeight:500, color:msgGuardado.ok?'#16a34a':'#dc2626' }}>{msgGuardado.text}</span>}
                   <input ref={fileInputRef} type="file" accept=".jpg,.jpeg" style={{ display:'none' }}
-                    multiple onChange={e => { if (e.target.files.length) subirVarias(e.target.files); e.target.value='' }}
+                    onChange={e => { if (e.target.files[0]) subirImagen(e.target.files[0]); e.target.value='' }}
                   />
                   <button onClick={() => fileInputRef.current?.click()} disabled={subiendo} style={{ padding:'7px 16px', borderRadius:8, border:'none', background:subiendo?'#9ca3af':'#d97706', color:'#fff', fontSize:12, fontWeight:600, cursor:subiendo?'not-allowed':'pointer', fontFamily:'inherit' }}>
                     {subiendo ? 'Subiendo...' : '📤 Subir imagen'}
@@ -820,7 +793,7 @@ async function subirImagen(file) {
                 </div>
               </div>
               <div onDragOver={e => { e.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) subirVarias(e.dataTransfer.files) }}
+                onDrop={e => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files[0]; if (file) subirImagen(file) }}
                 onClick={() => fileInputRef.current?.click()}
                 style={{ border:`2px dashed ${dragOver?'#1a56db':'var(--border)'}`, borderRadius:10, padding:'16px', textAlign:'center', marginBottom:16, background:dragOver?'#eff6ff':'var(--gray-50)', cursor:'pointer', transition:'all 0.15s' }}
               >
@@ -991,83 +964,13 @@ async function subirImagen(file) {
           )}
 
           {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} />}
-             {/* BITACORA */}
-          {seccion === 'Bitácora' && (
-           <SeccionBitacora id={id} />
-            )}
-          {!['Resumen','Imágenes','Propietario','Publicación','Editar','Bitácora'].includes(seccion) && (            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
+              {!['Resumen','Imágenes','Propietario','Publicación','Editar'].includes(seccion) && (
+            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
               <div style={{ fontSize:13, color:'var(--gray-400)' }}>Sección <strong>{seccion}</strong> en desarrollo</div>
             </div>
           )}
         </div>
       </div>
-    </div>
-  )
-}
-// ── SECCIÓN BITÁCORA ──
-function SeccionBitacora({ id }) {
-  const [eventos, setEventos] = useState([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let activo = true
-    setCargando(true)
-    fetch('/api/bitacora?idpublicacion=' + id)
-      .then(r => r.json())
-      .then(d => {
-        if (!activo) return
-        if (d.ok) setEventos(d.eventos || [])
-        else setError(d.error || 'Error al cargar la bitácora')
-      })
-      .catch(e => { if (activo) setError('Error de conexión: ' + e.message) })
-      .finally(() => { if (activo) setCargando(false) })
-    return () => { activo = false }
-  }, [id])
-
-  // Color del punto según el tipo de evento
-  function colorEvento(ev) {
-    const e = String(ev || '').toLowerCase()
-    if (e.includes('cerrar') || e.includes('retirar') || e.includes('baja')) return '#dc2626'
-    if (e.includes('republicar')) return '#2563eb'
-    if (e.includes('publicar')) return '#16a34a'
-    if (e.includes('precio') || e.includes('estado')) return '#d97706'
-    return '#6b7280'
-  }
-
-  function fechaLegible(iso) {
-    if (!iso) return ''
-    const d = new Date(iso)
-    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
-      ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  return (
-    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'20px 24px' }}>
-      <div style={{ fontSize:13, fontWeight:700, color:'var(--gray-700)', marginBottom:16, textTransform:'uppercase', letterSpacing:'0.05em' }}>Bitácora de la propiedad</div>
-      {cargando && <div style={{ fontSize:13, color:'var(--gray-400)' }}>Cargando…</div>}
-      {error && <div style={{ fontSize:13, color:'#dc2626' }}>{error}</div>}
-      {!cargando && !error && eventos.length === 0 && (
-        <div style={{ fontSize:13, color:'var(--gray-400)' }}>Aún no hay eventos registrados para esta propiedad.</div>
-      )}
-      {!cargando && !error && eventos.length > 0 && (
-        <div style={{ position:'relative', paddingLeft:8 }}>
-          {eventos.map((ev, i) => (
-            <div key={ev.id || i} style={{ display:'flex', gap:12, paddingBottom:16, position:'relative' }}>
-              <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
-                <div style={{ width:12, height:12, borderRadius:'50%', background:colorEvento(ev.evento), flexShrink:0, marginTop:3 }} />
-                {i < eventos.length - 1 && <div style={{ width:2, flex:1, background:'var(--border)', marginTop:2 }} />}
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--gray-800)' }}>{ev.detalle || ev.evento}</div>
-                <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:2 }}>
-                  {fechaLegible(ev.created_at)}{ev.usuario ? ' · ' + ev.usuario : ''}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

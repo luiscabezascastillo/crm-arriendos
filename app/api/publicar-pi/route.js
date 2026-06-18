@@ -155,6 +155,24 @@ async function getValidToken() {
   return newAccess
 }
 
+function boolPI(val) {
+  const s = String(val == null ? '' : val).trim().toLowerCase()
+  const si = (s === 'si' || s === 's\u00ed' || s === 'true' || s === '1' || s === 'parcial' || s === 'yes')
+  return si ? { id: '242085', name: 'Si' } : { id: '242084', name: 'No' }
+}
+
+function maintenanceFeeTypeValueId(txt) {
+  const s = String(txt == null ? '' : txt).trim().toLowerCase()
+  const mapa = {
+    'sin cobro': '13522119',
+    'incluidos en el arriendo': '13522120',
+    'incluidos': '13522120',
+    'fijos': '13522121',
+    'aproximados': '13522122',
+  }
+  return mapa[s] || null
+}
+
 function buildPayload(p) {
   const ejec = EJECUTIVOS[p.vendedor] || EJECUTIVOS['Alberto']
   const comuna = getComuna(p.comuna)
@@ -191,8 +209,12 @@ function buildPayload(p) {
     { id: 'COVERED_AREA',         value_name: `${p.mt2_const || '0'} m²` },
     { id: 'TOTAL_AREA',           value_name: `${p.mt2_terreno || p.mt2_const || '0'} m²` },
     { id: 'MAINTENANCE_FEE',      value_name: String(p.ggcc             || '0') },
-    { id: 'IS_SUITABLE_FOR_PETS', value_name: p.ksuitable_for_pets      || 'No' },
-    { id: 'FURNISHED',            values: [bool(p.amoblado)] },
+    { id: 'IS_SUITABLE_FOR_PETS', values: [boolPI(p.ksuitable_for_pets)] },
+    { id: 'FURNISHED',            values: [boolPI(p.amoblado)] },
+    ...(p.has_heating          ? [{ id: 'HAS_HEATING',          values: [boolPI(p.has_heating)] }] : []),
+    ...(p.has_air_conditioning ? [{ id: 'HAS_AIR_CONDITIONING', values: [boolPI(p.has_air_conditioning)] }] : []),
+    ...(maintenanceFeeTypeValueId(p.maintenance_fee_type) ? [{ id: 'MAINTENANCE_FEE_TYPE', value_id: maintenanceFeeTypeValueId(p.maintenance_fee_type) }] : []),
+    ...(p.available_from ? [{ id: 'AVAILABLE', value_name: String(p.available_from) }] : []),
     // Nivel Estandar
     ...(p.unit_floor                 ? [{ id: 'UNIT_FLOOR',                 value_name: String(p.unit_floor) }] : []),
     ...(p.property_age               ? [{ id: 'PROPERTY_AGE',               value_name: String(p.property_age) + ' anos' }] : []),
