@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -81,10 +81,38 @@ function SeccionEditar({ pub, id, onGuardado }) {
     setGuardando(true)
     setMsg(null)
     const direccionPublica = [form.calle, form.numero_calle].filter(Boolean).join(' ').trim()
+
+    const __campos = [
+      ['valor','Precio'],['tipo_moneda','Moneda'],['objetivo','Operacion'],['tipo','Tipo'],
+      ['titulo','Titulo'],['calle','Calle'],['numero_calle','Numero'],['departamento','Departamento'],
+      ['comuna','Comuna'],['dormitorios','Dormitorios'],['banos','Banos'],['mt2_const','M2 construidos'],
+      ['mt2_terreno','M2 terreno'],['estacionamientos','Estacionamientos'],['bodegas','Bodegas'],
+      ['ggcc','GGCC'],['amoblado','Amoblado'],['orientacion','Orientacion'],['vendedor','Vendedor'],
+      ['captador','Captador'],['ksuitable_for_pets','Mascotas'],['maintenance_fee_type','Tipo gastos comunes'],
+      ['available_from','Disponible desde'],
+    ]
+    const __bnum = v => (v === true || v === 'true') ? 'Si' : (v === false || v === 'false' || v == null || v === '') ? 'No' : String(v)
+    const __norm = v => String(v == null ? '' : v).trim()
+    const __cambios = []
+    for (const [__c, __et] of __campos) {
+      const __a = __norm(pub[__c]); const __d = __norm(form[__c])
+      if (__a !== __d) __cambios.push(__et + ': ' + (__a || '(vacio)') + ' -> ' + (__d || '(vacio)'))
+    }
+    if ((!!pub.has_heating) !== (!!form.has_heating)) __cambios.push('Calefaccion: ' + __bnum(pub.has_heating) + ' -> ' + __bnum(form.has_heating))
+    if ((!!pub.has_air_conditioning) !== (!!form.has_air_conditioning)) __cambios.push('Aire acond.: ' + __bnum(pub.has_air_conditioning) + ' -> ' + __bnum(form.has_air_conditioning))
+    if (__norm(pub.observaciones) !== __norm(form.observaciones)) __cambios.push('Descripcion actualizada')
+    const __logEdicion = () => {
+      if (__cambios.length === 0) return
+      fetch('/api/bitacora/editar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idpublicacion: id, codigo: pub.codigo, detalle: __cambios.join(' | ') }),
+      }).catch(() => {})
+    }
     const { data, error } = await supabase.from('publicaciones').update({ ...form, direccion: direccionPublica || form.direccion }).eq('id', id).select().single()
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
-    else { onGuardado(data); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
+    else { onGuardado(data); __logEdicion(); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
   }
 
   const inp = (label, key, type='text', opts=null) => (
@@ -435,6 +463,56 @@ async function subirImagen(file) {
   }
 
   // ── Eliminar imagen ──
+
+  // -- Subir VARIAS imagenes (secuencial, numeracion automatica) --
+  async function subirVarias(fileList) {
+    const files = Array.from(fileList || []).filter(f => f)
+    if (files.length === 0) return
+    for (const f of files) {
+      const esJpg = f.type.includes('jpeg') || f.type.includes('jpg') || f.name.toLowerCase().endsWith('.jpg')
+      if (!esJpg) { setMsgSubida({ ok: false, text: `"${f.name}" no es JPG. Solo se admiten archivos JPG.` }); return }
+      if (f.size > 10 * 1024 * 1024) { setMsgSubida({ ok: false, text: `"${f.name}" supera los 10MB.` }); return }
+    }
+    if (files.length === 1) { return subirImagen(files[0]) }
+
+    setSubiendo(true)
+    let acumuladas = [...imagenes]
+    let okCount = 0, errores = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setMsgSubida({ ok: null, text: `Subiendo ${i + 1} de ${files.length}: "${file.name}"...` })
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('publicacionId', pub.codigo || id)
+      formData.append('slot', acumuladas.length + 1)
+      try {
+        const res = await fetch('/api/upload-imagen', { method: 'POST', body: formData })
+        const data = await res.json()
+        if (data.ok) {
+          acumuladas = [...acumuladas, data.nombreArchivo]
+          okCount++
+        } else {
+          errores.push(`${file.name}: ${data.error || 'error'}`)
+        }
+      } catch (e) {
+        errores.push(`${file.name}: ${e.message}`)
+      }
+    }
+    setImagenes(acumuladas)
+    if (acumuladas.length > 0) setImgSeleccionada(acumuladas[acumuladas.length - 1])
+    const payload = {}
+    for (let i = 0; i < 38; i++) payload[`imagen${i + 1}`] = acumuladas[i] || null
+    await supabase.from('publicaciones').update(payload).eq('id', id)
+
+    if (errores.length === 0) {
+      setMsgSubida({ ok: true, text: `${okCount} imagenes subidas correctamente` })
+    } else {
+      setMsgSubida({ ok: false, text: `${okCount} subidas. ${errores.length} con error: ${errores.join(' | ')}` })
+    }
+    setSubiendo(false)
+    setTimeout(() => setMsgSubida(null), 6000)
+  }
+
   async function eliminarImagen(idx) {
     if (!window.confirm(`¿Eliminar la imagen ${idx+1}? Solo se elimina de Supabase, no del servidor.`)) return
     const nuevas = imagenes.filter((_, i) => i !== idx)
@@ -782,7 +860,7 @@ async function subirImagen(file) {
                   )}
                   {msgGuardado && <span style={{ fontSize:11, fontWeight:500, color:msgGuardado.ok?'#16a34a':'#dc2626' }}>{msgGuardado.text}</span>}
                   <input ref={fileInputRef} type="file" accept=".jpg,.jpeg" style={{ display:'none' }}
-                    onChange={e => { if (e.target.files[0]) subirImagen(e.target.files[0]); e.target.value='' }}
+                    multiple onChange={e => { if (e.target.files.length) subirVarias(e.target.files); e.target.value='' }}
                   />
                   <button onClick={() => fileInputRef.current?.click()} disabled={subiendo} style={{ padding:'7px 16px', borderRadius:8, border:'none', background:subiendo?'#9ca3af':'#d97706', color:'#fff', fontSize:12, fontWeight:600, cursor:subiendo?'not-allowed':'pointer', fontFamily:'inherit' }}>
                     {subiendo ? 'Subiendo...' : '📤 Subir imagen'}
@@ -793,7 +871,7 @@ async function subirImagen(file) {
                 </div>
               </div>
               <div onDragOver={e => { e.preventDefault(); setDragOver(true) }} onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files[0]; if (file) subirImagen(file) }}
+                onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) subirVarias(e.dataTransfer.files) }}
                 onClick={() => fileInputRef.current?.click()}
                 style={{ border:`2px dashed ${dragOver?'#1a56db':'var(--border)'}`, borderRadius:10, padding:'16px', textAlign:'center', marginBottom:16, background:dragOver?'#eff6ff':'var(--gray-50)', cursor:'pointer', transition:'all 0.15s' }}
               >
@@ -816,7 +894,7 @@ async function subirImagen(file) {
                     >
                       <img src={IMG_BASE+img} alt={`Imagen ${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', display:'block', pointerEvents:'none' }} onError={e => e.target.parentElement.style.display='none'} />
                       <span style={{ position:'absolute', top:4, left:4, fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:5, background:i===0?'#16a34a':'rgba(0,0,0,0.5)', color:'#fff' }}>{i===0?'★':i+1}</span>
-                      <button onClick={e => { e.stopPropagation(); eliminarImagen(i) }} style={{ position:'absolute', top:4, right:4, width:20, height:20, borderRadius:'50%', border:'none', background:'rgba(220,38,38,0.8)', color:'#fff', fontSize:12, lineHeight:'20px', textAlign:'center', cursor:'pointer', padding:0 }}>×</button>
+                      <button onClick={e => { e.stopPropagation(); eliminarImagen(i) }} style={{ position:'absolute', top:4, right:4, width:20, height:20, borderRadius:'50%', border:'none', background:'rgba(220,38,38,0.8)', color:'#fff', fontSize:12, lineHeight:'20px', textAlign:'center', cursor:'pointer', padding:0 }}>├ù</button>
                     </div>
                   ))}
                 </div>
@@ -964,13 +1042,83 @@ async function subirImagen(file) {
           )}
 
           {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} />}
-              {!['Resumen','Imágenes','Propietario','Publicación','Editar'].includes(seccion) && (
-            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
+             {/* BITACORA */}
+          {seccion === 'Bitácora' && (
+           <SeccionBitacora id={id} />
+            )}
+          {!['Resumen','Imágenes','Propietario','Publicación','Editar','Bitácora'].includes(seccion) && (            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center' }}>
               <div style={{ fontSize:13, color:'var(--gray-400)' }}>Sección <strong>{seccion}</strong> en desarrollo</div>
             </div>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+// ── SECCIÓN BITÁCORA ──
+function SeccionBitacora({ id }) {
+  const [eventos, setEventos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let activo = true
+    setCargando(true)
+    fetch('/api/bitacora?idpublicacion=' + id)
+      .then(r => r.json())
+      .then(d => {
+        if (!activo) return
+        if (d.ok) setEventos(d.eventos || [])
+        else setError(d.error || 'Error al cargar la bitácora')
+      })
+      .catch(e => { if (activo) setError('Error de conexión: ' + e.message) })
+      .finally(() => { if (activo) setCargando(false) })
+    return () => { activo = false }
+  }, [id])
+
+  // Color del punto según el tipo de evento
+  function colorEvento(ev) {
+    const e = String(ev || '').toLowerCase()
+    if (e.includes('cerrar') || e.includes('retirar') || e.includes('baja')) return '#dc2626'
+    if (e.includes('republicar')) return '#2563eb'
+    if (e.includes('publicar')) return '#16a34a'
+    if (e.includes('editar') || e.includes('precio') || e.includes('estado')) return '#d97706'
+    return '#6b7280'
+  }
+
+  function fechaLegible(iso) {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'20px 24px' }}>
+      <div style={{ fontSize:13, fontWeight:700, color:'var(--gray-700)', marginBottom:16, textTransform:'uppercase', letterSpacing:'0.05em' }}>Bitácora de la propiedad</div>
+      {cargando && <div style={{ fontSize:13, color:'var(--gray-400)' }}>Cargando…</div>}
+      {error && <div style={{ fontSize:13, color:'#dc2626' }}>{error}</div>}
+      {!cargando && !error && eventos.length === 0 && (
+        <div style={{ fontSize:13, color:'var(--gray-400)' }}>Aún no hay eventos registrados para esta propiedad.</div>
+      )}
+      {!cargando && !error && eventos.length > 0 && (
+        <div style={{ position:'relative', paddingLeft:8 }}>
+          {eventos.map((ev, i) => (
+            <div key={ev.id || i} style={{ display:'flex', gap:12, paddingBottom:16, position:'relative' }}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+                <div style={{ width:12, height:12, borderRadius:'50%', background:colorEvento(ev.evento), flexShrink:0, marginTop:3 }} />
+                {i < eventos.length - 1 && <div style={{ width:2, flex:1, background:'var(--border)', marginTop:2 }} />}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--gray-800)' }}>{ev.detalle || ev.evento}</div>
+                <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:2 }}>
+                  {fechaLegible(ev.created_at)}{ev.usuario ? ' · ' + ev.usuario : ''}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
