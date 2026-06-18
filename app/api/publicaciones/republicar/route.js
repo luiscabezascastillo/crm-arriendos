@@ -79,18 +79,16 @@ export async function POST(request) {
   await supabase.from('publicaciones').update({
     pi: 'NO', yapo: 'NO', web: 'NO', activo: 'CLOSE',
   }).eq('id', sourceId || publicacionId)
-  // 3. Obtener max id y codigo
-  const { data: maxData } = await supabase
-    .from('publicaciones').select('id, codigo').order('id', { ascending: false }).limit(1).single()
-  const newId = (maxData?.id || 0) + 1
-  const newCodigo = String((parseInt(maxData?.codigo || '16891') + 1))
+  // 3. Codigo nuevo desde el generador atomico (funcion siguiente_codigo())
+  const { data: newCodigo, error: errCod } = await supabase.rpc('siguiente_codigo')
+  if (errCod) return NextResponse.json({ error: errCod.message }, { status: 500 })
   // 4. Crear nueva publicacion
   const { id, codigo, codigo_pi, url_pi, url_yapo, url_web, url_goplaceit, url_proppit,
           pi, yapo, web, goplaceit, proppit, activo, fecha_vencimiento_pi, fotos_ml, fotos_firma,
           sync_id, created_at, updated_at, ...resto } = original
   const { data: nueva, error: errNueva } = await supabase
     .from('publicaciones')
-    .insert({ ...resto, id: newId, codigo: newCodigo, activo: 'CREAR', pi: 'NO', yapo: 'NO', web: 'NO', codigo_pi: null, url_pi: null })
+    .insert({ ...resto, codigo: newCodigo, activo: 'CREAR', pi: 'NO', yapo: 'NO', web: 'NO', codigo_pi: null, url_pi: null })
     .select('id').single()
   if (errNueva) return NextResponse.json({ error: errNueva.message }, { status: 500 })
   const nuevoId = nueva.id

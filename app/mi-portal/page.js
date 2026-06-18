@@ -80,6 +80,7 @@ export default function MiPortalPage() {
   const [trabajadores, setTrabajadores] = useState([])
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
+  const [procVisOpen, setProcVisOpen] = useState(false)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: ['PENDIENTE'] })
   const [filtrosTar, setFiltrosTar] = useState({ titulo: [], estado: [], prioridad: [], fecha_limite: [] })
   const [tarFiltroInit, setTarFiltroInit] = useState(false)
@@ -127,13 +128,22 @@ export default function MiPortalPage() {
   async function cargarPortal(email) {
     setLoading(true)
     try {
-      const res = await fetch(`/api/portal?email=${encodeURIComponent(email)}`)
+      const res = await fetch(`/api/portal?email=${encodeURIComponent(email)}${esDireccion ? '&incluirOcultos=1' : ''}`)
       const d = await res.json()
       setData(d)
     } catch (e) {
       setData({ error: e.message })
     }
     setLoading(false)
+  }
+
+  async function toggleProcesoVisibilidad(codigo, ocultoActual) {
+    await fetch('/api/portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'proceso_visibilidad', codigo, oculto_personal: !ocultoActual }),
+    })
+    cargarPortal(emailActivo)
   }
 
   async function marcarPeriodicaHecha(id) {
@@ -258,6 +268,32 @@ export default function MiPortalPage() {
                 style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #7c2d12', background: '#fff7ed', color: '#7c2d12', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Ver colaboradores externos →
               </button>
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setProcVisOpen(o => !o)}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--gray-700)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                  Visibilidad de procesos ▾
+                </button>
+                {procVisOpen && (
+                  <>
+                    <div onClick={() => setProcVisOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 41, background: 'white', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 12, width: 320 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Ocultar procesos al personal</div>
+                      {(data?.procesos || []).length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>Sin procesos</div>
+                      ) : (data?.procesos || []).map(p => (
+                        <label key={p.codigo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={!!p.oculto_personal} onChange={() => toggleProcesoVisibilidad(p.codigo, p.oculto_personal)} />
+                          <span style={{ fontWeight: 600 }}>{p.codigo}</span>
+                          <span style={{ color: 'var(--gray-400)', fontSize: 12 }}>{p.nombre}</span>
+                        </label>
+                      ))}
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8, lineHeight: 1.4 }}>
+                        Marcado = oculto en la vista del personal. Tú (Dirección) lo sigues viendo siempre.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
