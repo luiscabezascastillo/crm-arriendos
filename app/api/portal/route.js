@@ -6,11 +6,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// GET /api/portal?email=xxx  → devuelve las 4 secciones del portal para ese email
+// GET /api/portal?email=xxx[&incluirOcultos=1]  -> devuelve las 4 secciones del portal
+// incluirOcultos=1 (vista Direccion) muestra TODOS los procesos; sin el flag, oculta
+// los procesos marcados con oculto_personal en workflow_definitions.
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url)
     const email = searchParams.get('email')
+    const incluirOcultos = searchParams.get('incluirOcultos') === '1'
     if (!email) return NextResponse.json({ error: 'Falta email' }, { status: 400 })
 
     // Resolver trabajador por email (para asistencia y ausencias)
@@ -23,14 +26,14 @@ export async function GET(request) {
 
     const trabajadorId = trabajador?.id || null
 
-    // 1 — Tareas ex-profeso (por email)
+    // 1 - Tareas ex-profeso (por email)
     const { data: tareas } = await supabase
       .from('tareas')
       .select('*')
       .eq('responsable', email)
       .order('fecha_limite', { ascending: true, nullsFirst: false })
 
-    // 2 — Tareas de workflow (por email)
+    // 2 - Tareas de workflow (por email)
     const { data: areasResp } = await supabase
       .from('workflow_area_responsables')
       .select('area')
@@ -49,25 +52,39 @@ export async function GET(request) {
       const nodeCods = [...new Set(tasks.map(t => t.node_codigo).filter(Boolean))]
 
       const { data: insts } = instIds.length
-        ? await supabase.from('workflow_instances').select('id, idadmon').in('id', instIds)
+        ? await supabase.from('workflow_instances').select('id, idadmon, workflow_codigo').in('id', instIds)
         : { data: [] }
       const { data: nodes } = nodeCods.length
         ? await supabase.from('workflow_nodes').select('codigo, nombre').in('codigo', nodeCods)
         : { data: [] }
 
       const idadmonPorInst = {}
-      for (const i of (insts || [])) idadmonPorInst[i.id] = i.idadmon
+      const codigoPorInst = {}
+      for (const i of (insts || [])) { idadmonPorInst[i.id] = i.idadmon; codigoPorInst[i.id] = i.workflow_codigo }
       const nombrePorNodo = {}
       for (const n of (nodes || [])) nombrePorNodo[n.codigo] = n.nombre
 
       workflow = tasks.map(t => ({
         ...t,
         idadmon: idadmonPorInst[t.workflow_instance_id] || null,
+        workflow_codigo: codigoPorInst[t.workflow_instance_id] || null,
         nodo_nombre: nombrePorNodo[t.node_codigo] || t.node_codigo,
       }))
+
+      // Ocultar procesos marcados como oculto_personal (salvo en la vista de Direccion)
+      if (!incluirOcultos) {
+        const { data: defsOcultas } = await supabase
+          .from('workflow_definitions')
+          .select('codigo')
+          .eq('oculto_personal', true)
+        const codigosOcultos = (defsOcultas || []).map(d => d.codigo)
+        if (codigosOcultos.length) {
+          workflow = workflow.filter(w => !codigosOcultos.includes(w.workflow_codigo))
+        }
+      }
     }
 
-    // 3 — Actividades periódicas (por email)
+    // 3 - Actividades periodicas (por email)
     const { data: periodicas } = await supabase
       .from('tareas_periodicas')
       .select('*')
@@ -75,7 +92,7 @@ export async function GET(request) {
       .eq('activo', true)
       .order('created_at', { ascending: true })
 
-    // 4a — Asistencia (por trabajador_id, desde la vista dashboard)
+    // 4a - Asistencia (por trabajador_id, desde la vista dashboard)
     let asistencia = null
     if (trabajadorId) {
       const { data: asis } = await supabase
@@ -86,7 +103,7 @@ export async function GET(request) {
       asistencia = asis || null
     }
 
-    // 4b — Ausencias (por trabajador_id)
+    // 4b - Ausencias (por trabajador_id)
     let ausencias = []
     if (trabajadorId) {
       const { data: aus } = await supabase
@@ -97,6 +114,16 @@ export async function GET(request) {
       ausencias = aus || []
     }
 
+    // Lista de procesos (solo para el panel de visibilidad de Direccion)
+    let procesos = []
+    if (incluirOcultos) {
+      const { data: defs } = await supabase
+        .from('workflow_definitions')
+        .select('codigo, nombre, oculto_personal, activo')
+        .order('codigo')
+      procesos = defs || []
+    }
+
     return NextResponse.json({
       trabajador: trabajador || { nombre_real: email, email },
       tareas: tareas || [],
@@ -104,14 +131,15 @@ export async function GET(request) {
       periodicas: periodicas || [],
       asistencia,
       ausencias,
+      procesos,
     })
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
 
-// POST /api/portal  → acción "Hecho" en una actividad periódica
-// body: { accion: 'periodica_hecha', id, por }
+// POST /api/portal -> acciones del portal
+// body: { accion: 'periodica_hecha' | 'tarea_guardar' | 'tarea_crear' | 'proceso_visibilidad', ... }
 export async function POST(request) {
   try {
     const body = await request.json()
@@ -151,7 +179,18 @@ export async function POST(request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true })
     }
-    return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 })
+
+    if (body.accion === 'proceso_visibilidad') {
+      if (!body.codigo) return NextResponse.json({ error: 'Falta codigo' }, { status: 400 })
+      const { error } = await supabase
+        .from('workflow_definitions')
+        .update({ oculto_personal: !!body.oculto_personal })
+        .eq('codigo', body.codigo)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
+
+    return NextResponse.json({ error: 'Accion no reconocida' }, { status: 400 })
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
