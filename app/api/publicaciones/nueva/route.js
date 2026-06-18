@@ -7,22 +7,12 @@ const supabase = createClient(
 )
 
 export async function POST() {
-  const { data: maxData, error: maxError } = await supabase
-    .from('publicaciones')
-    .select('id, codigo')
-    .order('id', { ascending: false })
-    .limit(1)
-    .single()
-
-  if (maxError) return NextResponse.json({ error: maxError.message }, { status: 500 })
-
-  const newId = (maxData?.id || 0) + 1
-  const newCodigo = String((parseInt(maxData?.codigo || '16891') + 1))
+  const { data: newCodigo, error: errCod } = await supabase.rpc('siguiente_codigo')
+  if (errCod) return NextResponse.json({ error: errCod.message }, { status: 500 })
 
   const { data, error } = await supabase
     .from('publicaciones')
     .insert({
-      id: newId,
       codigo: newCodigo,
       tipo: 'DEPARTAMENTO',
       objetivo: 'Arriendo',

@@ -22,21 +22,10 @@ export async function POST(request) {
     if (errGet) return NextResponse.json({ error: errGet.message }, { status: 500 })
     if (!original) return NextResponse.json({ error: 'No se encontró la propiedad original' }, { status: 404 })
 
-    // 2 — Calcular el código siguiente desde codigo (texto), única fuente de verdad.
-    //     Traemos los codigos más altos y sacamos el máximo numérico en JS.
-    const { data: codigos, error: errMax } = await supabase
-      .from('publicaciones')
-      .select('codigo')
-      .order('codigo', { ascending: false })
-      .limit(50)
-    if (errMax) return NextResponse.json({ error: errMax.message }, { status: 500 })
-
-    let maxCodigo = 16891
-    for (const row of (codigos || [])) {
-      const n = parseInt(row.codigo, 10)
-      if (!isNaN(n) && n > maxCodigo) maxCodigo = n
-    }
-    const nuevoCodigo = String(maxCodigo + 1)
+    // 2 — Código nuevo desde el generador atómico de la BD (función siguiente_codigo()).
+    //     Única fuente de verdad; evita duplicados y carreras.
+    const { data: nuevoCodigo, error: errCod } = await supabase.rpc('siguiente_codigo')
+    if (errCod) return NextResponse.json({ error: errCod.message }, { status: 500 })
 
     // 3 — Clonar datos. NO se toca el id (identity → lo genera Supabase).
     //     NO se escribe codigo_num (columna en desuso, se eliminará).
