@@ -52,10 +52,14 @@ const ROL_COLORS = {
   observador:   { bg: '#F1EFE8', color: '#444441' },
 }
 
-function ProcesCard({ proceso, permiso, onClick, expanded, onToggle, isMobile }) {
+// Colores del badge de responsable (reemplaza al de rol en las tarjetas)
+const NOMBRE_BADGE    = { bg: '#E1F5EE', color: '#085041' }  // responsable (verde)
+const DIRECCION_BADGE = { bg: '#FAEEDA', color: '#633806' }  // Direccion (ambar)
+
+function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle, isMobile }) {
   const tiene = !!permiso
-  const rol = permiso?.rol
-  const rolInfo = ROL_COLORS[rol] || null
+  const nombreResp = responsable?.nombre
+  const badgeColor = responsable?.esDireccion ? DIRECCION_BADGE : NOMBRE_BADGE
 
   if (isMobile) {
     return (
@@ -74,7 +78,7 @@ function ProcesCard({ proceso, permiso, onClick, expanded, onToggle, isMobile })
             <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{proceso.titulo}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {rolInfo && <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: rolInfo.bg, color: rolInfo.color }}>{rol}</span>}
+            {nombreResp && <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: badgeColor.bg, color: badgeColor.color }}>{nombreResp}</span>}
             {tiene && <span style={{ fontSize: 10, color: '#888' }}>{expanded ? '▲' : '▼'}</span>}
           </div>
         </div>
@@ -124,12 +128,14 @@ function ProcesCard({ proceso, permiso, onClick, expanded, onToggle, isMobile })
       }}
       onMouseEnter={e => { if (tiene) e.currentTarget.style.borderColor = '#888780' }}
       onMouseLeave={e => { if (tiene) e.currentTarget.style.borderColor = '#B4B2A9' }}>
-      {!tiene && <span style={{ position: 'absolute', top: 8, right: 10, fontSize: 13 }}>🔒</span>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{proceso.titulo}</span>
-        {rolInfo && (
-          <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, background: rolInfo.bg, color: rolInfo.color }}>
-            {rol}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>
+          {!tiene && <span style={{ fontSize: 13 }}>🔒</span>}
+          {proceso.titulo}
+        </span>
+        {nombreResp && (
+          <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, background: badgeColor.bg, color: badgeColor.color }}>
+            {nombreResp}
           </span>
         )}
       </div>
@@ -172,6 +178,7 @@ export default function ProcesosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [permisos, setPermisos] = useState({})
+  const [responsables, setResponsables] = useState({})
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
   const [expanded, setExpanded] = useState(null)
@@ -187,6 +194,13 @@ export default function ProcesosPage() {
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/api/auth/signin')
   }, [status, router])
+
+  useEffect(() => {
+    fetch('/api/procesos-responsables')
+      .then(r => r.json())
+      .then(d => { if (d && !d.error) setResponsables(d) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!session?.user?.email) return
@@ -277,6 +291,7 @@ export default function ProcesosPage() {
               key={p.key}
               proceso={p}
               permiso={permisos[p.key]}
+              responsable={responsables[p.key]}
               onClick={handleClick}
               expanded={expanded === p.key}
               onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
@@ -293,6 +308,7 @@ export default function ProcesosPage() {
               key={p.key}
               proceso={p}
               permiso={permisos[p.key]}
+              responsable={responsables[p.key]}
               onClick={handleClick}
               expanded={expanded === p.key}
               onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
