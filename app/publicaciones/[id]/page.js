@@ -485,22 +485,28 @@ export default function FichaPage() {
 // ── Importar datos del edificio a la propiedad ──
   const [importando, setImportando] = useState(false)
   const [msgImportar, setMsgImportar] = useState(null)
-  async function importarEdificio() {
+  async function importarEdificio(incluirFotos = true) {
     if (!edificio || !pub) return
     setImportando(true)
     setMsgImportar(null)
     const cambios = {}
 
-    // 1) Amenities: copiar los 22 tiene_* del edificio (los que esten en true)
+    // 1) Amenities: sincronizacion inteligente desde el edificio
+    //    true  -> activa en la publicacion
+    //    false -> desactiva (explicito en el edificio)
+    //    null/undefined -> no toca (edificio sin ese dato cargado)
     const AMEN = ['tiene_ascensor','tiene_piscina','tiene_gimnasio','tiene_salon_fiestas','tiene_sala_multiuso',
       'tiene_quincho_parrilla','tiene_juegos_infantiles','tiene_sauna','tiene_jacuzzi','tiene_cowork','tiene_cine',
       'tiene_playroom','tiene_recepcion','tiene_lavanderia','tiene_estacionamiento_visitas','tiene_cancha_paddle',
       'tiene_cancha_tenis','tiene_cancha_multiuso','tiene_area_verde','tiene_azotea','tiene_generador','tiene_rampa_silla']
-    for (const k of AMEN) if (edificio[k] === true) cambios[k] = true
+    for (const k of AMEN) {
+      if (edificio[k] === true && pub[k] !== true) cambios[k] = true
+      else if (edificio[k] === false && pub[k] !== false) cambios[k] = false
+    }
 
-    // 2) Fotos comunes: anadir al final de imagen1..50 (sin pisar las existentes)
+    // 2) Fotos comunes: anadir al final de imagen1..50 (sin pisar las existentes), solo si se pidio
     const fotosEdif = []
-    for (let i = 1; i <= 15; i++) if (edificio['foto_comun_' + i]) fotosEdif.push(edificio['foto_comun_' + i])
+    if (incluirFotos) for (let i = 1; i <= 15; i++) if (edificio['foto_comun_' + i]) fotosEdif.push(edificio['foto_comun_' + i])
     if (fotosEdif.length) {
       const actuales = []
       for (let i = 1; i <= 50; i++) if (pub['imagen' + i]) actuales.push(pub['imagen' + i])
@@ -967,7 +973,7 @@ async function subirImagen(file) {
                         {edificio.complemento_descripcion && (
                           <div style={{ fontSize:12, color:'var(--gray-600)', lineHeight:1.5, borderLeft:'3px solid #e9d5ff', paddingLeft:10 }}>{edificio.complemento_descripcion}</div>
                         )}
- <button onClick={importarEdificio} disabled={importando} style={{ marginTop:10, marginRight:8, fontSize:11, color:'#fff', background:'#7c3aed', border:'1px solid #7c3aed', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>{importando ? 'Importando…' : 'Importar datos del edificio'}</button>
+ <button onClick={() => { let nf=0; for (let i=1;i<=15;i++) if (edificio['foto_comun_'+i]) nf++; const inc = nf > 0 ? window.confirm('¿Incluir también las ' + nf + ' fotos de espacios comunes del edificio?\n\nAceptar = importar datos + fotos\nCancelar = importar solo datos') : false; importarEdificio(inc) }} disabled={importando} style={{ marginTop:10, marginRight:8, fontSize:11, color:'#fff', background:'#7c3aed', border:'1px solid #7c3aed', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>{importando ? 'Importando…' : 'Importar datos del edificio'}</button>
                         <button onClick={() => window.open('/edificios','_blank')} style={{ marginTop:10, fontSize:11, color:'#7c3aed', background:'transparent', border:'1px solid #7c3aed', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:'inherit' }}>Ver / editar edificio</button>
                         {msgImportar && <div style={{ marginTop:8, fontSize:12, color: msgImportar.ok ? '#166534' : '#991b1b' }}>{msgImportar.text}</div>}
                       </>
