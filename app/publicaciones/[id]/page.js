@@ -30,6 +30,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
     ...pub,
     titulo:       pub.titulo       || '',
     direccion:    pub.direccion    || '',
+    direccion_publica: pub.direccion_publica || '',
     calle:        pub.calle        || '',
     numero_calle: pub.numero_calle || '',
     departamento: pub.departamento || '',
@@ -80,7 +81,9 @@ function SeccionEditar({ pub, id, onGuardado }) {
   async function guardar() {
     setGuardando(true)
     setMsg(null)
-    const direccionPublica = [form.calle, form.numero_calle].filter(Boolean).join(' ').trim()
+    const direccionPublica = (form.direccion_publica && form.direccion_publica.trim())
+      ? form.direccion_publica.trim()
+      : [form.calle, form.numero_calle].filter(Boolean).join(' ').trim()
 
     const __campos = [
       ['valor','Precio'],['tipo_moneda','Moneda'],['objetivo','Operacion'],['tipo','Tipo'],
@@ -119,7 +122,7 @@ function SeccionEditar({ pub, id, onGuardado }) {
     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
       <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>{label}</label>
       {opts ? (
-      <select value={form[key] ?? ''} onChange={e => set(key, e.target.value)}
+        <select value={form[key] ?? ''} onChange={e => set(key, e.target.value)}
           style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
           {opts.map(o => <option key={o}>{o}</option>)}
         </select>
@@ -159,6 +162,12 @@ function SeccionEditar({ pub, id, onGuardado }) {
         </div>
         {inp('Latitud', 'latitud')}
         {inp('Longitud', 'longitud')}
+        <div style={{ display:'flex', flexDirection:'column', gap:4, gridColumn:'1/-1' }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Dirección pública (PI)</label>
+          <input type="text" value={form.direccion_publica ?? ''} onChange={e => set('direccion_publica', e.target.value)} placeholder={[form.calle, form.numero_calle].filter(Boolean).join(' ')}
+            style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
+          <span style={{ fontSize:11, color:'var(--gray-400)' }}>Opcional. Lo que muestra el Portal. Vacío = calle + número. No mueve el pin del mapa.</span>
+        </div>
 
         {sec('Propiedad', '#16a34a')}
         <div style={{ display:'flex', flexDirection:'column', gap:4, gridColumn:'1/-1' }}>
