@@ -49,7 +49,7 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
     bodegas:      pub.bodegas != null ? String(pub.bodegas) : '',
     ggcc:         pub.ggcc != null ? String(pub.ggcc) : '',
     amoblado:     pub.amoblado     || 'No',
-    observaciones: pub.observaciones || '',
+    observaciones: (pub.observaciones || '').replace(/<br\s*\/?>/gi, '\n'),
     latitud:      pub.latitud      || '',
     longitud:     pub.longitud     || '',
     orientacion:  pub.orientacion  || '',
@@ -112,7 +112,8 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
         body: JSON.stringify({ idpublicacion: id, codigo: pub.codigo, detalle: __cambios.join(' | ') }),
       }).catch(() => {})
     }
-    const { data, error } = await supabase.from('publicaciones').update({ ...form, direccion: direccionPublica || form.direccion }).eq('id', id).select().single()
+    const __obsBr = (form.observaciones || '').replace(/\r\n/g, '\n').replace(/\n/g, '<br>')
+    const { data, error } = await supabase.from('publicaciones').update({ ...form, observaciones: __obsBr, direccion: direccionPublica || form.direccion }).eq('id', id).select().single()
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
     else { onGuardado(data); __logEdicion(); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
@@ -234,7 +235,7 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
     return __noEmoji(out.join('\n\n'))
   }
   function aplicarDescripcionGenerada(){
-    set('observaciones', generarDescripcion().replace(/\n/g,'<br>'))
+    set('observaciones', generarDescripcion())
   }
 
   const inp = (label, key, type='text', opts=null) => (
@@ -904,7 +905,7 @@ async function subirImagen(file) {
               {pub.observaciones && (
                 <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                   <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Descripción</div>
-                  <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{pub.observaciones}</p>
+                  <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.6, margin:0, whiteSpace:'pre-line' }}>{(pub.observaciones || '').replace(/<br\s*\/?>/gi, '\n')}</p>
                 </div>
               )}
               {(pub.url_pi || pub.url_web || pub.url_yapo || pub.url_goplaceit || pub.url_proppit) && (
