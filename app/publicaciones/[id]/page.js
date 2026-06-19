@@ -25,7 +25,7 @@ const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitáco
 
 
 // ── SECCIÓN EDITAR ──
-function SeccionEditar({ pub, id, onGuardado }) {
+function SeccionEditar({ pub, id, onGuardado, edificio }) {
   const [form, setForm] = React.useState({
     ...pub,
     titulo:       pub.titulo       || '',
@@ -116,6 +116,75 @@ function SeccionEditar({ pub, id, onGuardado }) {
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
     else { onGuardado(data); __logEdicion(); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
+  }
+
+  function __pick(a){ return a[Math.floor(Math.random()*a.length)] }
+  function __num(v){ const n=parseInt(v,10); return isNaN(n)?null:n }
+  function __si(v){ const t=String(v==null?'':v).trim().toLowerCase(); return t==='si'||t==='sí'||t==='true'||t==='1'||t==='parcial' }
+  function __tejerEntorno(crudo){
+    if(!crudo||!crudo.trim()) return ''
+    let items=crudo.split(/,|\n|;| y /i).map(x=>x.trim()).filter(Boolean)
+    items=items.map(x=>x.replace(/\b(cerca|cercano|cercana|a pasos|al lado|como)\b/gi,'').replace(/\s+/g,' ').trim()).filter(Boolean)
+    if(!items.length) return ''
+    items=items.map(x=>x.charAt(0).toUpperCase()+x.slice(1))
+    return items.length>1 ? items.slice(0,-1).join(', ')+' y '+items.slice(-1) : items[0]
+  }
+  function generarDescripcion(){
+    const f=form, e=edificio||{}
+    const esVenta=String(f.objetivo||'').toLowerCase().includes('venta')
+    const tipo=(f.tipo||'propiedad').toLowerCase()
+    const tipoTxt=tipo.includes('depart')?'departamento':tipo.includes('casa')?'casa':'propiedad'
+    const dorm=__num(f.dormitorios),banos=__num(f.banos),m2=__num(f.mt2_const)
+    const comuna=f.comuna||''
+    const sector=(f.direccion_publica&&f.direccion_publica.trim())?f.direccion_publica.trim():''
+    const orientacion=(f.orientacion||'').trim()
+    const out=[]
+    if(esVenta) out.push(__pick(['Una oportunidad única para hacer tuyo este '+tipoTxt+(comuna?' en '+comuna:'')+'.','Invierte en tu futuro con este '+tipoTxt+(comuna?' en el corazón de '+comuna:'')+'.','El lugar que estabas esperando: un '+tipoTxt+(comuna?' en '+comuna:'')+' pensado para quedarse.']))
+    else out.push(__pick(['Tu próximo hogar te espera'+(sector?' en '+sector:(comuna?' en '+comuna:''))+'.','Bienvenido a casa: un '+tipoTxt+' acogedor'+(comuna?' en '+comuna:'')+' listo para recibirte.','Imagina llegar cada día a este cálido '+tipoTxt+(sector?' en '+sector:(comuna?' en '+comuna:''))+'.']))
+    const partes=[]
+    if(dorm!=null)partes.push(dorm===1?'1 dormitorio':dorm+' dormitorios')
+    if(banos!=null)partes.push(banos===1?'1 baño':banos+' baños')
+    if(m2!=null)partes.push(m2+' m²')
+    let p2=''
+    if(partes.length)p2='Cuenta con '+partes.join(', ').replace(/, ([^,]*)$/,' y $1')+'. '
+    if(orientacion&&/norte/i.test(orientacion))p2+=__pick(['Su orientación norte lo llena de luz natural durante todo el día. ','Gracias a su orientación norte, disfrutarás de luminosidad en cada rincón. '])
+    else if(orientacion)p2+='Orientación '+orientacion+'. '
+    if(p2)out.push(p2.trim())
+    const entorno=__tejerEntorno(e.puntos_interes)
+    let p3=''
+    if(comuna||sector)p3=__pick(['Ubicado en '+(sector||comuna)+', ','En '+(sector||comuna)+', una de las zonas más cotizadas, ','La ubicación lo dice todo: '+(sector||comuna)+'. '])
+    if(entorno)p3+=__pick(['a pasos de '+entorno+'.','con '+entorno+' a tu alcance.','tendrás cerca '+entorno+'.','rodeado de lo mejor del sector: '+entorno+'.'])
+    else if(p3)p3+='tendrás a pocos pasos comercio, servicios, áreas verdes y excelente conectividad.'
+    p3=p3.replace(/\.\s*a pasos/,'. A pasos').replace(/\.\s*con /,'. Con ').replace(/\.\s*tendrás/,'. Tendrás').replace(/\.\s*rodeado/,'. Rodeado')
+    if(p3.trim())out.push(p3.trim())
+    const dest=[]
+    const est=__num(f.estacionamientos),bod=__num(f.bodegas)
+    if(est&&est>0)dest.push(est===1?'1 estacionamiento':est+' estacionamientos')
+    if(bod&&bod>0)dest.push(bod===1?'bodega':bod+' bodegas')
+    if(__si(f.amoblado))dest.push('completamente amoblado')
+    if(__si(f.ksuitable_for_pets))dest.push('pet friendly: tu mascota también es bienvenida')
+    if(__si(f.has_balcony))dest.push('balcón')
+    if(dest.length)out.push('DESTACADOS\n- '+dest.map(d=>d.charAt(0).toUpperCase()+d.slice(1)).join('\n- '))
+    const A=[];const add=(k,t)=>{if(__si(e[k]))A.push(t)}
+    add('tiene_piscina','piscina');add('tiene_gimnasio','gimnasio');add('tiene_sauna','sauna');add('tiene_jacuzzi','jacuzzi')
+    add('tiene_cowork','espacio de cowork');add('tiene_quincho_parrilla','quincho y parrilla');add('tiene_salon_fiestas','salón de eventos')
+    add('tiene_cine','sala de cine');add('tiene_playroom','playroom');add('tiene_juegos_infantiles','juegos infantiles')
+    add('tiene_sala_multiuso','sala multiuso');add('tiene_area_verde','áreas verdes');add('tiene_cancha_paddle','cancha de paddle');add('tiene_cancha_tenis','cancha de tenis')
+    const serv=[];const addS=(k,t)=>{if(__si(e[k]))serv.push(t)}
+    addS('tiene_ascensor','ascensor');addS('tiene_recepcion','recepción');addS('tiene_lavanderia','lavandería');addS('tiene_estacionamiento_visitas','estacionamiento de visitas');addS('tiene_generador','generador eléctrico')
+    if(A.length||serv.length){
+      let p5=__pick(['VIDA EN EL EDIFICIO\n','TU NUEVO ESTILO DE VIDA\n','EL EDIFICIO\n'])
+      if(A.length){const l=A.join(', ').replace(/, ([^,]*)$/,' y $1');p5+=__pick(['Disfruta de '+l+'. ','El edificio ofrece '+l+' para tu bienestar. ','Más que cuatro paredes, un estilo de vida: '+l+'. '])}
+      if(serv.length){const ls=serv.join(', ').replace(/, ([^,]*)$/,' y $1');p5+='Además: '+ls+'.'}
+      out.push(p5.trim())
+    }
+    if(e.complemento_descripcion&&e.complemento_descripcion.trim())out.push(e.complemento_descripcion.trim())
+    if(esVenta)out.push(__pick(['Una inversión segura en una ubicación privilegiada. Agenda tu visita y descúbrelo.','Propiedades así no duran en el mercado. Contáctanos y coordina tu visita hoy.','El lugar ideal para vivir o invertir. Escríbenos y agenda una visita sin compromiso.']))
+    else out.push(__pick(['Un espacio pensado para vivir cómodo y conectado. ¿Te lo imaginas? Agenda tu visita.','Ven a conocerlo y enamórate de tu próximo hogar. Coordina tu visita hoy.','Tu nueva etapa empieza aquí. Escríbenos y agenda una visita cuando quieras.']))
+    return out.join('\n\n')
+  }
+  function aplicarDescripcionGenerada(){
+    set('observaciones', generarDescripcion().replace(/\n/g,'<br>'))
   }
 
   const inp = (label, key, type='text', opts=null) => (
@@ -274,7 +343,10 @@ function SeccionEditar({ pub, id, onGuardado }) {
           </div>
         </div>{sec('Observaciones', '#7c3aed')}
         <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
-          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Descripción</label>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+            <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Descripción</label>
+            <button type="button" onClick={aplicarDescripcionGenerada} style={{ fontSize:11, fontWeight:600, color:'#fff', background:'#7c3aed', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontFamily:'inherit' }}>Generar descripción</button>
+          </div>
           <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)} rows={5}
             style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit', resize:'vertical' }} />
         </div>
@@ -1063,7 +1135,7 @@ async function subirImagen(file) {
             </div>
           )}
 
-          {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} />}
+          {seccion === 'Editar' && pub && <SeccionEditar pub={pub} id={id} onGuardado={setPub} edificio={edificio} />}
              {/* BITACORA */}
           {seccion === 'Bitácora' && (
            <SeccionBitacora id={id} />
