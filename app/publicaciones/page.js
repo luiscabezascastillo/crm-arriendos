@@ -348,7 +348,7 @@ export default function PublicacionesPage() {
 
 // ── COPIAR PUBLICACIÓN (sin cerrar original, sin imágenes) ──
   async function copiar(pub) {
-    if (!window.confirm(`¿Copiar la propiedad ${pub.codigo}?\n\nSe creará una nueva con los mismos datos (sin fotos). La original NO se modifica.`)) return
+    if (!window.confirm(`¿Copiar la propiedad ${pub.codigo}?\n\nSe creará una nueva con los mismos datos y fotos. La original NO se modifica.`)) return
     setCopiando(pub.id)
     try {
       const res = await fetch('/api/publicaciones/copiar', {

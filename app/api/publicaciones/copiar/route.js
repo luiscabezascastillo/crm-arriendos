@@ -55,8 +55,9 @@ export async function POST(request) {
     nueva.url_goplaceit        = null
     nueva.url_proppit          = null
 
-    // La copia nace sin fotos (imagen1–imagen38)
-    for (let i = 1; i <= 38; i++) nueva[`imagen${i}`] = null
+    // La copia hereda las fotos de la original (imagen1–imagen38).
+    // Borrar una foto en la copia solo quita la referencia en Supabase, no el archivo
+    // del servidor, asi que la original nunca se ve afectada.
 
     // 4 — Insertar
     const { data: creada, error: errCreate } = await supabase
