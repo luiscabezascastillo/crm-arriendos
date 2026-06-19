@@ -120,50 +120,94 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
 
   function __pick(a){ return a[Math.floor(Math.random()*a.length)] }
   function __num(v){ const n=parseInt(v,10); return isNaN(n)?null:n }
-  function __si(v){ const t=String(v==null?'':v).trim().toLowerCase(); return t==='si'||t==='sí'||t==='true'||t==='1'||t==='parcial' }
+  function __si(v){ const t=String(v==null?'':v).trim().toLowerCase(); return t==='si'||t==='sí'||t==='true'||t==='1' }
+  function __parcial(v){ return String(v==null?'':v).trim().toLowerCase()==='parcial' }
+  function __sinMuebles(v){ const t=String(v==null?'':v).trim().toLowerCase(); return t==='no'||t==='false'||t==='0'||t==='' }
+  function __noEmoji(s){ return s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\uFE0F]/gu,'').replace(/ {2,}/g,' ').trim() }
+  function __limpiaItem(s){
+    let x=s.replace(/\b(cerca|cercano|cercana|cercanos|cercanas|a pasos|al lado|como|del|de la|de los|de las)\b/gi,'').replace(/\s+/g,' ').trim()
+    x=x.replace(/^(varios|varias|un|una|unos|unas)\s+/i,'').trim()
+    if(!x) return ''
+    // colapsar redundancia: palabra repetida consecutiva ignorando plural/acentos/mayus (ej. "Parques Parque" -> "Parque")
+    const __base=w=>w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/s$/,'')
+    const pal=x.split(' ')
+    const res=[]
+    for(let i=0;i<pal.length;i++){
+      if(i>0 && pal[i] && pal[i-1] && __base(pal[i])===__base(pal[i-1])){ res[res.length-1]=pal[i]; continue }
+      res.push(pal[i])
+    }
+    x=res.join(' ').trim()
+    return x.charAt(0).toUpperCase()+x.slice(1)
+  }
   function __tejerEntorno(crudo){
     if(!crudo||!crudo.trim()) return ''
-    let items=crudo.split(/,|\n|;| y /i).map(x=>x.trim()).filter(Boolean)
-    items=items.map(x=>x.replace(/\b(cerca|cercano|cercana|a pasos|al lado|como)\b/gi,'').replace(/\s+/g,' ').trim()).filter(Boolean)
+    let t=crudo
+    // proteger abreviaturas con punto (Av. Sta. Gral. etc) para no cortarlas
+    t=t.replace(/\b(Av|Sta|Sto|Gral|Dr|Dra|No|Nº|Esq|Pdte|Prof)\./gi,'$1<DOT>')
+    // separar por coma, salto, ; , " y " y tambien por ". " (punto y espacio antes de palabra)
+    let items=t.split(/,|\n|;| y |\.\s+/i).map(x=>x.replace(/<DOT>/g,'.').trim()).filter(Boolean).map(__limpiaItem).filter(Boolean)
     if(!items.length) return ''
-    items=items.map(x=>x.charAt(0).toUpperCase()+x.slice(1))
     return items.length>1 ? items.slice(0,-1).join(', ')+' y '+items.slice(-1) : items[0]
   }
   function generarDescripcion(){
     const f=form, e=edificio||{}
     const esVenta=String(f.objetivo||'').toLowerCase().includes('venta')
     const tipo=(f.tipo||'propiedad').toLowerCase()
-    const tipoTxt=tipo.includes('depart')?'departamento':tipo.includes('casa')?'casa':'propiedad'
+    const tipoTxt=tipo.includes('depart')?'departamento':tipo.includes('casa')?'casa':tipo.includes('oficina')?'oficina':'propiedad'
     const dorm=__num(f.dormitorios),banos=__num(f.banos),m2=__num(f.mt2_const)
+    const piso=__num(f.unit_floor)
     const comuna=f.comuna||''
     const sector=(f.direccion_publica&&f.direccion_publica.trim())?f.direccion_publica.trim():''
+    const lugar=sector||comuna
     const orientacion=(f.orientacion||'').trim()
     const out=[]
-    if(esVenta) out.push(__pick(['Una oportunidad única para hacer tuyo este '+tipoTxt+(comuna?' en '+comuna:'')+'.','Invierte en tu futuro con este '+tipoTxt+(comuna?' en el corazón de '+comuna:'')+'.','El lugar que estabas esperando: un '+tipoTxt+(comuna?' en '+comuna:'')+' pensado para quedarse.']))
-    else out.push(__pick(['Tu próximo hogar te espera'+(sector?' en '+sector:(comuna?' en '+comuna:''))+'.','Bienvenido a casa: un '+tipoTxt+' acogedor'+(comuna?' en '+comuna:'')+' listo para recibirte.','Imagina llegar cada día a este cálido '+tipoTxt+(sector?' en '+sector:(comuna?' en '+comuna:''))+'.']))
+    let publico=''
+    if(dorm!=null){
+      if(dorm<=1)publico=__pick(['ideal para profesionales o parejas','perfecto para quienes buscan su primer espacio propio','pensado para una vida independiente o en pareja'])
+      else if(dorm>=3)publico=__pick(['ideal para familias que buscan espacio y comodidad','perfecto para la vida familiar','con espacio de sobra para toda la familia'])
+      else publico=__pick(['ideal para parejas o pequeñas familias','con el espacio justo para crecer','pensado para tu comodidad diaria'])
+    }
+    if(esVenta) out.push(__pick(['Una oportunidad única para hacer tuyo este '+tipoTxt+(lugar?' en '+lugar:'')+'.','Invierte con visión: este '+tipoTxt+(lugar?' en '+lugar:'')+' es la decisión que estabas esperando.','Tu nuevo patrimonio te espera'+(lugar?' en '+lugar:'')+', un '+tipoTxt+' pensado para quedarse.','El '+tipoTxt+' que buscabas para vivir o invertir'+(lugar?', en '+lugar:'')+'.']))
+    else out.push(__pick(['Tu próximo hogar te espera'+(lugar?' en '+lugar:'')+'.','Bienvenido a casa: un '+tipoTxt+' acogedor'+(lugar?' en '+lugar:'')+' listo para recibirte.','Imagina llegar cada día a este cálido '+tipoTxt+(lugar?' en '+lugar:'')+'.','Comienza una nueva etapa en este '+tipoTxt+(lugar?' en '+lugar:'')+' lleno de detalles.']))
     const partes=[]
-    if(dorm!=null)partes.push(dorm===1?'1 dormitorio':dorm+' dormitorios')
+    if(dorm!=null)partes.push(dorm===0?'ambiente único (studio)':dorm===1?'1 dormitorio':dorm+' dormitorios')
     if(banos!=null)partes.push(banos===1?'1 baño':banos+' baños')
     if(m2!=null)partes.push(m2+' m²')
     let p2=''
-    if(partes.length)p2='Cuenta con '+partes.join(', ').replace(/, ([^,]*)$/,' y $1')+'. '
-    if(orientacion&&/norte/i.test(orientacion))p2+=__pick(['Su orientación norte lo llena de luz natural durante todo el día. ','Gracias a su orientación norte, disfrutarás de luminosidad en cada rincón. '])
+    if(partes.length){
+      p2=__pick(['Cuenta con ','Dispone de ','Ofrece '])+partes.join(', ').replace(/, ([^,]*)$/,' y $1')
+      p2+=(publico?', '+publico+'. ':'. ')
+    }
+    if(m2!=null&&m2>=120)p2+=__pick(['Sus amplios espacios invitan a disfrutar de la vida con holgura. ','La amplitud se siente en cada ambiente. '])
+    if(orientacion&&/norte/i.test(orientacion))p2+=__pick(['Su orientación norte lo llena de luz natural durante todo el día. ','Gracias a su orientación norte, la luz es protagonista en cada ambiente. '])
+    else if(orientacion&&/(poniente|oeste)/i.test(orientacion))p2+='Con orientación poniente, ideal para disfrutar hermosos atardeceres. '
+    else if(orientacion&&/(oriente|este)/i.test(orientacion))p2+='Su orientación oriente regala una luminosa luz de mañana. '
     else if(orientacion)p2+='Orientación '+orientacion+'. '
+    if(piso!=null&&piso>=12)p2+=__pick(['Ubicado en un piso alto, ofrece vistas despejadas y gran privacidad. ','En altura, con vistas que enamoran. '])
     if(p2)out.push(p2.trim())
+    if(__parcial(f.amoblado))out.push(__pick(['Se entrega semi amoblado, con lo esencial para que te instales sin complicaciones.','Incluye mobiliario básico, facilitando tu llegada desde el primer día.']))
+    else if(__si(f.amoblado))out.push(__pick(['Se entrega completamente amoblado: solo trae tus maletas y empieza a disfrutar.','Llega y vive de inmediato, porque viene totalmente equipado y amoblado.','Amoblado y listo para habitar, sin que tengas que preocuparte de nada.']))
+    else if(__sinMuebles(f.amoblado))out.push(__pick(['Se entrega sin muebles, un lienzo en blanco para que lo decores a tu gusto y lo hagas completamente tuyo.','Sin amoblar, el espacio perfecto para plasmar tu estilo y crear el hogar que siempre quisiste.','Listo para que lo personalices: se entrega sin muebles, ideal para imprimir tu sello propio.']))
     const entorno=__tejerEntorno(e.puntos_interes)
     let p3=''
-    if(comuna||sector)p3=__pick(['Ubicado en '+(sector||comuna)+', ','En '+(sector||comuna)+', una de las zonas más cotizadas, ','La ubicación lo dice todo: '+(sector||comuna)+'. '])
-    if(entorno)p3+=__pick(['a pasos de '+entorno+'.','con '+entorno+' a tu alcance.','tendrás cerca '+entorno+'.','rodeado de lo mejor del sector: '+entorno+'.'])
-    else if(p3)p3+='tendrás a pocos pasos comercio, servicios, áreas verdes y excelente conectividad.'
-    p3=p3.replace(/\.\s*a pasos/,'. A pasos').replace(/\.\s*con /,'. Con ').replace(/\.\s*tendrás/,'. Tendrás').replace(/\.\s*rodeado/,'. Rodeado')
+    if(lugar)p3=__pick(['Ubicado en '+lugar+', ','En '+lugar+', una de las zonas más cotizadas del sector, ','La ubicación lo dice todo: '+lugar+'. '])
+    if(entorno){
+      if(/\. $/.test(p3))p3+=__pick(['A pasos de '+entorno+'.','Tendrás cerca '+entorno+'.','Rodeado de lo mejor del sector: '+entorno+'.'])
+      else p3+=__pick(['a pasos de '+entorno+'.','con '+entorno+' a tu alcance.','tendrás cerca '+entorno+'.','rodeado de lo mejor del sector: '+entorno+'.'])
+    }else if(p3){
+      if(/\. $/.test(p3))p3+='Con comercio, servicios y excelente conectividad a tu alrededor.'
+      else p3+='con comercio, servicios y excelente conectividad a tu alrededor.'
+    }
     if(p3.trim())out.push(p3.trim())
     const dest=[]
     const est=__num(f.estacionamientos),bod=__num(f.bodegas)
     if(est&&est>0)dest.push(est===1?'1 estacionamiento':est+' estacionamientos')
     if(bod&&bod>0)dest.push(bod===1?'bodega':bod+' bodegas')
-    if(__si(f.amoblado))dest.push('completamente amoblado')
-    if(__si(f.ksuitable_for_pets))dest.push('pet friendly: tu mascota también es bienvenida')
     if(__si(f.has_balcony))dest.push('balcón')
+    if(__si(f.has_laundry))dest.push('logia / lavandería')
+    if(__si(f.has_maid_room))dest.push('dormitorio de servicio')
+    if(__si(f.has_security))dest.push('seguridad 24 horas')
+    if(__si(f.ksuitable_for_pets))dest.push('pet friendly: tu mascota también es bienvenida')
     if(dest.length)out.push('DESTACADOS\n- '+dest.map(d=>d.charAt(0).toUpperCase()+d.slice(1)).join('\n- '))
     const A=[];const add=(k,t)=>{if(__si(e[k]))A.push(t)}
     add('tiene_piscina','piscina');add('tiene_gimnasio','gimnasio');add('tiene_sauna','sauna');add('tiene_jacuzzi','jacuzzi')
@@ -171,17 +215,23 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
     add('tiene_cine','sala de cine');add('tiene_playroom','playroom');add('tiene_juegos_infantiles','juegos infantiles')
     add('tiene_sala_multiuso','sala multiuso');add('tiene_area_verde','áreas verdes');add('tiene_cancha_paddle','cancha de paddle');add('tiene_cancha_tenis','cancha de tenis')
     const serv=[];const addS=(k,t)=>{if(__si(e[k]))serv.push(t)}
-    addS('tiene_ascensor','ascensor');addS('tiene_recepcion','recepción');addS('tiene_lavanderia','lavandería');addS('tiene_estacionamiento_visitas','estacionamiento de visitas');addS('tiene_generador','generador eléctrico')
+    addS('tiene_ascensor','ascensor');addS('tiene_recepcion','recepción/conserjería');addS('tiene_lavanderia','lavandería');addS('tiene_estacionamiento_visitas','estacionamiento de visitas');addS('tiene_generador','generador eléctrico')
     if(A.length||serv.length){
       let p5=__pick(['VIDA EN EL EDIFICIO\n','TU NUEVO ESTILO DE VIDA\n','EL EDIFICIO\n'])
-      if(A.length){const l=A.join(', ').replace(/, ([^,]*)$/,' y $1');p5+=__pick(['Disfruta de '+l+'. ','El edificio ofrece '+l+' para tu bienestar. ','Más que cuatro paredes, un estilo de vida: '+l+'. '])}
-      if(serv.length){const ls=serv.join(', ').replace(/, ([^,]*)$/,' y $1');p5+='Además: '+ls+'.'}
+      if(A.length>=5)p5+=__pick(['Amenities de primer nivel para tu bienestar y entretención: ','Un edificio pensado para disfrutar cada día: '])
+      if(A.length){
+        const l=A.join(', ').replace(/, ([^,]*)$/,' y $1')
+        if(A.length>=5)p5+=l+'. '
+        else if(A.length===1)p5+=__pick(['Disfruta de su '+l+'. ','Cuenta con '+l+' para tu bienestar. '])
+        else p5+=__pick(['Disfruta de '+l+'. ','El edificio ofrece '+l+' para tu bienestar. ','Más que cuatro paredes, un verdadero estilo de vida: '+l+'. '])
+      }
+      if(serv.length){const ls=serv.join(', ').replace(/, ([^,]*)$/,' y $1');p5+='Además, cuenta con '+ls+'.'}
       out.push(p5.trim())
     }
     if(e.complemento_descripcion&&e.complemento_descripcion.trim())out.push(e.complemento_descripcion.trim())
-    if(esVenta)out.push(__pick(['Una inversión segura en una ubicación privilegiada. Agenda tu visita y descúbrelo.','Propiedades así no duran en el mercado. Contáctanos y coordina tu visita hoy.','El lugar ideal para vivir o invertir. Escríbenos y agenda una visita sin compromiso.']))
-    else out.push(__pick(['Un espacio pensado para vivir cómodo y conectado. ¿Te lo imaginas? Agenda tu visita.','Ven a conocerlo y enamórate de tu próximo hogar. Coordina tu visita hoy.','Tu nueva etapa empieza aquí. Escríbenos y agenda una visita cuando quieras.']))
-    return out.join('\n\n')
+    if(esVenta)out.push(__pick(['Una inversión segura en una ubicación privilegiada. Agenda tu visita y descúbrelo.','Propiedades así no duran en el mercado. Contáctanos y coordina tu visita hoy.','El lugar ideal para vivir o invertir. Escríbenos y agenda una visita sin compromiso.','No dejes pasar esta oportunidad. Coordina una visita y déjate sorprender.']))
+    else out.push(__pick(['Un espacio pensado para vivir cómodo y conectado. ¿Te lo imaginas? Agenda tu visita.','Ven a conocerlo y enamórate de tu próximo hogar. Coordina tu visita hoy.','Tu nueva etapa empieza aquí. Escríbenos y agenda una visita cuando quieras.','Todo está listo para recibirte. Agenda una visita y ven a vivirlo.']))
+    return __noEmoji(out.join('\n\n'))
   }
   function aplicarDescripcionGenerada(){
     set('observaciones', generarDescripcion().replace(/\n/g,'<br>'))

@@ -347,6 +347,10 @@ function FichaEdificio({ edificio, onVolver }) {
               <textarea value={form.puntos_interes || ''} onChange={e => set('puntos_interes', e.target.value)} rows={3}
                 placeholder="Ej: Metro Alcántara a 3 cuadras, Parque Araucano, Jumbo, Colegio San Benito, oficinas de Apoquindo"
                 style={{ ...field, resize: 'vertical', lineHeight: 1.5 }} />
+              <p style={{ fontSize: 11, color: 'var(--gray-500)', margin: '2px 0 0', lineHeight: 1.5 }}>
+                Escribe hitos reales separados por coma: metro (con línea y distancia), parques, supermercados, colegios, clínicas, hitos del barrio.
+                Ej: «Metro Santa Isabel L5 a 4 cuadras, Parque Bustamante, Líder Express, Clínica Indisa». Mientras más específico, mejor queda la descripción generada.
+              </p>
             </div>
 
          {sec('Fotos de espacios comunes', '#dc2626')}
