@@ -168,6 +168,11 @@ export async function POST(request) {
       }
       if (pub.titulo && pub.titulo.trim()) body.title = pub.titulo.trim()
 
+      // Direccion publica que se muestra en PI (texto). No toca lat/long ni el pin del mapa.
+      if (pub.direccion && String(pub.direccion).trim()) {
+        body.location = { address_line: String(pub.direccion).trim() }
+      }
+
       // amenities del edificio -> atributos HAS_* del PI
       const amen = []
       const addAmen = (cond, id) => { if (cond) amen.push({ id, values: [{ id: '242085', name: 'Si' }] }) }
