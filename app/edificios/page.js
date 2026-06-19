@@ -341,6 +341,14 @@ function FichaEdificio({ edificio, onVolver }) {
                 style={{ ...field, resize: 'vertical', lineHeight: 1.5 }} />
             </div>
 
+            {sec('Entorno / Puntos de interés', '#0d9488')}
+            <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>Datos crudos para el generador de descripciones (NO se publica tal cual). Metro, parques, supermercados, colegios, oficinas cercanas.</label>
+              <textarea value={form.puntos_interes || ''} onChange={e => set('puntos_interes', e.target.value)} rows={3}
+                placeholder="Ej: Metro Alcántara a 3 cuadras, Parque Araucano, Jumbo, Colegio San Benito, oficinas de Apoquindo"
+                style={{ ...field, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+
          {sec('Fotos de espacios comunes', '#dc2626')}
             <div style={{ gridColumn: '1/-1' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
