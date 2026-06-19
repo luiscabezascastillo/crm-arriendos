@@ -189,6 +189,8 @@ function buildPayload(p) {
     .replace(/Á/g, '\u00C1').replace(/É/g, '\u00C9')
     .replace(/Í/g, '\u00CD').replace(/Ó/g, '\u00D3')
     .replace(/Ú/g, '\u00DA').replace(/Ñ/g, '\u00D1')
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/ {2,}/g, ' ')
 
   const imagenes = []
   for (let i = 1; i <= 30; i++) {

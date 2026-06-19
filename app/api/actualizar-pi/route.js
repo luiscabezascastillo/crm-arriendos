@@ -29,6 +29,8 @@ function construirDescripcion(pub) {
     .replace(/Ã¡/g, '\u00E1').replace(/Ã©/g, '\u00E9')
     .replace(/Ã/g, '\u00ED').replace(/Ã³/g, '\u00F3')
     .replace(/Ãº/g, '\u00FA').replace(/Ã±/g, '\u00F1')
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/ {2,}/g, ' ')
 }
 
 // Lista ordenada de nombres de archivo de fotos (imagen1..imagen30, break al primer hueco).
