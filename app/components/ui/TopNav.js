@@ -16,6 +16,7 @@ const RUTAS = {
   '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
   '/procesos':     ['admin', 'operaciones', 'finanzas', 'legal', 'ventas'],
   '/publicaciones':['admin', 'comercial', 'ventas', 'legal'],
+  '/propiedades':  ['admin'],
   '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
 };
 
@@ -228,6 +229,9 @@ function abrirModal(tipo) {
         )}
         {puede('/publicaciones') && (
           <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+        )}
+        {puede('/propiedades') && (
+          <Link href="/propiedades" style={s.link(isActive('/propiedades'))}>Propiedades</Link>
         )}
         <Link href="/edificios" style={s.link(isActive('/edificios'))}>Edificios</Link>
         {puede('/contactos') && (
