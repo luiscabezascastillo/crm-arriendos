@@ -466,14 +466,19 @@ export default function FichaPage() {
         setLoading(false)
       })
   }, [id])
-  // ── Buscar edificio asociado por calle + numero ──
+  // ── Buscar edificio asociado por calle + numero (ignora tildes y mayusculas) ──
      useEffect(() => {
        if (!pub || !pub.calle || !pub.numero_calle) { setEdificio(null); return }
+       // normaliza: minusculas, sin tildes, sin espacios extra
+       const norm = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+       const callePub = norm(pub.calle)
+       // filtramos server-side por numero exacto (selectivo) y comparamos la calle normalizada en JS
        supabase.from('edificios').select('*')
-         .ilike('calle', pub.calle.trim())
          .eq('numero_calle', String(pub.numero_calle).trim())
-         .limit(1)
-         .then(({ data }) => setEdificio(data && data[0] ? data[0] : null))
+         .then(({ data }) => {
+           const match = (data || []).find(e => norm(e.calle) === callePub)
+           setEdificio(match || null)
+         })
      }, [pub])
 
 // ── Importar datos del edificio a la propiedad ──
