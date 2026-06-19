@@ -257,7 +257,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const', { count:'exact' })
+      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
@@ -364,6 +364,21 @@ export default function PublicacionesPage() {
       alert('Error al copiar: ' + e.message)
     }
     setCopiando(null)
+  }
+  // ── COMPARTIR: copiar link del aviso al portapapeles (PI, o web como respaldo) ──
+  const [linkCopiado, setLinkCopiado] = useState(null)
+  async function compartir(pub) {
+    let url = (pub.url_pi && String(pub.url_pi).trim()) ? String(pub.url_pi).trim() : ''
+    if (!url && pub.web === 'SI') url = 'https://www.fondocapital.com/d_property.php?c=' + pub.codigo
+    if (!url) { alert('Esta propiedad no tiene aviso publicado para compartir.'); return }
+    try {
+      await navigator.clipboard.writeText(url)
+      setLinkCopiado(pub.id)
+      setTimeout(() => setLinkCopiado(null), 2000)
+    } catch (e) {
+      // fallback si clipboard no esta disponible
+      window.prompt('Copia el link:', url)
+    }
   }
   const [dandoDeBaja, setDandoDeBaja] = useState(null)
 
@@ -707,7 +722,7 @@ export default function PublicacionesPage() {
                               onClick={() => copiar(p)}
                               disabled={copiando===p.id}
                             />
-                            <BtnAccion label="Compartir" color="#0891b2" bg="#ecfeff" onClick={() => router.push(`/publicaciones/${p.id}?seccion=Publicación`)} />
+                            <BtnAccion label={linkCopiado===p.id ? '✓ Link copiado' : '🔗 Compartir'} color="#0891b2" bg="#ecfeff" onClick={() => compartir(p)} />
                             <div style={{ gridColumn:'1/-1' }}>
                               <BtnAccion
                                 label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
@@ -782,7 +797,7 @@ export default function PublicacionesPage() {
                         <>
                           <button style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #1a56db', background:'#eff6ff', color:'#1a56db', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>Editar</button>
                           <button onClick={() => router.push(`/publicaciones/${p.id}`)} style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #16a34a', background:'#f0fdf4', color:'#16a34a', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>Ficha</button>
-                          <button style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #dc2626', background:'#fef2f2', color:'#dc2626', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>Compartir</button>
+                          <button onClick={() => compartir(p)} style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #0891b2', background:'#ecfeff', color:'#0891b2', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>{linkCopiado===p.id ? '✓ Copiado' : 'Compartir'}</button>
                         </>
                       )}
                     </div>
