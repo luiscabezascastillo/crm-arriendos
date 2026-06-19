@@ -287,7 +287,12 @@ function FichaEdificio({ edificio, onVolver }) {
             {inp('Pisos', 'pisos', 'number')}
             {inp('Deptos por piso', 'deptos_por_piso', 'number')}
             {inp('Nº torres', 'numero_torres', 'number')}
-            {inp('Antigüedad (años)', 'antiguedad', 'number')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                 <label style={lbl}>Año de construcción</label>
+                 <input type="number" value={form.ano_construccion ?? ''}
+                   onChange={e => set('ano_construccion', e.target.value === '' ? null : parseInt(e.target.value, 10))}
+                   placeholder="Ej: 2015" style={field} />
+               </div>
             {inp('Tipo seguridad', 'tipo_seguridad')}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>Condominio cerrado</label>

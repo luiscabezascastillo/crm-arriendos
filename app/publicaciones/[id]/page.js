@@ -119,12 +119,12 @@ function SeccionEditar({ pub, id, onGuardado }) {
     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
       <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>{label}</label>
       {opts ? (
-        <select value={form[key]} onChange={e => set(key, e.target.value)}
+      <select value={form[key] ?? ''} onChange={e => set(key, e.target.value)}
           style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }}>
           {opts.map(o => <option key={o}>{o}</option>)}
         </select>
       ) : (
-        <input type="text" value={form[key]} onChange={e => set(key, e.target.value)}
+        <input type="text" value={form[key] ?? ''} onChange={e => set(key, e.target.value)}
           style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--surface)', color:'var(--text)', fontFamily:'inherit' }} />
       )}
     </div>
@@ -189,7 +189,10 @@ function SeccionEditar({ pub, id, onGuardado }) {
         {inp('Captador', 'captador', 'text', ['', ...usuarios])}
         {sec('Atributos Portal Inmobiliario', '#0891b2')}
         {inp('Piso', 'unit_floor')}
-        {inp('Antigüedad (años)', 'property_age')}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'var(--gray-500)', textTransform:'uppercase', letterSpacing:.5 }}>Antigüedad (años)</label>
+          <input type="text" value={form.property_age || ''} readOnly disabled title="Se calcula desde el año de construcción del edificio" style={{ padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, background:'var(--gray-50, #f9fafb)', color:'var(--gray-500)', fontFamily:'inherit', cursor:'not-allowed' }} />
+        </div>
         {inp('Pisos edificio', 'floors')}
         {inp('Deptos por piso', 'apartments_per_floor')}
         {inp('Nº depto', 'apartment_number')}
@@ -375,6 +378,16 @@ export default function FichaPage() {
       const comp = edificio.complemento_descripcion.trim()
      const desc = (pub.observaciones || '').trim()
     if (!desc.includes(comp)) cambios.observaciones = desc ? (desc + '<br>' + comp) : comp    }
+
+    // 4) Estructura del edificio: pisos, deptos/piso y antiguedad calculada desde ano_construccion
+    const estructura = {}
+    if (edificio.pisos != null) estructura.floors = String(edificio.pisos)
+    if (edificio.deptos_por_piso != null) estructura.apartments_per_floor = String(edificio.deptos_por_piso)
+    if (edificio.ano_construccion != null) {
+      const ant = new Date().getFullYear() - edificio.ano_construccion
+      estructura.property_age = String(ant >= 0 ? ant : 0)
+    }
+    Object.assign(cambios, estructura)
 
     if (Object.keys(cambios).length === 0) {
       setImportando(false)
