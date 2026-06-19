@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
 
 const supabase = createClient(
@@ -36,6 +37,8 @@ const AMENITIES = [
 ]
 
 export default function EdificiosPage() {
+  const { data: session } = useSession()
+  const esAdmin = session?.user?.role === 'admin'
   const [edificios, setEdificios] = useState([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
@@ -85,6 +88,12 @@ export default function EdificiosPage() {
               {edificios.length} edificios · {edificios.filter(e => nFotos(e) > 0).length} con fotos de espacios comunes
             </p>
           </div>
+          {esAdmin && (
+            <button onClick={() => setSel({})}
+              style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              + Nuevo edificio
+            </button>
+          )}
         </div>
 
         <input
@@ -146,6 +155,8 @@ const td = { padding: '10px 14px', color: 'var(--gray-700, #374151)' }
 // ---------- FICHA DE EDIFICIO ----------
 function FichaEdificio({ edificio, onVolver }) {
   const [form, setForm] = useState({ ...edificio })
+  const [idActual, setIdActual] = useState(edificio.id || null)
+  const esNuevo = !idActual
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -175,6 +186,7 @@ function FichaEdificio({ edificio, onVolver }) {
   }
 
   async function subirFotos(fileList) {
+    if (!idActual) { setMsgFotos({ ok: false, text: 'Guarda el edificio primero para poder subir fotos.' }); return }
     const files = Array.from(fileList || []).filter(f => f.type.includes('jpeg') || f.type.includes('jpg'))
     if (!files.length) { setMsgFotos({ ok: false, text: 'Solo se admiten archivos JPG.' }); return }
     const libres = huecosLibres()
@@ -189,7 +201,7 @@ function FichaEdificio({ edificio, onVolver }) {
       const slot = libres[idx]
       const fd = new FormData()
       fd.append('file', file)
-      fd.append('publicacionId', 'EDI' + edificio.id)
+      fd.append('publicacionId', 'EDI' + idActual)
       fd.append('slot', slot + '-' + Date.now())
       try {
         const res = await fetch('/api/upload-imagen', { method: 'POST', body: fd })
@@ -225,10 +237,21 @@ function FichaEdificio({ edificio, onVolver }) {
     setMsg(null)
     const { id, created_at, ...datos } = form
     datos.updated_at = new Date().toISOString()
-    const { error } = await supabase.from('edificios').update(datos).eq('id', edificio.id)
-    setGuardando(false)
-    if (error) setMsg({ ok: false, text: 'Error: ' + error.message })
-    else { setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
+    if (!idActual) {
+      // Edificio nuevo: INSERT y quedarse en la ficha con el id generado
+      const { data, error } = await supabase.from('edificios').insert(datos).select().single()
+      setGuardando(false)
+      if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }); return }
+      setIdActual(data.id)
+      setForm(data)
+      setMsg({ ok: true, text: '✓ Edificio creado. Ya puedes subir fotos y seguir editando.' })
+      setTimeout(() => setMsg(null), 4000)
+    } else {
+      const { error } = await supabase.from('edificios').update(datos).eq('id', idActual)
+      setGuardando(false)
+      if (error) setMsg({ ok: false, text: 'Error: ' + error.message })
+      else { setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
+    }
   }
 
   const inp = (label, key, type = 'text') => (
@@ -250,7 +273,7 @@ function FichaEdificio({ edificio, onVolver }) {
         <button onClick={onVolver} style={{ fontSize: 13, color: '#1a56db', background: 'transparent', border: 'none', cursor: 'pointer', marginBottom: 12, fontFamily: 'inherit' }}>← Volver al listado</button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text, #111)', margin: 0 }}>
-            {form.calle} {form.numero_calle} <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--gray-400)' }}>· {form.comuna}</span>
+            {esNuevo && !form.calle ? 'Nuevo edificio' : <>{form.calle} {form.numero_calle} <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--gray-400)' }}>· {form.comuna}</span></>}
           </h1>
           <button onClick={guardar} disabled={guardando}
             style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
