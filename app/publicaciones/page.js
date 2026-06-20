@@ -216,7 +216,7 @@ export default function PublicacionesPage() {
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { fetch('https://mindicador.cl/api/uf').then(r=>r.json()).then(d=>setValorUF(d.serie?.[0]?.valor||null)).catch(()=>{}) }, [])
   useEffect(() => { setPage(1) }, [search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio])
-  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio])
+  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio, valorUF])
 
   async function loadMapa() {
     let query = supabase
@@ -272,8 +272,6 @@ export default function PublicacionesPage() {
     let query = supabase
       .from('publicaciones')
       .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
-      .order('codigo', { ascending: false })
-      .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
         if (modo === 'activas') {
           query = query.neq('activo','CREAR')
@@ -296,8 +294,37 @@ export default function PublicacionesPage() {
     if (fCaptador.selected.length) query = query.in('captador', fCaptador.selected)
     if (fVendedor.selected.length) query = query.in('vendedor', fVendedor.selected)
     if (fComuna.selected.length) query = query.in('comuna', fComuna.selected)
-    if (fCodigo.sort) query = query.order('codigo', { ascending: fCodigo.sort === 'asc' })
-    if (fComuna.sort) query = query.order('comuna', { ascending: fComuna.sort === 'asc' })
+
+    // Ordenamiento en el servidor (global, no solo la página).
+    // Se aplica el sort de columna elegido; si no hay ninguno, orden por defecto (codigo desc).
+    let huboSort = false
+    if (fCodigo.sort)   { query = query.order('codigo',   { ascending: fCodigo.sort   === 'asc' }); huboSort = true }
+    if (fTipo.sort)     { query = query.order('tipo',     { ascending: fTipo.sort     === 'asc' }); huboSort = true }
+    if (fEstado.sort)   { query = query.order('estado',   { ascending: fEstado.sort   === 'asc' }); huboSort = true }
+    if (fCaptador.sort) { query = query.order('captador', { ascending: fCaptador.sort === 'asc' }); huboSort = true }
+    if (fVendedor.sort) { query = query.order('vendedor', { ascending: fVendedor.sort === 'asc' }); huboSort = true }
+    if (fComuna.sort)   { query = query.order('comuna',   { ascending: fComuna.sort   === 'asc' }); huboSort = true }
+    if (!huboSort) query = query.order('codigo', { ascending: false })
+
+    // Si se ordena por Precio, hay que traer TODAS (UF y $ se comparan convirtiendo a pesos
+    // con el valor de UF del dia, que solo se tiene en el cliente) y paginar en memoria.
+    if (fPrecio.sort) {
+      const { data, count, error } = await query  // sin range: todas las que cumplen filtros
+      if (!error) {
+        const toP = (p) => p.tipo_moneda === 'UF' ? Number(p.valor||0) * (valorUF||1) : Number(p.valor||0)
+        const ordenadas = (data||[]).slice().sort((a,b) => {
+          const av = toP(a), bv = toP(b)
+          return fPrecio.sort === 'asc' ? (av - bv) : (bv - av)
+        })
+        const inicio = (page-1)*PAGE_SIZE
+        setPubs(ordenadas.slice(inicio, inicio+PAGE_SIZE))
+        setTotal(ordenadas.length)
+      }
+      setLoading(false)
+      return
+    }
+
+    query = query.range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
     const { data, count, error } = await query
     if (!error) { setPubs(data||[]); setTotal(count||0) }
@@ -451,29 +478,11 @@ export default function PublicacionesPage() {
 
   function applyExcelFilters(lista) {
     let r = [...lista]
-    if (fCodigo.selected.length) r = r.filter(p => fCodigo.selected.includes(p.codigo))
-    if (fTipo.selected.length) r = r.filter(p => fTipo.selected.includes(p.tipo))
-    if (fEstado.selected.length) r = r.filter(p => fEstado.selected.includes(p.estado))
-    if (fCaptador.selected.length) r = r.filter(p => fCaptador.selected.includes(p.captador))
-    if (fVendedor.selected.length) r = r.filter(p => fVendedor.selected.includes(p.vendedor))
-    if (fComuna.selected.length) r = r.filter(p => fComuna.selected.includes(p.comuna))
     const toP = (p) => p.tipo_moneda === 'UF' ? Number(p.valor||0) * (valorUF||1) : Number(p.valor||0)
     if (fPrecio.min !== '') r = r.filter(p => toP(p) >= Number(fPrecio.min))
     if (fPrecio.max !== '') r = r.filter(p => toP(p) <= Number(fPrecio.max))
-    const sorts = [
-      { f: fCodigo, k: 'codigo' }, { f: fTipo, k: 'tipo' },
-      { f: fEstado, k: 'estado' }, { f: fCaptador, k: 'captador' },
-      { f: fVendedor, k: 'vendedor' }, { f: fComuna, k: 'comuna' }, { f: fPrecio, k: 'valor', n: true },
-    ].filter(s => s.f.sort)
-    if (sorts.length) {
-      const { k, f, n } = sorts[sorts.length - 1]
-      r.sort((a, b) => {
-        const toP = (p) => p.tipo_moneda === 'UF' ? Number(p.valor||0) * (valorUF||1) : Number(p.valor||0)
-        const av = k === 'valor' ? toP(a) : (n ? Number(a[k]||0) : String(a[k]||''))
-        const bv = k === 'valor' ? toP(b) : (n ? Number(b[k]||0) : String(b[k]||''))
-        return f.sort === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
-      })
-    }
+    // El sort (incluido Precio) se hace en loadData: texto en el servidor, Precio trayendo
+    // todas y paginando en memoria con la conversion UF->$.
     return r
   }
 
