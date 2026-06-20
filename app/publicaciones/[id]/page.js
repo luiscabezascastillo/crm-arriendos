@@ -891,10 +891,10 @@ async function subirImagen(file) {
             <>
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Ubicación</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  {[['Dirección',pub.direccion||pub.direccionreal||'—'],['Comuna',pub.comuna||'—'],['Región',pub.region||'—'],['Número',pub.numero||'—']].map(([l,v]) => (
-                    <div key={l}><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{v}</div></div>
-                  ))}
+                <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:14 }}>
+                  <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Dirección</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.direccionreal||pub.direccion||'—'}</div></div>
+                  <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Comuna</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.comuna||'—'}</div></div>
+                  <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Región</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.region||'—'}</div></div>
                 </div>
               </div>
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
