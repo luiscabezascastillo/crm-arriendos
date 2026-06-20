@@ -17,6 +17,17 @@ const TIPOS = ['Departamento', 'Casa', 'Oficina', 'Local', 'Terreno', 'Parcela',
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const FUENTES = ['manual', 'PI', 'web', 'landing', 'redes', 'referido']
 
+// ───────────── PIPELINE: etapas (configurables: agregar/quitar aqui) ─────────────
+const ETAPAS = [
+  { key: 'nuevo',      label: 'Nuevo',      color: '#6b7280' },
+  { key: 'contactado', label: 'Contactado', color: '#0C447C' },
+  { key: 'visita',     label: 'Visita',     color: '#7c3aed' },
+  { key: 'oferta',     label: 'Oferta',     color: '#d97706' },
+  { key: 'cerrado',    label: 'Cerrado',    color: '#16a34a' },
+  { key: 'descartado', label: 'Descartado', color: '#dc2626' },
+]
+const ETAPA_DEFAULT = 'nuevo'
+
 // Amenities: nombre interno (mapea a lib/matching.js) -> etiqueta bonita
 const AMENITIES = [
   ['piscina', 'Piscina'], ['gimnasio', 'Gimnasio'], ['quincho', 'Quincho / Parrilla'],
@@ -40,6 +51,14 @@ const sinTildes = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u
 
 // valor UF usado para convertir precios en el matching (mismo criterio que /propiedades)
 const VALOR_UF = 40790
+
+// fecha corta dd/mm/aa
+const fmtFechaCorta = s => {
+  if (!s) return ''
+  const d = new Date(s)
+  if (isNaN(d)) return ''
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
 
 // formatea el precio de una publicacion con su moneda
 function fmtPrecio(p) {
@@ -74,6 +93,11 @@ export default function RequerimientosPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
 
+  // vista del listado: 'lista' (tabla) | 'pipeline' (kanban)
+  const [vista, setVista] = useState('lista')
+  const [dragId, setDragId] = useState(null)
+  const [filtroComercial, setFiltroComercial] = useState('')
+
   // buscador de contacto
   const [contactoQuery, setContactoQuery] = useState('')
   const [contactoResultados, setContactoResultados] = useState([])
@@ -93,6 +117,11 @@ export default function RequerimientosPage() {
   useEffect(() => {
     if (esAdmin) cargar()
   }, [esAdmin])
+
+  // al entrar al pipeline, cargar la cartera para poder contar matches por tarjeta
+  useEffect(() => {
+    if (vista === 'pipeline') cargarCartera()
+  }, [vista])
 
   async function cargar() {
     setLoading(true)
@@ -135,6 +164,22 @@ export default function RequerimientosPage() {
     setMsg(null)
     setViendoMatches(r)
     await cargarCartera()
+  }
+
+  // mover un requerimiento de etapa (drag & drop). Update optimista + persistir.
+  async function moverEtapa(id, etapa) {
+    const antes = reqs.find(r => r.id === id)
+    if (!antes || (antes.etapa || ETAPA_DEFAULT) === etapa) return
+    setReqs(rs => rs.map(r => r.id === id ? { ...r, etapa } : r))
+    const { error } = await supabase
+      .from('requerimientos')
+      .update({ etapa, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) {
+      // revertir si falla
+      setReqs(rs => rs.map(r => r.id === id ? { ...r, etapa: antes.etapa || ETAPA_DEFAULT } : r))
+      setMsg({ tipo: 'error', txt: 'No se pudo mover: ' + error.message })
+    }
   }
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -286,6 +331,7 @@ export default function RequerimientosPage() {
     if (editando && editando.id) {
       ({ error } = await supabase.from('requerimientos').update(payload).eq('id', editando.id))
     } else {
+      // etapa NO se envia en alta: la BD pone el default ('nuevo')
       ({ error } = await supabase.from('requerimientos').insert(payload))
     }
     if (error) { setMsg({ tipo: 'error', txt: 'Error: ' + error.message }); setGuardando(false); return }
@@ -310,6 +356,14 @@ export default function RequerimientosPage() {
     return partes.join(' · ') || '—'
   }
 
+  // resumen compacto para la tarjeta del pipeline (tipo + precio max)
+  function resumenCorto(r) {
+    const partes = []
+    if (r.tipos?.length) partes.push(r.tipos.join('/'))
+    if (r.precio_max) partes.push(`${r.moneda} ${Number(r.precio_max).toLocaleString('es-CL')}`)
+    return partes.join(' · ') || '—'
+  }
+
   // matches calculados al vuelo para el requerimiento abierto
   const matches = useMemo(() => {
     if (!viendoMatches || !cartera.cargada) return null
@@ -325,6 +379,25 @@ export default function RequerimientosPage() {
     }
     return unicos
   }, [viendoMatches, cartera])
+
+  // conteo de matches por requerimiento (para la tarjeta del pipeline)
+  const matchesCount = useMemo(() => {
+    if (!cartera.cargada) return {}
+    const out = {}
+    for (const r of reqs) {
+      const res = buscarMatches(r, cartera.pubs, cartera.edis, VALOR_UF)
+      const vistos = new Set()
+      let n = 0
+      for (const m of res) {
+        const k = [sinTildes(m.pub.comuna), sinTildes(m.pub.direccionreal || m.pub.direccion), sinTildes(m.pub.departamento)].join('|')
+        if (vistos.has(k)) continue
+        vistos.add(k)
+        n++
+      }
+      out[r.id] = n
+    }
+    return out
+  }, [reqs, cartera])
 
   if (status === 'loading') return <div style={{ padding: 40, color: '#888' }}>Cargando…</div>
   if (status === 'authenticated' && !esAdmin) return null
@@ -602,14 +675,136 @@ export default function RequerimientosPage() {
     )
   }
 
-  // ───────────── LISTADO ─────────────
-  return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+  // ───────────── LISTADO + PIPELINE ─────────────
+  // toggle de vista (compartido por ambas vistas)
+  const toggle = (
+    <div style={{ display: 'inline-flex', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+      {[['lista', 'Lista'], ['pipeline', 'Pipeline']].map(([v, lab]) => (
+        <button key={v} onClick={() => setVista(v)} style={{
+          padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', fontFamily: 'inherit',
+          background: vista === v ? '#185FA5' : '#fff', color: vista === v ? '#fff' : '#555',
+        }}>{lab}</button>
+      ))}
+    </div>
+  )
+
+  const header = (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>Requerimientos</h1>
-        <button onClick={nuevo} style={{ padding: '8px 16px', borderRadius: 8, background: '#185FA5', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nuevo requerimiento</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {toggle}
+          <button onClick={nuevo} style={{ padding: '8px 16px', borderRadius: 8, background: '#185FA5', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nuevo requerimiento</button>
+        </div>
       </div>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>Lo que buscan los clientes · operación venta</div>
+      {msg && <div style={{ ...card, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a', padding: 12 }}>{msg.txt}</div>}
+    </>
+  )
+
+  // ===== PIPELINE (kanban) =====
+  if (vista === 'pipeline') {
+    const reqsPipe = filtroComercial ? reqs.filter(r => r.vendedor === filtroComercial) : reqs
+    return (
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
+        {header}
+
+        {/* filtro por comercial + estado de carga de matches */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <select value={filtroComercial} onChange={e => setFiltroComercial(e.target.value)} style={{ ...input, width: 'auto', minWidth: 180 }}>
+            <option value="">Todos los comerciales</option>
+            {OPTS_VENDEDOR.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          {!cartera.cargada && <span style={{ fontSize: 12, color: '#888' }}>Calculando matches…</span>}
+        </div>
+
+        {loading ? (
+          <div style={{ color: '#888' }}>Cargando…</div>
+        ) : (
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 10 }}>
+            {ETAPAS.map(et => {
+              const enEtapa = reqsPipe.filter(r => (r.etapa || ETAPA_DEFAULT) === et.key)
+              return (
+                <div
+                  key={et.key}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => { if (dragId != null) { moverEtapa(dragId, et.key); setDragId(null) } }}
+                  style={{ minWidth: 248, width: 248, flexShrink: 0, background: '#FAFAF8', border: '1px solid #EFEDE7', borderRadius: 10, padding: 8, alignSelf: 'flex-start' }}
+                >
+                  {/* cabecera de columna */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px 10px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: .4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: et.color, display: 'inline-block' }} />
+                      {et.label}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', background: '#fff', border: '1px solid #E8E6E0', borderRadius: 20, padding: '1px 8px' }}>{enEtapa.length}</span>
+                  </div>
+
+                  {/* tarjetas */}
+                  {enEtapa.length === 0 ? (
+                    <div style={{ fontSize: 11, color: '#c4c1b8', textAlign: 'center', padding: '16px 4px' }}>—</div>
+                  ) : enEtapa.map(r => {
+                    const cliente = r.nombre_suelto || (r.contacto_id ? '(contacto ligado)' : '—')
+                    const comuna = r.comunas?.length ? (r.comunas[0] + (r.comunas.length > 1 ? ` +${r.comunas.length - 1}` : '')) : 'Cualquiera'
+                    const tel = (r.telefono_suelto || '').trim()
+                    const telWa = tel.replace(/[^\d]/g, '')
+                    const nMatches = cartera.cargada ? (matchesCount[r.id] ?? 0) : null
+                    return (
+                      <div
+                        key={r.id}
+                        draggable
+                        onDragStart={() => setDragId(r.id)}
+                        onDragEnd={() => setDragId(null)}
+                        style={{
+                          background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8, padding: 10, marginBottom: 8,
+                          cursor: 'grab', opacity: dragId === r.id ? 0.45 : 1, boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                        }}
+                      >
+                        {/* cliente + nº matches */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                          <span onClick={() => editar(r)} title="Editar" style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', cursor: 'pointer', lineHeight: 1.25 }}>{cliente}</span>
+                          <span
+                            onClick={() => verMatches(r)}
+                            title="Ver matches"
+                            style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, cursor: 'pointer', background: '#EAF3DE', color: '#3B6D11', border: '1px solid #cfe3b4' }}
+                          >
+                            {nMatches == null ? '…' : `${nMatches} ✓`}
+                          </span>
+                        </div>
+
+                        {/* resumen + comuna */}
+                        <div style={{ fontSize: 12, color: '#374151', marginBottom: 2 }}>{resumenCorto(r)}</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>{comuna}</div>
+
+                        {/* footer: comercial + fecha + acciones */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', minWidth: 0 }}>
+                            <span style={{ color: '#6b7280', fontWeight: 600 }}>{r.vendedor || 'sin asignar'}</span>
+                            {r.created_at ? <span> · {fmtFechaCorta(r.created_at)}</span> : null}
+                          </div>
+                          {telWa && (
+                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                              <a href={`tel:${tel}`} title="Llamar" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5' }}>Llamar</a>
+                              <a href={`https://wa.me/${telWa}`} target="_blank" rel="noreferrer" title="WhatsApp" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #16a34a', background: '#f0fdf4', color: '#16a34a' }}>WA</a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ===== LISTA (tabla) =====
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
+      {header}
 
       {loading ? (
         <div style={{ color: '#888' }}>Cargando…</div>
