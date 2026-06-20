@@ -36,6 +36,20 @@ function activoEnPortales(pub) {
   return PORTALES.filter(p => pub[p.key] === 'SI')
 }
 
+// Arma la direccion a mostrar: usa direccionreal si existe; si no, direccion + departamento (si no esta ya incluido)
+function direccionMostrar(p) {
+  const real = (p.direccionreal && String(p.direccionreal).trim()) ? String(p.direccionreal).trim() : ''
+  if (real) return real
+  let base = (p.direccion && String(p.direccion).trim()) ? String(p.direccion).trim() : ''
+  const depto = (p.departamento && String(p.departamento).trim()) ? String(p.departamento).trim() : ''
+  if (!base) return depto ? ('dep ' + depto) : '—'
+  if (!depto) return base
+  // evitar duplicar si el depto ya aparece en la direccion
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '')
+  if (norm(base).includes(norm(depto))) return base
+  return base + ', dep ' + depto
+}
+
 function ObjetivoBadge({ objetivo }) {
   const esVenta = (objetivo||'').toLowerCase().includes('venta')
   return (
@@ -257,7 +271,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, direccionreal, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
+      .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
@@ -683,7 +697,7 @@ export default function PublicacionesPage() {
                         {p.vendedor||'—'}
                       </td>
                       <td style={{ padding:'8px 10px', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top' }}>
-                        <div style={{ fontSize:12, fontWeight:500, color:'var(--gray-800)', lineHeight:1.3, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{p.direccionreal||p.direccion||'—'}</div>
+                        <div style={{ fontSize:12, fontWeight:500, color:'var(--gray-800)', lineHeight:1.3, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{direccionMostrar(p)}</div>
                         <div style={{ fontSize:10, color:'var(--gray-400)', marginTop:2 }}>
                           {[p.dormitorios&&`${p.dormitorios} dorm.`,p.banos&&`${p.banos} baños`,p.mt2_const&&`${p.mt2_const}m²`].filter(Boolean).join(' · ')}
                         </div>
@@ -774,7 +788,7 @@ export default function PublicacionesPage() {
                     </div>
                   </div>
                   <div style={{ padding:'12px 14px' }}>
-                    <div style={{ fontSize:13, fontWeight:500, color:'var(--gray-800)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.direccionreal||p.direccion||'—'}</div>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--gray-800)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{direccionMostrar(p)}</div>
                     <div style={{ fontSize:11, color:'var(--gray-400)', marginBottom:8 }}>
                       {[p.comuna,p.dormitorios?`${p.dormitorios} dorm.`:null,p.banos?`${p.banos} baños`:null,p.mt2_const?`${p.mt2_const}m²`:null].filter(Boolean).join(' · ')}
                     </div>
