@@ -182,9 +182,9 @@ export async function POST(request) {
       const usuarioBitacora = session?.user?.name || session?.user?.email || null
       const { publicacionId } = await request.json()
 
-    // 1 — Marcar propiedad como yapo='SI' en Supabase
+    // 1 — Marcar propiedad como yapo='SI' en Supabase (y activarla: publicar en cualquier portal = activa)
     if (publicacionId) {
-        await supabase.from('publicaciones').update({ yapo: 'SI' }).eq('id', publicacionId)
+        await supabase.from('publicaciones').update({ yapo: 'SI', activo: 'active' }).eq('id', publicacionId)
         await registrarBitacora({ idpublicacion: publicacionId, evento: 'publicar_yapo', detalle: 'Publicado en Yapo', usuario: usuarioBitacora })
       }
 
