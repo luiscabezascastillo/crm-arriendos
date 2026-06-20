@@ -2,9 +2,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 import TopNav from '../components/ui/TopNav'
 import AgendarVisitaModal from '../components/AgendarVisitaModal'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
@@ -66,6 +71,15 @@ export default function VisitasPage() {
     const link = `${window.location.origin}/firmar/${orden.token}`
     if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert('Link copiado'))
     else window.prompt('Copia el link:', link)
+  }
+  async function enviarCorreo(orden) {
+    if (!window.confirm('¿Enviar la orden por correo al cliente?')) return
+    const r = await fetch('/api/ordenes/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: orden.token }) })
+    const j = await r.json().catch(() => ({}))
+    if (r.ok) {
+      alert(j.prueba ? `Enviado en MODO PRUEBA a tu correo.\nDestino real: ${j.destino_real || '(cliente sin email)'}` : `Correo enviado a ${j.to}`)
+      await cargar()
+    } else alert(j.error || 'No se pudo enviar el correo.')
   }
 
   const filtradas = useMemo(() => {
@@ -162,6 +176,7 @@ export default function VisitasPage() {
                             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: orden.estado === 'firmada' ? '#16a34a' : '#b45309', background: '#fff', border: '1px solid ' + (orden.estado === 'firmada' ? '#bbf7d0' : '#fde68a') }}>N° {orden.id} · {orden.estado === 'firmada' ? 'firmada ✓' : orden.estado}</span>
                             <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                               {orden.pdf_url && <a href={orden.pdf_url} target="_blank" rel="noreferrer" style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>PDF</a>}
+                              <button onClick={() => enviarCorreo(orden)} style={{ ...mini, borderColor: '#0F6E56', background: '#E1F5EE', color: '#0F6E56' }}>Correo</button>
                               {orden.estado !== 'firmada' && <button onClick={() => copiarLink(orden)} style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>Link</button>}
                               {orden.estado !== 'firmada' && <a href={`/firmar/${orden.token}`} target="_blank" rel="noreferrer" style={{ ...mini, borderColor: '#7c3aed', background: '#f5f3ff', color: '#7c3aed' }}>Firmar</a>}
                             </div>
