@@ -110,7 +110,7 @@ export default function AgendarVisitaModal({ pub = null, onClose = () => {}, onS
       const contactoId = await resolverContacto()
       const { data: vis, error: e1 } = await supabase.from('visitas').insert({
         requerimiento_id: null, contacto_id: contactoId,
-        cliente_nombre: nombre.trim() || null, cliente_telefono: telefono.trim() || null,
+        cliente_nombre: nombre.trim() || null, cliente_telefono: telefono.trim() || null, cliente_email: email.trim() || null,
         fecha, hora: hora || null, comercial: comercial || null, estado, notas: notas || null,
         updated_at: new Date().toISOString(),
       }).select('id').single()

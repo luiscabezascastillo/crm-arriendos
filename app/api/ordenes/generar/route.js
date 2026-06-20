@@ -57,9 +57,9 @@ export async function POST(req) {
       }
     })
 
-    // 3) email del cliente (si hay contacto ligado)
-    let clienteEmail = null
-    if (visita.contacto_id) {
+    // 3) email del cliente: preferimos el snapshot de la visita; si no, el del contacto ligado
+    let clienteEmail = visita.cliente_email || null
+    if (!clienteEmail && visita.contacto_id) {
       const { data: c } = await supabaseAdmin.from('contactos').select('email').eq('id', visita.contacto_id).single()
       clienteEmail = c?.email || null
     }

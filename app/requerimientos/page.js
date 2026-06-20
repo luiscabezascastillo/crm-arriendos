@@ -240,6 +240,7 @@ export default function RequerimientosPage() {
       contacto_id: req.contacto_id || null,
       cliente_nombre: req.nombre_suelto || null,
       cliente_telefono: req.telefono_suelto || null,
+      cliente_email: req.email_suelto || null,
       fecha: vForm.fecha,
       hora: vForm.hora || null,
       comercial: vForm.comercial || null,
