@@ -598,14 +598,14 @@ export default function PublicacionesPage() {
           <MapaPublicaciones key={filtroPortal + '|' + filtroObjetivo + '|' + modo} pubs={pubsMapa} />
         ) : vista === 'tabla' ? (
 
-          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'visible' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
+          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', minWidth:1000 }}>
               <colgroup>
-                <col style={{ width:126 }} /><col style={{ width:60 }} /><col style={{ width:95 }} />
-                <col style={{ width:85 }} /><col style={{ width:85 }} /><col style={{ width:100 }} />
-                <col style={{ width:100 }} /><col style={{ minWidth:240 }} /><col style={{ width:95 }} />
-                <col style={{ width:105 }} />
-                <col style={{ width:340 }} />
+                <col style={{ width:108 }} /><col style={{ width:55 }} /><col style={{ width:88 }} />
+                <col style={{ width:80 }} /><col style={{ width:80 }} /><col style={{ width:82 }} />
+                <col style={{ width:82 }} /><col style={{ minWidth:200 }} /><col style={{ width:90 }} />
+                <col style={{ width:95 }} />
+                <col style={{ width:250 }} />
               </colgroup>
               <thead>
                 <tr style={{ background:'var(--gray-50)' }}>
@@ -724,22 +724,18 @@ export default function PublicacionesPage() {
                               disabled={copiando===p.id}
                             />
                             <BtnAccion label={linkCopiado===p.id ? '✓ Link copiado' : '🔗 Compartir'} color="#0891b2" bg="#ecfeff" onClick={() => compartir(p)} />
-                            <div style={{ gridColumn:'1/-1' }}>
-                              <BtnAccion
-                                label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
-                                color="#16a34a" bg="#f0fdf4"
-                                onClick={() => republicar(p)}
-                                disabled={republicando===p.id}
-                              />
-                            </div>
-                            <div style={{ gridColumn:'1/-1' }}>
-                              <BtnAccion
-                                label={dandoDeBaja===p.id ? '⏳ Dando de baja...' : '🔴 Dar de baja'}
-                                color="#dc2626" bg="#fef2f2"
-                                onClick={() => darDeBaja(p)}
-                                disabled={dandoDeBaja===p.id}
-                              />
-                            </div>
+                            <BtnAccion
+                              label={republicando===p.id ? '⏳ Republicando...' : '🔄 Republicar'}
+                              color="#16a34a" bg="#f0fdf4"
+                              onClick={() => republicar(p)}
+                              disabled={republicando===p.id}
+                            />
+                            <BtnAccion
+                              label={dandoDeBaja===p.id ? '⏳ Dando de baja...' : '🔴 Dar de baja'}
+                              color="#dc2626" bg="#fef2f2"
+                              onClick={() => darDeBaja(p)}
+                              disabled={dandoDeBaja===p.id}
+                            />
                           </div>
                         )}
                       </td>
