@@ -43,6 +43,7 @@ const PROCESOS_INDIVIDUALES = [
   { key: 'termino',     titulo: 'Término',     descripcion: 'Aviso legal, recepción y garantías', etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
   { key: 'cobranza',    titulo: 'Cobranza',    descripcion: 'Impago → pago o acción legal',       etapas: ['Detectar', 'Aviso 1', 'Gestión', 'Legal', 'Cierre'],                             conecta: null,          href: '/op/deudas' },
   { key: 'incidencia',  titulo: 'Incidencia',  descripcion: 'Reporte, resolución y cierre',       etapas: ['Reporte', 'Clasificar', 'Validar', 'Resolver', 'Cierre'],                        conecta: null,          href: null },
+  { key: 'presupuestos', titulo: 'Presupuestos', descripcion: 'Crear y editar presupuestos de reparación', etapas: ['Buscar', 'Crear', 'Líneas', 'Revisar', 'PDF'], conecta: 'Término · Incidencia · Inicios', href: '/procesos/presupuestos' },
 ]
 
 const ROL_COLORS = {
