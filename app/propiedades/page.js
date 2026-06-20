@@ -23,6 +23,14 @@ function llaveDe(p) {
 }
 function esActiva(p) { return p.activo === 'active' }
 
+// Capitaliza cada palabra para mostrar comuna de forma consistente (LAS CONDES / las condes -> Las Condes)
+function comunaBonita(s) {
+  const t = String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!t) return '(sin comuna)'
+  const menores = new Set(['de', 'del', 'la', 'las', 'los', 'y'])
+  return t.split(' ').map((w, i) => (i > 0 && menores.has(w)) ? w : (w.charAt(0).toUpperCase() + w.slice(1))).join(' ')
+}
+
 function fmtValor(p) {
   if (p.valor == null || p.valor === '') return '—'
   const m = (p.tipo_moneda || '').toUpperCase()
@@ -42,6 +50,106 @@ function fmtFecha(s) {
   const d = new Date(s)
   if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function EstadisticasBloque({ titulo, data, acento, mostrarComision, uf }) {
+  const maxComuna = data.comunas.length ? data.comunas[0].n : 1
+  const totalOp = data.arriendo + data.venta + data.otro || 1
+  const pct = (n) => Math.round((n / totalOp) * 100)
+  const fmtPesos = (n) => '$' + Math.round(n).toLocaleString('es-CL')
+  const barra = (n, max, color) => (
+    <div style={{ background:'#f3f4f6', borderRadius:5, height:18, overflow:'hidden', flex:1 }}>
+      <div style={{ width: Math.max(2, (n / max) * 100) + '%', height:'100%', background:color, borderRadius:5 }} />
+    </div>
+  )
+  return (
+    <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb', padding:'18px 20px', marginBottom:16 }}>
+      <div style={{ display:'flex', alignItems:'baseline', gap:10, marginBottom:14 }}>
+        <h3 style={{ fontSize:15, fontWeight:700, color:'#111827', margin:0 }}>{titulo}</h3>
+        <span style={{ fontSize:13, color:'#6b7280' }}>{data.total.toLocaleString('es-CL')} propiedades</span>
+      </div>
+
+      {/* Comision potencial (solo bloque activas) */}
+      {mostrarComision && (
+        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:9, padding:'14px 16px', marginBottom:18 }}>
+          <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            <span style={{ fontSize:11, fontWeight:600, color:'#059669', textTransform:'uppercase', letterSpacing:0.4 }}>Comisión potencial estimada</span>
+            <span style={{ fontSize:11, color:'#9ca3af' }}>arriendo = 1 mensualidad · venta = 4% · UF ${uf.toLocaleString('es-CL')}</span>
+          </div>
+          <div style={{ display:'flex', gap:28, flexWrap:'wrap', alignItems:'baseline' }}>
+            <div>
+              <div style={{ fontSize:11, color:'#6b7280' }}>Total</div>
+              <div style={{ fontSize:22, fontWeight:700, color:'#059669' }}>{fmtPesos(data.comTotal)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:'#6b7280' }}>Por arriendos ({data.arriendo})</div>
+              <div style={{ fontSize:16, fontWeight:600, color:'#374151' }}>{fmtPesos(data.comArriendo)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:'#6b7280' }}>Por ventas ({data.venta})</div>
+              <div style={{ fontSize:16, fontWeight:600, color:'#374151' }}>{fmtPesos(data.comVenta)}</div>
+            </div>
+          </div>
+          <p style={{ fontSize:11, color:'#9ca3af', margin:'10px 0 0', lineHeight:1.5 }}>
+            Estimación si todas las propiedades activas se cerraran a su precio publicado. No es facturación real.
+          </p>
+        </div>
+      )}
+
+      {/* Operacion */}
+      <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:0.4, marginBottom:8 }}>Por operación</div>
+        {[['Arriendo', data.arriendo, '#2563eb'],['Venta', data.venta, '#d97706'],['Otro', data.otro, '#9ca3af']].map(([lbl, n, color]) => (
+          <div key={lbl} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+            <span style={{ fontSize:12, color:'#374151', width:70 }}>{lbl}</span>
+            {barra(n, totalOp, color)}
+            <span style={{ fontSize:12, color:'#6b7280', width:90, textAlign:'right' }}>{n.toLocaleString('es-CL')} · {pct(n)}%</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Comunas (top 12) */}
+      <div>
+        <div style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:0.4, marginBottom:8 }}>Por comuna {data.comunas.length > 12 ? '(top 12)' : ''}</div>
+        {data.comunas.slice(0, 12).map((c) => (
+          <div key={c.nombre} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+            <span style={{ fontSize:12, color:'#374151', width:140, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.nombre}</span>
+            {barra(c.n, maxComuna, acento)}
+            <span style={{ fontSize:12, color:'#6b7280', width:50, textAlign:'right' }}>{c.n.toLocaleString('es-CL')}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Por comercial (solo bloque activas) */}
+      {mostrarComision && data.vendedores.length > 0 && (
+        <div style={{ marginTop:18 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:0.4, marginBottom:8 }}>Por comercial</div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign:'left', fontSize:11, color:'#9ca3af', fontWeight:600, padding:'4px 8px' }}>Comercial</th>
+                  <th style={{ textAlign:'right', fontSize:11, color:'#9ca3af', fontWeight:600, padding:'4px 8px' }}>Propiedades</th>
+                  <th style={{ textAlign:'right', fontSize:11, color:'#9ca3af', fontWeight:600, padding:'4px 8px' }}>Valor cartera</th>
+                  <th style={{ textAlign:'right', fontSize:11, color:'#9ca3af', fontWeight:600, padding:'4px 8px' }}>Comisión potencial</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.vendedores.map((v) => (
+                  <tr key={v.vendedor} style={{ borderTop:'1px solid #f3f4f6' }}>
+                    <td style={{ fontSize:13, color:'#374151', padding:'7px 8px' }}>{v.vendedor}</td>
+                    <td style={{ fontSize:13, color:'#6b7280', padding:'7px 8px', textAlign:'right' }}>{v.n}</td>
+                    <td style={{ fontSize:13, color:'#374151', padding:'7px 8px', textAlign:'right', whiteSpace:'nowrap' }}>{fmtPesos(v.valor)}</td>
+                    <td style={{ fontSize:13, color:'#059669', fontWeight:600, padding:'7px 8px', textAlign:'right', whiteSpace:'nowrap' }}>{fmtPesos(v.comision)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function PropiedadesPage() {
@@ -64,6 +172,7 @@ export default function PropiedadesPage() {
   const [comuna, setComuna] = useState('')
   const [sortKey, setSortKey] = useState('estado')
   const [sortDir, setSortDir] = useState('desc')
+  const [vista, setVista] = useState('listado')   // listado | stats
 
   useEffect(() => {
     if (status === 'loading') return
@@ -122,12 +231,56 @@ export default function PropiedadesPage() {
   }, [rows])
 
   const comunas = useMemo(() => {
-    const set = new Set()
-    for (const x of propiedades) if (x.rep.comuna) set.add(x.rep.comuna)
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
+    const mapa = new Map()
+    for (const x of propiedades) {
+      const k = norm(x.rep.comuna)
+      if (k && !mapa.has(k)) mapa.set(k, comunaBonita(x.rep.comuna))
+    }
+    return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b))
   }, [propiedades])
 
   const nReferenciales = useMemo(() => propiedades.filter(x => !x.tieneDepto).length, [propiedades])
+
+  // Estadisticas: por comuna y por operacion, en dos universos (todas / activas)
+  const stats = useMemo(() => {
+    const UF = 40790
+    const aPesos = (p) => {
+      const n = Number(p.valor)
+      if (isNaN(n)) return 0
+      const m = (p.tipo_moneda || '').toUpperCase()
+      return (m === 'UF' || m === 'CLF') ? n * UF : n
+    }
+    const universos = {
+      todas: propiedades,
+      activas: propiedades.filter(x => x.nActivas > 0),
+    }
+    const calc = (lista) => {
+      const porComuna = new Map()   // claveNorm -> { label, n }
+      let arriendo = 0, venta = 0, otro = 0
+      let comArriendo = 0, comVenta = 0
+      const porVendedor = new Map()
+      for (const x of lista) {
+        const claveC = norm(x.rep.comuna) || '(sin comuna)'
+        const gc = porComuna.get(claveC) || { label: comunaBonita(x.rep.comuna), n: 0 }
+        gc.n += 1
+        porComuna.set(claveC, gc)
+        const op = (x.rep.objetivo || '').toLowerCase()
+        const pesos = aPesos(x.rep)
+        let comision = 0
+        if (op.includes('arriendo')) { arriendo++; comArriendo += pesos; comision = pesos }
+        else if (op.includes('venta')) { venta++; comVenta += pesos * 0.04; comision = pesos * 0.04 }
+        else otro++
+        const v = (x.rep.vendedor && String(x.rep.vendedor).trim()) ? x.rep.vendedor : '(sin asignar)'
+        const g = porVendedor.get(v) || { vendedor: v, valor: 0, comision: 0, n: 0 }
+        g.valor += pesos; g.comision += comision; g.n += 1
+        porVendedor.set(v, g)
+      }
+      const comunas = Array.from(porComuna.values()).map(g => ({ nombre: g.label, n: g.n })).sort((a, b) => b.n - a.n)
+      const vendedores = Array.from(porVendedor.values()).sort((a, b) => b.valor - a.valor)
+      return { total: lista.length, comunas, arriendo, venta, otro, comArriendo, comVenta, comTotal: comArriendo + comVenta, vendedores }
+    }
+    return { todas: calc(universos.todas), activas: calc(universos.activas), uf: UF }
+  }, [propiedades])
 
   const filtradas = useMemo(() => {
     let l = propiedades
@@ -135,7 +288,7 @@ export default function PropiedadesPage() {
     else if (filtro === 'arriendo') l = l.filter(x => (x.rep.objetivo || '').toLowerCase().includes('arriendo'))
     else if (filtro === 'venta') l = l.filter(x => (x.rep.objetivo || '').toLowerCase().includes('venta'))
     else if (filtro === 'referenciales') l = l.filter(x => !x.tieneDepto)
-    if (comuna) l = l.filter(x => x.rep.comuna === comuna)
+    if (comuna) l = l.filter(x => comunaBonita(x.rep.comuna) === comuna)
     const q = norm(busca)
     if (q) l = l.filter(x => {
       const r = x.rep
@@ -205,6 +358,17 @@ export default function PropiedadesPage() {
           <span style={{ fontSize:13, color:'#6b7280' }}>Cartera consolidada · cada fila es una propiedad única</span>
         </div>
 
+        {/* Toggle Listado / Estadisticas */}
+        <div style={{ display:'inline-flex', gap:4, background:'#f3f4f6', borderRadius:9, padding:4, margin:'12px 0 4px' }}>
+          {[['listado','Listado'],['stats','Estadísticas']].map(([k, lbl]) => (
+            <button key={k} onClick={() => setVista(k)}
+              style={{ padding:'7px 16px', borderRadius:7, border:'none', background: vista===k ? '#fff' : 'transparent', color: vista===k ? '#7c3aed' : '#6b7280', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', boxShadow: vista===k ? '0 1px 2px rgba(0,0,0,0.08)' : 'none' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {vista === 'listado' && (<>
         <div style={{ display:'flex', gap:24, margin:'14px 0 18px', flexWrap:'wrap' }}>
           <div><div style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase' }}>Propiedades únicas</div><div style={{ fontSize:24, fontWeight:700, color:'#7c3aed' }}>{loading ? '…' : propiedades.length.toLocaleString('es-CL')}</div></div>
           <div><div style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase' }}>Publicaciones totales</div><div style={{ fontSize:24, fontWeight:700, color:'#374151' }}>{loading ? '…' : rows.length.toLocaleString('es-CL')}</div></div>
@@ -291,6 +455,20 @@ export default function PropiedadesPage() {
             <button onClick={() => setPage(p => Math.min(totalPaginas, p + 1))} disabled={page === totalPaginas}
               style={{ padding:'7px 14px', borderRadius:7, border:'1px solid #d1d5db', background: page===totalPaginas ? '#f9fafb' : '#fff', color: page===totalPaginas ? '#9ca3af' : '#374151', cursor: page===totalPaginas ? 'not-allowed' : 'pointer', fontSize:13, fontFamily:'inherit' }}>Siguiente →</button>
           </div>
+        )}
+        </>)}
+
+        {vista === 'stats' && !loading && (
+          <div style={{ margin:'14px 0' }}>
+            <EstadisticasBloque titulo="Toda la cartera" data={stats.todas} acento="#7c3aed" />
+            <EstadisticasBloque titulo="Solo con versión activa" data={stats.activas} acento="#059669" mostrarComision uf={stats.uf} />
+            <p style={{ fontSize:12, color:'#9ca3af', marginTop:16, lineHeight:1.6 }}>
+              Las estadísticas se calculan sobre las propiedades únicas. Los montos de facturación (cuánto se arrendó o vendió) estarán disponibles cuando se registre el motivo de cierre al dar de baja una propiedad.
+            </p>
+          </div>
+        )}
+        {vista === 'stats' && loading && (
+          <div style={{ padding:40, textAlign:'center', color:'#9ca3af', fontSize:14 }}>Cargando estadísticas…</div>
         )}
 
       </div>
