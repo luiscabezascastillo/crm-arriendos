@@ -1,10 +1,11 @@
-﻿'use client'
+'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import  TopNav  from '../../components/ui/TopNav'
 import { COMUNAS_LISTA, regionDeComuna } from '../../../lib/comunas.js'
+import AgendarVisitaModal from '../../components/AgendarVisitaModal'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -421,6 +422,7 @@ export default function FichaPage() {
   const [valorUF, setValorUF] = useState(null)
   const [edificio, setEdificio] = useState(null)
   const [seccion, setSeccion] = useState('Resumen')
+  const [agendarOpen, setAgendarOpen] = useState(false)
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get('seccion')
     if (p) setSeccion(p)
@@ -823,6 +825,8 @@ async function subirImagen(file) {
     <div style={{ minHeight:'100vh', background:'var(--background)' }}>
       <TopNav />
 
+      {agendarOpen && <AgendarVisitaModal pub={pub} onClose={() => setAgendarOpen(false)} />}
+
       {/* Breadcrumb */}
       <div style={{ padding:'8px 24px', background:'var(--surface)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8, fontSize:11 }}>
         <span style={{ color:'var(--gray-400)', cursor:'pointer' }} onClick={() => router.push('/publicaciones')}>← Publicaciones</span>
@@ -883,6 +887,7 @@ async function subirImagen(file) {
               <span style={{ fontSize:11, color:'var(--gray-500)', marginRight:8 }}>{pub.objetivo}</span>
               <span style={{ fontSize:18, fontWeight:700, color:'#fff', background:'#1a56db', padding:'4px 14px', borderRadius:8 }}>{precioLabel}</span>
               {precioSecundario && <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:4 }}>{precioSecundario}</div>}
+              <div style={{ marginTop:10 }}><button onClick={() => setAgendarOpen(true)} style={{ fontSize:12, fontWeight:600, color:'#fff', background:'#7c3aed', border:'none', borderRadius:8, padding:'8px 16px', cursor:'pointer', fontFamily:'inherit' }}>Agendar visita</button></div>
             </div>
           </div>
 

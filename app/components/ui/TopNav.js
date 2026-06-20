@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -18,6 +18,8 @@ const RUTAS = {
   '/publicaciones':['admin', 'comercial', 'ventas', 'legal'],
   '/propiedades':  ['admin'],
   '/requerimientos': ['admin'],
+  '/visitas':      ['admin'],
+  '/calendario':   ['admin'],
   '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
 };
 
@@ -27,17 +29,23 @@ export default function TopNav() {
   const [cc1Open, setCc1Open] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
+  const [comercialOpen, setComercialOpen] = useState(false);
+  const [inventarioOpen, setInventarioOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState(null);
   const cc1Ref = useRef(null);
   const opRef = useRef(null);
   const crmRef = useRef(null);
+  const comercialRef = useRef(null);
+  const inventarioRef = useRef(null);
 
   useEffect(() => {
     function handleClick(e) {
       if (cc1Ref.current && !cc1Ref.current.contains(e.target)) setCc1Open(false);
       if (opRef.current && !opRef.current.contains(e.target)) setOpOpen(false);
       if (crmRef.current && !crmRef.current.contains(e.target)) setCrmOpen(false);
+      if (comercialRef.current && !comercialRef.current.contains(e.target)) setComercialOpen(false);
+      if (inventarioRef.current && !inventarioRef.current.contains(e.target)) setInventarioOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -111,6 +119,11 @@ function abrirModal(tipo) {
       fontSize: 13, color: '#444', textDecoration: 'none',
       transition: 'background 0.1s', cursor: 'pointer',
     },
+    dropItemSoon: {
+      display: 'block', padding: '8px 16px',
+      fontSize: 13, color: '#bbb', textDecoration: 'none',
+      cursor: 'default',
+    },
     dropDivider: { height: 1, background: '#F0EEE8', margin: '4px 0' },
     dropLabel: {
       padding: '4px 16px 2px',
@@ -133,6 +146,8 @@ function abrirModal(tipo) {
 
   const cc1Active = isActive('/cc1') || isActive('/op/deudas');
   const opActive = isActive('/op/comunidad-feliz') || isActive('/op/liquidacion-paola') || isActive('/op/morosidad');
+  const comercialActive = isActive('/requerimientos') || isActive('/visitas');
+  const inventarioActive = isActive('/publicaciones') || isActive('/propiedades') || isActive('/edificios');
 
   return (
     <>
@@ -228,16 +243,41 @@ function abrirModal(tipo) {
         {puede('/admin') && (
           <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
         )}
-        {puede('/publicaciones') && (
-          <Link href="/publicaciones" style={s.link(isActive('/publicaciones'))}>Publicaciones</Link>
+
+        {/* Comercial (desplegable) */}
+        {(puede('/requerimientos') || puede('/visitas')) && (
+        <div ref={comercialRef} style={{ position: 'relative' }}>
+          <button style={s.dropBtn(comercialActive)} onClick={() => { setComercialOpen(v => !v); setInventarioOpen(false); setCc1Open(false); setOpOpen(false); }}>
+            Comercial <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+          </button>
+          {comercialOpen && (
+            <div style={s.dropdown}>
+              {puede('/requerimientos') && <Link href="/requerimientos" style={s.dropItem} onClick={() => setComercialOpen(false)}>Requerimientos</Link>}
+              {puede('/visitas') && <Link href="/visitas" style={s.dropItem} onClick={() => setComercialOpen(false)}>Visitas y órdenes</Link>}
+              <div style={s.dropDivider}/>
+              {puede('/calendario') && <Link href="/calendario" style={s.dropItem} onClick={() => setComercialOpen(false)}>Calendario</Link>}
+              <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
+            </div>
+          )}
+        </div>
         )}
-        {puede('/propiedades') && (
-          <Link href="/propiedades" style={s.link(isActive('/propiedades'))}>Propiedades</Link>
+
+        {/* Inventario (desplegable) */}
+        {(puede('/publicaciones') || puede('/propiedades') || puede('/edificios')) && (
+        <div ref={inventarioRef} style={{ position: 'relative' }}>
+          <button style={s.dropBtn(inventarioActive)} onClick={() => { setInventarioOpen(v => !v); setComercialOpen(false); setCc1Open(false); setOpOpen(false); }}>
+            Inventario <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+          </button>
+          {inventarioOpen && (
+            <div style={s.dropdown}>
+              {puede('/publicaciones') && <Link href="/publicaciones" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Publicaciones</Link>}
+              {puede('/propiedades') && <Link href="/propiedades" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Propiedades</Link>}
+              <Link href="/edificios" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Edificios</Link>
+            </div>
+          )}
+        </div>
         )}
-        {puede('/requerimientos') && (
-          <Link href="/requerimientos" style={s.link(isActive('/requerimientos'))}>Requerimientos</Link>
-        )}
-        <Link href="/edificios" style={s.link(isActive('/edificios'))}>Edificios</Link>
+
         {puede('/contactos') && (
           <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
         )}

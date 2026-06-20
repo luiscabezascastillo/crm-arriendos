@@ -17,7 +17,7 @@ const TIPOS = ['Departamento', 'Casa', 'Oficina', 'Local', 'Terreno', 'Parcela',
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const FUENTES = ['manual', 'PI', 'web', 'landing', 'redes', 'referido']
 
-// ───────────── PIPELINE: etapas (configurables: agregar/quitar aqui) ─────────────
+// ===== PIPELINE: etapas (configurables: agregar/quitar aqui) =====
 const ETAPAS = [
   { key: 'nuevo',      label: 'Nuevo',      color: '#6b7280' },
   { key: 'contactado', label: 'Contactado', color: '#0C447C' },
@@ -27,6 +27,12 @@ const ETAPAS = [
   { key: 'descartado', label: 'Descartado', color: '#dc2626' },
 ]
 const ETAPA_DEFAULT = 'nuevo'
+
+// ===== CAPA 2: ordenes de visita =====
+const ESTADOS_VISITA = ['agendada', 'realizada', 'cancelada']
+const COLOR_ESTADO_VISITA = { agendada: '#7c3aed', realizada: '#16a34a', cancelada: '#dc2626' }
+const RESULTADOS_PROP = ['pendiente', 'interesado', 'descartado']
+const hoyISO = () => new Date().toISOString().slice(0, 10)
 
 // Amenities: nombre interno (mapea a lib/matching.js) -> etiqueta bonita
 const AMENITIES = [
@@ -110,12 +116,21 @@ export default function RequerimientosPage() {
   const [viendoMatches, setViendoMatches] = useState(null)
   const [cartera, setCartera] = useState({ pubs: [], edis: [], cargada: false, cargando: false })
 
+  // visitas (Capa 2)
+  const [visitas, setVisitas] = useState([])
+  const [agendando, setAgendando] = useState(null)   // requerimiento al que se le agenda
+  const [vForm, setVForm] = useState(null)           // form de la orden de visita
+  const [guardandoVisita, setGuardandoVisita] = useState(false)
+  const [generandoOrden, setGenerandoOrden] = useState(null)  // id de visita generando orden
+  const [pubPicker, setPubPicker] = useState('')     // id seleccionado en el picker de propiedades
+  const [pubSearch, setPubSearch] = useState('')     // búsqueda manual de cualquier propiedad activa
+
   useEffect(() => {
     if (status === 'authenticated' && !esAdmin) router.replace('/')
   }, [status, esAdmin, router])
 
   useEffect(() => {
-    if (esAdmin) cargar()
+    if (esAdmin) { cargar(); cargarVisitas() }
   }, [esAdmin])
 
   // al entrar al pipeline, cargar la cartera para poder contar matches por tarjeta
@@ -164,6 +179,144 @@ export default function RequerimientosPage() {
     setMsg(null)
     setViendoMatches(r)
     await cargarCartera()
+  }
+
+  // ===== CAPA 2: visitas =====
+  async function cargarVisitas() {
+    const { data, error } = await supabase
+      .from('visitas')
+      .select('*, visita_propiedades(*), ordenes_visita(*)')
+      .order('fecha', { ascending: true })
+    if (!error) setVisitas(data || [])
+  }
+
+  const visitasDeReq = (reqId) => visitas.filter(v => v.requerimiento_id === reqId)
+
+  // proxima visita agendada (de hoy en adelante) de un requerimiento, para el badge del kanban
+  const proximaVisita = (reqId) => {
+    const h = hoyISO()
+    return visitasDeReq(reqId)
+      .filter(v => v.estado === 'agendada' && v.fecha >= h)
+      .sort((a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || '')))[0] || null
+  }
+
+  function etiquetaPub(p) {
+    const dir = p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' ') || 'sin direccion'
+    return `${p.tipo || 'Propiedad'} · ${dir}${p.departamento ? ' · Depto ' + p.departamento : ''}${p.comuna ? ' · ' + p.comuna : ''}`
+  }
+
+  // abre el modal de orden de visita; pub opcional (cuando se agenda desde un match)
+  function abrirAgenda(req, pub) {
+    setMsg(null)
+    setAgendando(req)
+    setPubPicker('')
+    setPubSearch('')
+    setVForm({
+      fecha: '', hora: '', comercial: req.vendedor || '', estado: 'agendada', notas: '',
+      propiedades: pub ? [{ publicacion_id: pub.id, label: etiquetaPub(pub), resultado: 'pendiente', notas: '' }] : [],
+      generarOrden: true,
+    })
+    cargarCartera() // para poder elegir propiedades desde los matches del req
+  }
+  function cerrarAgenda() { setAgendando(null); setVForm(null); setPubPicker(''); setPubSearch('') }
+
+  function agregarPubAVisita(pub) {
+    setVForm(f => {
+      if (!f) return f
+      if (f.propiedades.some(p => p.publicacion_id === pub.id)) return f
+      return { ...f, propiedades: [...f.propiedades, { publicacion_id: pub.id, label: etiquetaPub(pub), resultado: 'pendiente', notas: '' }] }
+    })
+    setPubPicker('')
+    setPubSearch('')
+  }
+  function quitarPubDeVisita(id) {
+    setVForm(f => f ? { ...f, propiedades: f.propiedades.filter(p => p.publicacion_id !== id) } : f)
+  }
+  function setPropCampo(id, campo, valor) {
+    setVForm(f => f ? { ...f, propiedades: f.propiedades.map(p => p.publicacion_id === id ? { ...p, [campo]: valor } : p) } : f)
+  }
+
+  async function guardarVisita() {
+    if (!vForm.fecha) { setMsg({ tipo: 'error', txt: 'La fecha de la visita es obligatoria.' }); return }
+    setGuardandoVisita(true); setMsg(null)
+    const req = agendando
+    const cab = {
+      requerimiento_id: req.id,
+      contacto_id: req.contacto_id || null,
+      cliente_nombre: req.nombre_suelto || null,
+      cliente_telefono: req.telefono_suelto || null,
+      fecha: vForm.fecha,
+      hora: vForm.hora || null,
+      comercial: vForm.comercial || null,
+      estado: vForm.estado || 'agendada',
+      notas: vForm.notas || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { data: vis, error: e1 } = await supabase.from('visitas').insert(cab).select('id').single()
+    if (e1) { setMsg({ tipo: 'error', txt: 'Error creando la visita: ' + e1.message }); setGuardandoVisita(false); return }
+    if (vForm.propiedades.length) {
+      const detalle = vForm.propiedades.map((p, i) => ({
+        visita_id: vis.id, publicacion_id: p.publicacion_id, orden: i + 1,
+        resultado: p.resultado || null, notas: p.notas || null,
+      }))
+      const { error: e2 } = await supabase.from('visita_propiedades').insert(detalle)
+      if (e2) setMsg({ tipo: 'error', txt: 'Visita creada, pero fallo el detalle de propiedades: ' + e2.message })
+    }
+    // al agendar, llevar la tarjeta a "Visita" si venia antes en el pipeline
+    const etapaActual = req.etapa || ETAPA_DEFAULT
+    if (etapaActual === 'nuevo' || etapaActual === 'contactado') {
+      await supabase.from('requerimientos').update({ etapa: 'visita', updated_at: new Date().toISOString() }).eq('id', req.id)
+    }
+    // auto-generar la orden de visita (no romper el guardado si falla)
+    let ordenOk = false
+    if (vForm.generarOrden) {
+      try {
+        const res = await fetch('/api/ordenes/generar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visita_id: vis.id }),
+        })
+        ordenOk = res.ok
+      } catch (_) { /* la visita igual quedo guardada */ }
+    }
+    setGuardandoVisita(false)
+    // dejar el modal abierto mostrando la visita + su orden (para firmar en el momento si se quiere)
+    setVForm({ fecha: '', hora: '', comercial: req.vendedor || '', estado: 'agendada', notas: '', propiedades: [], generarOrden: true })
+    setPubPicker(''); setPubSearch('')
+    setMsg({ tipo: 'ok', txt: vForm.generarOrden ? (ordenOk ? 'Visita guardada y orden generada. Abajo puedes copiar el link o abrir la firma.' : 'Visita guardada (no se pudo generar la orden; puedes generarla con el botón).') : 'Visita guardada.' })
+    await Promise.all([cargar(), cargarVisitas()])
+  }
+
+  async function cambiarEstadoVisita(v, estado) {
+    await supabase.from('visitas').update({ estado, updated_at: new Date().toISOString() }).eq('id', v.id)
+    await cargarVisitas()
+  }
+  async function eliminarVisita(v) {
+    if (!window.confirm('¿Eliminar esta visita? Se borra también su detalle de propiedades.')) return
+    await supabase.from('visitas').delete().eq('id', v.id) // el detalle cae por ON DELETE CASCADE
+    await cargarVisitas()
+  }
+
+  // genera (o regenera) la orden de visita en PDF y la deja lista para firmar
+  async function generarOrden(v) {
+    setGenerandoOrden(v.id); setMsg(null)
+    try {
+      const res = await fetch('/api/ordenes/generar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visita_id: v.id }),
+      })
+      const j = await res.json()
+      if (!res.ok) setMsg({ tipo: 'error', txt: j.error || 'No se pudo generar la orden.' })
+      else await cargarVisitas()
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: 'Error: ' + e.message })
+    }
+    setGenerandoOrden(null)
+  }
+
+  function copiarLinkFirma(orden) {
+    const link = `${window.location.origin}/firmar/${orden.token}`
+    if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => setMsg({ tipo: 'ok', txt: 'Link de firma copiado al portapapeles.' }))
+    else window.prompt('Copia el link de firma:', link)
   }
 
   // mover un requerimiento de etapa (drag & drop). Update optimista + persistir.
@@ -399,6 +552,21 @@ export default function RequerimientosPage() {
     return out
   }, [reqs, cartera])
 
+  // matches del requerimiento que se esta agendando (para el picker de propiedades del modal)
+  const matchesAgenda = useMemo(() => {
+    if (!agendando || !cartera.cargada) return []
+    const res = buscarMatches(agendando, cartera.pubs, cartera.edis, VALOR_UF)
+    const vistos = new Set()
+    const unicos = []
+    for (const m of res) {
+      const k = [sinTildes(m.pub.comuna), sinTildes(m.pub.direccionreal || m.pub.direccion), sinTildes(m.pub.departamento)].join('|')
+      if (vistos.has(k)) continue
+      vistos.add(k)
+      unicos.push(m)
+    }
+    return unicos
+  }, [agendando, cartera])
+
   if (status === 'loading') return <div style={{ padding: 40, color: '#888' }}>Cargando…</div>
   if (status === 'authenticated' && !esAdmin) return null
 
@@ -409,7 +577,193 @@ export default function RequerimientosPage() {
   const chipRojo = { fontSize: 12, padding: '3px 8px', borderRadius: 20, background: '#fef2f2', color: '#dc2626', border: '1px solid #dc2626' }
   const chipVerde = { fontSize: 12, padding: '3px 8px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #16a34a' }
 
-  // ───────────── MATCHES (Entrega 2) ─────────────
+  // ===== CAPA 2: modal "orden de visita" (overlay; se inserta en pipeline y en matches) =====
+  const modalAgenda = (agendando && vForm) ? (() => {
+    const req = agendando
+    const cliente = req.nombre_suelto || (req.contacto_id ? '(contacto ligado)' : 'Cliente')
+    const tel = (req.telefono_suelto || '').trim()
+    const existentes = visitasDeReq(req.id)
+    const yaElegidas = new Set(vForm.propiedades.map(p => p.publicacion_id))
+    const opcionesPub = matchesAgenda.filter(m => !yaElegidas.has(m.pub.id))
+    // búsqueda manual: cualquier propiedad activa de la cartera (no solo los matches)
+    const qPub = sinTildes(pubSearch)
+    const pubResultados = qPub.length < 2 ? [] : cartera.pubs
+      .filter(p => !yaElegidas.has(p.id))
+      .filter(p => {
+        const dir = sinTildes(p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' '))
+        return sinTildes(p.codigo).includes(qPub) || dir.includes(qPub) || sinTildes(p.comuna).includes(qPub)
+      })
+      .slice(0, 8)
+    const miniBtn = { fontSize: 11, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid' }
+    return (
+      <div onClick={cerrarAgenda} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '40px 16px' }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 640, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+          {/* header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #EEE' }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Agendar visita</div>
+              <div style={{ fontSize: 12, color: '#888' }}>{cliente}{tel ? ' · ' + tel : ''}</div>
+            </div>
+            <button onClick={cerrarAgenda} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>×</button>
+          </div>
+
+          <div style={{ padding: 20 }}>
+            {msg && <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, fontSize: 13, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
+
+            {/* visitas ya agendadas para este requerimiento */}
+            {existentes.length > 0 && (
+              <div style={{ marginBottom: 18, border: '1px solid #EEE', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: .5, padding: '8px 12px', background: '#FAFAF8' }}>Visitas de este cliente ({existentes.length})</div>
+                {existentes.map(v => {
+                  const orden = (v.ordenes_visita || [])[0]
+                  return (
+                  <div key={v.id} style={{ padding: '8px 12px', borderTop: '1px solid #F3F4F6' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: '#374151' }}>
+                        <span style={{ fontWeight: 700 }}>{fmtFechaCorta(v.fecha)}{v.hora ? ' ' + v.hora.slice(0, 5) : ''}</span>
+                        {v.comercial ? <span style={{ color: '#9ca3af' }}> · {v.comercial}</span> : null}
+                        {v.visita_propiedades?.length ? <span style={{ color: '#9ca3af' }}> · {v.visita_propiedades.length} prop.</span> : null}
+                        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, color: COLOR_ESTADO_VISITA[v.estado] || '#6b7280', background: '#fff', border: '1px solid ' + (COLOR_ESTADO_VISITA[v.estado] || '#ddd') }}>{v.estado}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                        {v.estado !== 'realizada' && <button onClick={() => cambiarEstadoVisita(v, 'realizada')} style={{ ...miniBtn, borderColor: '#16a34a', background: '#f0fdf4', color: '#16a34a' }}>Realizada</button>}
+                        {v.estado !== 'cancelada' && <button onClick={() => cambiarEstadoVisita(v, 'cancelada')} style={{ ...miniBtn, borderColor: '#d97706', background: '#fffbeb', color: '#b45309' }}>Cancelar</button>}
+                        <button onClick={() => eliminarVisita(v)} style={{ ...miniBtn, borderColor: '#dc2626', background: '#fef2f2', color: '#dc2626' }}>Eliminar</button>
+                      </div>
+                    </div>
+
+                    {/* orden de visita (PDF + firma) */}
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed #EFEFEF', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {!orden ? (
+                        <button onClick={() => generarOrden(v)} disabled={generandoOrden === v.id} style={{ ...miniBtn, borderColor: '#0C447C', background: '#E6F1FB', color: '#0C447C', opacity: generandoOrden === v.id ? 0.6 : 1 }}>
+                          {generandoOrden === v.id ? 'Generando…' : '📄 Generar orden'}
+                        </button>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 11, color: '#6B7280' }}>Orden N° {orden.id}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, color: orden.estado === 'firmada' ? '#16a34a' : '#b45309', background: '#fff', border: '1px solid ' + (orden.estado === 'firmada' ? '#bbf7d0' : '#fde68a') }}>{orden.estado === 'firmada' ? 'firmada ✓' : orden.estado}</span>
+                          {orden.pdf_url && <a href={orden.pdf_url} target="_blank" rel="noreferrer" style={{ ...miniBtn, textDecoration: 'none', borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>Ver PDF</a>}
+                          {orden.estado !== 'firmada' && <>
+                            <button onClick={() => copiarLinkFirma(orden)} style={{ ...miniBtn, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>Copiar link firma</button>
+                            <a href={`/firmar/${orden.token}`} target="_blank" rel="noreferrer" style={{ ...miniBtn, textDecoration: 'none', borderColor: '#7c3aed', background: '#f5f3ff', color: '#7c3aed' }}>Abrir firma</a>
+                            <button onClick={() => generarOrden(v)} disabled={generandoOrden === v.id} style={{ ...miniBtn, borderColor: '#E5E7EB', background: '#fff', color: '#9ca3af' }}>Regenerar</button>
+                          </>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* cuando / quien */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div><label style={label}>Fecha *</label><input type="date" style={input} value={vForm.fecha} onChange={e => setVForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+              <div><label style={label}>Hora</label><input type="time" style={input} value={vForm.hora} onChange={e => setVForm(f => ({ ...f, hora: e.target.value }))} /></div>
+              <div><label style={label}>Comercial</label>
+                <select style={input} value={vForm.comercial} onChange={e => setVForm(f => ({ ...f, comercial: e.target.value }))}>
+                  <option value="">—</option>
+                  {OPTS_VENDEDOR.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div><label style={label}>Estado</label>
+                <select style={input} value={vForm.estado} onChange={e => setVForm(f => ({ ...f, estado: e.target.value }))}>
+                  {ESTADOS_VISITA.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* propiedades de la salida */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={label}>Propiedades a mostrar</label>
+              {vForm.propiedades.length === 0 && <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>Sin propiedades aún. Agrégalas desde los matches del cliente o búscalas abajo (o deja la visita sin propiedad).</div>}
+              {vForm.propiedades.map((p, i) => (
+                <div key={p.publicacion_id} style={{ border: '1px solid #E8E6E0', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a2e' }}>{i + 1}. {p.label}</div>
+                    <button onClick={() => quitarPubDeVisita(p.publicacion_id)} title="Quitar" style={{ ...miniBtn, borderColor: '#dc2626', background: '#fef2f2', color: '#dc2626', flexShrink: 0 }}>Quitar</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 8 }}>
+                    <select style={input} value={p.resultado || 'pendiente'} onChange={e => setPropCampo(p.publicacion_id, 'resultado', e.target.value)}>
+                      {RESULTADOS_PROP.map(rp => <option key={rp} value={rp}>{rp}</option>)}
+                    </select>
+                    <input style={input} value={p.notas || ''} onChange={e => setPropCampo(p.publicacion_id, 'notas', e.target.value)} placeholder="Comentario de esta propiedad…" />
+                  </div>
+                </div>
+              ))}
+
+              {/* opcion rapida: matches del requerimiento */}
+              {!cartera.cargada ? (
+                <div style={{ fontSize: 12, color: '#9ca3af' }}>Cargando propiedades…</div>
+              ) : (
+                <>
+                  {opcionesPub.length > 0 && (
+                    <select
+                      style={{ ...input, marginBottom: 8 }}
+                      value={pubPicker}
+                      onChange={e => {
+                        const m = opcionesPub.find(o => String(o.pub.id) === e.target.value)
+                        if (m) agregarPubAVisita(m.pub)
+                      }}
+                    >
+                      <option value="">+ Agregar desde los matches del cliente…</option>
+                      {opcionesPub.map(m => (
+                        <option key={m.pub.id} value={m.pub.id}>{etiquetaPub(m.pub)} · {fmtPrecio(m.pub)}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* busqueda manual: cualquier propiedad activa, aunque no calce */}
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      style={input}
+                      value={pubSearch}
+                      onChange={e => setPubSearch(e.target.value)}
+                      placeholder="…o busca otra propiedad por código, dirección o comuna"
+                    />
+                    {pubResultados.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 2, zIndex: 20, maxHeight: 220, overflowY: 'auto' }}>
+                        {pubResultados.map(p => (
+                          <div key={p.id} onClick={() => agregarPubAVisita(p)} style={{ padding: '8px 12px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #F3F4F6' }}>
+                            {etiquetaPub(p)} · {fmtPrecio(p)}{p.codigo ? ' · ' + p.codigo : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {pubSearch.trim().length >= 2 && pubResultados.length === 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 2, zIndex: 20, padding: '8px 12px', fontSize: 12, color: '#888' }}>Sin coincidencias entre las propiedades activas.</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* notas generales */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={label}>Notas de la visita</label>
+              <textarea style={{ ...input, minHeight: 54, resize: 'vertical' }} value={vForm.notas} onChange={e => setVForm(f => ({ ...f, notas: e.target.value }))} placeholder="Ej. pasar a buscar al cliente, llevar llaves, etc." />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#374151', cursor: 'pointer' }}>
+                <input type="checkbox" checked={vForm.generarOrden} onChange={e => setVForm(f => ({ ...f, generarOrden: e.target.checked }))} />
+                Generar orden de visita al guardar
+              </label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={cerrarAgenda} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>Cerrar</button>
+                <button onClick={guardarVisita} disabled={guardandoVisita} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 600, opacity: guardandoVisita ? 0.6 : 1 }}>
+                  {guardandoVisita ? 'Guardando…' : 'Guardar visita'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  })() : null
+
+  // ===== MATCHES (Entrega 2) =====
   if (viendoMatches !== null) {
     const r = viendoMatches
     const cliente = r.nombre_suelto || (r.contacto_id ? '(contacto ligado)' : 'Cliente')
@@ -482,6 +836,7 @@ export default function RequerimientosPage() {
                           )}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => abrirAgenda(viendoMatches, p)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #7c3aed', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', marginRight: 6, fontFamily: 'inherit' }}>Agendar</button>
                           <button onClick={() => router.push('/publicaciones/' + p.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit' }}>Ver ficha →</button>
                         </td>
                       </tr>
@@ -492,11 +847,12 @@ export default function RequerimientosPage() {
             </div>
           </>
         )}
+        {modalAgenda}
       </div>
     )
   }
 
-  // ───────────── FORMULARIO ─────────────
+  // ===== FORMULARIO =====
   if (editando !== null) {
     // comunas que calzan con lo que se escribe y aun no estan elegidas
     const comunasSugeridas = comunaQuery.trim()
@@ -675,7 +1031,7 @@ export default function RequerimientosPage() {
     )
   }
 
-  // ───────────── LISTADO + PIPELINE ─────────────
+  // ===== LISTADO + PIPELINE =====
   // toggle de vista (compartido por ambas vistas)
   const toggle = (
     <div style={{ display: 'inline-flex', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
@@ -706,7 +1062,7 @@ export default function RequerimientosPage() {
   if (vista === 'pipeline') {
     const reqsPipe = filtroComercial ? reqs.filter(r => r.vendedor === filtroComercial) : reqs
     return (
-      <div style={{ maxWidth: 1400, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
+      <div style={{ maxWidth: '100%', margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
         {header}
 
         {/* filtro por comercial + estado de carga de matches */}
@@ -749,6 +1105,7 @@ export default function RequerimientosPage() {
                     const tel = (r.telefono_suelto || '').trim()
                     const telWa = tel.replace(/[^\d]/g, '')
                     const nMatches = cartera.cargada ? (matchesCount[r.id] ?? 0) : null
+                    const pv = proximaVisita(r.id)
                     return (
                       <div
                         key={r.id}
@@ -774,18 +1131,30 @@ export default function RequerimientosPage() {
 
                         {/* resumen + comuna */}
                         <div style={{ fontSize: 12, color: '#374151', marginBottom: 2 }}>{resumenCorto(r)}</div>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>{comuna}</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: pv ? 6 : 8 }}>{comuna}</div>
+
+                        {/* badge de proxima visita agendada */}
+                        {pv && (
+                          <div style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 6, padding: '2px 7px', marginBottom: 8 }}>
+                            📅 {fmtFechaCorta(pv.fecha)}{pv.hora ? ' ' + pv.hora.slice(0, 5) : ''}
+                          </div>
+                        )}
 
                         {/* footer: comercial + fecha + acciones */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                          <div style={{ fontSize: 10, color: '#9ca3af', minWidth: 0 }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             <span style={{ color: '#6b7280', fontWeight: 600 }}>{r.vendedor || 'sin asignar'}</span>
                             {r.created_at ? <span> · {fmtFechaCorta(r.created_at)}</span> : null}
                           </div>
-                          {telWa && (
+                          {telWa ? (
                             <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                              <button onClick={e => { e.stopPropagation(); abrirAgenda(r) }} title="Agendar visita" style={{ cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #7c3aed', background: '#f5f3ff', color: '#7c3aed' }}>Agendar</button>
                               <a href={`tel:${tel}`} title="Llamar" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5' }}>Llamar</a>
                               <a href={`https://wa.me/${telWa}`} target="_blank" rel="noreferrer" title="WhatsApp" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #16a34a', background: '#f0fdf4', color: '#16a34a' }}>WA</a>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                              <button onClick={e => { e.stopPropagation(); abrirAgenda(r) }} title="Agendar visita" style={{ cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, padding: '3px 7px', borderRadius: 6, border: '1px solid #7c3aed', background: '#f5f3ff', color: '#7c3aed' }}>Agendar</button>
                             </div>
                           )}
                         </div>
@@ -797,6 +1166,7 @@ export default function RequerimientosPage() {
             })}
           </div>
         )}
+        {modalAgenda}
       </div>
     )
   }
