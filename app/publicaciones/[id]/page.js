@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import  TopNav  from '../../components/ui/TopNav'
 import { COMUNAS_LISTA, regionDeComuna } from '../../../lib/comunas.js'
 import AgendarVisitaModal from '../../components/AgendarVisitaModal'
+import { buscarRequerimientosParaPropiedad } from '../../../lib/matching.js'
 
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 
@@ -418,6 +419,12 @@ export default function FichaPage() {
   const [edificio, setEdificio] = useState(null)
   const [seccion, setSeccion] = useState('Resumen')
   const [agendarOpen, setAgendarOpen] = useState(false)
+  const [reqsInteresados, setReqsInteresados] = useState([])
+  const [matchesOpen, setMatchesOpen] = useState(false)
+  useEffect(() => {
+    if (!pub) return
+    supabase.from('requerimientos').select('*').then(({ data }) => setReqsInteresados(data || []))
+  }, [pub])
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get('seccion')
     if (p) setSeccion(p)
@@ -889,6 +896,55 @@ async function subirImagen(file) {
           {/* RESUMEN */}
           {seccion === 'Resumen' && (
             <>
+{(() => {
+  const matches = buscarRequerimientosParaPropiedad(pub, edificio, reqsInteresados, valorUF || 40790)
+  const n = matches.length
+  return (
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 20px', marginBottom:16 }}>
+      <div onClick={() => setMatchesOpen(o => !o)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
+        <div style={{ fontSize:11, fontWeight:600, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+          Clientes interesados <span style={{ background: n>0 ? '#7c3aed' : '#9ca3af', color:'#fff', borderRadius:10, padding:'1px 8px', marginLeft:6, fontSize:11 }}>{n}</span>
+        </div>
+        <span style={{ fontSize:12, color:'var(--gray-400)' }}>{matchesOpen ? 'ocultar' : (n>0 ? 'ver' : '')}</span>
+      </div>
+      {matchesOpen && (
+        <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:10 }}>
+          {n === 0 ? (
+            <div style={{ fontSize:12, color:'var(--gray-400)' }}>Ningun requerimiento activo calza con esta propiedad por ahora.</div>
+          ) : matches.map(({ req, grado, motivos }) => {
+            const nombre = req.nombre_suelto || (req.contacto_id ? '(contacto ligado)' : 'Cliente')
+            const tel = req.telefono_suelto || ''
+            const partes = []
+            if (req.tipos && req.tipos.length) partes.push(req.tipos.join(' / '))
+            if (req.comunas && req.comunas.length) partes.push(req.comunas.join(', '))
+            if (req.precio_max != null) partes.push('hasta ' + Number(req.precio_max).toLocaleString('es-CL') + ' ' + (req.moneda || ''))
+            if (req.dorm_min != null) partes.push(req.dorm_min + 'D+')
+            return (
+              <div key={req.id} style={{ border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:'var(--gray-800)' }}>{nombre}{tel ? <span style={{ fontWeight:400, color:'var(--gray-400)', fontSize:12 }}>  ·  {tel}</span> : null}</div>
+                  <span style={{ fontSize:10, fontWeight:700, color:'#16a34a', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:20, padding:'2px 8px', whiteSpace:'nowrap' }}>calza{grado > 100 ? ' +' : ''}</span>
+                </div>
+                <div style={{ fontSize:12, color:'var(--gray-500)', margin:'3px 0' }}>{partes.join('  ·  ')}</div>
+                {motivos && motivos.length > 0 && (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, margin:'6px 0' }}>
+                    {motivos.map((m, k) => <span key={k} style={{ fontSize:10, background:'#f3e8ff', color:'#7c3aed', borderRadius:5, padding:'2px 7px' }}>{m}</span>)}
+                  </div>
+                )}
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
+                  <button onClick={() => router.push('/requerimientos')} style={{ fontSize:11, padding:'4px 10px', borderRadius:6, border:'1px solid #185FA5', background:'#E6F1FB', color:'#185FA5', cursor:'pointer', fontFamily:'inherit' }}>Ver requerimiento</button>
+                  <button onClick={() => setAgendarOpen(true)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6, border:'1px solid #7c3aed', background:'#f5f3ff', color:'#7c3aed', cursor:'pointer', fontFamily:'inherit' }}>Agendar visita</button>
+                  {tel && <a href={'https://wa.me/' + String(tel).replace(/[^0-9]/g, '')} target="_blank" rel="noreferrer" style={{ fontSize:11, padding:'4px 10px', borderRadius:6, border:'1px solid #16a34a', background:'#f0fdf4', color:'#16a34a', textDecoration:'none' }}>WhatsApp</a>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+})()}
+
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Ubicación</div>
                 <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:14 }}>
