@@ -257,7 +257,7 @@ export default function PublicacionesPage() {
     setLoading(true)
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
+      .select('id, codigo, direccion, direccionreal, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
       .order('codigo', { ascending: false })
       .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
 
@@ -601,10 +601,11 @@ export default function PublicacionesPage() {
           <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'visible' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
               <colgroup>
-                <col style={{ width:126 }} /><col style={{ width:65 }} /><col style={{ width:100 }} />
-                <col style={{ width:90 }} /><col style={{ width:90 }} /><col style={{ width:120 }} />
-                <col /><col style={{ width:120 }} /><col style={{ width:95 }} />
-                <col style={{ width:modo==='historicas'?110:100 }} />
+                <col style={{ width:126 }} /><col style={{ width:60 }} /><col style={{ width:95 }} />
+                <col style={{ width:85 }} /><col style={{ width:85 }} /><col style={{ width:100 }} />
+                <col style={{ width:100 }} /><col style={{ minWidth:240 }} /><col style={{ width:95 }} />
+                <col style={{ width:105 }} />
+                <col style={{ width:340 }} />
               </colgroup>
               <thead>
                 <tr style={{ background:'var(--gray-50)' }}>
@@ -682,7 +683,7 @@ export default function PublicacionesPage() {
                         {p.vendedor||'—'}
                       </td>
                       <td style={{ padding:'8px 10px', borderBottom:'1px solid var(--border-subtle)', verticalAlign:'top' }}>
-                        <div style={{ fontSize:12, fontWeight:500, color:'var(--gray-800)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.direccion||'—'}</div>
+                        <div style={{ fontSize:12, fontWeight:500, color:'var(--gray-800)', lineHeight:1.3, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{p.direccionreal||p.direccion||'—'}</div>
                         <div style={{ fontSize:10, color:'var(--gray-400)', marginTop:2 }}>
                           {[p.dormitorios&&`${p.dormitorios} dorm.`,p.banos&&`${p.banos} baños`,p.mt2_const&&`${p.mt2_const}m²`].filter(Boolean).join(' · ')}
                         </div>
@@ -777,7 +778,7 @@ export default function PublicacionesPage() {
                     </div>
                   </div>
                   <div style={{ padding:'12px 14px' }}>
-                    <div style={{ fontSize:13, fontWeight:500, color:'var(--gray-800)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.direccion||'—'}</div>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--gray-800)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.direccionreal||p.direccion||'—'}</div>
                     <div style={{ fontSize:11, color:'var(--gray-400)', marginBottom:8 }}>
                       {[p.comuna,p.dormitorios?`${p.dormitorios} dorm.`:null,p.banos?`${p.banos} baños`:null,p.mt2_const?`${p.mt2_const}m²`:null].filter(Boolean).join(' · ')}
                     </div>
