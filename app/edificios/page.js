@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
+import { REGIONES, comunasDeRegion, regionDeComuna } from '@/lib/regiones-comunas'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -260,6 +261,32 @@ function FichaEdificio({ edificio, onVolver }) {
       <input type={type} value={form[key] || ''} onChange={e => set(key, e.target.value)} style={field} />
     </div>
   )
+  // Region (autodetectada desde la comuna guardada si no hay region explicita)
+  const regionActual = form.region || regionDeComuna(form.comuna) || ''
+  const comunasDisp = comunasDeRegion(regionActual)
+  const selRegionComuna = () => (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={lbl}>Región</label>
+        <select value={regionActual}
+          onChange={e => { const r = e.target.value; setForm(f => ({ ...f, region: r, comuna: comunasDeRegion(r).includes(f.comuna) ? f.comuna : '' })) }}
+          style={field}>
+          <option value="">— Seleccionar —</option>
+          {REGIONES.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={lbl}>Comuna</label>
+        <select value={form.comuna || ''}
+          onChange={e => set('comuna', e.target.value)}
+          disabled={!regionActual}
+          style={{ ...field, opacity: regionActual ? 1 : 0.5, cursor: regionActual ? 'pointer' : 'not-allowed' }}>
+          <option value="">{regionActual ? '— Seleccionar —' : 'Elige región primero'}</option>
+          {comunasDisp.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+    </>
+  )
   const sec = (titulo, color = '#1a56db') => (
     <div style={{ gridColumn: '1/-1', borderBottom: '2px solid ' + color, paddingBottom: 4, marginTop: 12 }}>
       <span style={{ fontSize: 12, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{titulo}</span>
@@ -294,7 +321,7 @@ function FichaEdificio({ edificio, onVolver }) {
             {inp('Nombre', 'nombre')}
             {inp('Calle', 'calle')}
             {inp('Número', 'numero_calle')}
-            {inp('Comuna', 'comuna')}
+            {selRegionComuna()}
 
             {sec('Administración', '#16a34a')}
             {inp('Tel. conserjería', 'tel_conserjeria')}
