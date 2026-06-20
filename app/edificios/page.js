@@ -1,14 +1,10 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../lib/supabaseClient'
 import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
 import { REGIONES, comunasDeRegion, regionDeComuna } from '@/lib/regiones-comunas'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 
 // Amenities: clave en BD -> etiqueta visible

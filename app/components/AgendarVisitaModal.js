@@ -1,12 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
-
+import { supabase } from '../../lib/supabaseClient'
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const ESTADOS_VISITA = ['agendada', 'realizada', 'cancelada']
 const RESULTADOS_PROP = ['pendiente', 'interesado', 'descartado']

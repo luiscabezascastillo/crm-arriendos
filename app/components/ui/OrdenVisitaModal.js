@@ -1,12 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabaseClient'
 import { useSession } from 'next-auth/react'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const CLAUSULA = `"Fondo Capital Rent SpA", denominado el CORREDOR, autoriza al CLIENTE indicado a visitar las propiedades señaladas. La información entregada es confidencial y de uso exclusivo para continuar el negocio por intermediación de este corredor. El CLIENTE se obliga a efectuar toda transacción de las propiedades ofrecidas por intermedio de Fondo Capital Rent SpA, pagando la comisión correspondiente: a) Compraventa: 2% + IVA del valor de transacción. b) Arriendo: 50% + IVA de la primera renta mensual. c) Si el negocio se efectúa directamente con el propietario, el CLIENTE pagará a título de multa el doble de la comisión normal más impuestos y costas. El CLIENTE declara haber recibido esta orden en las oficinas de Fondo Capital Rent SpA, Ebro 2791 Oficina 1B y C, Las Condes.`
 

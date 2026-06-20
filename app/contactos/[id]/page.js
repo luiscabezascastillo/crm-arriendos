@@ -1,14 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabaseClient'
 import { useParams, useRouter } from 'next/navigation'
 import TopNav from '../../components/ui/TopNav'
 import OrdenVisitaModal from '../../components/ui/OrdenVisitaModal'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const ROL_COLORS = {
   propietario:  { bg: '#EAF3DE', color: '#3B6D11' },

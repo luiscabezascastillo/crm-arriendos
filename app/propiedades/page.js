@@ -1,17 +1,12 @@
 'use client'
 import React from 'react'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const PAGE_SIZE = 20
 

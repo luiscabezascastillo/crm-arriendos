@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const ML_CLIENT_ID = process.env.ML_CLIENT_ID
 const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET

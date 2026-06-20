@@ -4,14 +4,9 @@ import React from 'react'
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 const MapaPublicaciones = dynamic(() => import('./MapaPublicaciones'), { ssr: false })
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import TopNav from '../components/ui/TopNav'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 const PAGE_SIZE = 15

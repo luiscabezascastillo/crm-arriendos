@@ -1,13 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../../lib/supabaseClient'
 import Link from 'next/link';
 import TopNav from '../../components/ui/TopNav';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+
 
 const fmt = (n) => n == null ? '—' : Math.round(Number(n)).toLocaleString('es-CL');
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CL') : '—';

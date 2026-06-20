@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
 import * as ftp from 'basic-ftp'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const FTP_HOST = '131.108.211.119'
 const FTP_USER = 'fon19_web'

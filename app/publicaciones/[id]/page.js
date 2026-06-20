@@ -2,15 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabaseClient'
 import  TopNav  from '../../components/ui/TopNav'
 import { COMUNAS_LISTA, regionDeComuna } from '../../../lib/comunas.js'
 import AgendarVisitaModal from '../../components/AgendarVisitaModal'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
 
