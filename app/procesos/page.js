@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
-const PROCESOS_MASIVOS = [
+const PROCESOS_MENSUALES = [
   {
     key: 'servicios',
     titulo: 'Servicios',
@@ -25,14 +25,17 @@ const PROCESOS_MASIVOS = [
   { key: 'liquidacion',    titulo: 'Liquidación',    descripcion: 'Cruce cartola, neto propietarios',        etapas: ['Cruce cartola', 'No pagados', 'Revisión', 'Generar', 'Envío'],                  conecta: 'Cobranza',         href: '/op/liquidacion-paola' },
   { key: 'cartolas',       titulo: 'Cartolas',       descripcion: 'Cartola bancaria por IDADMON',            etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'],                           conecta: 'Mandato · Cobranza', href: null },
   { key: 'mandato',        titulo: 'Mandato',        descripcion: 'Cuotas esperadas y deuda mensual',        etapas: ['Cuotas', 'Cartola BI', 'Vista deuda', 'Confirmar'],                           conecta: null,               href: null },
-  { key: 'revision_log',   titulo: 'Revisión Log',   descripcion: 'BD_LOG Drive → Supabase',                etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'],                              conecta: null,               href: null },
-  { key: 'nubox',          titulo: 'Financiero',     descripcion: 'Revisión mensual económico/financiera',   etapas: ['Exportar', 'Revisión', 'Cierre'],                              conecta: null,               href: null },
-  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'KPIs y reportes para dirección',          etapas: ['Consolidar', 'KPIs', 'Revisión', 'Distribuir'],                               conecta: null,               href: '/panel' },
-  { key: 'descuentos',     titulo: 'Descuentos',     descripcion: 'Descuentos a propietarios',               etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'],                               conecta: 'Liquidación',       href: null },
   { key: 'notificaciones', titulo: 'Notificaciones', descripcion: 'Avisos automáticos a arrendatarios',      etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'],                               conecta: null,               href: null },
 ]
 
-const PROCESOS_INDIVIDUALES = [
+const PROCESOS_SEMANALES = [
+  { key: 'revision_log',   titulo: 'Revisión Log',   descripcion: 'BD_LOG Drive → Supabase',                etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'],                              conecta: null,               href: null },
+  { key: 'nubox',          titulo: 'Financiero',     descripcion: 'Revisión mensual económico/financiera',   etapas: ['Exportar', 'Revisión', 'Cierre'],                              conecta: null,               href: null },
+  { key: 'descuentos',     titulo: 'Descuentos',     descripcion: 'Descuentos a propietarios',               etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'],                               conecta: 'Liquidación',       href: null },
+  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'KPIs y reportes para dirección',          etapas: ['Consolidar', 'KPIs', 'Revisión', 'Distribuir'],                               conecta: null,               href: '/panel' },
+]
+
+const PROCESOS_PUNTUALES = [
   { key: 'publicacion', titulo: 'Publicación', descripcion: 'Depto vacío → candidato',            etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'],                       conecta: 'Inicios',     href: '/publicaciones' },
   { key: 'inicios',     titulo: 'Inicios',     descripcion: 'Contrato, firma y ciclo mensual',    etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'],                                conecta: null,          href: null },
   { key: 'termino',     titulo: 'Término',     descripcion: 'Aviso legal, recepción y garantías', etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
@@ -227,8 +230,9 @@ export default function ProcesosPage() {
     }
   }
 
-  const totalMasivos = PROCESOS_MASIVOS.filter(p => permisos[p.key]).length
-  const totalInd = PROCESOS_INDIVIDUALES.filter(p => permisos[p.key]).length
+  const totalMensuales = PROCESOS_MENSUALES.filter(p => permisos[p.key]).length
+  const totalSemanales = PROCESOS_SEMANALES.filter(p => permisos[p.key]).length
+  const totalPuntuales = PROCESOS_PUNTUALES.filter(p => permisos[p.key]).length
 
   if (status === 'loading' || loading) {
     return (
@@ -241,9 +245,26 @@ export default function ProcesosPage() {
 
   const sectionLabel = (texto, disp, total) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 8px' }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: '#888780', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{texto}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: '#2C2C2A', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{texto}</span>
       <div style={{ flex: 1, height: '0.5px', background: '#D3D1C7' }}></div>
       <span style={{ fontSize: 10, color: '#B4B2A9', whiteSpace: 'nowrap' }}>{disp}/{total}</span>
+    </div>
+  )
+
+  const renderGrid = (lista, cols) => (
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${cols}, 1fr)`, gap: isMobile ? 0 : 10, marginBottom: 8 }}>
+      {lista.map(p => (
+        <ProcesCard
+          key={p.key}
+          proceso={p}
+          permiso={permisos[p.key]}
+          responsable={responsables[p.key]}
+          onClick={handleClick}
+          expanded={expanded === p.key}
+          onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
+          isMobile={isMobile}
+        />
+      ))}
     </div>
   )
 
@@ -257,7 +278,7 @@ export default function ProcesosPage() {
           <div>
             <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Motor de procesos</h1>
             <div style={{ fontSize: 12, color: '#888780' }}>
-              {session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0]} · {totalMasivos + totalInd} procesos disponibles
+              {session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0]} · {totalMensuales + totalSemanales + totalPuntuales} procesos disponibles
             </div>
           </div>
           <button onClick={() => router.push('/panel')}
@@ -279,39 +300,17 @@ export default function ProcesosPage() {
           ))}
         </div>
 
-        {/* PROCESOS MASIVOS */}
-        {sectionLabel('PROCESOS MASIVOS — arrancan el 1 de cada mes', totalMasivos, PROCESOS_MASIVOS.length)}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: isMobile ? 0 : 10, marginBottom: 8 }}>
-          {PROCESOS_MASIVOS.map(p => (
-            <ProcesCard
-              key={p.key}
-              proceso={p}
-              permiso={permisos[p.key]}
-              responsable={responsables[p.key]}
-              onClick={handleClick}
-              expanded={expanded === p.key}
-              onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
-              isMobile={isMobile}
-            />
-          ))}
-        </div>
+        {/* PROCESOS MENSUALES */}
+        {sectionLabel('PROCESOS MENSUALES — se abren una vez al mes, cada proceso en un día distinto', totalMensuales, PROCESOS_MENSUALES.length)}
+        {renderGrid(PROCESOS_MENSUALES, 3)}
 
-        {/* PROCESOS INDIVIDUALES */}
-        {sectionLabel('PROCESOS INDIVIDUALES — se abren cuando ocurre el evento', totalInd, PROCESOS_INDIVIDUALES.length)}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, 1fr)', gap: isMobile ? 0 : 10 }}>
-          {PROCESOS_INDIVIDUALES.map(p => (
-            <ProcesCard
-              key={p.key}
-              proceso={p}
-              permiso={permisos[p.key]}
-              responsable={responsables[p.key]}
-              onClick={handleClick}
-              expanded={expanded === p.key}
-              onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
-              isMobile={isMobile}
-            />
-          ))}
-        </div>
+        {/* PROCESOS SEMANALES */}
+        {sectionLabel('PROCESOS SEMANALES — se abren cualquier día de la semana y quedan cerrados el viernes', totalSemanales, PROCESOS_SEMANALES.length)}
+        {renderGrid(PROCESOS_SEMANALES, 4)}
+
+        {/* PROCESOS PUNTUALES */}
+        {sectionLabel('PROCESOS PUNTUALES — se abren cuando ocurre el evento', totalPuntuales, PROCESOS_PUNTUALES.length)}
+        {renderGrid(PROCESOS_PUNTUALES, 3)}
 
       </div>
 
