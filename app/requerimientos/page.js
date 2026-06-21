@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import { COMUNAS_LISTA } from '../../lib/comunas.js'
 import { buscarMatches } from '../../lib/matching.js'
+import ZonaModal from '../components/ZonaModal'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
@@ -77,6 +78,7 @@ const FORM_VACIO = {
   operacion: 'venta', tipos: [], precio_min: '', precio_max: '', moneda: 'UF',
   dorm_min: '', banos_min: '', estac_min: '', mt2_const_min: '', mt2_terreno_min: '',
   amenities_oblig: [], amenities_desea: [], comunas: [],
+  zona_poligono: null,
   notas: '', fuente: 'manual', estado: 'activo', vendedor: '',
 }
 
@@ -106,6 +108,7 @@ export default function RequerimientosPage() {
 
   // buscador de comunas (combobox)
   const [comunaQuery, setComunaQuery] = useState('')
+  const [zonaOpen, setZonaOpen] = useState(false)
 
   // matches (Entrega 2): vista de propiedades que calzan
   const [viendoMatches, setViendoMatches] = useState(null)
@@ -148,7 +151,7 @@ export default function RequerimientosPage() {
     if (cartera.cargada || cartera.cargando) return
     setCartera(c => ({ ...c, cargando: true }))
     const { data: edis } = await supabase.from('edificios').select('*')
-    const cols = 'id, codigo, comuna, region, calle, numero_calle, departamento, direccion, direccionreal, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, estacionamientos, mt2_const, mt2_terreno, activo, tiene_piscina_propia, tiene_quincho_propio, tiene_jardin, tiene_terraza, tiene_patio, tiene_logia, tiene_walking_closet, tiene_bodega_propia, tiene_calefaccion, tiene_aire_acondicionado, has_laundry, has_security, has_balcony, amoblado, ksuitable_for_pets, has_maid_room'
+    const cols = 'id, codigo, latitud, longitud, comuna, region, calle, numero_calle, departamento, direccion, direccionreal, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, estacionamientos, mt2_const, mt2_terreno, activo, tiene_piscina_propia, tiene_quincho_propio, tiene_jardin, tiene_terraza, tiene_patio, tiene_logia, tiene_walking_closet, tiene_bodega_propia, tiene_calefaccion, tiene_aire_acondicionado, has_laundry, has_security, has_balcony, amoblado, ksuitable_for_pets, has_maid_room'
     let todas = []
     let desde = 0
     const lote = 1000
@@ -373,6 +376,7 @@ export default function RequerimientosPage() {
       mt2_const_min: r.mt2_const_min ?? '', mt2_terreno_min: r.mt2_terreno_min ?? '',
       tipos: r.tipos || [], amenities_oblig: r.amenities_oblig || [],
       amenities_desea: r.amenities_desea || [], comunas: r.comunas || [],
+      zona_poligono: r.zona_poligono || null,
     })
     setContactoSel(r.contacto_id ? { id: r.contacto_id, nombre: r.nombre_suelto || '(contacto ligado)' } : null)
     setContactoQuery(''); setContactoResultados([])
@@ -470,6 +474,7 @@ export default function RequerimientosPage() {
       amenities_oblig: form.amenities_oblig || [],
       amenities_desea: form.amenities_desea || [],
       comunas: form.comunas || [],
+      zona_poligono: (Array.isArray(form.zona_poligono) && form.zona_poligono.length >= 3) ? form.zona_poligono : null,
       notas: form.notas || null,
       fuente: form.fuente || 'manual',
       estado: form.estado || 'activo',
@@ -965,6 +970,27 @@ export default function RequerimientosPage() {
             )}
           </div>
           {form.comunas.length === 0 && <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>Sin comunas = cualquier comuna.</div>}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #F3F4F6' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Zona exacta en el mapa (opcional)</div>
+            {Array.isArray(form.zona_poligono) && form.zona_poligono.length >= 3 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 7, background: '#F5F3FF', color: '#7c3aed', border: '1px solid #d8b4fe', fontSize: 13, fontWeight: 600 }}>Zona definida ({form.zona_poligono.length} puntos)</span>
+                <button type="button" onClick={() => setZonaOpen(true)} style={{ ...input, width: 'auto', cursor: 'pointer', fontSize: 12 }}>Editar zona</button>
+                <button type="button" onClick={() => set('zona_poligono', null)} style={{ ...input, width: 'auto', cursor: 'pointer', fontSize: 12, color: '#dc2626' }}>Quitar zona</button>
+                <span style={{ fontSize: 11, color: '#888' }}>Con zona, el matching usa coordenadas y manda sobre la comuna.</span>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setZonaOpen(true)} style={{ ...input, width: 'auto', cursor: 'pointer', fontSize: 13, background: '#EDE9FE', color: '#7c3aed', border: '1px solid #d8b4fe', fontWeight: 600 }}>Definir zona en el mapa</button>
+            )}
+          </div>
+          {zonaOpen && (
+            <ZonaModal
+              open={zonaOpen}
+              valor={form.zona_poligono}
+              onClose={() => setZonaOpen(false)}
+              onSave={(poly) => set('zona_poligono', poly)}
+            />
+          )}
         </div>
 
         {/* Amenities (un solo bloque, tri-estado) */}
