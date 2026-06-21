@@ -20,6 +20,7 @@ const RUTAS = {
   '/requerimientos': ['admin'],
   '/visitas':      ['admin'],
   '/calendario':   ['admin'],
+  '/cumpleanos':   ['admin'],
   '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
 };
 
@@ -256,6 +257,7 @@ function abrirModal(tipo) {
               {puede('/visitas') && <Link href="/visitas" style={s.dropItem} onClick={() => setComercialOpen(false)}>Visitas y órdenes</Link>}
               <div style={s.dropDivider}/>
               {puede('/calendario') && <Link href="/calendario" style={s.dropItem} onClick={() => setComercialOpen(false)}>Calendario</Link>}
+              {puede('/cumpleanos') && <Link href="/cumpleanos" style={s.dropItem} onClick={() => setComercialOpen(false)}>Cumpleaños</Link>}
               <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
             </div>
           )}
