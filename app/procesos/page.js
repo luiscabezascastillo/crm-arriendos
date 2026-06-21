@@ -32,7 +32,7 @@ const PROCESOS_SEMANALES = [
   { key: 'revision_log',   titulo: 'Revisión Log',   descripcion: 'BD_LOG Drive → Supabase',                etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'],                              conecta: null,               href: null },
   { key: 'nubox',          titulo: 'Financiero',     descripcion: 'Tratamiento datos financieros',           etapas: [],                                                                             conecta: null,               href: '/procesos/financiero' },
   { key: 'descuentos',     titulo: 'Descuentos',     descripcion: 'Descuentos a propietarios',               etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'],                               conecta: 'Liquidación',       href: null },
-  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'KPIs y reportes para dirección',          etapas: ['Consolidar', 'KPIs', 'Revisión', 'Distribuir'],                               conecta: null,               href: '/panel' },
+  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'Cartola Banco Internacional',             etapas: ['Cargar', 'Sugerir', 'Revisar', 'Volcar'],                                     conecta: null,               href: '/procesos/bi' },
 ]
 
 const PROCESOS_PUNTUALES = [
