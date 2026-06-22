@@ -225,8 +225,8 @@ export default function PublicacionesPage() {
       .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, latitud, longitud, dormitorios')
       .eq('activo', 'active')
       .not('latitud', 'is', null)
-    if (soloMias && miNombre) query = query.eq('vendedor', miNombre)
       .neq('latitud', '')
+    if (soloMias && miNombre) query = query.eq('vendedor', miNombre)
     if (filtroPortal) query = query.eq(filtroPortal, 'SI')
     if (filtroObjetivo === 'arriendo') query = query.ilike('objetivo', '%arriendo%')
     if (filtroObjetivo === 'venta') query = query.ilike('objetivo', '%venta%')
@@ -271,6 +271,7 @@ export default function PublicacionesPage() {
   }
   async function loadData() {
     setLoading(true)
+    if (status === 'loading') { setLoading(false); return }
     let query = supabase
       .from('publicaciones')
       .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
