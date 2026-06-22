@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 const MapaPublicaciones = dynamic(() => import('./MapaPublicaciones'), { ssr: false })
 import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
 
 const IMG_BASE = 'https://fondocapital.com/propiedades/'
@@ -184,6 +185,11 @@ function ExcelFilter({ label, type, options, value, onApply, align }) {
 
 export default function PublicacionesPage() {
   const router = useRouter()
+  const { data: session, status } = useSession()
+  const miRol = session?.user?.role || null
+  const miNombre = (session?.user?.name || '').trim()
+  const soloMias = miRol === 'comercial' || miRol === 'ventas'
+  const sesionLista = status !== 'loading'
   const [vista, setVista] = useState('tabla')
   const [modo, setModo] = useState('activas') // 'activas' | 'historicas'
   const [pubs, setPubs] = useState([])
@@ -211,7 +217,7 @@ export default function PublicacionesPage() {
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { fetch('https://mindicador.cl/api/uf').then(r=>r.json()).then(d=>setValorUF(d.serie?.[0]?.valor||null)).catch(()=>{}) }, [])
   useEffect(() => { setPage(1) }, [search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio])
-  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio, valorUF])
+  useEffect(() => { loadData() }, [page, search, filtroPortal, filtroObjetivo, modo, fCodigo, fTipo, fEstado, fCaptador, fVendedor, fComuna, fPrecio, valorUF, miNombre, miRol])
 
   async function loadMapa() {
     let query = supabase
@@ -219,6 +225,7 @@ export default function PublicacionesPage() {
       .select('id, codigo, direccion, comuna, objetivo, tipo, tipo_moneda, valor, latitud, longitud, dormitorios')
       .eq('activo', 'active')
       .not('latitud', 'is', null)
+    if (soloMias && miNombre) query = query.eq('vendedor', miNombre)
       .neq('latitud', '')
     if (filtroPortal) query = query.eq(filtroPortal, 'SI')
     if (filtroObjetivo === 'arriendo') query = query.ilike('objetivo', '%arriendo%')
@@ -227,7 +234,7 @@ export default function PublicacionesPage() {
     setPubsMapa(data || [])
   }
 
-  useEffect(() => { if (vista === 'mapa') loadMapa() }, [vista, filtroPortal, filtroObjetivo])
+  useEffect(() => { if (vista === 'mapa') loadMapa() }, [vista, filtroPortal, filtroObjetivo, miNombre, miRol])
 
   async function loadKpis() {
     const [
@@ -267,6 +274,7 @@ export default function PublicacionesPage() {
     let query = supabase
       .from('publicaciones')
       .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
+    if (soloMias && miNombre) query = query.eq('vendedor', miNombre)
 
         if (modo === 'activas') {
           query = query.neq('activo','CREAR')
@@ -642,7 +650,7 @@ export default function PublicacionesPage() {
                       <ExcelFilter label="Captador" type="text" options={OPTS_CAPTADOR} value={fCaptador} onApply={setFCaptador} />
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}>
-                      <ExcelFilter label="Vendedor" type="text" options={OPTS_VENDEDOR} value={fVendedor} onApply={setFVendedor} />
+                      {!soloMias && <ExcelFilter label="Vendedor" type="text" options={OPTS_VENDEDOR} value={fVendedor} onApply={setFVendedor} />}
                     </th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)', whiteSpace:'nowrap', fontSize:10, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Dirección</th>
                     <th style={{ padding:'9px 10px', borderBottom:'1px solid var(--border)', background:'var(--gray-50)' }}><ExcelFilter label="Precio" type="number" options={[]} value={fPrecio} onApply={setFPrecio} /></th>
