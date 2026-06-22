@@ -434,7 +434,7 @@ export default function PublicacionesPage() {
       }
       // Marcar como CLOSE en Supabase
       const { error } = await supabase.from('publicaciones').update({
-        pi: 'NO', yapo: 'NO', web: 'NO', goplaceit: 'NO', proppit: 'NO', activo: 'CLOSE'
+        pi: 'NO', yapo: 'NO', web: 'NO', goplaceit: 'NO', proppit: 'NO', activo: 'closed'
       }).eq('id', pub.id)
       if (error) throw new Error(error.message)
       await loadKpis()
@@ -466,7 +466,7 @@ export default function PublicacionesPage() {
 
   const unicos = (campo) => [...new Set(pubs.map(p => p[campo]).filter(Boolean))].sort()
   const OPTS_TIPO = ['Departamento','Casa','Oficina','Local Comercial','Bodega','Estacionamiento','Terreno','Otro']
-  const OPTS_ESTADO = ['active','closed','CLOSE','CREAR','noexist']
+  const OPTS_ESTADO = ['active','closed','CREAR','noexist']
   const OPTS_CAPTADOR = ['Alberto','Adalis','Fabiola','Lorena','Pedro','Neika','Tirza','Karina']
   const OPTS_VENDEDOR = ['Alberto','Adalis','Fabiola','Lorena','Pedro','Neika','Tirza','Karina']
   const OPTS_COMUNA = [...new Set([...pubs.map(p=>p.comuna)].filter(Boolean))].sort()

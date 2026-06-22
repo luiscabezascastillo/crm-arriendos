@@ -82,7 +82,7 @@ export async function POST(request) {
     }
 
     await supabase.from('publicaciones').update({
-      pi: 'NO', activo: 'CLOSE',
+      pi: 'NO', activo: 'closed',
       updated_at: new Date().toISOString(),
     }).eq('id', publicacionId)
 

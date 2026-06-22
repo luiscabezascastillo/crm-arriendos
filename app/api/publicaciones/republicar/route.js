@@ -77,7 +77,7 @@ export async function POST(request) {
   }
   // 2. Marcar original como cerrada
   await supabase.from('publicaciones').update({
-    pi: 'NO', yapo: 'NO', web: 'NO', activo: 'CLOSE',
+    pi: 'NO', yapo: 'NO', web: 'NO', activo: 'closed',
   }).eq('id', sourceId || publicacionId)
   // 3. Codigo nuevo desde el generador atomico (funcion siguiente_codigo())
   const { data: newCodigo, error: errCod } = await supabase.rpc('siguiente_codigo')

@@ -480,7 +480,7 @@ export default function FichaPage() {
      useEffect(() => {
        if (!pub || !pub.calle || !pub.numero_calle) { setEdificio(null); return }
        // normaliza: minusculas, sin tildes, sin espacios extra
-       const norm = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+       const norm = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().replace(/^calle\s+/, '')
        const callePub = norm(pub.calle)
        // filtramos server-side por numero exacto (selectivo) y comparamos la calle normalizada en JS
        supabase.from('edificios').select('*')
