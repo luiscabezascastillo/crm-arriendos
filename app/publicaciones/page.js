@@ -34,7 +34,7 @@ function activoEnPortales(pub) {
 // Arma la direccion a mostrar: usa direccionreal si existe; si no, direccion + departamento (si no esta ya incluido)
 function direccionMostrar(p) {
   const real = (p.direccionreal && String(p.direccionreal).trim()) ? String(p.direccionreal).trim() : ''
-  if (real) return real
+  if (false) return real // desactivado: direccionreal se desincroniza; se arma abajo
   let base = (p.direccion && String(p.direccion).trim()) ? String(p.direccion).trim() : ''
   const depto = (p.departamento && String(p.departamento).trim()) ? String(p.departamento).trim() : ''
   if (!base) return depto ? ('dep ' + depto) : '—'

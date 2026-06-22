@@ -50,6 +50,14 @@ export async function POST(request) {
     nueva.fotos_ml             = null
     nueva.fecha_vencimiento_pi = null
     nueva.estado_pi            = null
+    // Regenerar direccion (publica) y direccionreal (interna con depto) desde los campos
+    const __depto = (nueva.departamento && String(nueva.departamento).trim()) ? String(nueva.departamento).trim() : ''
+    const __base = [nueva.calle, nueva.numero_calle].filter(Boolean).join(' ').trim()
+    if (__base) nueva.direccion = __base
+    let __real = __base
+    if (__depto) __real = __base ? (__base + ' dep ' + __depto) : ('dep ' + __depto)
+    if (nueva.comuna && String(nueva.comuna).trim()) __real = __real ? (__real + ', ' + String(nueva.comuna).trim()) : String(nueva.comuna).trim()
+    if (__real) nueva.direccionreal = __real
     nueva.url_web              = null
     nueva.url_yapo             = null
     nueva.url_goplaceit        = null

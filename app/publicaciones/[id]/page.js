@@ -110,7 +110,12 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
       }).catch(() => {})
     }
     const __obsBr = (form.observaciones || '').replace(/\r\n/g, '\n').replace(/\n/g, '<br>')
-    const { data, error } = await supabase.from('publicaciones').update({ ...form, observaciones: __obsBr, direccion: direccionPublica || form.direccion }).eq('id', id).select().single()
+    const __depto = (form.departamento && String(form.departamento).trim()) ? String(form.departamento).trim() : ''
+    const __baseReal = [form.calle, form.numero_calle].filter(Boolean).join(' ').trim()
+    let __direccionReal = __baseReal
+    if (__depto) __direccionReal = __baseReal ? (__baseReal + ' dep ' + __depto) : ('dep ' + __depto)
+    if (form.comuna && String(form.comuna).trim()) __direccionReal = __direccionReal ? (__direccionReal + ', ' + String(form.comuna).trim()) : String(form.comuna).trim()
+    const { data, error } = await supabase.from('publicaciones').update({ ...form, observaciones: __obsBr, direccion: direccionPublica || form.direccion, direccionreal: __direccionReal }).eq('id', id).select().single()
     setGuardando(false)
     if (error) { setMsg({ ok: false, text: 'Error: ' + error.message }) }
     else { onGuardado(data); __logEdicion(); setMsg({ ok: true, text: '✓ Guardado correctamente' }); setTimeout(() => setMsg(null), 3000) }
@@ -948,7 +953,7 @@ async function subirImagen(file) {
               <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', marginBottom:16 }}>
                 <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>Ubicación</div>
                 <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:14 }}>
-                  <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Dirección</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.direccionreal||pub.direccion||'—'}</div></div>
+                  <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Dirección</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{(() => { const d = [pub.calle, pub.numero_calle].filter(Boolean).join(' ').trim() || (pub.direccion||''); const dep = (pub.departamento && String(pub.departamento).trim()) ? String(pub.departamento).trim() : ''; const co = (pub.comuna||'').trim(); let r = d; if (dep && !r.includes('dep ' + dep)) r = r ? (r + ' dep ' + dep) : ('dep ' + dep); if (co && !r.includes(co)) r = r ? (r + ', ' + co) : co; return r || pub.direccionreal || pub.direccion || '—'; })()}</div></div>
                   <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Comuna</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.comuna||'—'}</div></div>
                   <div><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>Región</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{pub.region||'—'}</div></div>
                 </div>
