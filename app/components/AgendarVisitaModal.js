@@ -25,14 +25,15 @@ const input = { padding: '8px 10px', borderRadius: 7, border: '1px solid #E5E7EB
 const label = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 4, display: 'block' }
 const mini = { fontSize: 11, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid' }
 
-export default function AgendarVisitaModal({ pub = null, onClose = () => {}, onSaved = () => {} }) {
+export default function AgendarVisitaModal({ pub = null, contactoInicial = null, onClose = () => {}, onSaved = () => {} }) {
   // cliente
-  const [contactoSel, setContactoSel] = useState(null)
+  const [contactoSel, setContactoSel] = useState(contactoInicial)
   const [cQuery, setCQuery] = useState('')
   const [cRes, setCRes] = useState([])
-  const [nombre, setNombre] = useState('')
-  const [telefono, setTelefono] = useState('')
-  const [email, setEmail] = useState('')
+  const [nombre, setNombre] = useState(contactoInicial ? [contactoInicial.nombre, contactoInicial.apellido].filter(Boolean).join(' ') : '')
+  const [telefono, setTelefono] = useState(contactoInicial?.telefono || '')
+  const [email, setEmail] = useState(contactoInicial?.email || '')
+  const [rut, setRut] = useState(contactoInicial?.numero_doc || '')
   // visita
   const [fecha, setFecha] = useState('')
   const [hora, setHora] = useState('')
@@ -53,14 +54,14 @@ export default function AgendarVisitaModal({ pub = null, onClose = () => {}, onS
     setCQuery(q)
     if (!q || q.trim().length < 2) { setCRes([]); return }
     const { data } = await supabase.from('contactos')
-      .select('id, nombre, apellido, telefono, email')
+      .select('id, nombre, apellido, telefono, email, numero_doc')
       .or(`nombre.ilike.%${q}%,apellido.ilike.%${q}%,telefono.ilike.%${q}%`).limit(8)
     setCRes(data || [])
   }
   function elegirContacto(c) {
     setContactoSel(c)
     setNombre([c.nombre, c.apellido].filter(Boolean).join(' '))
-    setTelefono(c.telefono || ''); setEmail(c.email || '')
+    setTelefono(c.telefono || ''); setEmail(c.email || ''); setRut(c.numero_doc || '')
     setCRes([]); setCQuery('')
   }
 
@@ -110,7 +111,7 @@ export default function AgendarVisitaModal({ pub = null, onClose = () => {}, onS
       const contactoId = await resolverContacto()
       const { data: vis, error: e1 } = await supabase.from('visitas').insert({
         requerimiento_id: null, contacto_id: contactoId,
-        cliente_nombre: nombre.trim() || null, cliente_telefono: telefono.trim() || null, cliente_email: email.trim() || null,
+        cliente_nombre: nombre.trim() || null, cliente_telefono: telefono.trim() || null, cliente_email: email.trim() || null, cliente_rut: rut.trim() || null,
         fecha, hora: hora || null, comercial: comercial || null, estado, notas: notas || null,
         updated_at: new Date().toISOString(),
       }).select('id').single()
@@ -206,8 +207,9 @@ export default function AgendarVisitaModal({ pub = null, onClose = () => {}, onS
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>O escríbelo a mano (si no existe, se crea solo en contactos al guardar):</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
                   <input style={input} value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre" />
+                  <input style={input} value={rut} onChange={e => setRut(e.target.value)} placeholder="RUT" />
                   <input style={input} value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono" />
                   <input style={input} value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
                 </div>
