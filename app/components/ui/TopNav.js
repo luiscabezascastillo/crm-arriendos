@@ -239,32 +239,9 @@ export default function TopNav() {
       </div>
       )}
 
-      {/* Procesos — incluye CC1 y Operación. Acceso fino por proceso_permisos en la página. */}
+      {/* Procesos — enlace directo a la pagina general. Acceso fino por proceso_permisos en la pagina. */}
       {puede('/procesos') && (
-      <div ref={procesosRef} style={{ position: 'relative' }}>
-        <button style={s.dropBtn(procesosActive)} onClick={() => { setProcesosOpen(v => !v); setPropiedadesOpen(false); setVentasOpen(false); }}>
-          Procesos <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-        </button>
-        {procesosOpen && (
-          <div style={s.dropdown}>
-            <Link href="/procesos" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Procesos (general)</Link>
-            <div style={s.dropDivider}/>
-            <div style={s.dropLabel}>CC1 Admin</div>
-            <Link href="/cc1" style={s.dropItem} onClick={() => setProcesosOpen(false)}>CC1 Admin</Link>
-            <Link href="/op/deudas" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Deudas servicios</Link>
-            <Link href="/op/morosidad" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Morosidad</Link>
-            <div style={s.dropDivider}/>
-            <div style={s.dropLabel}>Operacion</div>
-            <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Comunidad Feliz</Link>
-            <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Liquidacion Paola</Link>
-            <div style={s.dropDivider}/>
-            <div style={s.dropLabel}>Pendientes</div>
-            {['Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
-              <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
-            ))}
-          </div>
-        )}
-      </div>
+        <Link href="/procesos" style={s.link(procesosActive)}>Procesos</Link>
       )}
 
       {/* Ventas (interno) — Inventario y Contactos */}
