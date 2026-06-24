@@ -97,6 +97,19 @@ const COMUNAS_ML = {
   'Viña del Mar': { id: 'TUxDQ1ZJ0TkzYzA', name: 'Viña del Mar', state_id: 'TUxDUFZBTE84MDVj', state_name: 'Valparaíso' },
 }
 
+function normComuna(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+async function resolverComuna(comunaTexto) {
+  const nn = normComuna(comunaTexto)
+  if (!nn) return { ok: false, motivo: 'vacia' }
+  const { data, error } = await supabase.from('comunas_ml').select('nombre, ml_city_id, state_id, state_name').eq('nombre_norm', nn).maybeSingle()
+  if (error) return { ok: false, motivo: 'error_db: ' + error.message }
+  if (!data) return { ok: false, motivo: 'no_encontrada' }
+  return { ok: true, comuna: { id: data.ml_city_id, name: data.nombre, state_id: data.state_id, state_name: data.state_name } }
+}
+
 function getComuna(comuna) {
   return COMUNAS_ML[comuna] || { id: 'TUxDQ1NBTjk4M2M', name: 'Santiago', state_id: 'CL-RM', state_name: 'RM (Metropolitana)' }
 }
@@ -170,7 +183,7 @@ function maintenanceFeeTypeValueId(txt) {
 
 function buildPayload(p) {
   const ejec = EJECUTIVOS[p.vendedor] || EJECUTIVOS['Alberto']
-  const comuna = getComuna(p.comuna)
+  const comuna = p.__comunaResuelta
   const esUF = String(p.tipo_moneda || '').toUpperCase() === 'UF'
  const titulo = (p.titulo && p.titulo.trim()) ? p.titulo.trim() : `${p.objetivo || ''}, ${p.tipo || ''}, ${p.comuna || ''}. ${p.dormitorios || '0'}D/${p.banos|| '0'}B`
 
@@ -302,6 +315,13 @@ export async function POST(request) {
     if (p.codigo_pi && p.activo !== 'active') {
       await supabase.from('publicaciones').update({ codigo_pi: null, url_pi: null }).eq('id', publicacionId)
     }
+
+    // Resolver comuna desde el catalogo oficial (comunas_ml). Bloquea si no existe.
+    const __rc = await resolverComuna(p.comuna)
+    if (!__rc.ok) {
+      return NextResponse.json({ error: 'Comuna "' + (p.comuna || '(vacia)') + '" no encontrada en el catalogo (comunas_ml). No se publico para evitar una ubicacion incorrecta. Revisa la comuna de la propiedad.', motivo: __rc.motivo }, { status: 400 })
+    }
+    p.__comunaResuelta = __rc.comuna
 
     const accessToken = await getValidToken()
     const payload = buildPayload(p)
