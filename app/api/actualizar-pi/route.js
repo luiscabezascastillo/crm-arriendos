@@ -207,6 +207,19 @@ export async function POST(request) {
       if (pub.has_air_conditioning) amen.push({ id: 'HAS_AIR_CONDITIONING', values: [boolPI(pub.has_air_conditioning)] })
       if (maintenanceFeeTypeValueId(pub.maintenance_fee_type)) amen.push({ id: 'MAINTENANCE_FEE_TYPE', value_id: maintenanceFeeTypeValueId(pub.maintenance_fee_type) })
       if (pub.available_from) amen.push({ id: 'AVAILABLE', value_name: String(pub.available_from) })
+      if (pub.dormitorios      != null && pub.dormitorios      !== '') amen.push({ id: 'BEDROOMS',       value_name: String(pub.dormitorios) })
+      if (pub.banos            != null && pub.banos            !== '') amen.push({ id: 'FULL_BATHROOMS', value_name: String(pub.banos) })
+      if (pub.estacionamientos != null && pub.estacionamientos !== '') amen.push({ id: 'PARKING_LOTS',   value_name: String(pub.estacionamientos) })
+      if (pub.bodegas          != null && pub.bodegas          !== '') amen.push({ id: 'WAREHOUSES',     value_name: String(pub.bodegas) })
+      if (pub.mt2_const        != null && pub.mt2_const        !== '') amen.push({ id: 'COVERED_AREA',   value_name: String(pub.mt2_const) + ' m2' })
+      if ((pub.mt2_terreno != null && pub.mt2_terreno !== '') || (pub.mt2_const != null && pub.mt2_const !== '')) amen.push({ id: 'TOTAL_AREA', value_name: String(pub.mt2_terreno || pub.mt2_const) + ' m2' })
+      if (pub.ggcc             != null && pub.ggcc             !== '') amen.push({ id: 'MAINTENANCE_FEE', value_name: String(pub.ggcc) })
+      if (pub.unit_floor                 != null && pub.unit_floor                 !== '') amen.push({ id: 'UNIT_FLOOR',                 value_name: String(pub.unit_floor) })
+      if (pub.property_age               != null && pub.property_age               !== '') amen.push({ id: 'PROPERTY_AGE',               value_name: String(pub.property_age) + ' anos' })
+      if (pub.floors                     != null && pub.floors                     !== '') amen.push({ id: 'FLOORS',                     value_name: String(pub.floors) })
+      if (pub.apartments_per_floor       != null && pub.apartments_per_floor       !== '') amen.push({ id: 'APARTMENTS_PER_FLOOR',       value_name: String(pub.apartments_per_floor) })
+      if (pub.apartment_number           != null && pub.apartment_number           !== '') amen.push({ id: 'APARTMENT_NUMBER',           value_name: String(pub.apartment_number) })
+      if (pub.property_registration_code != null && pub.property_registration_code !== '') amen.push({ id: 'PROPERTY_REGISTRATION_CODE', value_name: String(pub.property_registration_code) })
       if (amen.length > 0) body.attributes = amen
 
       // PUT 1: campos (precio, titulo, amenities, video). NO incluye fotos.
