@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sincronizarFotos } from '@/lib/fase2/fotos-ml'
+import { EJECUTIVOS } from '@/lib/ejecutivos'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -169,6 +170,15 @@ export async function POST(request) {
         body.video_id = String(pub.video)
       }
       if (pub.titulo && pub.titulo.trim()) body.title = pub.titulo.trim()
+      // Contacto del vendedor (telefono/correo) segun el vendedor actual de la publicacion
+      const ejec = EJECUTIVOS[pub.vendedor] || EJECUTIVOS['Alberto']
+      body.seller_contact = {
+        contact:    ejec.nombre,
+        phone:      ejec.phone,
+        phone2:     ejec.phone,
+        other_info: ejec.email,
+        email:      ejec.email,
+      }
 
       // Direccion publica que se muestra en PI (texto). No toca lat/long ni el pin del mapa.
       if (pub.direccion && String(pub.direccion).trim()) {
