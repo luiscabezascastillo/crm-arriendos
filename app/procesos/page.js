@@ -6,42 +6,96 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
-const PROCESOS_MENSUALES = [
-  {
-    key: 'servicios',
-    titulo: 'Servicios',
+// Orden de las secciones (departamento responsable)
+const SECCIONES = ['Ventas', 'Administración', 'Mantención', 'Legal', 'Finanzas']
+
+// Colores por departamento (cabecera de sección)
+const DEPTO_COLORS = {
+  'Ventas':         { bg: '#E6F1FB', color: '#0C447C' },
+  'Administración': { bg: '#FAEEDA', color: '#633806' },
+  'Mantención':     { bg: '#FBE9E7', color: '#8A3324' },
+  'Legal':          { bg: '#EDE7F6', color: '#4527A0' },
+  'Finanzas':       { bg: '#E1F5EE', color: '#085041' },
+}
+
+// Chip verde de responsable (como el badge de responsable de antes)
+const RESP_CHIP = { bg: '#E1F5EE', color: '#085041' }
+// Chip gris de participante
+const PART_CHIP = { bg: '#F1EFE8', color: '#888780' }
+
+// Un solo listado, agrupado por `responsable` en el render.
+// frecuencia = Mensual | Semanal | Puntual (informativa)
+const PROCESOS = [
+  // ── VENTAS ──
+  { key: 'publicacion', titulo: 'Publicación', responsable: 'Ventas', participa: [], frecuencia: 'Puntual',
+    descripcion: 'Depto vacío → candidato',
+    etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'], conecta: 'Inicios', href: '/publicaciones' },
+  { key: 'inicios', titulo: 'Inicios', responsable: 'Ventas', participa: ['Legal', 'Finanzas'], frecuencia: 'Puntual',
+    descripcion: 'Contrato, firma y ciclo mensual',
+    etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'], conecta: null, href: null },
+
+  // ── ADMINISTRACIÓN ──
+  { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
     descripcion: 'Consulta y carga mensual de deudas de servicios por contrato',
-    etapas: [],
-    conecta: null,
-    href: '/op/deudas',
+    etapas: [], conecta: null, href: '/op/deudas',
     links: [
       { label: '📊 Visualizar Deudas', href: '/op/deudas' },
       { label: '🏢 Cargar ggcc CF-Luis', href: '/op/comunidad-feliz' },
       { label: '⚡ Cargar Luz-Luis', href: '/op/servicios/luz' },
       { label: '💧 Cargar Agua-Luis', href: '/op/servicios/agua' },
       { label: '📧 Email grandes deudores', href: '/op/email-deudores' },
-    ]
-  },
-  { key: 'liquidacion',    titulo: 'Liquidación',    descripcion: 'Cruce cartola, neto propietarios',        etapas: ['Cruce cartola', 'No pagados', 'Revisión', 'Generar', 'Envío'],                  conecta: 'Cobranza',         href: '/op/liquidacion-paola' },
-  { key: 'cartolas',       titulo: 'Cartolas',       descripcion: 'Cartola bancaria por IDADMON',            etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'],                           conecta: 'Mandato · Cobranza', href: null },
-  { key: 'mandato',        titulo: 'Mandato',        descripcion: 'Cuotas esperadas y deuda mensual',        etapas: ['Cuotas', 'Cartola BI', 'Vista deuda', 'Confirmar'],                           conecta: null,               href: null },
-  { key: 'notificaciones', titulo: 'Notificaciones', descripcion: 'Avisos automáticos a arrendatarios',      etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'],                               conecta: null,               href: null },
-]
+    ] },
+  { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal',
+    descripcion: 'Descuentos a propietarios',
+    etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'], conecta: 'Liquidación', href: null },
+  { key: 'cobranza', titulo: 'Cobranza', responsable: 'Administración', participa: ['Finanzas', 'Legal'], frecuencia: 'Puntual',
+    descripcion: 'Impago → pago o acción legal',
+    etapas: ['Detectar', 'Aviso 1', 'Gestión', 'Legal', 'Cierre'], conecta: null, href: '/op/deudas' },
+  { key: 'notificaciones', titulo: 'Notificaciones', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
+    descripcion: 'Avisos automáticos a arrendatarios',
+    etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'], conecta: null, href: null },
 
-const PROCESOS_SEMANALES = [
-  { key: 'revision_log',   titulo: 'Revisión Log',   descripcion: 'BD_LOG Drive → Supabase',                etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'],                              conecta: null,               href: null },
-  { key: 'nubox',          titulo: 'Financiero',     descripcion: 'Tratamiento datos financieros',           etapas: [],                                                                             conecta: null,               href: '/procesos/financiero' },
-  { key: 'descuentos',     titulo: 'Descuentos',     descripcion: 'Descuentos a propietarios',               etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'],                               conecta: 'Liquidación',       href: null },
-  { key: 'bi_sa',          titulo: 'BI',             descripcion: 'Cartola Banco Internacional',             etapas: ['Cargar', 'Sugerir', 'Revisar', 'Volcar'],                                     conecta: null,               href: '/procesos/bi' },
-]
+  // ── MANTENCIÓN ──
+  { key: 'incidencia', titulo: 'Incidencia', responsable: 'Mantención', participa: ['Administración', 'Finanzas'], frecuencia: 'Puntual',
+    descripcion: 'Reporte, resolución y cierre',
+    etapas: ['Reporte', 'Clasificar', 'Validar', 'Resolver', 'Cierre'], conecta: null, href: null },
+  { key: 'presupuestos', titulo: 'Presupuestos', responsable: 'Mantención', participa: ['Administración', 'Finanzas'], frecuencia: 'Puntual',
+    descripcion: 'Crear y editar presupuestos de reparación',
+    etapas: ['Buscar', 'Crear', 'Líneas', 'Revisar', 'PDF'], conecta: 'Término · Incidencia · Inicios', href: '/procesos/presupuestos' },
 
-const PROCESOS_PUNTUALES = [
-  { key: 'publicacion', titulo: 'Publicación', descripcion: 'Depto vacío → candidato',            etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'],                       conecta: 'Inicios',     href: '/publicaciones' },
-  { key: 'inicios',     titulo: 'Inicios',     descripcion: 'Contrato, firma y ciclo mensual',    etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'],                                conecta: null,          href: null },
-  { key: 'termino',     titulo: 'Término',     descripcion: 'Aviso legal, recepción y garantías', etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
-  { key: 'cobranza',    titulo: 'Cobranza',    descripcion: 'Impago → pago o acción legal',       etapas: ['Detectar', 'Aviso 1', 'Gestión', 'Legal', 'Cierre'],                             conecta: null,          href: '/op/deudas' },
-  { key: 'incidencia',  titulo: 'Incidencia',  descripcion: 'Reporte, resolución y cierre',       etapas: ['Reporte', 'Clasificar', 'Validar', 'Resolver', 'Cierre'],                        conecta: null,          href: null },
-  { key: 'presupuestos', titulo: 'Presupuestos', descripcion: 'Crear y editar presupuestos de reparación', etapas: ['Buscar', 'Crear', 'Líneas', 'Revisar', 'PDF'], conecta: 'Término · Incidencia · Inicios', href: '/procesos/presupuestos' },
+  // ── LEGAL ──
+  { key: 'revision_log', titulo: 'Gestión LOG', responsable: 'Legal', participa: ['Administración', 'Finanzas', 'Ventas'], frecuencia: 'Semanal',
+    descripcion: 'BD_LOG Drive → Supabase',
+    etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'], conecta: null, href: null },
+  { key: 'contratos', titulo: 'Contratos', responsable: 'Legal', participa: [], frecuencia: 'Puntual', enConstruccion: true,
+    descripcion: 'Redacción de contratos',
+    etapas: [], conecta: null, href: null },
+  { key: 'valoraciones', titulo: 'Valoraciones', responsable: 'Legal', participa: [], frecuencia: 'Puntual', enConstruccion: true,
+    descripcion: 'Validación / evaluación de arrendatarios',
+    etapas: [], conecta: null, href: null },
+  { key: 'dicom', titulo: 'DICOM', responsable: 'Legal', participa: [], frecuencia: 'Puntual', enConstruccion: true,
+    descripcion: 'Consulta comercial del candidato',
+    etapas: [], conecta: null, href: null },
+
+  // ── FINANZAS ──
+  { key: 'termino', titulo: 'Término', responsable: 'Finanzas', participa: ['Administración', 'Legal'], frecuencia: 'Puntual',
+    descripcion: 'Aviso legal, recepción y garantías',
+    etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
+  { key: 'liquidacion', titulo: 'Liquidación', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
+    descripcion: 'Cruce cartola, neto propietarios',
+    etapas: ['Cruce cartola', 'No pagados', 'Revisión', 'Generar', 'Envío'], conecta: 'Cobranza', href: '/op/liquidacion-paola' },
+  { key: 'cartolas', titulo: 'Cartolas', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
+    descripcion: 'Cartola bancaria por IDADMON (lee/solicita cambios: Administración)',
+    etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'], conecta: 'Mandato · Cobranza', href: null },
+  { key: 'mandato', titulo: 'Mandato', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
+    descripcion: 'Cuotas esperadas y deuda mensual (resultado visible por Administración)',
+    etapas: ['Cuotas', 'Cartola BI', 'Vista deuda', 'Confirmar'], conecta: null, href: null },
+  { key: 'nubox', titulo: 'Financiero', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Semanal',
+    descripcion: 'Tratamiento datos financieros (resultado visible por Administración)',
+    etapas: [], conecta: null, href: '/procesos/financiero' },
+  { key: 'bi_sa', titulo: 'BI', responsable: 'Finanzas', participa: [], frecuencia: 'Semanal',
+    descripcion: 'Cartola Banco Internacional',
+    etapas: ['Cargar', 'Sugerir', 'Revisar', 'Volcar'], conecta: null, href: '/procesos/bi' },
 ]
 
 const ROL_COLORS = {
@@ -51,14 +105,40 @@ const ROL_COLORS = {
   observador:   { bg: '#F1EFE8', color: '#444441' },
 }
 
-// Colores del badge de responsable (reemplaza al de rol en las tarjetas)
-const NOMBRE_BADGE    = { bg: '#E1F5EE', color: '#085041' }  // responsable (verde)
-const DIRECCION_BADGE = { bg: '#FAEEDA', color: '#633806' }  // Direccion (ambar)
+const NOMBRE_BADGE    = { bg: '#E1F5EE', color: '#085041' }
+const DIRECCION_BADGE = { bg: '#FAEEDA', color: '#633806' }
 
-function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle, isMobile }) {
+function Chips({ proceso }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 8 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>
+        {proceso.responsable}
+      </span>
+      {proceso.participa && proceso.participa.length > 0 && (
+        <>
+          <span style={{ fontSize: 9, color: '#B4B2A9' }}>participa</span>
+          {proceso.participa.map((d, i) => (
+            <span key={i} style={{ fontSize: 9, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: PART_CHIP.bg, color: PART_CHIP.color }}>{d}</span>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function FrecBadge({ frecuencia }) {
+  if (!frecuencia) return null
+  return (
+    <span style={{ fontSize: 9, fontWeight: 500, padding: '1px 6px', borderRadius: 20, background: '#F1EFE8', color: '#888780' }}>
+      {frecuencia}
+    </span>
+  )
+}
+
+function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, onToggle, isMobile }) {
   const tiene = !!permiso
-  const nombreResp = responsable?.nombre
-  const badgeColor = responsable?.esDireccion ? DIRECCION_BADGE : NOMBRE_BADGE
+  const nombreResp = responsablePersona?.nombre
+  const personaColor = responsablePersona?.esDireccion ? DIRECCION_BADGE : NOMBRE_BADGE
 
   if (isMobile) {
     return (
@@ -75,9 +155,10 @@ function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {!tiene && <span style={{ fontSize: 13 }}>🔒</span>}
             <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{proceso.titulo}</span>
+            <FrecBadge frecuencia={proceso.frecuencia} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {nombreResp && <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: badgeColor.bg, color: badgeColor.color }}>{nombreResp}</span>}
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>{proceso.responsable}</span>
             {tiene && <span style={{ fontSize: 10, color: '#888' }}>{expanded ? '▲' : '▼'}</span>}
           </div>
         </div>
@@ -89,7 +170,9 @@ function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle
                 <span key={i} style={{ fontSize: 11, background: '#F1EFE8', color: '#5F5E5A', padding: '2px 8px', borderRadius: 20 }}>{e}</span>
               ))}
             </div>
-            {proceso.conecta && <div style={{ fontSize: 11, color: '#1D9E75', marginTop: 8 }}>↳ {proceso.conecta}</div>}
+            <Chips proceso={proceso} />
+            {nombreResp && <div style={{ fontSize: 10, color: '#B4B2A9', marginTop: 4 }}>Encargada/o: {nombreResp}</div>}
+            {proceso.conecta && <div style={{ fontSize: 11, color: '#1D9E75', marginTop: 6 }}>↳ {proceso.conecta}</div>}
             {proceso.links ? (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {proceso.links.map((l, i) => (
@@ -131,12 +214,11 @@ function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>
           {!tiene && <span style={{ fontSize: 13 }}>🔒</span>}
           {proceso.titulo}
+          <FrecBadge frecuencia={proceso.frecuencia} />
         </span>
-        {nombreResp && (
-          <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, background: badgeColor.bg, color: badgeColor.color }}>
-            {nombreResp}
-          </span>
-        )}
+        <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>
+          {proceso.responsable}
+        </span>
       </div>
       <div style={{ fontSize: 11, color: '#888780', marginBottom: 6, lineHeight: 1.4 }}>{proceso.descripcion}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
@@ -147,6 +229,8 @@ function ProcesCard({ proceso, permiso, responsable, onClick, expanded, onToggle
           </span>
         ))}
       </div>
+      <Chips proceso={proceso} />
+      {nombreResp && <div style={{ fontSize: 10, color: '#B4B2A9', marginTop: 4 }}>Encargada/o: {nombreResp}</div>}
       {proceso.conecta && tiene && <div style={{ marginTop: 6, fontSize: 10, color: '#1D9E75' }}>↳ {proceso.conecta}</div>}
       {/* Links múltiples para Servicios */}
       {proceso.links && tiene && (
@@ -230,9 +314,7 @@ export default function ProcesosPage() {
     }
   }
 
-  const totalMensuales = PROCESOS_MENSUALES.filter(p => permisos[p.key]).length
-  const totalSemanales = PROCESOS_SEMANALES.filter(p => permisos[p.key]).length
-  const totalPuntuales = PROCESOS_PUNTUALES.filter(p => permisos[p.key]).length
+  const totalDisponibles = PROCESOS.filter(p => permisos[p.key]).length
 
   if (status === 'loading' || loading) {
     return (
@@ -243,9 +325,9 @@ export default function ProcesosPage() {
     )
   }
 
-  const sectionLabel = (texto, disp, total) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 8px' }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#2C2C2A', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{texto}</span>
+  const sectionLabel = (texto, disp, total, color) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 8px' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, letterSpacing: '.04em', whiteSpace: 'nowrap', background: color.bg, color: color.color }}>{texto}</span>
       <div style={{ flex: 1, height: '0.5px', background: '#D3D1C7' }}></div>
       <span style={{ fontSize: 10, color: '#B4B2A9', whiteSpace: 'nowrap' }}>{disp}/{total}</span>
     </div>
@@ -258,7 +340,7 @@ export default function ProcesosPage() {
           key={p.key}
           proceso={p}
           permiso={permisos[p.key]}
-          responsable={responsables[p.key]}
+          responsablePersona={responsables[p.key]}
           onClick={handleClick}
           expanded={expanded === p.key}
           onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
@@ -278,7 +360,7 @@ export default function ProcesosPage() {
           <div>
             <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Motor de procesos</h1>
             <div style={{ fontSize: 12, color: '#888780' }}>
-              {session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0]} · {totalMensuales + totalSemanales + totalPuntuales} procesos disponibles
+              {session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0]} · {totalDisponibles} procesos disponibles
             </div>
           </div>
           <button onClick={() => router.push('/panel')}
@@ -288,29 +370,31 @@ export default function ProcesosPage() {
         </div>
 
         {/* LEYENDA */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14, fontSize: 11, color: '#888780', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 4, fontSize: 11, color: '#888780', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1D9E75', display: 'inline-block' }}></span> Con acceso
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#D3D1C7', display: 'inline-block' }}></span> Sin acceso
           </span>
-          {Object.entries(ROL_COLORS).map(([rol, c]) => (
-            <span key={rol} style={{ fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: c.bg, color: c.color }}>{rol}</span>
-          ))}
+          <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>responsable</span>
+          <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: PART_CHIP.bg, color: PART_CHIP.color }}>participa</span>
+          <span style={{ fontSize: 9, color: '#B4B2A9' }}>· la etiqueta junto al título es la frecuencia (Mensual / Semanal / Puntual)</span>
         </div>
 
-        {/* PROCESOS MENSUALES */}
-        {sectionLabel('PROCESOS MENSUALES — se abren una vez al mes, cada proceso en un día distinto', totalMensuales, PROCESOS_MENSUALES.length)}
-        {renderGrid(PROCESOS_MENSUALES, 3)}
-
-        {/* PROCESOS SEMANALES */}
-        {sectionLabel('PROCESOS SEMANALES — se abren cualquier día de la semana y quedan cerrados el viernes', totalSemanales, PROCESOS_SEMANALES.length)}
-        {renderGrid(PROCESOS_SEMANALES, 4)}
-
-        {/* PROCESOS PUNTUALES */}
-        {sectionLabel('PROCESOS PUNTUALES — se abren cuando ocurre el evento', totalPuntuales, PROCESOS_PUNTUALES.length)}
-        {renderGrid(PROCESOS_PUNTUALES, 3)}
+        {/* SECCIONES POR DEPARTAMENTO */}
+        {SECCIONES.map(depto => {
+          const lista = PROCESOS.filter(p => p.responsable === depto)
+          if (!lista.length) return null
+          const disp = lista.filter(p => permisos[p.key]).length
+          const color = DEPTO_COLORS[depto] || ROL_COLORS.observador
+          return (
+            <div key={depto}>
+              {sectionLabel(depto, disp, lista.length, color)}
+              {renderGrid(lista, 3)}
+            </div>
+          )
+        })}
 
       </div>
 
