@@ -2,19 +2,13 @@ import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
+import { EJECUTIVOS } from '@/lib/ejecutivos'
 
 const ML_CLIENT_ID = process.env.ML_CLIENT_ID
 const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET
 const ML_API           = 'https://api.mercadolibre.com'
 
-const EJECUTIVOS = {
-  'Alberto': { nombre: 'Alberto Cabezas',  phone: '+56 9 5357 7235', email: 'alberto.cabezas@fondocapital.com' },
-  'Adalis':  { nombre: 'Adalis',            phone: '+56 9 5334 5848', email: 'admon@fondocapital.com' },
-  'Tirza':   { nombre: 'Tirza Chavez',      phone: '+56 9 3423 1754', email: 'tirza.chavez@fondocapital.com' },
-  'Lorena':  { nombre: 'Lorena Sanmartín', phone: '+56 9 7618 3560', email: 'lorena.sanmartin@fondocapital.com' },
-  'Pedro':   { nombre: 'Pedro Perdomo',     phone: '+56 9 3445 6944', email: 'pedro.perdomo@fondocapital.com' },
-  'Neika':   { nombre: 'Neika Duque',       phone: '+56 9 4274 9624', email: 'neika.duque@fondocapital.com' },
-}
+// EJECUTIVOS ahora viene de '@/lib/ejecutivos' (fuente unica compartida con actualizar-pi)
 
 function facingValueId(orientacion) {
   if (!orientacion) return null
