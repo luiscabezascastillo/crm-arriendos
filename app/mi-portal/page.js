@@ -339,7 +339,7 @@ export default function MiPortalPage() {
                         <th style={th}>Inicio</th><th style={th}>Límite</th></tr></thead>
                     <tbody>
                       {wfFiltrado.map(w => (
-                          <tr key={w.id}>
+                          <tr key={w.id} onClick={() => w.idadmon && router.push('/procesos/terminos/' + w.idadmon)} style={{ cursor: w.idadmon ? 'pointer' : 'default' }} onMouseEnter={e => { if (w.idadmon) e.currentTarget.style.background = '#F4F8FE' }} onMouseLeave={e => e.currentTarget.style.background = ''}>
                             <td style={td}>{w.node_codigo}</td>
                             <td style={td}>{w.idadmon || '-'}</td>
                             <td style={td}>{w.nodo_nombre}</td>

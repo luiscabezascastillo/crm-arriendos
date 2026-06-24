@@ -500,6 +500,7 @@ export default function TerminosPage() {
                     <div style={card}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Estado del proceso</span>
+                        <button onClick={() => router.push('/procesos/terminos/' + idadmonSel)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#fff' }}>Abrir workflow →</button>
                         <button onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#185FA5' }}>{wfExpandido ? 'Ver paso actual' : `Ver los ${nodos.length} pasos`}</button>
                       </div>
                       {nodos.length === 0 ? <div style={{ color: '#888', fontSize: 12 }}>Cargando pasos…</div>
