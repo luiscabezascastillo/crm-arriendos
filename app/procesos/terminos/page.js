@@ -120,15 +120,16 @@ export default function TerminosPage() {
     setNodos(data || [])
   }
   async function cargarLista() {
-    const { data: d } = await supabase.from('descuentos').select('idadmon').like('repercutir_a', 'T-%')
-    const ids = [...new Set((d || []).map(x => (x.idadmon || '').trim()).filter(Boolean))]
-    const info = {}
-    for (let i = 0; i < ids.length; i += 300) {
-      const trozo = ids.slice(i, i + 300)
-      const { data: da } = await supabase.from('datos_arriendos').select('idadmon, arrendatario, inmueble, estado').in('idadmon', trozo)
-      ;(da || []).forEach(r => { info[(r.idadmon || '').trim()] = r })
-    }
-    setListaIds(ids.map(id => ({ idadmon: id, ...(info[id] || {}) })).sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
+    // Origen: datos_arriendos por estado de termino (Q en espera, N_DICOM derivados). No 'descuentos'.
+    const ESTADOS_TERMINO = ['Q', 'N_DICOM']
+    const { data: da } = await supabase
+      .from('datos_arriendos')
+      .select('idadmon, arrendatario, inmueble, estado')
+      .in('estado', ESTADOS_TERMINO)
+    setListaIds((da || [])
+      .map(r => ({ idadmon: (r.idadmon || '').trim(), arrendatario: r.arrendatario, inmueble: r.inmueble, estado: r.estado }))
+      .filter(r => r.idadmon)
+      .sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
     setListaCargada(true)
   }
 
@@ -330,7 +331,7 @@ export default function TerminosPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Búsqueda rápida…" style={{ ...input, marginBottom: 14, maxWidth: 520 }} />
           {!listaCargada ? <div style={{ color: '#888' }}>Cargando…</div> : (
             <>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>{rows.length} de {listaIds.length} · estado: <b>{filtros.estado === '__all__' ? 'todos' : filtros.estado}</b></div>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>{rows.length} resultado{rows.length === 1 ? '' : 's'} · estado: <b>{filtros.estado === '__all__' ? 'todos' : filtros.estado}</b></div>
               <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead><tr style={{ background: '#FAFAF8', borderBottom: '1px solid #E8E6E0' }}>
