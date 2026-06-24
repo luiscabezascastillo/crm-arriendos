@@ -62,7 +62,7 @@ export default function TerminosPage() {
   const [listaIds, setListaIds] = useState([])
   const [listaCargada, setListaCargada] = useState(false)
   const [busca, setBusca] = useState('')
-  const [filtros, setFiltros] = useState({ idadmon: '', arrendatario: '', inmueble: '', estado: 'Q' })
+  const [filtros, setFiltros] = useState({ idadmon: '', fecha_entrega: '', propietario: '', arrendatario: '', inmueble: '', estado: 'Q' })
   const [sortCol, setSortCol] = useState('idadmon')
   const [sortDir, setSortDir] = useState('desc')
 
@@ -124,12 +124,20 @@ export default function TerminosPage() {
     const ESTADOS_TERMINO = ['Q', 'N_DICOM']
     const { data: da } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, arrendatario, inmueble, estado')
+      .select('idadmon, arrendatario, inmueble, estado, propietario')
       .in('estado', ESTADOS_TERMINO)
-    setListaIds((da || [])
-      .map(r => ({ idadmon: (r.idadmon || '').trim(), arrendatario: r.arrendatario, inmueble: r.inmueble, estado: r.estado }))
+    const base = (da || [])
+      .map(r => ({ idadmon: (r.idadmon || '').trim(), arrendatario: r.arrendatario, inmueble: r.inmueble, estado: r.estado, propietario: r.propietario }))
       .filter(r => r.idadmon)
-      .sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
+    // cruzar fecha_entrega desde 'terminos'
+    const ids = base.map(r => r.idadmon)
+    const fechas = {}
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data: tt } = await supabase.from('terminos').select('idadmon, fecha_entrega').in('idadmon', ids.slice(i, i + 300))
+      ;(tt || []).forEach(t => { fechas[(t.idadmon || '').trim()] = t.fecha_entrega })
+    }
+    base.forEach(r => { r.fecha_entrega = fechas[r.idadmon] || null })
+    setListaIds(base.sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
     setListaCargada(true)
   }
 
@@ -308,7 +316,7 @@ export default function TerminosPage() {
 
   // ───────── LISTA ─────────
   if (modo === 'lista') {
-    const COLS = [{ key: 'idadmon', label: 'IDADMON' }, { key: 'arrendatario', label: 'Arrendatario' }, { key: 'inmueble', label: 'Inmueble' }, { key: 'estado', label: 'Estado' }]
+    const COLS = [{ key: 'idadmon', label: 'IDADMON' }, { key: 'fecha_entrega', label: 'F. Entrega' }, { key: 'propietario', label: 'Propietario' }, { key: 'arrendatario', label: 'Arrendatario' }, { key: 'inmueble', label: 'Inmueble' }, { key: 'estado', label: 'Estado' }]
     const estadosDisp = [...new Set(listaIds.map(r => up(r.estado)).filter(Boolean))].sort()
     const q = norm(busca)
     let rows = listaIds.filter(r => {
@@ -316,6 +324,8 @@ export default function TerminosPage() {
       if (filtros.idadmon && !norm(r.idadmon).includes(norm(filtros.idadmon))) return false
       if (filtros.arrendatario && !norm(r.arrendatario).includes(norm(filtros.arrendatario))) return false
       if (filtros.inmueble && !norm(r.inmueble).includes(norm(filtros.inmueble))) return false
+      if (filtros.propietario && !norm(r.propietario).includes(norm(filtros.propietario))) return false
+      if (filtros.fecha_entrega && !norm(r.fecha_entrega).includes(norm(filtros.fecha_entrega))) return false
       if (q && !norm([r.idadmon, r.arrendatario, r.inmueble].join(' ')).includes(q)) return false
       return true
     }).sort((a, b) => { const va = norm(a[sortCol]), vb = norm(b[sortCol]); if (va < vb) return sortDir === 'asc' ? -1 : 1; if (va > vb) return sortDir === 'asc' ? 1 : -1; return 0 })
@@ -344,10 +354,12 @@ export default function TerminosPage() {
                     ))}<th style={{ width: 1 }}></th>
                   </tr></thead>
                   <tbody>
-                    {rows.length === 0 ? <tr><td colSpan={5} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
+                    {rows.length === 0 ? <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
                       : rows.map(r => (
                         <tr key={r.idadmon} style={{ borderBottom: '1px solid #F3F4F6' }}>
                           <td style={{ padding: '10px 12px', color: '#185FA5', fontWeight: 700 }}>{r.idadmon}</td>
+                          <td style={{ padding: '10px 12px', color: '#555', whiteSpace: 'nowrap' }}>{r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '—'}</td>
+                          <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.propietario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.arrendatario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#555' }}>{r.inmueble || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#888' }}>{r.estado || '—'}</td>
