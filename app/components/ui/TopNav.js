@@ -10,22 +10,33 @@ const DIRECCION_EMAILS = [
   'tirza.chavez@fondocapital.com',
 ];
 
+// --- Transición de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
+// Permite que el código nuevo funcione mientras la BD aún tenga roles viejos.
+const ROL_ALIAS = {
+  admin: 'direccion',
+  operaciones: 'administracion',
+  tecnico: 'mantencion',
+};
+const normRol = (r) => ROL_ALIAS[r] || r;
+
+// Roles internos de la empresa (todos menos 'comercial', que es externo).
+const INTERNOS = ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'];
+
+// RUTAS: deny by default. Lo que NO está listado aquí, solo lo ve Dirección.
 const RUTAS = {
-  '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/admin':        ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/cc1':          ['admin', 'finanzas', 'legal'],
-  '/op/deudas':    ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/op/morosidad': ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/op':           ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/procesos':     ['admin', 'operaciones', 'finanzas', 'legal', 'ventas'],
-  '/publicaciones':['admin', 'comercial', 'ventas', 'legal'],
-  '/propiedades':  ['admin'],
-  '/requerimientos': ['admin'],
-  '/visitas':      ['admin'],
-  '/calendario':   ['admin'],
-  '/cumpleanos':   ['admin'],
-  '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
+  '/panel':         INTERNOS,
+  '/procesos':      INTERNOS,
+  '/propiedades':   INTERNOS,
+  '/mi-portal':     INTERNOS,
+  // Bloque Ventas (solo rol 'ventas', interno):
+  '/publicaciones':  ['ventas'],
+  '/requerimientos': ['ventas'],
+  '/visitas':        ['ventas'],
+  '/calendario':     ['ventas'],
+  '/cumpleanos':     ['ventas'],
+  '/contactos':      ['ventas'],
+  '/edificios':      ['ventas'],
+  // /admin (Config): NO se lista -> solo Dirección.
 };
 
 const DOCS = {
@@ -72,11 +83,10 @@ export default function TopNav() {
   }, []);
 
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
-  const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
-  const rol = session?.user?.role;
-  const esAdmin = rol === 'admin' || esDireccion;
-  // ¿el rol actual puede ver esta ruta? Si la ruta no está en RUTAS, se muestra a todos.
-  const puede = (ruta) => !RUTAS[ruta] || (rol && RUTAS[ruta].includes(rol));
+  const rol = normRol(session?.user?.role);
+  const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
+  // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
+  const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
   function abrirDoc(tipo) {
     const url = DOCS[tipo];
@@ -199,7 +209,7 @@ export default function TopNav() {
         )}
       </div>
 
-      {/* Dirección — panel propio, solo para emails de dirección */}
+      {/* Dirección — panel propio, por rol 'direccion' (o email de respaldo) */}
       {esDireccion && (
         <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
       )}
@@ -229,64 +239,65 @@ export default function TopNav() {
       </div>
       )}
 
-      {/* Procesos — absorbe CC1 Admin y Op. especiales */}
-      {(puede('/procesos') || puede('/cc1') || puede('/op/deudas') || puede('/op/morosidad') || puede('/op')) && (
+      {/* Procesos — incluye CC1 y Operación. Acceso fino por proceso_permisos en la página. */}
+      {puede('/procesos') && (
       <div ref={procesosRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(procesosActive)} onClick={() => { setProcesosOpen(v => !v); setPropiedadesOpen(false); setVentasOpen(false); }}>
           Procesos <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
         </button>
         {procesosOpen && (
           <div style={s.dropdown}>
-            {puede('/procesos') && <Link href="/procesos" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Procesos (general)</Link>}
+            <Link href="/procesos" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Procesos (general)</Link>
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>CC1 Admin</div>
-            {puede('/cc1') && <Link href="/cc1" style={s.dropItem} onClick={() => setProcesosOpen(false)}>CC1 Admin</Link>}
-            {puede('/op/deudas') && <Link href="/op/deudas" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Deudas servicios</Link>}
-            {puede('/op/morosidad') && <Link href="/op/morosidad" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Morosidad</Link>}
-            {puede('/op') && (
-              <>
-                <div style={s.dropDivider}/>
-                <div style={s.dropLabel}>Operacion</div>
-                <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Comunidad Feliz</Link>
-                <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Liquidacion Paola</Link>
-                <div style={s.dropDivider}/>
-                <div style={s.dropLabel}>Pendientes</div>
-                {['Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
-                  <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
-                ))}
-              </>
-            )}
+            <Link href="/cc1" style={s.dropItem} onClick={() => setProcesosOpen(false)}>CC1 Admin</Link>
+            <Link href="/op/deudas" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Deudas servicios</Link>
+            <Link href="/op/morosidad" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Morosidad</Link>
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>Operacion</div>
+            <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Comunidad Feliz</Link>
+            <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Liquidacion Paola</Link>
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>Pendientes</div>
+            {['Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
+              <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
+            ))}
           </div>
         )}
       </div>
       )}
 
-      {/* Ventas (ex-Comercial) — absorbe Inventario y Contactos */}
-      {(puede('/requerimientos') || puede('/visitas') || puede('/publicaciones') || puede('/contactos')) && (
+      {/* Ventas (interno) — Inventario y Contactos */}
+      {puede('/publicaciones') && (
       <div ref={ventasRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(ventasActive)} onClick={() => { setVentasOpen(v => !v); setPropiedadesOpen(false); setProcesosOpen(false); }}>
           Ventas <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
         </button>
         {ventasOpen && (
           <div style={s.dropdown}>
-            {puede('/requerimientos') && <Link href="/requerimientos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Requerimientos</Link>}
-            {puede('/visitas') && <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y órdenes</Link>}
+            <Link href="/requerimientos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Requerimientos</Link>
+            <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y órdenes</Link>
             <div style={s.dropDivider}/>
-            {puede('/calendario') && <Link href="/calendario" style={s.dropItem} onClick={() => setVentasOpen(false)}>Calendario</Link>}
-            {puede('/cumpleanos') && <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumpleaños</Link>}
+            <Link href="/calendario" style={s.dropItem} onClick={() => setVentasOpen(false)}>Calendario</Link>
+            <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumpleaños</Link>
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Inventario</div>
-            {puede('/publicaciones') && <Link href="/publicaciones" style={s.dropItem} onClick={() => setVentasOpen(false)}>Publicaciones</Link>}
+            <Link href="/publicaciones" style={s.dropItem} onClick={() => setVentasOpen(false)}>Publicaciones</Link>
             <Link href="/edificios" style={s.dropItem} onClick={() => setVentasOpen(false)}>Edificios</Link>
             <div style={s.dropDivider}/>
-            {puede('/contactos') && <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>}
+            <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>
             <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
           </div>
         )}
       </div>
       )}
 
-      {/* Config (formulario ADMIN tipo Excel LOG) */}
+      {/* Comercial — Portal externo (pendiente de desarrollo). Solo Dirección por ahora. */}
+      {esDireccion && (
+        <span style={{ ...s.link(false), opacity: 0.4, cursor: 'default' }}>Comercial · pronto</span>
+      )}
+
+      {/* Config — solo Dirección */}
       {puede('/admin') && (
         <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
       )}
@@ -321,7 +332,7 @@ export default function TopNav() {
         <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
       )}
 
-      {/* Menú de usuario (Luis ▾) */}
+      {/* Menú de usuario */}
       {session?.user && (
       <div ref={userRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(userOpen)} onClick={() => setUserOpen(v => !v)}>
@@ -330,7 +341,7 @@ export default function TopNav() {
         {userOpen && (
           <div style={s.dropdownRight}>
             <span style={s.dropItemSoon}>Mi Perfil · pronto</span>
-            {esAdmin && (
+            {esDireccion && (
               <>
                 <div style={s.dropDivider}/>
                 <div style={s.dropLabel}>Administracion</div>
