@@ -4,7 +4,11 @@ import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com'];
+const DIRECCION_EMAILS = [
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+  'tirza.chavez@fondocapital.com',
+];
 
 const RUTAS = {
   '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
@@ -24,29 +28,44 @@ const RUTAS = {
   '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
 };
 
+const DOCS = {
+  reglamento: 'https://drive.google.com/file/d/1P4z9A8CDHLzqDPce-ZNK3p_yEwvnMzpS/preview',
+  procesos: '/procesos-2026.html',
+  manual_deudas: 'https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview',
+  manual_terminos: 'https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview',
+  manual_publicaciones: 'https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview',
+};
+
+// Portales del ecosistema FCR (selector FCR). CRM Interno es el actual.
+const WORKSPACES = {
+  propietarios: 'https://portal-propietarios-rose.vercel.app',
+  web: 'https://www.fondocapital.com',
+};
+
 export default function TopNav() {
   const { data: session } = useSession();
   const pathname = usePathname();
-  const [cc1Open, setCc1Open] = useState(false);
-  const [opOpen, setOpOpen] = useState(false);
-  const [crmOpen, setCrmOpen] = useState(false);
-  const [comercialOpen, setComercialOpen] = useState(false);
-  const [inventarioOpen, setInventarioOpen] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalContent, setModalContent] = useState(null);
-  const cc1Ref = useRef(null);
-  const opRef = useRef(null);
-  const crmRef = useRef(null);
-  const comercialRef = useRef(null);
-  const inventarioRef = useRef(null);
+  const [fcrOpen, setFcrOpen] = useState(false);
+  const [propiedadesOpen, setPropiedadesOpen] = useState(false);
+  const [procesosOpen, setProcesosOpen] = useState(false);
+  const [ventasOpen, setVentasOpen] = useState(false);
+  const [ayudaOpen, setAyudaOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  const fcrRef = useRef(null);
+  const propiedadesRef = useRef(null);
+  const procesosRef = useRef(null);
+  const ventasRef = useRef(null);
+  const ayudaRef = useRef(null);
+  const userRef = useRef(null);
 
   useEffect(() => {
     function handleClick(e) {
-      if (cc1Ref.current && !cc1Ref.current.contains(e.target)) setCc1Open(false);
-      if (opRef.current && !opRef.current.contains(e.target)) setOpOpen(false);
-      if (crmRef.current && !crmRef.current.contains(e.target)) setCrmOpen(false);
-      if (comercialRef.current && !comercialRef.current.contains(e.target)) setComercialOpen(false);
-      if (inventarioRef.current && !inventarioRef.current.contains(e.target)) setInventarioOpen(false);
+      if (fcrRef.current && !fcrRef.current.contains(e.target)) setFcrOpen(false);
+      if (propiedadesRef.current && !propiedadesRef.current.contains(e.target)) setPropiedadesOpen(false);
+      if (procesosRef.current && !procesosRef.current.contains(e.target)) setProcesosOpen(false);
+      if (ventasRef.current && !ventasRef.current.contains(e.target)) setVentasOpen(false);
+      if (ayudaRef.current && !ayudaRef.current.contains(e.target)) setAyudaOpen(false);
+      if (userRef.current && !userRef.current.contains(e.target)) setUserOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -55,18 +74,15 @@ export default function TopNav() {
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const esDireccion = DIRECCION_EMAILS.includes(session?.user?.email);
   const rol = session?.user?.role;
+  const esAdmin = rol === 'admin' || esDireccion;
   // ¿el rol actual puede ver esta ruta? Si la ruta no está en RUTAS, se muestra a todos.
   const puede = (ruta) => !RUTAS[ruta] || (rol && RUTAS[ruta].includes(rol));
 
-function abrirModal(tipo) {
-    const urls = {
-      reglamento: 'https://drive.google.com/file/d/1P4z9A8CDHLzqDPce-ZNK3p_yEwvnMzpS/preview',
-      procesos: '/procesos-2026.html',
-      manual_deudas: 'https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview',
-      manual_terminos: 'https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview',
-      manual_publicaciones: 'https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview',
-    };
-    const url = urls[tipo];
+  function abrirDoc(tipo) {
+    const url = DOCS[tipo];
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }
+  function abrirWorkspace(url) {
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
@@ -107,13 +123,19 @@ function abrirModal(tipo) {
       background: active ? '#E6F1FB' : 'transparent',
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', gap: 4,
-      transition: 'all 0.12s',
+      transition: 'all 0.12s', whiteSpace: 'nowrap',
     }),
     dropdown: {
       position: 'absolute', top: '100%', left: 0, marginTop: 4,
       background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8,
       boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-      minWidth: 200, padding: '6px 0', zIndex: 200,
+      minWidth: 220, padding: '6px 0', zIndex: 200,
+    },
+    dropdownRight: {
+      position: 'absolute', top: '100%', right: 0, marginTop: 4,
+      background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+      minWidth: 240, padding: '6px 0', zIndex: 200,
     },
     dropItem: {
       display: 'block', padding: '8px 16px',
@@ -141,214 +163,190 @@ function abrirModal(tipo) {
       transition: 'all 0.12s',
     }),
     spacer: { flex: 1 },
-    user: { fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 8 },
     signout: { fontSize: 11, color: '#aaa', background: 'none', border: '1px solid #E8E6E0', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' },
   };
 
-  const cc1Active = isActive('/cc1') || isActive('/op/deudas');
-  const opActive = isActive('/op/comunidad-feliz') || isActive('/op/liquidacion-paola') || isActive('/op/morosidad');
-  const comercialActive = isActive('/requerimientos') || isActive('/visitas');
-  const inventarioActive = isActive('/publicaciones') || isActive('/propiedades') || isActive('/edificios');
+  const propiedadesActive = isActive('/propiedades');
+  const procesosActive = isActive('/procesos') || isActive('/cc1') || isActive('/op');
+  const ventasActive = isActive('/requerimientos') || isActive('/visitas') || isActive('/calendario')
+    || isActive('/cumpleanos') || isActive('/publicaciones') || isActive('/edificios') || isActive('/contactos');
 
   return (
-    <>
-      <nav style={s.nav}>
+    <nav style={s.nav}>
 
-        {/* CRM dropdown con modal */}
-        <div ref={crmRef} style={{ position: 'relative', marginRight: 8 }}>
-          <button style={s.brand} onClick={() => setCrmOpen(v => !v)}>
-            <span>CRM</span>
-            <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
-          </button>
-          {crmOpen && (
-            <div style={s.dropdown}>
-              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-                onClick={() => abrirModal('reglamento')}>
-                📋 Reglamento Interno
-              </button>
-<button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-                onClick={() => abrirModal('procesos')}>
-                🗺 Mapa de Procesos
-              </button>
-              <div style={s.dropDivider}/>
-              <div style={s.dropLabel}>Manuales</div>
-              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-                onClick={() => abrirModal('manual_deudas')}>
-                💧 Manual de Deudas de Servicios
-              </button>
-              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-                onClick={() => abrirModal('manual_terminos')}>
-                🔑 Guía de Términos
-              </button>
-              <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-                onClick={() => abrirModal('manual_publicaciones')}>
-                🏠 Manual de Publicaciones
-              </button>
-            </div>
-          )}        </div>
-
-        {esDireccion && (
-          <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
-        )}
-
-        {puede('/panel') && (
-          <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
-        )}
-        {puede('/procesos') && (
-          <Link href="/procesos" style={s.link(isActive('/procesos'))}>Procesos</Link>
-        )}
-
-        {(puede('/cc1') || puede('/op/deudas') || puede('/op/morosidad')) && (
-        <div ref={cc1Ref} style={{ position: 'relative' }}>
-          <button style={s.dropBtn(cc1Active)} onClick={() => { setCc1Open(v => !v); setOpOpen(false); }}>
-            CC1 Admin <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-          </button>
-          {cc1Open && (
-            <div style={s.dropdown}>
-              {puede('/cc1') && <Link href="/cc1" style={s.dropItem} onClick={() => setCc1Open(false)}>CC1 Admin</Link>}
-              {puede('/op/deudas') && <Link href="/op/deudas" style={s.dropItem} onClick={() => setCc1Open(false)}>Deudas servicios</Link>}
-              {puede('/op/morosidad') && <Link href="/op/morosidad" style={s.dropItem} onClick={() => setCc1Open(false)}>Morosidad</Link>}
-            </div>
-          )}
-        </div>
-        )}
-
-        {(rol === 'admin' || esDireccion) && (
-          <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC2</Link>
-        )}
-        {(rol === 'admin' || esDireccion) && (
-          <Link href="#" style={{ ...s.link(false), opacity: 0.35, pointerEvents: 'none' }}>CC3</Link>
-        )}
-
-        {puede('/op') && (
-        <div ref={opRef} style={{ position: 'relative' }}>
-          <button style={s.dropBtn(opActive)} onClick={() => { setOpOpen(v => !v); setCc1Open(false); }}>
-            Op. especiales <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-          </button>
-          {opOpen && (
-            <div style={s.dropdown}>
-              <div style={s.dropLabel}>Operacion</div>
-              <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setOpOpen(false)}>Comunidad Feliz</Link>
-              <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setOpOpen(false)}>Liquidacion Paola</Link>
-              <Link href="/op/morosidad" style={s.dropItem} onClick={() => setOpOpen(false)}>Morosidad</Link>
-              <div style={s.dropDivider}/>
-              <div style={s.dropLabel}>Pendientes</div>
-              {['Contratos','Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
-                <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
-
-        {puede('/admin') && (
-          <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
-        )}
-
-        {/* Comercial (desplegable) */}
-        {(puede('/requerimientos') || puede('/visitas')) && (
-        <div ref={comercialRef} style={{ position: 'relative' }}>
-          <button style={s.dropBtn(comercialActive)} onClick={() => { setComercialOpen(v => !v); setInventarioOpen(false); setCc1Open(false); setOpOpen(false); }}>
-            Comercial <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-          </button>
-          {comercialOpen && (
-            <div style={s.dropdown}>
-              {puede('/requerimientos') && <Link href="/requerimientos" style={s.dropItem} onClick={() => setComercialOpen(false)}>Requerimientos</Link>}
-              {puede('/visitas') && <Link href="/visitas" style={s.dropItem} onClick={() => setComercialOpen(false)}>Visitas y órdenes</Link>}
-              <div style={s.dropDivider}/>
-              {puede('/calendario') && <Link href="/calendario" style={s.dropItem} onClick={() => setComercialOpen(false)}>Calendario</Link>}
-              {puede('/cumpleanos') && <Link href="/cumpleanos" style={s.dropItem} onClick={() => setComercialOpen(false)}>Cumpleaños</Link>}
-              <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Inventario (desplegable) */}
-        {(puede('/publicaciones') || puede('/propiedades') || puede('/edificios')) && (
-        <div ref={inventarioRef} style={{ position: 'relative' }}>
-          <button style={s.dropBtn(inventarioActive)} onClick={() => { setInventarioOpen(v => !v); setComercialOpen(false); setCc1Open(false); setOpOpen(false); }}>
-            Inventario <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
-          </button>
-          {inventarioOpen && (
-            <div style={s.dropdown}>
-              {puede('/publicaciones') && <Link href="/publicaciones" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Publicaciones</Link>}
-              {puede('/propiedades') && <Link href="/propiedades" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Propiedades</Link>}
-              <Link href="/edificios" style={s.dropItem} onClick={() => setInventarioOpen(false)}>Edificios</Link>
-            </div>
-          )}
-        </div>
-        )}
-
-        {puede('/contactos') && (
-          <Link href="/contactos" style={s.link(isActive('/contactos'))}>Contactos</Link>
-        )}
-
-        <div style={s.spacer}/>
-
-        {puede('/mi-portal') && (
-          <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
-        )}
-
-        {session?.user && (
-          <div style={s.user}>
-            <span>{session.user.email?.split('@')[0]}</span>
-            <button style={s.signout} onClick={() => signOut()}>salir</button>
+      {/* FCR — selector de workspace/portal */}
+      <div ref={fcrRef} style={{ position: 'relative', marginRight: 8 }}>
+        <button style={s.brand} onClick={() => setFcrOpen(v => !v)}>
+          <span>FCR</span>
+          <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
+        </button>
+        {fcrOpen && (
+          <div style={s.dropdown}>
+            <div style={s.dropLabel}>Cambiar de portal</div>
+            <span style={{ ...s.dropItem, fontWeight: 600, color: '#185FA5', cursor: 'default', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              CRM Interno (Backoffice) <span style={{ color: '#0F6E56', fontSize: 11 }}>●</span>
+            </span>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirWorkspace(WORKSPACES.propietarios); setFcrOpen(false); }}>
+              Portal de Propietarios ↗
+            </button>
+            <span style={s.dropItemSoon}>Portal Comercial · pronto</span>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirWorkspace(WORKSPACES.web); setFcrOpen(false); }}>
+              Web Corporativa ↗
+            </button>
           </div>
         )}
-      </nav>
+      </div>
 
-      {/* Modal CRM */}
-      {modalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={() => setModalOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: 16, width: '90%', maxWidth: modalContent === 'procesos' ? 1100 : 800, height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8E6E0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>
-              {modalContent === 'reglamento' ? '📋 Reglamento Interno'
-                  : modalContent === 'procesos' ? '🗺 Mapa de Procesos 2026'
-                  : modalContent === 'manual_deudas' ? '💧 Manual de Deudas de Servicios'
-                  : modalContent === 'manual_terminos' ? '🔑 Guía de Términos'
-                  : '🏠 Manual de Publicaciones'}              </span>
-              <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>×</button>
-            </div>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              {modalContent === 'reglamento' && (
-                <iframe
-                  src="https://drive.google.com/file/d/1P4z9A8CDHLzqDPce-ZNK3p_yEwvnMzpS/preview"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                  allow="autoplay"
-                />
-              )}
-              {modalContent === 'procesos' && (
-                <iframe
-                  src="/procesos-2026.html"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                />
-              )}
-              {modalContent === 'manual_deudas' && (
-                <iframe
-                  src="https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                />
-              )}
-              {modalContent === 'manual_terminos' && (
-                <iframe
-                  src="https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                />
-              )}
-              {modalContent === 'manual_publicaciones' && (
-                <iframe
-                  src="https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Dirección — panel propio, solo para emails de dirección */}
+      {esDireccion && (
+        <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
       )}
-    </>
+
+      {/* Panel — dashboard operativo */}
+      {puede('/panel') && (
+        <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
+      )}
+
+      {/* Propiedades — módulo de datos maestros (entre Panel y Procesos) */}
+      {puede('/propiedades') && (
+      <div ref={propiedadesRef} style={{ position: 'relative' }}>
+        <button style={s.dropBtn(propiedadesActive)} onClick={() => { setPropiedadesOpen(v => !v); setProcesosOpen(false); setVentasOpen(false); }}>
+          Propiedades <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+        </button>
+        {propiedadesOpen && (
+          <div style={s.dropdown}>
+            <Link href="/propiedades" style={s.dropItem} onClick={() => setPropiedadesOpen(false)}>Cartera de Propiedades</Link>
+            <span style={s.dropItemSoon}>Unidades · pronto</span>
+            <span style={s.dropItemSoon}>Propietarios · pronto</span>
+            <span style={s.dropItemSoon}>Arrendatarios · pronto</span>
+            <span style={s.dropItemSoon}>Contratos · pronto</span>
+            <span style={s.dropItemSoon}>Documentos · pronto</span>
+            <span style={s.dropItemSoon}>Historial · pronto</span>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Procesos — absorbe CC1 Admin y Op. especiales */}
+      {(puede('/procesos') || puede('/cc1') || puede('/op/deudas') || puede('/op/morosidad') || puede('/op')) && (
+      <div ref={procesosRef} style={{ position: 'relative' }}>
+        <button style={s.dropBtn(procesosActive)} onClick={() => { setProcesosOpen(v => !v); setPropiedadesOpen(false); setVentasOpen(false); }}>
+          Procesos <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+        </button>
+        {procesosOpen && (
+          <div style={s.dropdown}>
+            {puede('/procesos') && <Link href="/procesos" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Procesos (general)</Link>}
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>CC1 Admin</div>
+            {puede('/cc1') && <Link href="/cc1" style={s.dropItem} onClick={() => setProcesosOpen(false)}>CC1 Admin</Link>}
+            {puede('/op/deudas') && <Link href="/op/deudas" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Deudas servicios</Link>}
+            {puede('/op/morosidad') && <Link href="/op/morosidad" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Morosidad</Link>}
+            {puede('/op') && (
+              <>
+                <div style={s.dropDivider}/>
+                <div style={s.dropLabel}>Operacion</div>
+                <Link href="/op/comunidad-feliz" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Comunidad Feliz</Link>
+                <Link href="/op/liquidacion-paola" style={s.dropItem} onClick={() => setProcesosOpen(false)}>Liquidacion Paola</Link>
+                <div style={s.dropDivider}/>
+                <div style={s.dropLabel}>Pendientes</div>
+                {['Estados IDADMON','Cartolas','Facturas','Nubox'].map(n => (
+                  <span key={n} style={{ ...s.dropItem, opacity: 0.35, display: 'block', cursor: 'default' }}>{n}</span>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Ventas (ex-Comercial) — absorbe Inventario y Contactos */}
+      {(puede('/requerimientos') || puede('/visitas') || puede('/publicaciones') || puede('/contactos')) && (
+      <div ref={ventasRef} style={{ position: 'relative' }}>
+        <button style={s.dropBtn(ventasActive)} onClick={() => { setVentasOpen(v => !v); setPropiedadesOpen(false); setProcesosOpen(false); }}>
+          Ventas <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+        </button>
+        {ventasOpen && (
+          <div style={s.dropdown}>
+            {puede('/requerimientos') && <Link href="/requerimientos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Requerimientos</Link>}
+            {puede('/visitas') && <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y órdenes</Link>}
+            <div style={s.dropDivider}/>
+            {puede('/calendario') && <Link href="/calendario" style={s.dropItem} onClick={() => setVentasOpen(false)}>Calendario</Link>}
+            {puede('/cumpleanos') && <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumpleaños</Link>}
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>Inventario</div>
+            {puede('/publicaciones') && <Link href="/publicaciones" style={s.dropItem} onClick={() => setVentasOpen(false)}>Publicaciones</Link>}
+            <Link href="/edificios" style={s.dropItem} onClick={() => setVentasOpen(false)}>Edificios</Link>
+            <div style={s.dropDivider}/>
+            {puede('/contactos') && <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>}
+            <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Config (formulario ADMIN tipo Excel LOG) */}
+      {puede('/admin') && (
+        <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
+      )}
+
+      <div style={s.spacer}/>
+
+      {/* Ayuda — Reglamento, Mapa de procesos y manuales */}
+      <div ref={ayudaRef} style={{ position: 'relative' }}>
+        <button style={s.dropBtn(false)} onClick={() => setAyudaOpen(v => !v)}>
+          Ayuda <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+        </button>
+        {ayudaOpen && (
+          <div style={s.dropdownRight}>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('reglamento'); setAyudaOpen(false); }}>📋 Reglamento Interno</button>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('procesos'); setAyudaOpen(false); }}>🗺 Mapa de Procesos</button>
+            <div style={s.dropDivider}/>
+            <div style={s.dropLabel}>Manuales</div>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('manual_deudas'); setAyudaOpen(false); }}>💧 Manual de Deudas de Servicios</button>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('manual_terminos'); setAyudaOpen(false); }}>🔑 Guía de Términos</button>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('manual_publicaciones'); setAyudaOpen(false); }}>🏠 Manual de Publicaciones</button>
+          </div>
+        )}
+      </div>
+
+      {/* Mis tareas */}
+      {puede('/mi-portal') && (
+        <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
+      )}
+
+      {/* Menú de usuario (Luis ▾) */}
+      {session?.user && (
+      <div ref={userRef} style={{ position: 'relative' }}>
+        <button style={s.dropBtn(userOpen)} onClick={() => setUserOpen(v => !v)}>
+          {session.user.email?.split('@')[0]} <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
+        </button>
+        {userOpen && (
+          <div style={s.dropdownRight}>
+            <span style={s.dropItemSoon}>Mi Perfil · pronto</span>
+            {esAdmin && (
+              <>
+                <div style={s.dropDivider}/>
+                <div style={s.dropLabel}>Administracion</div>
+                <span style={s.dropItemSoon}>Usuarios y Permisos · pronto</span>
+                <span style={s.dropItemSoon}>Catalogos / Listas Maestras · pronto</span>
+                <span style={s.dropItemSoon}>Integraciones · pronto</span>
+                <span style={s.dropItemSoon}>Configuracion General · pronto</span>
+              </>
+            )}
+            <div style={s.dropDivider}/>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit', color: '#C0392B' }}
+              onClick={() => signOut()}>Cerrar sesion</button>
+          </div>
+        )}
+      </div>
+      )}
+    </nav>
   );
 }
