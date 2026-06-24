@@ -77,6 +77,7 @@ export default function TerminosPage() {
   const [form, setForm] = useState(FORM_T)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [completandoWf, setCompletandoWf] = useState(false)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -86,6 +87,33 @@ export default function TerminosPage() {
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
   useEffect(() => { if (accesoOk === true) { cargarLista(); cargarNodos() } }, [accesoOk])
+
+  async function completarPaso(nodo) {
+    if (!nodo) return
+    if (!panel?.instanceId) { setMsg('Este término no tiene instancia de workflow.'); return }
+    const comentario = window.prompt('Comentario para completar ' + nodo.codigo + ' · ' + nodo.nombre + ' (opcional):', '')
+    if (comentario === null) return
+    setCompletandoWf(true); setMsg(null)
+    try {
+      const res = await fetch('/api/workflow/completar-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_instance_id: panel.instanceId,
+          node_codigo: nodo.codigo,
+          comentarios: comentario || null,
+          usuario_email: email,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setMsg('Error: ' + (data.error || res.status)); setCompletandoWf(false); return }
+      await abrir(idadmonSel)
+      setMsg('Paso ' + nodo.codigo + ' completado.')
+    } catch (e) {
+      setMsg('Error: ' + e.message)
+    }
+    setCompletandoWf(false)
+  }
 
   async function cargarNodos() {
     const { data } = await supabase.from('workflow_nodes').select('codigo, nombre, area_responsable, orden_visual').eq('workflow_codigo', 'TERMINO').order('orden_visual')
@@ -217,7 +245,7 @@ export default function TerminosPage() {
       .select('num, fecha_contable, idadmon, inmueble, propietario, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
       .in('idadmon', idsResumen).order('num')
 
-    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc })
+    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc })
     setLoadingPanel(false)
   }
 
@@ -479,8 +507,11 @@ export default function TerminosPage() {
                             pasoActual ? (
                               <div style={{ padding: 8, background: '#EAF2FB', borderRadius: 8 }}>
                                 <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Paso actual</div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{pasoActual.nombre}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{pasoActual.codigo} · {pasoActual.nombre}</div>
                                 <div style={{ fontSize: 11, color: '#888' }}>{pasoActual.area_responsable}</div>
+                                <button onClick={() => completarPaso(pasoActual)} disabled={completandoWf} style={{ marginTop: 8, fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, border: 'none', background: completandoWf ? '#9ca3af' : '#185FA5', color: '#fff', cursor: completandoWf ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                                  {completandoWf ? 'Completando…' : 'Completar paso →'}
+                                </button>
                               </div>
                             ) : <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>Todos los pasos completados ✓</div>
                           ) : (
@@ -492,7 +523,7 @@ export default function TerminosPage() {
                                 <div key={nd.codigo} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid #F6F5F2' }}>
                                   <span style={{ width: 14, height: 14, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, fontWeight: 700 }}>{st === 'hecho' ? '✓' : ''}</span>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: st === 'pendiente' ? '#9ca3af' : '#1a1a2e' }}>{nd.nombre}</div>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: st === 'pendiente' ? '#9ca3af' : '#1a1a2e' }}>{nd.codigo} · {nd.nombre}</div>
                                     <div style={{ fontSize: 10, color: '#aaa' }}>{nd.area_responsable}{fecha ? ' · ' + fmtFecha(fecha) : ''}{st === 'curso' ? ' · en curso' : ''}</div>
                                   </div>
                                 </div>

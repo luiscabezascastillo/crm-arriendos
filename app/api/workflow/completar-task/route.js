@@ -12,6 +12,7 @@ export async function POST(request) {
       workflow_instance_id,
       node_codigo,
       comentarios,
+      usuario_email,
     } = body;
 
     if (!workflow_instance_id || !node_codigo) {
@@ -22,7 +23,7 @@ export async function POST(request) {
     }
 
     const usuario =
-      session?.user?.name ||
+      usuario_email ||
       session?.user?.email ||
       "Usuario no identificado";
 
