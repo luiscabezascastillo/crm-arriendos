@@ -59,9 +59,11 @@ export async function POST(req) {
 
     // 3) email del cliente: preferimos el snapshot de la visita; si no, el del contacto ligado
     let clienteEmail = visita.cliente_email || null
-    if (!clienteEmail && visita.contacto_id) {
-      const { data: c } = await supabaseAdmin.from('contactos').select('email').eq('id', visita.contacto_id).single()
-      clienteEmail = c?.email || null
+    let clienteRut = visita.cliente_rut || null
+    if ((!clienteEmail || !clienteRut) && visita.contacto_id) {
+      const { data: c } = await supabaseAdmin.from('contactos').select('email, numero_doc').eq('id', visita.contacto_id).single()
+      clienteEmail = clienteEmail || c?.email || null
+      clienteRut = clienteRut || c?.numero_doc || null
     }
 
     // 4) reusar orden existente de la visita, o crear una nueva
@@ -100,7 +102,7 @@ export async function POST(req) {
       folio: ordenId,
       fechaEmision: fmtFecha(new Date().toISOString().slice(0, 10)),
       cliente: {
-        nombre: visita.cliente_nombre || '', telefono: visita.cliente_telefono || '', email: clienteEmail || '',
+        nombre: visita.cliente_nombre || '', telefono: visita.cliente_telefono || '', email: clienteEmail || '', rut: clienteRut || '',
       },
       comercial: visita.comercial || '',
       fechaVisita: fmtFecha(visita.fecha),

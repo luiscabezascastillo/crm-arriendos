@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import { supabase } from '../../../lib/supabaseClient'
 import { useParams, useRouter } from 'next/navigation'
 import TopNav from '../../components/ui/TopNav'
-import OrdenVisitaModal from '../../components/ui/OrdenVisitaModal'
+import AgendarVisitaModal from '../../components/AgendarVisitaModal'
 
 const ROL_COLORS = {
   propietario:  { bg: '#EAF3DE', color: '#3B6D11' },
@@ -46,6 +47,7 @@ function Avatar({ nombre, size = 48 }) {
 }
 
 export default function ContactoPage() {
+  const { data: session } = useSession()
   const { id } = useParams()
   const router = useRouter()
   const [contacto, setContacto] = useState(null)
@@ -364,10 +366,10 @@ export default function ContactoPage() {
 
       {/* Modal edición inline */}
       {ovOpen && contacto && (
-        <OrdenVisitaModal
-          contacto={contacto}
+        <AgendarVisitaModal
+          contactoInicial={contacto}
           onClose={() => setOvOpen(false)}
-          onCreated={() => {
+          onSaved={() => {
             setOvOpen(false)
             // Recargar historial
             supabase.from('contactos_historial').select('*').eq('contacto_id', id).order('fecha', { ascending: false }).then(({ data }) => setHistorial(data || []))

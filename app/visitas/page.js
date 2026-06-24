@@ -48,7 +48,7 @@ export default function VisitasPage() {
     const { data } = await supabase
       .from('visitas')
       .select('*, visita_propiedades(*), ordenes_visita(*)')
-      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
     setVisitas(data || [])
     setLoading(false)
   }
