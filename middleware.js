@@ -1,14 +1,14 @@
 import { getToken } from 'next-auth/jwt'
 import { NextResponse } from 'next/server'
 const RUTAS = {
-  '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/admin':        ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/cc1':          ['admin', 'finanzas', 'legal'],
-  '/publicaciones': ['admin', 'comercial', 'ventas', 'legal'],
-  '/procesos':     ['admin', 'operaciones', 'finanzas', 'legal', 'ventas'],
-  '/op':           ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/info':         ['admin', 'operaciones', 'finanzas', 'legal'],
-  '/contactos':    ['admin', 'operaciones', 'finanzas', 'legal', 'comercial'],
+  '/panel':        ['direccion', 'administracion', 'finanzas', 'legal', 'ventas', 'comercial', 'mantencion'],
+  '/admin':        ['direccion', 'legal', 'ventas', 'administracion', 'finanzas'],
+  '/cc1':          ['direccion', 'finanzas', 'legal'],
+  '/publicaciones': ['direccion', 'administracion', 'comercial', 'ventas', 'legal'],
+  '/procesos':     ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'],
+  '/op':           ['direccion', 'administracion', 'finanzas', 'legal'],
+  '/info':         ['direccion', 'administracion', 'finanzas', 'legal'],
+  '/contactos':    ['direccion', 'administracion', 'finanzas', 'legal', 'comercial'],
 }
 export async function middleware(req) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
