@@ -1,4 +1,4 @@
-﻿import { getToken } from 'next-auth/jwt'
+import { getToken } from 'next-auth/jwt'
 import { NextResponse } from 'next/server'
 const RUTAS = {
   '/panel':        ['admin', 'operaciones', 'finanzas', 'legal'],
