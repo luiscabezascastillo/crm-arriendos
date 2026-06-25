@@ -38,7 +38,7 @@ const PLANTILLA = {
   reparaciones: ['Arreglos presupuesto', 'Reparaciones extras', 'Limpieza General del dpto.', 'Mantención de TERMO', 'Limpieza de alfombras', 'Otros Reparaciones 1', 'Otros Reparaciones 2', 'Otros Reparaciones 3'],
 }
 const AUTO_CONCEPTO = 'Arreglos presupuesto'
-const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '' }
+const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '' }
 
 function calcResult(L, markup, garantia, repPresu, quien) {
   const sumB = b => (L[b] || []).reduce((a, l) => a + (l.auto ? repPresu : n0(l.monto)), 0)
@@ -178,6 +178,7 @@ export default function TerminosPage() {
       valoracion_legal: g('valoracion_legal'), decision_actuacion: g('decision_actuacion'),
       lectura_agua: g('lectura_agua'), lectura_luz: g('lectura_luz'), markup_fcr: g('markup_fcr'),
       comentarios_arrendatario: g('comentarios_arrendatario'), comentarios_internos: g('comentarios_internos'),
+      notas_finanzas_1: g('notas_finanzas_1'), notas_finanzas_2: g('notas_finanzas_2'), notas_finanzas_3: g('notas_finanzas_3'), notas_finanzas_4: g('notas_finanzas_4'),
     })
 
     const repPresu = presupuestos.reduce((a, p) => a + n0(p.total), 0)
@@ -297,6 +298,7 @@ export default function TerminosPage() {
       valoracion_legal: txt('valoracion_legal'), decision_actuacion: txt('decision_actuacion'),
       lectura_agua: txt('lectura_agua'), lectura_luz: txt('lectura_luz'), markup_fcr: num('markup_fcr'),
       comentarios_arrendatario: txt('comentarios_arrendatario'), comentarios_internos: txt('comentarios_internos'),
+      notas_finanzas_1: txt('notas_finanzas_1'), notas_finanzas_2: txt('notas_finanzas_2'), notas_finanzas_3: txt('notas_finanzas_3'), notas_finanzas_4: txt('notas_finanzas_4'),
       resultado_calculado: R.resultado, tipo_resultado: R.tipo, updated_at: new Date().toISOString(),
     }
     const upR = await supabase.from('terminos').upsert(payload, { onConflict: 'idadmon' })
@@ -433,8 +435,8 @@ export default function TerminosPage() {
     <>
       <TopNav />
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 18, fontFamily: '"DM Sans", sans-serif' }}>
-        {/* B1 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 }}>
+        {/* B1 — cabecera fija al hacer scroll (debajo del TopNav, que mide 52px) */}
+        <div style={{ position: 'sticky', top: 52, zIndex: 50, background: '#f4f6f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, padding: '12px 0', borderBottom: '1px solid #E8E6E0' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5 }}>Término de arriendo</div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1a1a2e', margin: '2px 0' }}>{idadmonSel}</h1>
@@ -614,6 +616,22 @@ export default function TerminosPage() {
                             </div>
                           )
                         })}
+                    </div>
+
+                    {/* Notas de Finanzas (4 cajas de texto libre) */}
+                    <div style={card}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>Notas de Finanzas</div>
+                      {[1, 2, 3, 4].map(i => {
+                        const k = 'notas_finanzas_' + i
+                        return (
+                          <div key={k} style={{ marginBottom: 10 }}>
+                            <div style={lbl}>Nota Finanzas {i}</div>
+                            {editando
+                              ? <textarea style={{ ...input, minHeight: 50, resize: 'vertical' }} value={form[k]} onChange={e => setF(k, e.target.value)} />
+                              : <div style={{ fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap' }}>{form[k] || '—'}</div>}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
