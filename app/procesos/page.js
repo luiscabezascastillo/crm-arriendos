@@ -87,7 +87,7 @@ const PROCESOS = [
   { key: 'liquidacion_paola', titulo: 'Liquidación Paola', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
     descripcion: 'Caso especial de liquidación',
     etapas: [], conecta: null, href: '/op/liquidacion-paola' },
-  { key: 'cartolas', titulo: 'Cartolas', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
+  { key: 'cartolas', titulo: 'Cartolas', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual', produccion: true,
     descripcion: 'Cartola bancaria por IDADMON (lee/solicita cambios: Administración)',
     etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'], conecta: 'Mandato · Cobranza', href: '/procesos/cartolas' },
   { key: 'mandato', titulo: 'Mandato', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
@@ -96,7 +96,7 @@ const PROCESOS = [
   { key: 'nubox', titulo: 'Financiero', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Semanal',
     descripcion: 'Tratamiento datos financieros (resultado visible por Administración)',
     etapas: [], conecta: null, href: '/procesos/financiero' },
-  { key: 'bi_sa', titulo: 'BI', responsable: 'Finanzas', participa: [], frecuencia: 'Semanal',
+  { key: 'bi_sa', titulo: 'BI', responsable: 'Finanzas', participa: [], frecuencia: 'Semanal', produccion: true,
     descripcion: 'Cartola Banco Internacional',
     etapas: ['Cargar', 'Sugerir', 'Revisar', 'Volcar'], conecta: null, href: '/procesos/bi' },
 ]
@@ -361,7 +361,7 @@ export default function ProcesosPage() {
         {/* CABECERA */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Motor de procesos</h1>
+            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Motor de procesos <span style={{ color: '#DC2626' }}>(en desarrollo)</span></h1>
             <div style={{ fontSize: 12, color: '#888780' }}>
               {session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0]} · {totalDisponibles} procesos disponibles
             </div>
@@ -384,6 +384,19 @@ export default function ProcesosPage() {
           <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: PART_CHIP.bg, color: PART_CHIP.color }}>participa</span>
           <span style={{ fontSize: 9, color: '#B4B2A9' }}>· la etiqueta junto al título es la frecuencia (Mensual / Semanal / Puntual)</span>
         </div>
+
+        {/* FRANJA: PROCESOS YA EN PRODUCCIÓN */}
+        {(() => {
+          const enProd = PROCESOS.filter(p => p.produccion)
+          if (!enProd.length) return null
+          const dispProd = enProd.filter(p => permisos[p.key]).length
+          return (
+            <div style={{ marginBottom: 6 }}>
+              {sectionLabel('PROCESOS YA EN PRODUCCIÓN', dispProd, enProd.length, { bg: '#E1F5EE', color: '#085041' })}
+              {renderGrid(enProd, 3)}
+            </div>
+          )
+        })()}
 
         {/* SECCIONES POR DEPARTAMENTO */}
         {SECCIONES.map(depto => {
