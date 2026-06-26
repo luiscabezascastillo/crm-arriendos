@@ -89,7 +89,7 @@ const PROCESOS = [
     etapas: [], conecta: null, href: '/op/liquidacion-paola' },
   { key: 'cartolas', titulo: 'Cartolas', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
     descripcion: 'Cartola bancaria por IDADMON (lee/solicita cambios: Administración)',
-    etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'], conecta: 'Mandato · Cobranza', href: null },
+    etapas: ['Carga', 'Cruce IDADMON', 'No matcheados', 'Deuda'], conecta: 'Mandato · Cobranza', href: '/procesos/cartolas' },
   { key: 'mandato', titulo: 'Mandato', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
     descripcion: 'Cuotas esperadas y deuda mensual (resultado visible por Administración)',
     etapas: ['Cuotas', 'Cartola BI', 'Vista deuda', 'Confirmar'], conecta: null, href: null },

@@ -31,7 +31,7 @@ const COLS = [
   { key: 'sync_id',       h: 'sync_id',      w: 110, align: 'left'  },
 ]
 
-export default function CuentasVista() {
+export default function CartolasVista() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [rows, setRows] = useState([])

@@ -6,6 +6,7 @@ const RUTAS = {
   '/admin':        ['direccion', 'legal', 'ventas', 'administracion', 'finanzas'],
   '/cc1':          ['direccion', 'finanzas', 'legal'],
   '/publicaciones': ['direccion', 'administracion', 'comercial', 'ventas', 'legal'],
+  '/procesos/cartolas': ['direccion', 'administracion', 'finanzas', 'legal'],
   '/procesos':     ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'],
   '/op':           ['direccion', 'administracion', 'finanzas', 'legal'],
   '/info':         ['direccion', 'administracion', 'finanzas', 'legal'],
@@ -17,7 +18,7 @@ export async function middleware(req) {
   if (!token) {
     return NextResponse.redirect(new URL('/', req.url))
   }
-const rol = token.role
+  const rol = token.role
 
   // Aterrizaje por rol: si caen en el Panel y no es lo suyo, llevarlos a su sección
   const DESTINO_POR_ROL = {
@@ -35,5 +36,5 @@ const rol = token.role
   return NextResponse.next()
 }
 export const config = {
-matcher: ['/canje/:path*', '/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/procesos/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
+  matcher: ['/canje/:path*', '/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/procesos/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
 }
