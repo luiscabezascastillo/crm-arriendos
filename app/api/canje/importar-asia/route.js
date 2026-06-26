@@ -1,4 +1,4 @@
-﻿// app/api/canje/importar-asia/route.js
+// app/api/canje/importar-asia/route.js
 // Importador de propiedades de VENTA de Asia Propiedades -> tabla propiedades_canje
 // Version PRUEBA: limita a LIMITE propiedades. Quitar el limite cuando este validado.
 
@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 const CORREDOR = 'Asia Propiedades'
 const BASE = 'https://www.asiapropiedades.cl'
 const URL_LISTA = BASE + '/venta'
-const LIMITE = 4   // <<< PRUEBA: solo las primeras 4. Poner null para todas.
+const LIMITE = null   // sin limite: procesa todas
 
 const HEADERS_NAVEGADOR = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
