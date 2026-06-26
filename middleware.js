@@ -1,6 +1,7 @@
 import { getToken } from 'next-auth/jwt'
 import { NextResponse } from 'next/server'
 const RUTAS = {
+  '/canje':        ['direccion'],
   '/panel':        ['direccion', 'administracion', 'finanzas', 'legal', 'ventas', 'comercial', 'mantencion'],
   '/admin':        ['direccion', 'legal', 'ventas', 'administracion', 'finanzas'],
   '/cc1':          ['direccion', 'finanzas', 'legal'],
@@ -34,5 +35,5 @@ const rol = token.role
   return NextResponse.next()
 }
 export const config = {
-matcher: ['/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/procesos/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
+matcher: ['/canje/:path*', '/panel/:path*', '/admin/:path*', '/cc1/:path*', '/publicaciones/:path*', '/procesos/:path*', '/op/:path*', '/info/:path*', '/contactos/:path*']
 }
