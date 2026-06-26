@@ -1,7 +1,6 @@
 ﻿// app/api/canje/importar-asia/route.js
 // Importador de propiedades de VENTA de Asia Propiedades -> tabla propiedades_canje
 // Version PRUEBA: limita a LIMITE propiedades. Quitar el limite cuando este validado.
-// Lee la lista /venta, extrae cada ficha y hace upsert por (corredor_origen, codigo_origen).
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -16,7 +15,6 @@ const HEADERS_NAVEGADOR = {
   'Accept-Language': 'es-CL,es;q=0.9',
 }
 
-// ── helpers de parseo (validados en el script de prueba) ──
 function decodificarEntidades(s) {
   if (s == null) return ''
   return String(s)
@@ -43,7 +41,18 @@ function soloNumero(s) {
   return m ? m[0] : ''
 }
 
-// ── extrae los datos de UNA ficha ──
+// Precio: lee el campo "Precio" de la tabla y detecta moneda (UF o CLP)
+function parsearPrecio(html) {
+  const campo = campoTabla(html, 'Precio')   // ej "$276.000.000" o "UF18.500" o "UF 18.500"
+  let tipo_moneda = '', valor = ''
+  if (campo) {
+    if (/UF/i.test(campo)) { tipo_moneda = 'UF'; valor = soloNumero(campo) }
+    else if (campo.includes('$')) { tipo_moneda = 'CLP'; valor = soloNumero(campo) }
+    else { valor = soloNumero(campo) }  // numero sin simbolo: dejamos moneda vacia
+  }
+  return { tipo_moneda, valor }
+}
+
 function parsearFicha(html, url) {
   const codigoOrigen = (url.match(/\/propiedad\/(\d+)_/) || [])[1] || ''
 
@@ -59,11 +68,7 @@ function parsearFicha(html, url) {
   const superficie  = campoTabla(html, 'Superficie total')
   const estac       = soloNumero(campoTabla(html, 'Estacionamiento'))
 
-  let tipoMoneda = '', valor = ''
-  const mUF = html.match(/UF\s*([\d.,]+)/i)
-  const mCLP = html.match(/\$\s*([\d.]{4,})/)
-  if (mUF) { tipoMoneda = 'UF'; valor = soloNumero(mUF[1]) }
-  else if (mCLP) { tipoMoneda = 'CLP'; valor = soloNumero(mCLP[1]) }
+  const { tipo_moneda, valor } = parsearPrecio(html)
 
   let descripcion = ''
   const mDesc = html.match(/Descripci[o\u00f3]n\s*<\/h4>\s*([\s\S]*?)<\/(?:p|div)>/i)
@@ -102,9 +107,9 @@ function parsearFicha(html, url) {
     codigo_origen: codigoOrigen,
     url_original: url,
     titulo, descripcion,
-    fotos: JSON.stringify(fotos),
+    fotos: fotos,                 // <<< array directo (jsonb), sin JSON.stringify
     objetivo: (operacion || '').toLowerCase().includes('arriend') ? 'arriendo' : 'venta',
-    tipo, tipo_moneda: tipoMoneda, valor, dormitorios, banos,
+    tipo, tipo_moneda, valor, dormitorios, banos,
     estacionamientos: estac,
     mt2_const: soloNumero(superficie) || '',
     comuna, direccion, latitud, longitud,
@@ -121,22 +126,18 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    // 1) Leer la lista /venta
     const resLista = await fetch(URL_LISTA, { headers: HEADERS_NAVEGADOR })
     if (!resLista.ok) {
       return Response.json({ ok: false, paso: 'leer lista', status: resLista.status }, { status: 502 })
     }
     const htmlLista = await resLista.text()
 
-    // 2) Extraer URLs unicas de propiedades
     const slugs = [...new Set((htmlLista.match(/\/propiedad\/\d+_[^\s"'<>]+/g) || []))]
     let urls = slugs.map(s => BASE + s)
     log.push('Propiedades encontradas en la lista: ' + urls.length)
 
-    // PRUEBA: limitar
     if (LIMITE) { urls = urls.slice(0, LIMITE); log.push('LIMITE de prueba: procesando ' + urls.length) }
 
-    // 3) Procesar cada ficha
     const resultados = []
     for (const url of urls) {
       try {
@@ -146,13 +147,12 @@ export async function GET() {
         const datos = parsearFicha(html, url)
         if (!datos.codigo_origen) { resultados.push({ url, ok: false, motivo: 'sin codigo' }); continue }
 
-        // 4) Upsert por (corredor_origen, codigo_origen)
         const { error } = await supabase
           .from('propiedades_canje')
           .upsert(datos, { onConflict: 'corredor_origen,codigo_origen' })
 
         if (error) resultados.push({ url, ok: false, error: error.message })
-        else resultados.push({ codigo: datos.codigo_origen, titulo: datos.titulo, ok: true })
+        else resultados.push({ codigo: datos.codigo_origen, titulo: datos.titulo, precio: datos.tipo_moneda + ' ' + datos.valor, ok: true })
       } catch (e) {
         resultados.push({ url, ok: false, error: e.message })
       }
@@ -160,12 +160,8 @@ export async function GET() {
 
     const okCount = resultados.filter(r => r.ok).length
     return Response.json({
-      ok: true,
-      corredor: CORREDOR,
-      log,
-      importadas: okCount,
-      total_procesadas: resultados.length,
-      detalle: resultados,
+      ok: true, corredor: CORREDOR, log,
+      importadas: okCount, total_procesadas: resultados.length, detalle: resultados,
     })
   } catch (err) {
     return Response.json({ ok: false, error: err.message, log }, { status: 500 })
