@@ -15,6 +15,28 @@ const HEADERS_NAVEGADOR = {
   'Accept-Language': 'es-CL,es;q=0.9',
 }
 
+// Lista oficial de comunas del CRM (de lib/comunas.js). Orden = prioridad de deteccion.
+const COMUNAS_LISTA = ['Alhué','Buin','Calera de Tango','Cerrillos','Cerro Navia','Colina','Conchalí','Curacaví','El Bosque','El Monte','Estación Central','Huechuraba','Independencia','Isla de Maipo','La Cisterna','La Florida','La Granja','La Pintana','La Reina','Lampa','Las Condes','Lo Barnechea','Lo Espejo','Lo Prado','Macul','Maipú','María Pinto','Melipilla','Ñuñoa','Padre Hurtado','Paine','Pedro Aguirre Cerda','Peñaflor','Peñalolén','Pirque','Providencia','Pudahuel','Puente Alto','Quilicura','Quinta Normal','Recoleta','Renca','San Bernardo','San Joaquín','San José de Maipo','San José de Melipilla','San Miguel','San Pedro','San Ramón','Santiago','Talagante','Tiltil','Vitacura','Antofagasta','Curarrehue','Pucón','Villarrica','Puerto Varas','Valparaíso','Viña del Mar']
+
+function sinTildes(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+}
+
+// Detecta la comuna real cruzando la direccion contra la lista oficial.
+// Estrategia: la PRIMERA comuna de la lista que aparezca en la direccion.
+// (En "Los Trapenses, Lo Barnechea - Las Condes" detecta Lo Barnechea, la correcta.)
+function detectarComuna(direccion) {
+  const dir = sinTildes(direccion)
+  if (!dir) return ''
+  // buscamos posicion de cada comuna; nos quedamos con la que aparece ANTES en el texto
+  let mejor = '', mejorPos = Infinity
+  for (const com of COMUNAS_LISTA) {
+    const pos = dir.indexOf(sinTildes(com))
+    if (pos !== -1 && pos < mejorPos) { mejorPos = pos; mejor = com }
+  }
+  return mejor
+}
+
 function decodificarEntidades(s) {
   if (s == null) return ''
   return String(s)
@@ -40,15 +62,13 @@ function soloNumero(s) {
   const m = String(s).replace(/\./g, '').match(/-?\d+/)
   return m ? m[0] : ''
 }
-
-// Precio: lee el campo "Precio" de la tabla y detecta moneda (UF o CLP)
 function parsearPrecio(html) {
-  const campo = campoTabla(html, 'Precio')   // ej "$276.000.000" o "UF18.500" o "UF 18.500"
+  const campo = campoTabla(html, 'Precio')
   let tipo_moneda = '', valor = ''
   if (campo) {
     if (/UF/i.test(campo)) { tipo_moneda = 'UF'; valor = soloNumero(campo) }
     else if (campo.includes('$')) { tipo_moneda = 'CLP'; valor = soloNumero(campo) }
-    else { valor = soloNumero(campo) }  // numero sin simbolo: dejamos moneda vacia
+    else { valor = soloNumero(campo) }
   }
   return { tipo_moneda, valor }
 }
@@ -95,19 +115,14 @@ function parsearFicha(html, url) {
   if (mLat) latitud = mLat[1]
   if (mLng) longitud = mLng[1]
 
-  let comuna = ''
-  if (direccion) {
-    const partes = direccion.split(/[,\-]/).map(s => s.trim()).filter(Boolean)
-    if (partes.length >= 2) comuna = partes[partes.length - 2]
-    else if (partes.length === 1) comuna = partes[0]
-  }
+  const comuna = detectarComuna(direccion)
 
   return {
     corredor_origen: CORREDOR,
     codigo_origen: codigoOrigen,
     url_original: url,
     titulo, descripcion,
-    fotos: fotos,                 // <<< array directo (jsonb), sin JSON.stringify
+    fotos: fotos,
     objetivo: (operacion || '').toLowerCase().includes('arriend') ? 'arriendo' : 'venta',
     tipo, tipo_moneda, valor, dormitorios, banos,
     estacionamientos: estac,
@@ -152,7 +167,7 @@ export async function GET() {
           .upsert(datos, { onConflict: 'corredor_origen,codigo_origen' })
 
         if (error) resultados.push({ url, ok: false, error: error.message })
-        else resultados.push({ codigo: datos.codigo_origen, titulo: datos.titulo, precio: datos.tipo_moneda + ' ' + datos.valor, ok: true })
+        else resultados.push({ codigo: datos.codigo_origen, titulo: datos.titulo, precio: datos.tipo_moneda + ' ' + datos.valor, comuna: datos.comuna, ok: true })
       } catch (e) {
         resultados.push({ url, ok: false, error: e.message })
       }
