@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-const handler = NextAuth({
+export const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.AUTH_GOOGLE_ID,
@@ -78,6 +78,8 @@ const handler = NextAuth({
     error: '/',
   },
   session: { strategy: 'jwt' }
-})
+}
+
+const handler = NextAuth(authOptions)
 
 export { handler as GET, handler as POST }
