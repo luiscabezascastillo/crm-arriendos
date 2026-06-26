@@ -1,4 +1,4 @@
-// app/api/canje/importar-asia/route.js
+﻿// app/api/canje/importar-asia/route.js
 // Importador de propiedades de VENTA de Asia Propiedades -> tabla propiedades_canje
 // Version PRUEBA: limita a LIMITE propiedades. Quitar el limite cuando este validado.
 

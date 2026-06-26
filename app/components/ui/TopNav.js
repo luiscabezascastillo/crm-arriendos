@@ -260,6 +260,9 @@ export default function TopNav() {
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Inventario</div>
             <Link href="/publicaciones" style={s.dropItem} onClick={() => setVentasOpen(false)}>Publicaciones</Link>
+            {esDireccion && (
+            <Link href="/canje" style={s.dropItem} onClick={() => setVentasOpen(false)}>Bolsa Inmobiliaria (Canje)</Link>
+            )}
             <Link href="/edificios" style={s.dropItem} onClick={() => setVentasOpen(false)}>Edificios</Link>
             <div style={s.dropDivider}/>
             <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>
