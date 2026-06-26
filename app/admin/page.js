@@ -152,10 +152,66 @@ function AdminContent() {
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
 
+  // ── Circuito de estados / permisos ──
+  const [cap, setCap] = useState(null)          // capacidades del usuario
+  const [pendientes, setPendientes] = useState([])
+  const [nuevoEstado, setNuevoEstado] = useState('')
+  const [fechaEstado, setFechaEstado] = useState('')
+  const [cambiando, setCambiando] = useState(false)
+
   useEffect(() => {
     const ultimo = localStorage.getItem('ultimo_idadmon')
     if (ultimo) { setIdadmonInput(ultimo); recuperar(ultimo) }
+    cargarCapacidades()
   }, [])
+
+  async function cargarCapacidades() {
+    try {
+      const res = await fetch('/api/cc1/pendientes')
+      const data = await res.json()
+      if (res.ok) { setCap(data.capacidades); setPendientes(data.pendientes || []) }
+    } catch {}
+  }
+
+  // Cambio de estado vía endpoint (cambia estado + crea P + email + histórico)
+  async function cambiarEstado() {
+    if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
+    if (!nuevoEstado) { setMsg({ type: 'warn', text: 'Elige el nuevo estado.' }); return }
+    if (!window.confirm(`¿Cambiar ${form.idadmon} de "${form.estado || '—'}" a "${nuevoEstado}"?\nSe enviará el aviso a cambiosdeestado@ y, si corresponde, se creará el nuevo IDADMON en P.`)) return
+    setCambiando(true); setMsg({ type: 'info', text: 'Procesando cambio de estado...' })
+    try {
+      const res = await fetch('/api/cc1/cambiar-estado', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, estadoNuevo: nuevoEstado, fecha: fechaEstado || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al cambiar estado' }); setCambiando(false); return }
+      setForm(p => ({ ...p, estado: nuevoEstado }))
+      let txt = `✓ ${form.idadmon}: ${data.estadoAnterior || '—'} → ${data.estadoNuevo}.`
+      if (data.nuevoP) txt += ` Creado ${data.nuevoP} en P (búsqueda de arrendatario).`
+      if (data.warning) txt += ` ⚠ ${data.warning}`
+      setMsg({ type: data.warning ? 'warn' : 'ok', text: txt })
+      setNuevoEstado('')
+    } catch (err) {
+      setMsg({ type: 'error', text: 'Error de conexión' })
+    }
+    setCambiando(false)
+  }
+
+  // Aprobar / rechazar una alta pendiente
+  async function resolverPendiente(idadmon, accion) {
+    if (!window.confirm(`¿${accion === 'aprobar' ? 'Aprobar' : 'Rechazar'} el alta ${idadmon}?`)) return
+    try {
+      const res = await fetch('/api/cc1/aprobar-alta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon, accion }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error' }); return }
+      setMsg({ type: 'ok', text: data.mensaje })
+      cargarCapacidades()
+    } catch { setMsg({ type: 'error', text: 'Error de conexión' }) }
+  }
 
   async function recuperar(id) {
     const buscar = (id || idadmonInput).trim().toUpperCase()
@@ -182,11 +238,36 @@ function AdminContent() {
   async function guardar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     setSaving(true); setMsg(null)
+
+    // ALTA NUEVA -> pasa por el endpoint (correlativo automático + control de aprobación + email)
+    if (isNew) {
+      try {
+        const payload = { ...form }
+        delete payload.id
+        delete payload.idadmon  // el correlativo lo asigna el servidor
+        const res = await fetch('/api/cc1/alta', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ form: payload }),
+        })
+        const data = await res.json()
+        if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al dar de alta' }); setSaving(false); return }
+        setForm(p => ({ ...p, idadmon: data.idadmon }))
+        setIdadmonInput(data.idadmon)
+        setIsNew(false); setBloqueado(true)
+        localStorage.setItem('ultimo_idadmon', data.idadmon)
+        setMsg({ type: data.pendiente_aprobacion ? 'warn' : 'ok', text: data.mensaje })
+        cargarCapacidades()
+      } catch (err) {
+        setMsg({ type: 'error', text: 'Error de conexión' })
+      }
+      setSaving(false)
+      return
+    }
+
+    // EDICIÓN de contrato existente -> update directo (como antes)
     const payload = { ...form, updated_at: new Date().toISOString() }
     delete payload.id
-    const { error } = isNew
-      ? await supabase.from('datos_arriendos').insert([payload])
-      : await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
+    const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
     if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }) }
     else { localStorage.setItem('ultimo_idadmon', form.idadmon); setIsNew(false); setBloqueado(true); setMsg({ type: 'ok', text: '✓ Guardado correctamente.' }) }
     setSaving(false)
@@ -195,10 +276,21 @@ function AdminContent() {
   async function terminar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
-    if (!window.confirm(`¿Terminar el contrato ${form.idadmon}? Estado pasará a Q.`)) return
-    const { error } = await supabase.from('datos_arriendos').update({ estado: 'Q', updated_at: new Date().toISOString() }).eq('idadmon', form.idadmon)
-    if (error) setMsg({ type: 'error', text: 'Error: ' + error.message })
-    else { setForm(p => ({ ...p, estado: 'Q' })); setBloqueado(true); setMsg({ type: 'ok', text: `Contrato ${form.idadmon} terminado.` }) }
+    if (!window.confirm(`¿Terminar el contrato ${form.idadmon}? Estado pasará a Q y se enviará el aviso.`)) return
+    setCambiando(true)
+    try {
+      const res = await fetch('/api/cc1/cambiar-estado', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, estadoNuevo: 'Q' }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al terminar' }); setCambiando(false); return }
+      setForm(p => ({ ...p, estado: 'Q' })); setBloqueado(true)
+      let txt = `Contrato ${form.idadmon} terminado (Q).`
+      if (data.nuevoP) txt += ` Creado ${data.nuevoP} en P.`
+      setMsg({ type: 'ok', text: txt })
+    } catch { setMsg({ type: 'error', text: 'Error de conexión' }) }
+    setCambiando(false)
   }
 
   const ro = bloqueado
@@ -308,6 +400,72 @@ function AdminContent() {
           background: msgColors[msg.type]?.bg, color: msgColors[msg.type]?.color,
           border: `1px solid ${msgColors[msg.type]?.border}`,
         }}>{msg.text}</div>
+      )}
+
+      {/* ── CAMBIO DE ESTADO (circuito) ── */}
+      {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
+        <div style={{
+          margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
+          background: '#f8fafc', border: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.headerBg }}>CAMBIAR ESTADO:</span>
+          <span style={{ fontSize: 11, color: '#6b7280' }}>Actual: <b>{form.estado || '—'}</b> →</span>
+          <select value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value)}
+            style={{ ...inputCell, width: 150, cursor: 'pointer', border: `1px solid ${C.border}` }}>
+            <option value="">elegir nuevo estado…</option>
+            <option value="S">S – Contrato firmado</option>
+            <option value="SQ">SQ – Aviso de término</option>
+            <option value="Q">Q – Término (llaves)</option>
+            <option value="N">N – Cierre término</option>
+            <option value="N-DICOM">N-DICOM – Cierre con DICOM</option>
+            <option value="P">P – Pendiente arrendar</option>
+          </select>
+          <span style={{ fontSize: 10, color: '#9ca3af' }}>Fecha:</span>
+          <input type="date" value={fechaEstado} onChange={e => setFechaEstado(e.target.value)}
+            style={{ ...inputCell, width: 140, border: `1px solid ${C.border}` }} />
+          <button onClick={cambiarEstado} disabled={cambiando || !nuevoEstado}
+            style={{
+              padding: '5px 14px', borderRadius: 5, border: 'none',
+              background: (cambiando || !nuevoEstado) ? '#9ca3af' : C.headerBg,
+              color: '#fff', fontSize: 12, fontWeight: 700,
+              cursor: (cambiando || !nuevoEstado) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            }}>{cambiando ? 'Procesando…' : 'Aplicar cambio'}</button>
+          <span style={{ fontSize: 10, color: '#9ca3af', flexBasis: '100%' }}>
+            Al pasar a SQ o Q se crea automáticamente el siguiente IDADMON en P y se avisa a cambiosdeestado@.
+          </span>
+        </div>
+      )}
+
+      {/* ── BANDEJA DE APROBACIÓN (solo responsable/Dirección) ── */}
+      {cap?.puedeAprobar && pendientes.length > 0 && (
+        <div style={{
+          margin: '8px 16px 0', padding: '10px 14px', borderRadius: 6,
+          background: '#fffbeb', border: '1px solid #fcd34d',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>
+            🔔 Altas pendientes de aprobación ({pendientes.length})
+          </div>
+          {pendientes.map(p => (
+            <div key={p.idadmon} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0',
+              borderTop: '1px solid #fde68a', fontSize: 11,
+            }}>
+              <b style={{ color: C.headerBg, minWidth: 60 }}>{p.idadmon}</b>
+              <span style={{ color: '#6b7280', flex: 1 }}>
+                {p.propietario || '—'} · {p.inmueble || '—'} · creada por {p.creado_por || '—'}
+              </span>
+              <button onClick={() => resolverPendiente(p.idadmon, 'aprobar')}
+                style={{ padding: '3px 12px', borderRadius: 5, border: 'none', background: C.green, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                Aprobar
+              </button>
+              <button onClick={() => resolverPendiente(p.idadmon, 'rechazar')}
+                style={{ padding: '3px 12px', borderRadius: 5, border: 'none', background: C.red, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                Rechazar
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ── FORMULARIO TIPO EXCEL ── */}
