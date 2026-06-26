@@ -8,6 +8,7 @@ import TopNav from '@/app/components/ui/TopNav'
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
+const money = (v) => { const n = num(v); return n ? '$' + n.toLocaleString('es-CL') : '$0' }
 const LIMITE = 50
 
 const EDITABLES = ['idadmon', 'concepto', 'comentarios', 'calif', 'estado']
@@ -30,10 +31,46 @@ const COLS = [
   { key: 'sync_id',       h: 'sync_id',      w: 110, align: 'left'  },
 ]
 
-export default function CartolasVista() {
+// parsea "dd/mm/aaaa" -> número comparable (aaaammdd); vacío -> 0
+const fechaOrden = (s) => {
+  const m = String(s ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return 0
+  return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1])
+}
+
+export default function CartolasPage() {
+  const [vista, setVista] = useState('tabla')   // 'tabla' | 'idadmon'
+  return (
+    <>
+      <TopNav />
+      <div style={{ maxWidth: 1760, margin: '0 auto', padding: '14px 20px 0' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
+          {[['tabla', 'Tabla'], ['idadmon', 'Cartola por IDADMON']].map(([k, label]) => (
+            <button key={k} onClick={() => setVista(k)}
+              style={{
+                fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: '8px 8px 0 0',
+                border: '0.5px solid #D3D1C7', borderBottom: vista === k ? '2px solid #fff' : '0.5px solid #D3D1C7',
+                marginBottom: vista === k ? -1 : 0,
+                background: vista === k ? '#fff' : '#F1EFE8',
+                color: vista === k ? '#2C2C2A' : '#888780', cursor: 'pointer',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {vista === 'tabla' ? <TablaVista /> : <CartolaIdadmonVista />}
+    </>
+  )
+}
+
+/* ============================================================
+   VISTA 1 — TABLA (espejo de cuentas, scroll infinito + filtros)
+   ============================================================ */
+function TablaVista() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [rows, setRows] = useState([])               // ascendente por id: antiguos arriba, recientes abajo
+  const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [noMore, setNoMore] = useState(false)
@@ -100,7 +137,6 @@ export default function CartolasVista() {
     setLoadingMore(false)
   }
 
-  // mantener posición al añadir por arriba / anclar abajo en carga inicial
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -137,7 +173,7 @@ export default function CartolasVista() {
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
 
   if (status === 'loading' || loading)
-    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div></>)
+    return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div>)
 
   const bgCelda = (r, c) => {
     if (String(r.calif || '').trim().toUpperCase() === 'INICIO' && (c.key === 'idadmon' || c.key === 'concepto' || c.key === 'cargo'))
@@ -164,7 +200,6 @@ export default function CartolasVista() {
     return <span style={estiloTexto(r, c)}>{r[c.key] ?? '—'}</span>
   }
 
-  // ---- popover de filtro (server-side) ----
   const popCol = openF ? COLS.find(c => c.key === openF.key) : null
   const abrirFiltro = (c, e) => {
     const rc = e.currentTarget.getBoundingClientRect()
@@ -213,8 +248,7 @@ export default function CartolasVista() {
 
   return (
     <>
-      <TopNav />
-      <div style={{ maxWidth: 1760, margin: '0 auto', padding: '18px 20px 30px' }}>
+      <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Cuentas (CARTOLAS)</h1>
@@ -280,5 +314,182 @@ export default function CartolasVista() {
         </div>
       )}
     </>
+  )
+}
+
+/* ============================================================
+   VISTA 2 — CARTOLA POR IDADMON (= hoja ENTRADA del Excel)
+   ============================================================ */
+const MCOLS = [
+  { key: 'fecha',     h: 'Fecha',     w: 90,  align: 'left'  },
+  { key: 'concepto',  h: 'Concepto',  w: 320, align: 'left'  },
+  { key: 'cargo',     h: 'Cargo',     w: 100, align: 'right', money: true, color: '#9B1C1C' },
+  { key: 'abono',     h: 'Abono',     w: 100, align: 'right', money: true, color: '#085041' },
+  { key: '_saldo',    h: 'Saldo',     w: 110, align: 'right', money: true },
+  { key: 'comentarios', h: 'Comentarios', w: 160, align: 'left' },
+  { key: 'calif',     h: 'Calif',     w: 90,  align: 'left'  },
+  { key: 'justificantes', h: 'Justificantes', w: 130, align: 'left' },
+]
+
+function CartolaIdadmonVista() {
+  const { status } = useSession()
+  const router = useRouter()
+  const [idInput, setIdInput] = useState('')
+  const [buscando, setBuscando] = useState(false)
+  const [error, setError] = useState(null)
+  const [ficha, setFicha] = useState(null)      // fila de datos_arriendos
+  const [movs, setMovs] = useState([])          // movimientos con _saldo corrido
+  const [consultado, setConsultado] = useState(false)
+  const [aviso, setAviso] = useState(null)      // "en TÉRMINO" / "HISTÓRICO"
+
+  useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
+
+  const buscar = async () => {
+    const id = idInput.trim().toUpperCase()
+    if (!id) return
+    setBuscando(true); setError(null); setAviso(null); setConsultado(true)
+    setFicha(null); setMovs([])
+
+    // 1) ficha en datos_arriendos (idadmon es único -> una fila)
+    const { data: da, error: e1 } = await supabase
+      .from('datos_arriendos')
+      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia')
+      .eq('idadmon', id)
+      .limit(1)
+    if (e1) { setError('Error leyendo ficha: ' + e1.message); setBuscando(false); return }
+    const f = (da && da[0]) || null
+    setFicha(f)
+    if (f) {
+      const est = String(f.estado || '').trim().toUpperCase()
+      if (est === 'Q') setAviso('Este IDADMON está en ESTADO Q (TÉRMINO).')
+      else if (est === 'N') setAviso('Este IDADMON está en ESTADO N (HISTÓRICO).')
+    }
+
+    // 2) movimientos en cuentas
+    const { data: cu, error: e2 } = await supabase
+      .from('cuentas')
+      .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes')
+      .eq('idadmon', id)
+    if (e2) { setError('Error leyendo movimientos: ' + e2.message); setBuscando(false); return }
+
+    // ordenar por fecha real ascendente (fecha es texto dd/mm/aaaa); empate -> por id
+    const ordenados = (cu || []).slice().sort((a, b) => {
+      const fa = fechaOrden(a.fecha), fb = fechaOrden(b.fecha)
+      if (fa !== fb) return fa - fb
+      return (a.id || 0) - (b.id || 0)
+    })
+    // saldo corrido desde 0: saldo = saldo_anterior + cargo - abono
+    let saldo = 0
+    const conSaldo = ordenados.map(m => {
+      saldo = saldo + num(m.cargo) - num(m.abono)
+      return { ...m, _saldo: saldo }
+    })
+    setMovs(conSaldo)
+    setBuscando(false)
+  }
+
+  const onKey = (e) => { if (e.key === 'Enter') buscar() }
+
+  const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
+  const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
+  const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
+
+  const Dato = ({ label, value, strong }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</span>
+      <span style={{ fontSize: 13, color: '#2C2C2A', fontWeight: strong ? 700 : 500, whiteSpace: 'normal', wordBreak: 'break-word' }}>{value || '—'}</span>
+    </div>
+  )
+
+  const cellMov = (r, c) => {
+    if (c.key === '_saldo') return <span style={{ fontWeight: 600, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{money(r._saldo)}</span>
+    if (c.money) { const s = fmt(r[c.key]); return <span style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    if (c.key === 'comentarios') return <span style={{ fontWeight: filaEsBI(r) ? 700 : 400 }}>{r[c.key] ?? '—'}</span>
+    if (c.key === 'calif') return <span style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>
+    return <span>{r[c.key] ?? '—'}</span>
+  }
+  const bgMov = (r, c) => (esInicio(r) && (c.key === 'concepto' || c.key === 'cargo')) ? '#E9F4E4' : '#fff'
+
+  if (status === 'loading')
+    return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div>)
+
+  return (
+    <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 10px', color: '#2C2C2A' }}>Cartola por IDADMON</h1>
+
+      {/* BUSCADOR */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input value={idInput} onChange={e => setIdInput(e.target.value)} onKeyDown={onKey}
+          placeholder="IDADMON (ej. A00857)" autoFocus
+          style={{ fontSize: 14, padding: '8px 12px', border: '0.5px solid #B4B2A9', borderRadius: 8, width: 200, textTransform: 'uppercase' }} />
+        <button onClick={buscar} disabled={buscando}
+          style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+          {buscando ? 'Buscando…' : 'Ver cuenta'}
+        </button>
+      </div>
+
+      {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
+      {aviso && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FEF3C7', border: '0.5px solid #FCD34D', color: '#92400E', fontSize: 12, fontWeight: 600 }}>⚠ {aviso}</div>}
+
+      {consultado && !buscando && !ficha && !error && (
+        <div style={{ padding: 16, borderRadius: 8, background: '#F1EFE8', color: '#5F5E5A', fontSize: 13 }}>
+          No se encontró el IDADMON <b>{idInput.trim().toUpperCase()}</b> en datos_arriendos.
+        </div>
+      )}
+
+      {ficha && (
+        <>
+          {/* CABECERA */}
+          <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '14px 16px', marginBottom: 14, background: '#F8FAFC' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 18, fontWeight: 700, color: '#0C447C' }}>{ficha.idadmon}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C' }}>Estado: {ficha.estado || '—'}</span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px 18px' }}>
+              <Dato label="Propietario" value={ficha.propietario} strong />
+              <Dato label="Arrendatario" value={ficha.arrendatario} strong />
+              <Dato label="Avalista" value={ficha.avalista} />
+              <Dato label="Inmueble" value={ficha.inmueble} />
+              <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
+              <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} />
+            </div>
+          </div>
+
+          {/* MOVIMIENTOS */}
+          <div style={{ overflow: 'auto', maxHeight: '60vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%' }}>
+              <thead>
+                <tr style={{ background: '#F1EFE8' }}>
+                  {MCOLS.map((c, i) => (
+                    <th key={i} style={{ padding: '7px 10px', textAlign: c.align, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap', minWidth: c.w, position: 'sticky', top: 0, background: '#F1EFE8', zIndex: 2, borderBottom: '0.5px solid #D3D1C7' }}>{c.h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {movs.map((r) => (
+                  <tr key={r.id}>
+                    {MCOLS.map((c, ci) => (
+                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: bgMov(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4' }}>
+                        {cellMov(r, c)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {movs.length === 0 && <tr><td colSpan={MCOLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin movimientos en CUENTAS para este IDADMON.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
+            {movs.length} movimiento(s) · saldo corrido desde 0 (cargo suma, abono resta) · ordenados por fecha.
+          </div>
+        </>
+      )}
+    </div>
   )
 }
