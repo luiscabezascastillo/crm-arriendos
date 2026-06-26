@@ -10,7 +10,6 @@ const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
 const LIMITE = 50
 
-// columnas editables (solo en filas NO-BI y solo para direccion/finanzas)
 const EDITABLES = ['idadmon', 'concepto', 'comentarios', 'calif', 'estado']
 
 const COLS = [
@@ -34,16 +33,20 @@ const COLS = [
 export default function CartolasVista() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [rows, setRows] = useState([])
+  const [rows, setRows] = useState([])               // ascendente por id: antiguos arriba, recientes abajo
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [noMore, setNoMore] = useState(false)
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [filtros, setFiltros] = useState({})       // {key:{search} | {min,max}}
-  const [openF, setOpenF] = useState(null)          // {key,x,y}
-  const [draft, setDraft] = useState({})            // borrador del popover abierto
+  const [filtros, setFiltros] = useState({})
+  const [openF, setOpenF] = useState(null)
+  const [draft, setDraft] = useState({})
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
   const scrollRef = useRef(null)
+  const anclarAbajo = useRef(false)
+  const pendingAdjust = useRef(null)
 
   const rol = session?.user?.role
   const puedeEditar = rol === 'direccion' || rol === 'finanzas'
@@ -52,8 +55,7 @@ export default function CartolasVista() {
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
-  const fetchRows = async (fActuales = filtros) => {
-    setRefreshing(true); setError(null)
+  const buildQuery = (fActuales) => {
     let q = supabase.from('cuentas').select('*')
     for (const [key, f] of Object.entries(fActuales)) {
       if (!f) continue
@@ -65,18 +67,60 @@ export default function CartolasVista() {
         q = q.ilike(key, `%${f.search}%`)
       }
     }
-    const { data, error } = await q.order('id', { ascending: false }).limit(LIMITE)
+    return q
+  }
+
+  const fetchInitial = async (fActuales = filtros) => {
+    setRefreshing(true); setError(null); setNoMore(false)
+    const { data, error } = await buildQuery(fActuales).order('id', { ascending: false }).limit(LIMITE)
     if (error) { setError(error.message); setRefreshing(false); setLoading(false); return }
-    setRows((data || []).reverse())   // recientes abajo
+    const arr = (data || []).reverse()
+    anclarAbajo.current = true
+    setRows(arr)
+    setNoMore((data || []).length < LIMITE)
     setRefreshing(false); setLoading(false)
   }
-  useEffect(() => { fetchRows({}) }, [])
-  useEffect(() => { if (!loading && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [loading])
+  useEffect(() => { fetchInitial({}) }, [])
+
+  const loadMore = async () => {
+    if (loadingMore || noMore || loading || rows.length === 0) return
+    setLoadingMore(true)
+    const minId = rows[0].id
+    const el = scrollRef.current
+    const prevH = el ? el.scrollHeight : 0
+    const prevT = el ? el.scrollTop : 0
+    const { data, error } = await buildQuery(filtros).lt('id', minId).order('id', { ascending: false }).limit(LIMITE)
+    if (error) { setError(error.message); setLoadingMore(false); return }
+    const nuevos = (data || []).reverse()
+    if (nuevos.length > 0) {
+      pendingAdjust.current = { prevH, prevT }
+      setRows(rs => [...nuevos, ...rs])
+    }
+    if ((data || []).length < LIMITE) setNoMore(true)
+    setLoadingMore(false)
+  }
+
+  // mantener posición al añadir por arriba / anclar abajo en carga inicial
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (pendingAdjust.current) {
+      const { prevH, prevT } = pendingAdjust.current
+      el.scrollTop = prevT + (el.scrollHeight - prevH)
+      pendingAdjust.current = null
+    } else if (anclarAbajo.current) {
+      el.scrollTop = el.scrollHeight
+      anclarAbajo.current = false
+    }
+  }, [rows])
+
+  const onScroll = (e) => { if (e.currentTarget.scrollTop <= 40) loadMore() }
 
   const activo = (key) => {
     const f = filtros[key]
     return !!f && ((f.search ?? '') !== '' || (f.min ?? '') !== '' || (f.max ?? '') !== '')
   }
+  const hayFiltros = Object.keys(filtros).some(k => activo(k))
 
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const celdaEditable = (r, c) => puedeEditar && !filaEsBI(r) && EDITABLES.includes(c.key)
@@ -95,7 +139,6 @@ export default function CartolasVista() {
   if (status === 'loading' || loading)
     return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div></>)
 
-  // ---- estilos por celda (BI / INICIO) ----
   const bgCelda = (r, c) => {
     if (String(r.calif || '').trim().toUpperCase() === 'INICIO' && (c.key === 'idadmon' || c.key === 'concepto' || c.key === 'cargo'))
       return '#E9F4E4'
@@ -130,11 +173,11 @@ export default function CartolasVista() {
   }
   const aplicarFiltro = () => {
     const nf = { ...filtros, [openF.key]: draft }
-    setFiltros(nf); setOpenF(null); fetchRows(nf)
+    setFiltros(nf); setOpenF(null); fetchInitial(nf)
   }
   const quitarFiltro = () => {
     const nf = { ...filtros }; delete nf[openF.key]
-    setFiltros(nf); setOpenF(null); fetchRows(nf)
+    setFiltros(nf); setOpenF(null); fetchInitial(nf)
   }
   const renderPop = () => {
     if (!openF || !popCol) return null
@@ -168,8 +211,6 @@ export default function CartolasVista() {
     )
   }
 
-  const hayFiltros = Object.keys(filtros).some(k => activo(k))
-
   return (
     <>
       <TopNav />
@@ -178,11 +219,11 @@ export default function CartolasVista() {
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Cuentas (CARTOLAS)</h1>
             <div style={{ fontSize: 12, color: '#888780' }}>
-              últimas {LIMITE}{hayFiltros ? ' (filtradas)' : ''} · filas BI no editables (se corrigen en BI)
+              recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado' : ''}
               {!puedeEditar && ' · solo lectura'}
             </div>
           </div>
-          <button onClick={() => fetchRows()} disabled={refreshing}
+          <button onClick={() => fetchInitial()} disabled={refreshing}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {refreshing ? 'Refrescando…' : 'Refrescar'}
           </button>
@@ -196,7 +237,7 @@ export default function CartolasVista() {
 
         {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
 
-        <div ref={scrollRef} style={{ overflow: 'auto', maxHeight: '74vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
+        <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '74vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
           <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, minWidth: 1700 }}>
             <thead>
               <tr style={{ background: '#F1EFE8' }}>
@@ -212,6 +253,8 @@ export default function CartolasVista() {
               </tr>
             </thead>
             <tbody>
+              {loadingMore && <tr><td colSpan={COLS.length} style={{ padding: 8, textAlign: 'center', color: '#888780' }}>Cargando más…</td></tr>}
+              {!loadingMore && noMore && rows.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
               {rows.map((r) => (
                 <tr key={r.id}>
                   {COLS.map((c, ci) => (
@@ -227,7 +270,7 @@ export default function CartolasVista() {
         </div>
 
         <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-          {rows.length} fila(s){hayFiltros ? ' que cumplen el filtro' : ''} · se muestran las {LIMITE} más recientes · recientes abajo.
+          {rows.length} fila(s) cargada(s){hayFiltros ? ' (filtradas)' : ''} · {noMore ? 'no hay más hacia atrás' : 'sube para cargar más'}.
         </div>
       </div>
       {renderPop()}
