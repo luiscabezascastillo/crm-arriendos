@@ -97,15 +97,25 @@ export default function BiVista() {
 
   const copiarFaltan = async () => {
     if (copiando) return
-    if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA?')) return
+    if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA con IDADMON válido?')) return
     setCopiando(true); setError(null)
     try {
       const r = await fetch('/api/bi/copiar-cuentas', { method: 'POST' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Error en el servidor')
+
+      // ERROR: movimientos en FALTA sin IDADMON valido (A + 5 digitos) -> NO se pasaron, siguen en FALTA
+      if (d.invalidos?.length) {
+        const regs = d.invalidos.map(x => x.reg).filter(Boolean).join(', ')
+        setError(
+          `ERROR: se ha colocado "FALTA" a ${d.invalidos.length} movimiento(s) NO asociado(s) a un IDADMON válido (Axxxxx). ` +
+          `NO se han pasado a CARTOLAS y siguen en FALTA. Corrígelos en BI` +
+          (regs ? ` (Reg: ${regs}).` : '.')
+        )
+      }
       flash(`✓ ${d.copiados} copiado(s) a CUENTAS`)
       if (d.idadmons_sin_match?.length)
-        setError('IDADMON sin match en datos_arriendos (copiados igual, sin propietario/inmueble): ' + d.idadmons_sin_match.join(', '))
+        flash(`✓ ${d.copiados} copiado(s) · IDADMON sin ficha: ${d.idadmons_sin_match.join(', ')}`)
       cargar(false)
     } catch (err) {
       setError('No se pudo copiar: ' + err.message)
@@ -236,7 +246,7 @@ export default function BiVista() {
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
             ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
-            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA', copiarFaltan],
+            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido)', copiarFaltan],
             ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR', null],
           ].map(([label, hint, accion], i) => {
             const habilitado = !!accion && !copiando
