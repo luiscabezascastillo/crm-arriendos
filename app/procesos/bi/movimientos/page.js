@@ -59,6 +59,7 @@ export default function BiVista() {
   const [savingId, setSavingId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [toast, setToast] = useState(null)
+  const [copiando, setCopiando] = useState(false)
   const scrollRef = useRef(null)
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1400) }
@@ -92,6 +93,23 @@ export default function BiVista() {
     if (error) { setError('No se pudo guardar: ' + error.message); return }
     setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
     flash('✓ Guardado')
+  }
+
+  const copiarFaltan = async () => {
+    if (copiando) return
+    if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA?')) return
+    setCopiando(true); setError(null)
+    try {
+      const r = await fetch('/api/bi/copiar-cuentas', { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Error en el servidor')
+      flash(`✓ ${d.copiados} copiado(s) a CUENTAS`)
+      if (d.idadmons_sin_match?.length)
+        setError('IDADMON sin match en datos_arriendos (copiados igual, sin propietario/inmueble): ' + d.idadmons_sin_match.join(', '))
+      cargar(false)
+    } catch (err) {
+      setError('No se pudo copiar: ' + err.message)
+    } finally { setCopiando(false) }
   }
 
   if (status === 'loading' || loading)
@@ -217,15 +235,19 @@ export default function BiVista() {
           </button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
-            ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS'],
-            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA'],
-            ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR'],
-          ].map(([label, hint], i) => (
-            <button key={i} title={hint} onClick={() => flash('“' + label + '” — pendiente de implementar')}
-              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: '#8A5A2B', color: '#fff', cursor: 'pointer' }}>
-              {label}
-            </button>
-          ))}
+            ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
+            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA', copiarFaltan],
+            ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR', null],
+          ].map(([label, hint, accion], i) => {
+            const habilitado = !!accion && !copiando
+            return (
+              <button key={i} title={hint} disabled={!habilitado}
+                onClick={() => { if (accion) accion() }}
+                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid ' + (habilitado ? '#6B4423' : '#C8C5BC'), background: habilitado ? '#8A5A2B' : '#D3D1C7', color: '#fff', cursor: habilitado ? 'pointer' : 'default' }}>
+                {label}
+              </button>
+            )
+          })}
         </div>
 
         <div ref={scrollRef} style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
