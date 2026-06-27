@@ -855,8 +855,16 @@ export default function RequerimientosPage() {
                           )}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <button onClick={() => abrirAgenda(viendoMatches, p)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #7c3aed', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', marginRight: 6, fontFamily: 'inherit' }}>Agendar</button>
-                          <button onClick={() => router.push('/publicaciones/' + p.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit' }}>Ver ficha →</button>
+                          {esCanje ? (
+                            p.url_original
+                              ? <a href={p.url_original} target="_blank" rel="noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none' }}>Ver en {p._corredor || 'corredor'} →</a>
+                              : <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic' }}>contactar corredor</span>
+                          ) : (
+                            <>
+                              <button onClick={() => abrirAgenda(viendoMatches, p)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #7c3aed', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', marginRight: 6, fontFamily: 'inherit' }}>Agendar</button>
+                              <button onClick={() => router.push('/publicaciones/' + p.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit' }}>Ver ficha →</button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )
