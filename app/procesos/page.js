@@ -32,7 +32,7 @@ const PROCESOS = [
   // ── VENTAS ──
   { key: 'publicacion', titulo: 'Publicación', responsable: 'Ventas', participa: [], frecuencia: 'Puntual', produccion: true,
     descripcion: 'Depto vacío → candidato',
-    etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'], conecta: 'Inicios', href: '/publicaciones' },
+    etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'], conecta: null, href: '/publicaciones' },
   { key: 'inicios', titulo: 'Inicios', responsable: 'Ventas', participa: ['Legal', 'Finanzas'], frecuencia: 'Puntual',
     descripcion: 'Contrato, firma y ciclo mensual',
     etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'], conecta: null, href: null },
