@@ -43,13 +43,15 @@ export async function POST(req) {
         .in('id', ids)
       pubs = data || []
     }
+    const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     const propsSnapshot = (visita.visita_propiedades || []).map(vp => {
       const p = pubs.find(x => x.id === vp.publicacion_id) || {}
       const direccion = p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' ') || ''
+      const deptoYaEnDir = p.departamento && norm(direccion).includes(norm(String(p.departamento)))
       return {
         operacion: opLabel(p.objetivo),
         tipo: p.tipo || '',
-        direccion: direccion + (p.departamento ? ', depto ' + p.departamento : ''),
+        direccion: direccion + ((p.departamento && !deptoYaEnDir) ? ', depto ' + p.departamento : ''),
         comuna: p.comuna || '',
         valor: p.valor ?? null,
         moneda: (p.tipo_moneda || '').toUpperCase().replace('CLF', 'UF'),
@@ -111,8 +113,13 @@ export async function POST(req) {
       firma: null,
     })
 
-    // 6) subir al bucket
-    const path = `${tok}/orden.pdf`
+    // 6) subir al bucket — nombre de archivo legible: Orden_nXX_NombreCliente.pdf
+    const slug = (visita.cliente_nombre || 'cliente')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // sin tildes
+      .replace(/[^a-zA-Z0-9]+/g, '')                       // solo letras/numeros
+      || 'cliente'
+    const nombreArchivo = `Orden_n${ordenId}_${slug}.pdf`
+    const path = `${tok}/${nombreArchivo}`
     const up = await supabaseAdmin.storage.from('ordenes')
       .upload(path, Buffer.from(bytes), { contentType: 'application/pdf', upsert: true })
     if (up.error) return Response.json({ error: 'Error subiendo PDF: ' + up.error.message }, { status: 500 })
