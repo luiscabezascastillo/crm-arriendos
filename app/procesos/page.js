@@ -398,6 +398,17 @@ export default function ProcesosPage() {
           )
         })()}
 
+        {/* TODOS LOS PROCESOS (no-producción) EN UNA SOLA REJILLA, sin cabeceras de depto */}
+        {(() => {
+          const resto = PROCESOS.filter(p => !p.produccion)
+          if (!resto.length) return null
+          return (
+            <div style={{ marginTop: 14 }}>
+              {renderGrid(resto, 3)}
+            </div>
+          )
+        })()}
+        
         {/* SECCIONES POR DEPARTAMENTO */}
         {SECCIONES.map(depto => {
           const lista = PROCESOS.filter(p => p.responsable === depto)
