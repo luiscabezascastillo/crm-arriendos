@@ -7,7 +7,8 @@
 //    el siguiente IDADMON en estado P, heredando datos de inmueble/propietario,
 //    insertando una fila nueva en la tabla `idadmon` (correlativo MAX+1).
 // 4. Registra el/los evento(s) en historico_idadmon.
-// 5. Envía email a cambiosdeestado@ con el subject codificado (uno por transición).
+// 5. Envía email a cambiosdeestado@ con el subject codificado (uno por transición),
+//    incluyendo el AUTOR del cambio (replyTo + cuerpo).
 //
 // El correlativo del nuevo IDADMON = MAX(idadmon) de datos_arriendos + 1 (acordado).
 
@@ -79,7 +80,16 @@ export async function POST(req) {
     estado_anterior: estadoAnterior, estado_nuevo: estadoNuevo,
     fecha: fechaEvento, usuario: email, email_subject: subjectCambio,
   }])
-  const r1 = await enviarNotificacion({ subject: subjectCambio })
+  const r1 = await enviarNotificacion({
+    subject: subjectCambio,
+    autor: email,
+    idadmon,
+    estadoAnterior,
+    estadoNuevo,
+    propietario: contrato.propietario,
+    inmueble: contrato.inmueble,
+    fecha: fechaEvento,
+  })
   emailsEnviados.push({ subject: subjectCambio, ok: r1.ok })
 
   // 4. ¿Hay que crear el nuevo IDADMON en P?
@@ -154,7 +164,18 @@ export async function POST(req) {
           idadmon_origen: idadmon,
           fecha: fechaEvento, usuario: email, email_subject: subjectP,
         }])
-        const r2 = await enviarNotificacion({ subject: subjectP })
+        const r2 = await enviarNotificacion({
+          subject: subjectP,
+          autor: email,
+          idadmon: nuevoId,
+          estadoAnterior: null,
+          estadoNuevo: 'P',
+          propietario: contrato.propietario,
+          inmueble: contrato.inmueble,
+          fecha: fechaEvento,
+          esCreacionP: true,
+          idadmonOrigen: idadmon,
+        })
         emailsEnviados.push({ subject: subjectP, ok: r2.ok })
 
         nuevoP = nuevoId
