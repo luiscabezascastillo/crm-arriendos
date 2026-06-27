@@ -38,7 +38,7 @@ const PROCESOS = [
     etapas: ['Validar', 'Contrato', 'Firma', 'LOG', 'Activar'], conecta: null, href: null },
 
   // ── ADMINISTRACIÓN ──
-  { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
+  { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual', produccion: true,
     descripcion: 'Consulta y carga mensual de deudas de servicios por contrato',
     etapas: [], conecta: null, href: '/op/deudas' },
   { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal',
