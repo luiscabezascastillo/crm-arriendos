@@ -64,9 +64,9 @@ const PROCESOS = [
     etapas: ['Buscar', 'Crear', 'Líneas', 'Revisar', 'PDF'], conecta: 'Término · Incidencia · Inicios', href: '/procesos/presupuestos' },
 
   // ── LEGAL ──
-  { key: 'revision_log', titulo: 'Gestión LOG', responsable: 'Legal', participa: ['Administración', 'Finanzas', 'Ventas'], frecuencia: 'Semanal',
+  { key: 'revision_log', titulo: 'Gestión LOG', responsable: 'Legal', participa: ['Administración', 'Finanzas', 'Ventas'], frecuencia: 'Semanal', produccion: true,
     descripcion: 'BD_LOG Drive → Supabase',
-    etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'], conecta: null, href: null },
+    etapas: ['Leer LOG', 'Validar', 'Aprobar', 'Sincronizar'], conecta: null, href: '/cc1' },
   { key: 'contratos', titulo: 'Contratos', responsable: 'Legal', participa: [], frecuencia: 'Puntual', enConstruccion: true,
     descripcion: 'Redacción de contratos',
     etapas: [], conecta: null, href: null },
