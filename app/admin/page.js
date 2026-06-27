@@ -136,6 +136,21 @@ function LB({ children, width, right }) {
   )
 }
 
+/* ── Fila etiqueta+input para los paneles de DATOS ECONÓMICOS (fuera de la tabla) ── */
+function EcoRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{
+        ...labelCell, width: 110, flexShrink: 0, display: 'flex', alignItems: 'center',
+        borderTop: 'none', borderLeft: 'none', borderRight: `1px solid ${C.border}`, borderBottom: 'none',
+      }}>{label}</div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 const msgColors = {
   ok:    { bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
   error: { bg: '#fef2f2', color: '#dc2626', border: '#fca5a5' },
@@ -151,6 +166,7 @@ function AdminContent() {
   const [isNew, setIsNew] = useState(true)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [adicionalesAbierto, setAdicionalesAbierto] = useState(false)
 
   // ── Circuito de estados / permisos ──
   const [cap, setCap] = useState(null)          // capacidades del usuario
@@ -294,6 +310,33 @@ function AdminContent() {
   }
 
   const ro = bloqueado
+
+  /* ── Botones inferiores (reutilizables) ── */
+  const BotonesInferiores = () => (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <button onClick={guardar} disabled={saving || bloqueado} style={{
+        padding: '7px 20px', borderRadius: 5, border: 'none',
+        background: bloqueado ? '#9ca3af' : C.green,
+        color: '#fff', fontSize: 12, fontWeight: 700,
+        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+      }}>{saving ? 'GUARDANDO...' : 'GUARDAR (BORRADOR o DATOS)'}</button>
+
+      <button disabled style={{
+        padding: '7px 20px', borderRadius: 5,
+        border: '1px dashed #9ca3af', background: 'transparent',
+        color: '#9ca3af', fontSize: 12, fontWeight: 700,
+        cursor: 'not-allowed', fontFamily: 'inherit',
+      }}>IMPRIMIR WORD BORRADOR CONTRATO</button>
+
+      <button onClick={terminar} disabled={bloqueado} style={{
+        padding: '7px 20px', borderRadius: 5, border: 'none',
+        background: bloqueado ? '#9ca3af' : C.red,
+        color: '#fff', fontSize: 12, fontWeight: 700,
+        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+        marginLeft: 'auto',
+      }}>TERMINAR PARA SACAR INFO DE FACTURACIÓN</button>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: '#e8eef5' }}>
@@ -665,163 +708,123 @@ function AdminContent() {
               </td>
             </tr>
 
-            {/* ══ DATOS ECONÓMICOS (fila derecha) ══ */}
-            <tr>
-              <td colSpan={14} style={{ padding: '6px 0 2px', border: 'none' }}>
-                <table style={{ borderCollapse: 'collapse', float: 'right', fontSize: 11 }}>
-                  <tbody>
-                    <tr>
-                      <td colSpan={4} style={{ ...headerCell, background: C.headerBg, textAlign: 'center', padding: '4px 20px' }}>
-                        DATOS ECONÓMICOS
-                      </td>
-                    </tr>
-                    <tr>
-                      <td colSpan={4} style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center' }}>PROPIETARIO</td>
-                    </tr>
-                    <tr>
-                      <LB>Porcentaje</LB><td style={inputCell}><IC name="pct_adm" value={form.pct_adm} onChange={handleChange} readOnly={ro} /></td>
-                      <LB>+ IVA</LB><td style={inputCell}><IC name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Cantidad</LB><td style={inputCell}><IC name="comision_d_base" value={form.comision_d_base} onChange={handleChange} readOnly={ro} type="number" /></td>
-                      <LB>Con IVA</LB><td style={inputCell}><IC name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} readOnly={ro} type="number" /></td>
-                    </tr>
-                    <tr>
-                      <LB>Total</LB><td colSpan={3} style={{ ...inputCell, fontWeight: 700 }}><IC name="comision_d_total" value={form.comision_d_total} onChange={handleChange} readOnly={ro} type="number" bold /></td>
-                    </tr>
-                    <tr>
-                      <LB>C. Especiales</LB><td colSpan={3} style={inputCell}><IC name="c_especiales" value={form.c_especiales} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Comentario</LB><td colSpan={3} style={inputCell}><IC name="comentario_comision" value={form.comentario_comision} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Boleta/Factura</LB><td colSpan={3} style={{ ...inputCell, fontWeight: 700, color: C.red }}><IC name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <td colSpan={4} style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center' }}>ARRENDATARIO</td>
-                    </tr>
-                    <tr>
-                      <LB>Porcentaje</LB><td style={inputCell}><IC name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} readOnly={ro} /></td>
-                      <LB>+ IVA</LB><td style={inputCell}><IC name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Cantidad</LB><td style={inputCell}><IC name="comision_a_base" value={form.comision_a_base} onChange={handleChange} readOnly={ro} type="number" /></td>
-                      <LB>Con IVA</LB><td style={inputCell}><IC name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} readOnly={ro} type="number" /></td>
-                    </tr>
-                    <tr>
-                      <LB>Total</LB><td colSpan={3} style={inputCell}><IC name="comision_a_total" value={form.comision_a_total} onChange={handleChange} readOnly={ro} type="number" bold /></td>
-                    </tr>
-                    <tr>
-                      <LB>C. Especiales</LB><td colSpan={3} style={inputCell}><IC name="especial_b" value={form.especial_b} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Comentario</LB><td colSpan={3} style={inputCell}><IC name="especial_c" value={form.especial_c} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Boleta/Factura</LB><td colSpan={3} style={{ ...inputCell, fontWeight: 700, color: C.red }}><IC name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <td colSpan={4} style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center' }}>ADMON MES</td>
-                    </tr>
-                    <tr>
-                      <LB>Tipo</LB><td colSpan={3} style={inputCell}><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                    <tr>
-                      <LB>Cuantía</LB><td colSpan={3} style={inputCell}><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={ro} type="number" bold /></td>
-                    </tr>
-                    <tr>
-                      <LB>Especial</LB><td colSpan={3} style={inputCell}><IC name="mowner" value={form.mowner} onChange={handleChange} readOnly={ro} /></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-
-            {/* ══ BOTONES INFERIORES ══ */}
-            <tr>
-              <td colSpan={14} style={{ padding: '10px 0 0', border: 'none' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button onClick={guardar} disabled={saving || bloqueado} style={{
-                    padding: '7px 20px', borderRadius: 5, border: 'none',
-                    background: bloqueado ? '#9ca3af' : C.green,
-                    color: '#fff', fontSize: 12, fontWeight: 700,
-                    cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                  }}>{saving ? 'GUARDANDO...' : 'GUARDAR (BORRADOR o DATOS)'}</button>
-
-                  <button disabled style={{
-                    padding: '7px 20px', borderRadius: 5,
-                    border: '1px dashed #9ca3af', background: 'transparent',
-                    color: '#9ca3af', fontSize: 12, fontWeight: 700,
-                    cursor: 'not-allowed', fontFamily: 'inherit',
-                  }}>IMPRIMIR WORD BORRADOR CONTRATO</button>
-
-                  <button onClick={terminar} disabled={bloqueado} style={{
-                    padding: '7px 20px', borderRadius: 5, border: 'none',
-                    background: bloqueado ? '#9ca3af' : C.red,
-                    color: '#fff', fontSize: 12, fontWeight: 700,
-                    cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                    marginLeft: 'auto',
-                  }}>TERMINAR PARA SACAR INFO DE FACTURACIÓN</button>
-                </div>
-              </td>
-            </tr>
-
           </tbody>
         </table>
 
-        {/* ══ SECCIÓN ADICIONAL — campos no visibles en la vista principal ══ */}
+        {/* ══ DATOS ECONÓMICOS — bloque a todo el ancho, 3 columnas ══ */}
+        <div style={{ marginTop: 16 }}>
+          <div style={{
+            ...headerCell, background: C.headerBg, padding: '5px 10px',
+            fontSize: 11, letterSpacing: '0.05em', borderRadius: '6px 6px 0 0',
+          }}>
+            DATOS ECONÓMICOS
+          </div>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0,
+            border: `1px solid ${C.border}`, borderTop: 'none',
+          }}>
+
+            {/* Columna 1: PROPIETARIO */}
+            <div style={{ borderRight: `1px solid ${C.border}` }}>
+              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>PROPIETARIO</div>
+              <EcoRow label="Porcentaje"><IC name="pct_adm" value={form.pct_adm} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="+ IVA"><IC name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Cantidad"><IC name="comision_d_base" value={form.comision_d_base} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
+              <EcoRow label="Con IVA"><IC name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
+              <EcoRow label="Total"><IC name="comision_d_total" value={form.comision_d_total} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
+              <EcoRow label="C. Especiales"><IC name="c_especiales" value={form.c_especiales} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Comentario"><IC name="comentario_comision" value={form.comentario_comision} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Boleta/Factura"><IC name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} readOnly={ro} /></EcoRow>
+            </div>
+
+            {/* Columna 2: ARRENDATARIO */}
+            <div style={{ borderRight: `1px solid ${C.border}` }}>
+              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ARRENDATARIO</div>
+              <EcoRow label="Porcentaje"><IC name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="+ IVA"><IC name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Cantidad"><IC name="comision_a_base" value={form.comision_a_base} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
+              <EcoRow label="Con IVA"><IC name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
+              <EcoRow label="Total"><IC name="comision_a_total" value={form.comision_a_total} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
+              <EcoRow label="C. Especiales"><IC name="especial_b" value={form.especial_b} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Comentario"><IC name="especial_c" value={form.especial_c} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Boleta/Factura"><IC name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} readOnly={ro} /></EcoRow>
+            </div>
+
+            {/* Columna 3: ADMON MES */}
+            <div>
+              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ADMON MES</div>
+              <EcoRow label="Tipo"><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <EcoRow label="Cuantía"><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
+              <EcoRow label="Especial"><IC name="mowner" value={form.mowner} onChange={handleChange} readOnly={ro} /></EcoRow>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ══ BOTONES INFERIORES ══ */}
+        <div style={{ marginTop: 16 }}>
+          <BotonesInferiores />
+        </div>
+
+        {/* ══ DATOS ADICIONALES — sección colapsable (cerrada por defecto) ══ */}
         <div style={{
           marginTop: 20, background: '#fff',
           border: `1px solid ${C.border}`, borderRadius: 8,
           overflow: 'hidden',
         }}>
-          <div style={{
-            background: C.headerBg, color: '#fff', padding: '6px 14px',
-            fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
-          }}>
-            DATOS ADICIONALES
-          </div>
-          <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-            {[
-              ['Reajuste 1 fecha', 'fecha_reajuste1', 'date'],
-              ['Reajuste 1 cant.', 'cantidad_reajuste1', 'number'],
-              ['Reajuste 2 fecha', 'fecha_reajuste2', 'date'],
-              ['Reajuste 2 cant.', 'cantidad_reajuste2', 'number'],
-              ['Reajuste 3 fecha', 'fecha_reajuste3', 'date'],
-              ['Reajuste 3 cant.', 'cantidad_reajuste3', 'number'],
-              ['Reajuste 4 fecha', 'fecha_reajuste4', 'date'],
-              ['Reajuste 4 cant.', 'cantidad_reajuste4', 'number'],
-              ['En legal', 'en_legal', 'text'],
-              ['Sub-estado', 'sub_estado', 'text'],
-              ['Responsable', 'responsable', 'text'],
-              ['IDADMON siguiente', 'idadmon_siguiente', 'text'],
-              ['Repetición IDADMON', 'repeticion_idadmon', 'text'],
-              ['C. Término', 'c_termino', 'text'],
-              ['C. Garantía', 'c_garantia', 'text'],
-              ['Deuda garantía', 'deuda_garantia', 'text'],
-              ['Aseo 1', 'aseo1', 'text'],
-              ['Aseo 2', 'aseo2', 'text'],
-              ['Aseo 3', 'aseo3', 'text'],
-              ['Tiene termo mant.', 'tiene_termo_mant', 'text'],
-              ['Fecha mant.', 'fecha_mant', 'date'],
-              ['UF/Peso factor', 'uf_peso_factor', 'text'],
-              ['ID Admo', 'idadmo', 'text'],
-              ['Comisión base', 'comision_base', 'number'],
-            ].map(([label, name, type]) => (
-              <div key={name}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: C.labelText, marginBottom: 3 }}>{label}</div>
-                <input type={type} name={name} value={form[name] ?? ''} onChange={handleChange}
-                  readOnly={ro}
-                  style={{
-                    ...fieldInput,
-                    width: '100%', padding: '5px 8px', fontSize: 11,
-                    background: ro ? '#f8fafc' : '#fff',
-                    border: `1px solid ${C.border}`, borderRadius: 4,
-                  }} />
-              </div>
-            ))}
-          </div>
+          <button
+            onClick={() => setAdicionalesAbierto(v => !v)}
+            style={{
+              width: '100%', background: C.headerBg, color: '#fff', padding: '8px 14px',
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', border: 'none',
+              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+            <span>DATOS ADICIONALES</span>
+            <span style={{ fontSize: 12 }}>{adicionalesAbierto ? '▲ ocultar' : '▼ mostrar'}</span>
+          </button>
+          {adicionalesAbierto && (
+            <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+              {[
+                ['Reajuste 1 fecha', 'fecha_reajuste1', 'date'],
+                ['Reajuste 1 cant.', 'cantidad_reajuste1', 'number'],
+                ['Reajuste 2 fecha', 'fecha_reajuste2', 'date'],
+                ['Reajuste 2 cant.', 'cantidad_reajuste2', 'number'],
+                ['Reajuste 3 fecha', 'fecha_reajuste3', 'date'],
+                ['Reajuste 3 cant.', 'cantidad_reajuste3', 'number'],
+                ['Reajuste 4 fecha', 'fecha_reajuste4', 'date'],
+                ['Reajuste 4 cant.', 'cantidad_reajuste4', 'number'],
+                ['En legal', 'en_legal', 'text'],
+                ['Sub-estado', 'sub_estado', 'text'],
+                ['Responsable', 'responsable', 'text'],
+                ['IDADMON siguiente', 'idadmon_siguiente', 'text'],
+                ['Repetición IDADMON', 'repeticion_idadmon', 'text'],
+                ['C. Término', 'c_termino', 'text'],
+                ['C. Garantía', 'c_garantia', 'text'],
+                ['Deuda garantía', 'deuda_garantia', 'text'],
+                ['Aseo 1', 'aseo1', 'text'],
+                ['Aseo 2', 'aseo2', 'text'],
+                ['Aseo 3', 'aseo3', 'text'],
+                ['Tiene termo mant.', 'tiene_termo_mant', 'text'],
+                ['Fecha mant.', 'fecha_mant', 'date'],
+                ['UF/Peso factor', 'uf_peso_factor', 'text'],
+                ['ID Admo', 'idadmo', 'text'],
+                ['Comisión base', 'comision_base', 'number'],
+              ].map(([label, name, type]) => (
+                <div key={name}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: C.labelText, marginBottom: 3 }}>{label}</div>
+                  <input type={type} name={name} value={form[name] ?? ''} onChange={handleChange}
+                    readOnly={ro}
+                    style={{
+                      ...fieldInput,
+                      width: '100%', padding: '5px 8px', fontSize: 11,
+                      background: ro ? '#f8fafc' : '#fff',
+                      border: `1px solid ${C.border}`, borderRadius: 4,
+                    }} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
