@@ -833,15 +833,16 @@ export default function RequerimientosPage() {
                 <tbody>
                   {matches.map(m => {
                     const p = m.pub
-                    const dir = p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' ') || '—'
+                    const esCanje = p._origen === 'canje'
+                    const dir = esCanje ? (p.titulo || p.direccion || '—') : (p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' ') || '—')                                         
                     return (
                       <tr key={p.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#EAF3DE', color: '#3B6D11' }}>{m.grado}</span>
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1a1a2e' }}>
-                          {p.tipo || '—'}<div style={{ fontWeight: 400, color: '#888', fontSize: 11 }}>{dir}{p.departamento ? ' · Depto ' + p.departamento : ''}</div>
-                        </td>
+                        <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, marginRight: 6, background: esCanje ? '#E6F1FB' : '#EAF3DE', color: esCanje ? '#185FA5' : '#3B6D11', border: '1px solid ' + (esCanje ? '#bcdcf7' : '#cfe3b4') }}>{esCanje ? 'Canje · ' + (p._corredor || '') : 'Propia'}</span>
+                          {p.tipo || '—'}<div style={{ fontWeight: 400, color: '#888', fontSize: 11 }}>{dir}{(!esCanje && p.departamento) ? ' · Depto ' + p.departamento : ''}{esCanje ? ' · dirección a confirmar' : ''}</div>                        </td>
                         <td style={{ padding: '10px 12px', color: '#555' }}>{p.comuna || '—'}</td>
                         <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{fmtPrecio(p)}</td>
                         <td style={{ padding: '10px 12px', color: '#555', whiteSpace: 'nowrap' }}>{(p.dormitorios ?? '—')}/{(p.banos ?? '—')}/{(p.estacionamientos ?? '—')}</td>
