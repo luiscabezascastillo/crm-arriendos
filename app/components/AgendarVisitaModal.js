@@ -18,7 +18,7 @@ function etiquetaPub(p) {
   const dirNorm = sinTildes(dir)
   const comunaYaEnDir = p.comuna && dirNorm.includes(sinTildes(p.comuna))
   const deptoYaEnDir = p.departamento && dirNorm.includes(sinTildes(String(p.departamento)))
-  return `${[op, p.tipo].filter(Boolean).join(' \u00b7 ')} \u00b7 ${dir}${(p.departamento && !deptoYaEnDir) ? ' \u00b7 Depto ' + p.departamento : ''}${(p.comuna && !comunaYaEnDir) ? ' \u00b7 ' + p.comuna : ''}`
+  return `${[op, p.tipo].filter(Boolean).join(' · ')} · ${dir}${(p.departamento && !deptoYaEnDir) ? ' · Depto ' + p.departamento : ''}${(p.comuna && !comunaYaEnDir) ? ' · ' + p.comuna : ''}`
 }
 
 // estilos
@@ -108,7 +108,7 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
 
   async function guardar() {
     if (!fecha) { setMsg({ tipo: 'error', txt: 'La fecha es obligatoria.' }); return }
-    if (!nombre.trim() && !contactoSel) { setMsg({ tipo: 'error', txt: 'Ingresa el cliente (b\u00fascalo o escribe su nombre).' }); return }
+    if (!nombre.trim() && !contactoSel) { setMsg({ tipo: 'error', txt: 'Ingresa el cliente (búscalo o escribe su nombre).' }); return }
     setGuardando(true); setMsg(null)
     try {
       const contactoId = await resolverContacto()
@@ -153,11 +153,11 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
       <div style={ov} onClick={onClose}>
         <div style={card} onClick={e => e.stopPropagation()}>
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 6 }}>\u2713</div>
+            <div style={{ fontSize: 36, marginBottom: 6 }}>✓</div>
             <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Visita guardada</div>
             {o ? (
               <>
-                <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>Orden N\u00b0 {o.orden_id} generada y lista para firmar.</div>
+                <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>Orden N° {o.orden_id} generada y lista para firmar.</div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 18 }}>
                   {o.pdf_url && <a href={o.pdf_url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', borderColor: '#E5E7EB', background: '#fff', color: '#374151', padding: '8px 14px' }}>Ver PDF</a>}
                   {link && <button onClick={() => copiarLink(link)} style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151', padding: '8px 14px' }}>Copiar link de firma</button>}
@@ -165,7 +165,7 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>La visita qued\u00f3 guardada (sin orden).</div>
+              <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>La visita quedó guardada (sin orden).</div>
             )}
             {msg && <div style={{ fontSize: 12, color: msg.tipo === 'error' ? '#dc2626' : '#16a34a', marginBottom: 10 }}>{msg.txt}</div>}
             <button onClick={onClose} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#0C447C', color: '#fff', border: 'none', fontWeight: 600, padding: '10px 22px' }}>Cerrar</button>
@@ -181,7 +181,7 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
       <div style={card} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #EEE' }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>Nueva orden de visita</div>
-          <button onClick={onClose} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>\u00d7</button>
+          <button onClick={onClose} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>×</button>
         </div>
 
         <div style={{ padding: 20 }}>
@@ -192,13 +192,13 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
             <label style={label}>Cliente</label>
             {contactoSel ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 13, padding: '6px 10px', background: '#E6F1FB', borderRadius: 7, color: '#185FA5' }}>\ud83d\udd17 {nombre}{telefono ? ' \u00b7 ' + telefono : ''}</span>
+                <span style={{ fontSize: 13, padding: '6px 10px', background: '#E6F1FB', borderRadius: 7, color: '#185FA5' }}>🔗 {nombre}{telefono ? ' · ' + telefono : ''}</span>
                 <button onClick={() => { setContactoSel(null); setNombre(''); setTelefono(''); setEmail('') }} style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>Quitar</button>
               </div>
             ) : (
               <>
                 <div style={{ position: 'relative', marginBottom: 8 }}>
-                  <input style={input} value={cQuery} onChange={e => buscarContacto(e.target.value)} placeholder="Buscar contacto existente (nombre o tel\u00e9fono)\u2026" />
+                  <input style={input} value={cQuery} onChange={e => buscarContacto(e.target.value)} placeholder="Buscar contacto existente (nombre o teléfono)…" />
                   {cRes.length > 0 && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 2, zIndex: 20, maxHeight: 200, overflowY: 'auto' }}>
                       {cRes.map(c => (
@@ -209,24 +209,24 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
                     </div>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>O escr\u00edbelo a mano (si no existe, se crea solo en contactos al guardar):</div>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>O escríbelo a mano (si no existe, se crea solo en contactos al guardar):</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
                   <input style={input} value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre" />
                   <input style={input} value={rut} onChange={e => setRut(e.target.value)} placeholder="RUT" />
-                  <input style={input} value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Tel\u00e9fono" />
+                  <input style={input} value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono" />
                   <input style={input} value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
                 </div>
               </>
             )}
           </div>
 
-          {/* Cu\u00e1ndo / qui\u00e9n */}
+          {/* Cuándo / quién */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div><label style={label}>Fecha *</label><input type="date" style={input} value={fecha} onChange={e => setFecha(e.target.value)} /></div>
             <div><label style={label}>Hora</label><input type="time" style={input} value={hora} onChange={e => setHora(e.target.value)} /></div>
             <div><label style={label}>Comercial</label>
               <select style={input} value={comercial} onChange={e => setComercial(e.target.value)}>
-                <option value="">\u2014</option>
+                <option value="">—</option>
                 {OPTS_VENDEDOR.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
@@ -251,17 +251,17 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
                   <select style={input} value={p.resultado || 'pendiente'} onChange={e => setProp(p.publicacion_id, 'resultado', e.target.value)}>
                     {RESULTADOS_PROP.map(rp => <option key={rp} value={rp}>{rp}</option>)}
                   </select>
-                  <input style={input} value={p.notas || ''} onChange={e => setProp(p.publicacion_id, 'notas', e.target.value)} placeholder="Comentario\u2026" />
+                  <input style={input} value={p.notas || ''} onChange={e => setProp(p.publicacion_id, 'notas', e.target.value)} placeholder="Comentario…" />
                 </div>
               </div>
             ))}
             <div style={{ position: 'relative' }}>
-              <input style={input} value={pSearch} onChange={e => buscarPub(e.target.value)} placeholder="Buscar propiedad por c\u00f3digo, direcci\u00f3n o comuna\u2026" />
+              <input style={input} value={pSearch} onChange={e => buscarPub(e.target.value)} placeholder="Buscar propiedad por código, dirección o comuna…" />
               {pRes.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 2, zIndex: 20, maxHeight: 220, overflowY: 'auto' }}>
                   {pRes.map(p => (
                     <div key={p.id} onClick={() => agregarPub(p)} style={{ padding: '8px 12px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #F3F4F6' }}>
-                      {etiquetaPub(p)}{p.codigo ? ' \u00b7 ' + p.codigo : ''}
+                      {etiquetaPub(p)}{p.codigo ? ' · ' + p.codigo : ''}
                     </div>
                   ))}
                 </div>
@@ -283,7 +283,7 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={onClose} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>Cancelar</button>
               <button onClick={guardar} disabled={guardando} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 600, opacity: guardando ? 0.6 : 1 }}>
-                {guardando ? 'Guardando\u2026' : 'Guardar visita'}
+                {guardando ? 'Guardando…' : 'Guardar visita'}
               </button>
             </div>
           </div>
