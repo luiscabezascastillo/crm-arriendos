@@ -515,7 +515,7 @@ function AdminContent() {
       <div style={{ padding: '10px 16px 40px', overflowX: 'auto' }}>
         <table style={{
           borderCollapse: 'collapse', width: '100%',
-          tableLayout: 'fixed', fontSize: 11,
+           fontSize: 11,
           fontFamily: 'inherit',
         }}>
 
