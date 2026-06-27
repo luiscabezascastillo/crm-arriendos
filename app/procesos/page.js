@@ -23,6 +23,9 @@ const RESP_CHIP = { bg: '#E1F5EE', color: '#085041' }
 // Chip gris de participante
 const PART_CHIP = { bg: '#F1EFE8', color: '#888780' }
 
+// Fondo suave para las tarjetas en producción
+const PROD_BG = '#F2FBF7'
+
 // Un solo listado, agrupado por `responsable` en el render.
 // frecuencia = Mensual | Semanal | Puntual (informativa)
 const PROCESOS = [
@@ -81,10 +84,10 @@ const PROCESOS = [
   { key: 'termino', titulo: 'Término', responsable: 'Finanzas', participa: ['Administración', 'Legal'], frecuencia: 'Puntual',
     descripcion: 'Aviso legal, recepción y garantías',
     etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
-  { key: 'liquidacion', titulo: 'Liquidación', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual', enConstruccion: true,
+  { key: 'liquidacion', titulo: 'Liquidación', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
     descripcion: 'Cruce cartola, neto propietarios',
     etapas: ['Cruce cartola', 'No pagados', 'Revisión', 'Generar', 'Envío'], conecta: 'Cobranza', href: null },
-  { key: 'liquidacion_paola', titulo: 'Liquidación Paola', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
+  { key: 'liquidacion_paola', titulo: 'Liquidación Paola', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual', enConstruccion: true,
     descripcion: 'Caso especial de liquidación',
     etapas: [], conecta: null, href: '/op/liquidacion-paola' },
   { key: 'cartolas', titulo: 'Cartolas', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual', produccion: true,
@@ -138,7 +141,7 @@ function FrecBadge({ frecuencia }) {
   )
 }
 
-function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, onToggle, isMobile }) {
+function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, onToggle, isMobile, esProduccion }) {
   const tiene = !!permiso
   const nombreResp = responsablePersona?.nombre
   const personaColor = responsablePersona?.esDireccion ? DIRECCION_BADGE : NOMBRE_BADGE
@@ -146,7 +149,7 @@ function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, o
   if (isMobile) {
     return (
       <div style={{
-        background: '#fff',
+        background: esProduccion ? PROD_BG : '#fff',
         border: `0.5px solid ${tiene ? '#B4B2A9' : '#D3D1C7'}`,
         borderLeft: `3px solid ${tiene ? '#1D9E75' : '#D3D1C7'}`,
         borderRadius: '0 10px 10px 0',
@@ -201,7 +204,7 @@ function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, o
   return (
     <div onClick={() => !proceso.links && onClick(proceso, tiene)}
       style={{
-        background: '#fff',
+        background: esProduccion ? PROD_BG : '#fff',
         border: `0.5px solid ${tiene ? '#B4B2A9' : '#D3D1C7'}`,
         borderLeft: `3px solid ${tiene ? '#1D9E75' : '#D3D1C7'}`,
         borderRadius: '0 10px 10px 0',
@@ -336,7 +339,7 @@ export default function ProcesosPage() {
     </div>
   )
 
-  const renderGrid = (lista, cols) => (
+  const renderGrid = (lista, cols, esProduccion = false) => (
     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${cols}, 1fr)`, gap: isMobile ? 0 : 10, marginBottom: 8 }}>
       {lista.map(p => (
         <ProcesCard
@@ -348,6 +351,7 @@ export default function ProcesosPage() {
           expanded={expanded === p.key}
           onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
           isMobile={isMobile}
+          esProduccion={esProduccion}
         />
       ))}
     </div>
@@ -393,7 +397,7 @@ export default function ProcesosPage() {
           return (
             <div style={{ marginBottom: 6 }}>
               {sectionLabel('PROCESOS YA EN PRODUCCIÓN', dispProd, enProd.length, { bg: '#E1F5EE', color: '#085041' })}
-              {renderGrid(enProd, 3)}
+              {renderGrid(enProd, 3, true)}
             </div>
           )
         })()}
@@ -408,7 +412,6 @@ export default function ProcesosPage() {
             </div>
           )
         })()}
-        
 
       </div>
 
