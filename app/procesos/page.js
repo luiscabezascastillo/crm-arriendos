@@ -30,7 +30,7 @@ const PROD_BG = '#F2FBF7'
 // frecuencia = Mensual | Semanal | Puntual (informativa)
 const PROCESOS = [
   // ── VENTAS ──
-  { key: 'publicacion', titulo: 'Publicación', responsable: 'Ventas', participa: [], frecuencia: 'Puntual',
+  { key: 'publicacion', titulo: 'Publicación', responsable: 'Ventas', participa: [], frecuencia: 'Puntual', produccion: true,
     descripcion: 'Depto vacío → candidato',
     etapas: ['Detectar', 'Publicar', 'Visitas', 'Selección', 'Cierre'], conecta: 'Inicios', href: '/publicaciones' },
   { key: 'inicios', titulo: 'Inicios', responsable: 'Ventas', participa: ['Legal', 'Finanzas'], frecuencia: 'Puntual',
@@ -39,7 +39,7 @@ const PROCESOS = [
 
   // ── ADMINISTRACIÓN ──
   { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual', produccion: true,
-    descripcion: 'Consulta y carga mensual de deudas de servicios por contrato',
+    descripcion: 'Consulta y carga mensual deudas de servicios',
     etapas: [], conecta: null, href: '/op/deudas' },
   { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal',
     descripcion: 'Descuentos a propietarios',
