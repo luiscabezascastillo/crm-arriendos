@@ -15,7 +15,8 @@ function opLabel(objetivo) {
 function etiquetaPub(p) {
   const dir = p.direccionreal || p.direccion || [p.calle, p.numero_calle].filter(Boolean).join(' ') || 'sin direccion'
   const op = opLabel(p.objetivo)
-  return `${[op, p.tipo].filter(Boolean).join(' · ')} · ${dir}${p.departamento ? ' · Depto ' + p.departamento : ''}${p.comuna ? ' · ' + p.comuna : ''}`
+  const comunaYaEnDir = p.comuna && sinTildes(dir).includes(sinTildes(p.comuna))
+  return `${[op, p.tipo].filter(Boolean).join(' · ')} · ${dir}${p.departamento ? ' · Depto ' + p.departamento : ''}${(p.comuna && !comunaYaEnDir) ? ' · ' + p.comuna : ''}`
 }
 
 // estilos
