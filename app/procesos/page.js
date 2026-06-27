@@ -40,14 +40,7 @@ const PROCESOS = [
   // ── ADMINISTRACIÓN ──
   { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
     descripcion: 'Consulta y carga mensual de deudas de servicios por contrato',
-    etapas: [], conecta: null, href: '/op/deudas',
-    links: [
-      { label: '📊 Visualizar Deudas', href: '/op/deudas' },
-      { label: '🏢 Cargar ggcc CF-Luis', href: '/op/comunidad-feliz' },
-      { label: '⚡ Cargar Luz-Luis', href: '/op/servicios/luz' },
-      { label: '💧 Cargar Agua-Luis', href: '/op/servicios/agua' },
-      { label: '📧 Email grandes deudores', href: '/op/email-deudores' },
-    ] },
+    etapas: [], conecta: null, href: '/op/deudas' },
   { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal',
     descripcion: 'Descuentos a propietarios',
     etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'], conecta: 'Liquidación', href: null },

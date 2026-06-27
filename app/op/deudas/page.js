@@ -403,6 +403,14 @@ export default function Deudas() {
         </div>
       </div>
 
+      {/* Barra de acciones del proceso Servicios */}
+      <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:20}}>
+        <Link href="/op/comunidad-feliz" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>🏢 Cargar ggcc CF</Link>
+        <Link href="/op/servicios/luz" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>⚡ Cargar Luz</Link>
+        <Link href="/op/servicios/agua" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>💧 Cargar Agua</Link>
+        <Link href="/op/email-deudores" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>📧 Email grandes deudores</Link>
+      </div>
+
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:20}}>
         {[
           {label:'Contratos',val:filas.length,sub:datos.length!==filas.length?`${datos.length} filtrados`:null,color:'#185FA5'},
