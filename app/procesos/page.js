@@ -409,19 +409,6 @@ export default function ProcesosPage() {
           )
         })()}
         
-        {/* SECCIONES POR DEPARTAMENTO */}
-        {SECCIONES.map(depto => {
-          const lista = PROCESOS.filter(p => p.responsable === depto)
-          if (!lista.length) return null
-          const disp = lista.filter(p => permisos[p.key]).length
-          const color = DEPTO_COLORS[depto] || ROL_COLORS.observador
-          return (
-            <div key={depto}>
-              {sectionLabel(depto, disp, lista.length, color)}
-              {renderGrid(lista, 3)}
-            </div>
-          )
-        })}
 
       </div>
 
