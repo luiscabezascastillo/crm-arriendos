@@ -112,7 +112,7 @@ export default function RequerimientosPage() {
 
   // matches (Entrega 2): vista de propiedades que calzan
   const [viendoMatches, setViendoMatches] = useState(null)
-  const [cartera, setCartera] = useState({ pubs: [], edis: [], cargada: false, cargando: false })
+  const [cartera, setCartera] = useState({ pubs: [], edis: [], canje: [], cargada: false, cargando: false })
 
   // visitas (Capa 2)
   const [visitas, setVisitas] = useState([])
@@ -170,7 +170,17 @@ export default function RequerimientosPage() {
     }
     // solo venta (el motor igual descarta arriendo, pero filtramos para no traer "otro")
     const venta = todas.filter(p => sinTildes(p.objetivo).includes('venta'))
-    setCartera({ pubs: venta, edis: edis || [], cargada: true, cargando: false })
+    // propiedades de canje (otros corredores). Mismos nombres de campo que publicaciones,
+    // por eso el motor las procesa igual. Las marcamos con _origen y _corredor.
+    let canje = []
+    try {
+      const { data: pc } = await supabase
+        .from('propiedades_canje').select('*').eq('activa', true)
+      canje = (pc || [])
+        .filter(p => sinTildes(p.objetivo).includes('venta'))
+        .map(p => ({ ...p, _origen: 'canje', _corredor: p.corredor_origen || 'Canje' }))
+    } catch (e) { console.error('canje:', e) }
+    setCartera({ pubs: venta, edis: edis || [], canje, cargada: true, cargando: false })
   }
 
   async function verMatches(r) {
@@ -521,12 +531,16 @@ export default function RequerimientosPage() {
   // matches calculados al vuelo para el requerimiento abierto
   const matches = useMemo(() => {
     if (!viendoMatches || !cartera.cargada) return null
-    const res = buscarMatches(viendoMatches, cartera.pubs, cartera.edis, VALOR_UF)
+    const resPropias = buscarMatches(viendoMatches, cartera.pubs, cartera.edis, VALOR_UF)
+    const resCanje = buscarMatches(viendoMatches, cartera.canje, [], VALOR_UF)
+    const res = [...resPropias, ...resCanje] // propias primero, luego canje
     // dedupe: una misma propiedad puede tener varias publicaciones activas
     const vistos = new Set()
     const unicos = []
     for (const m of res) {
-      const k = [sinTildes(m.pub.comuna), sinTildes(m.pub.direccionreal || m.pub.direccion), sinTildes(m.pub.departamento)].join('|')
+      const k = m.pub._origen === 'canje'
+        ? 'canje:' + m.pub.id
+        : [sinTildes(m.pub.comuna), sinTildes(m.pub.direccionreal || m.pub.direccion), sinTildes(m.pub.departamento)].join('|')
       if (vistos.has(k)) continue
       vistos.add(k)
       unicos.push(m)
@@ -539,7 +553,10 @@ export default function RequerimientosPage() {
     if (!cartera.cargada) return {}
     const out = {}
     for (const r of reqs) {
-      const res = buscarMatches(r, cartera.pubs, cartera.edis, VALOR_UF)
+      const res = [
+        ...buscarMatches(r, cartera.pubs, cartera.edis, VALOR_UF),
+        ...buscarMatches(r, cartera.canje, [], VALOR_UF),
+      ]
       const vistos = new Set()
       let n = 0
       for (const m of res) {
