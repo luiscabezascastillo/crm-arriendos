@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useRef, useLayoutEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
@@ -142,6 +142,56 @@ function RT({ value }) {
   )
 }
 
+/* ── Celda EDITABLE de persona (arrendatario/aval). A nivel de módulo para NO perder foco.
+   - normal: input de una línea con tooltip (title) al pasar el ratón.
+   - area=true (domicilios): textarea que se autoexpande en alto + icono ⤢ para abrir pop-up. ── */
+function PCell({ value, bloque, campo, onSet, ro, area, onExpand }) {
+  const v = value == null ? '' : String(value)
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    if (area && ref.current) {
+      ref.current.style.height = 'auto'
+      ref.current.style.height = Math.max(22, ref.current.scrollHeight) + 'px'
+    }
+  }, [v, area])
+  const common = {
+    border: `1px solid ${C.border}`, padding: '3px 6px', fontSize: 11,
+    background: ro ? '#f8fafc' : '#fff', color: '#1f2937',
+    boxSizing: 'border-box', width: '100%', outline: 'none', fontFamily: 'inherit',
+  }
+  if (area) {
+    return (
+      <div style={{ position: 'relative', width: '100%' }}>
+        <textarea
+          ref={ref} value={v} readOnly={ro} title={v} rows={1}
+          onChange={e => onSet(bloque, campo, e.target.value)}
+          style={{ ...common, resize: 'none', overflow: 'hidden', minHeight: 22, lineHeight: '16px', paddingRight: 16, display: 'block' }}
+          onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+          onBlur={e => e.target.style.background = ro ? '#f8fafc' : '#fff'}
+        />
+        {!ro && onExpand && (
+          <button type="button" tabIndex={-1} onClick={() => onExpand(bloque, campo)}
+            title="Ampliar para ver/editar todo el texto"
+            style={{
+              position: 'absolute', top: 2, right: 2, width: 14, height: 14, lineHeight: '12px',
+              fontSize: 11, border: 'none', background: 'transparent', color: '#64748b',
+              cursor: 'pointer', padding: 0,
+            }}>⤢</button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <input
+      value={v} readOnly={ro} title={v}
+      onChange={e => onSet(bloque, campo, e.target.value)}
+      style={{ ...common, height: 22 }}
+      onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+      onBlur={e => e.target.style.background = ro ? '#f8fafc' : '#fff'}
+    />
+  )
+}
+
 /* ── Select editable ── */
 function SC({ name, value, onChange, readOnly, options, width }) {
   if (readOnly) return <IC name={name} value={value} onChange={() => {}} readOnly width={width} />
@@ -274,6 +324,7 @@ function AdminContent() {
   // Estado editable de ARRENDATARIOS y AVALES (1 y 2). 11 campos por persona.
   const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
   const [modalAbierto, setModalAbierto] = useState(false)   // modal de edición de personas
+  const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
   const [aval2Abierto, setAval2Abierto] = useState(false)
@@ -331,6 +382,9 @@ function AdminContent() {
   // Editar un campo de una persona
   const setPersona = (bloque, campo, valor) =>
     setPersonas(prev => ({ ...prev, [bloque]: { ...prev[bloque], [campo]: valor } }))
+
+  // Pop-up de expansión para campos largos (domicilios). Guarda { bloque, campo } o null.
+  const abrirExpandir = (bloque, campo) => setExpandir({ bloque, campo })
 
   useEffect(() => {
     const ultimo = localStorage.getItem('ultimo_idadmon')
@@ -518,6 +572,14 @@ function AdminContent() {
       delete payload.id
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
       if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de facturar: ' + eSave.message }); setCambiando(false); return }
+
+      // Guardar también arrendatarios/avales (por si se editaron en línea y no se pulsó GUARDAR)
+      try {
+        await fetch('/api/cc1/guardar-personas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: form.idadmon, personas }),
+        })
+      } catch { /* no abortamos: el aviso de facturación seguirá con lo que haya en BD */ }
 
       // 2. Cerrar (P->S) + enviar avisos
       const res = await fetch('/api/cc1/cerrar-facturar', {
@@ -906,17 +968,17 @@ function AdminContent() {
             <tr>
               {/* Todos los campos editan el estado 'personas'. arr1.nombre/rut/email/telefono
                   se guardan también en datos_arriendos (resumen) además de en log. */}
-              <td colSpan={2} style={inputCell}><RT value={personas?.arr1?.nombre} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.genero} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.estado} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.nacion} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.rut} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.pasaporte} /></td>
-              <td colSpan={2} style={inputCell}><RT value={personas?.arr1?.email} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.telefono} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.domHabit} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.domLab} /></td>
-              <td style={inputCell}><RT value={personas?.arr1?.empresa} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.nombre} bloque="arr1" campo="nombre" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.genero} bloque="arr1" campo="genero" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.estado} bloque="arr1" campo="estado" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.nacion} bloque="arr1" campo="nacion" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.rut} bloque="arr1" campo="rut" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.pasaporte} bloque="arr1" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.email} bloque="arr1" campo="email" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.telefono} bloque="arr1" campo="telefono" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.domHabit} bloque="arr1" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.domLab} bloque="arr1" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.empresa} bloque="arr1" campo="empresa" onSet={setPersona} ro={ro} /></td>
             </tr>
 
             {/* Botón: añadir 2º arrendatario */}
@@ -940,17 +1002,17 @@ function AdminContent() {
             {arr2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>ARRENDATARIO 2</td>
-                <td colSpan={2} style={inputCell}><RT value={personas?.arr2?.nombre} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.genero} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.estado} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.nacion} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.rut} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.pasaporte} /></td>
-                <td colSpan={2} style={inputCell}><RT value={personas?.arr2?.email} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.telefono} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.domHabit} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.domLab} /></td>
-                <td style={inputCell}><RT value={personas?.arr2?.empresa} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.nombre} bloque="arr2" campo="nombre" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.genero} bloque="arr2" campo="genero" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.estado} bloque="arr2" campo="estado" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.nacion} bloque="arr2" campo="nacion" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.rut} bloque="arr2" campo="rut" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.pasaporte} bloque="arr2" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.email} bloque="arr2" campo="email" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.telefono} bloque="arr2" campo="telefono" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.domHabit} bloque="arr2" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.domLab} bloque="arr2" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.empresa} bloque="arr2" campo="empresa" onSet={setPersona} ro={ro} /></td>
               </tr>
             )}
 
@@ -975,17 +1037,17 @@ function AdminContent() {
             </tr>
             <tr>
               {/* aval1.nombre/email/telefono se guardan también en datos_arriendos (resumen) además de log. */}
-              <td colSpan={2} style={inputCell}><RT value={personas?.aval1?.nombre} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.genero} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.estado} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.nacion} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.rut} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.pasaporte} /></td>
-              <td colSpan={2} style={inputCell}><RT value={personas?.aval1?.email} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.telefono} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.domHabit} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.domLab} /></td>
-              <td style={inputCell}><RT value={personas?.aval1?.empresa} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.nombre} bloque="aval1" campo="nombre" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.genero} bloque="aval1" campo="genero" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.estado} bloque="aval1" campo="estado" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.nacion} bloque="aval1" campo="nacion" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.rut} bloque="aval1" campo="rut" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.pasaporte} bloque="aval1" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.email} bloque="aval1" campo="email" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.telefono} bloque="aval1" campo="telefono" onSet={setPersona} ro={ro} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.domHabit} bloque="aval1" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.domLab} bloque="aval1" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.empresa} bloque="aval1" campo="empresa" onSet={setPersona} ro={ro} /></td>
             </tr>
 
             {/* Botón: añadir 2º aval */}
@@ -1009,17 +1071,17 @@ function AdminContent() {
             {aval2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>AVAL 2</td>
-                <td colSpan={2} style={inputCell}><RT value={personas?.aval2?.nombre} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.genero} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.estado} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.nacion} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.rut} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.pasaporte} /></td>
-                <td colSpan={2} style={inputCell}><RT value={personas?.aval2?.email} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.telefono} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.domHabit} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.domLab} /></td>
-                <td style={inputCell}><RT value={personas?.aval2?.empresa} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.nombre} bloque="aval2" campo="nombre" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.genero} bloque="aval2" campo="genero" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.estado} bloque="aval2" campo="estado" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.nacion} bloque="aval2" campo="nacion" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.rut} bloque="aval2" campo="rut" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.pasaporte} bloque="aval2" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.email} bloque="aval2" campo="email" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.telefono} bloque="aval2" campo="telefono" onSet={setPersona} ro={ro} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.domHabit} bloque="aval2" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.domLab} bloque="aval2" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.empresa} bloque="aval2" campo="empresa" onSet={setPersona} ro={ro} /></td>
               </tr>
             )}
 
@@ -1209,6 +1271,39 @@ function AdminContent() {
           idadmon={form.idadmon}
         />
       )}
+
+      {/* ══ POP-UP de expansión de campo largo (domicilios) ══ */}
+      {expandir && (() => {
+        const BL = { arr1: 'Arrendatario 1', arr2: 'Arrendatario 2', aval1: 'Aval 1', aval2: 'Aval 2' }
+        const CA = { domHabit: 'Domicilio habitacional', domLab: 'Domicilio laboral' }
+        const valor = personas?.[expandir.bloque]?.[expandir.campo] ?? ''
+        return (
+          <div onClick={() => setExpandir(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 16px' }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 10, width: 'min(560px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+              <div style={{ background: C.headerBg, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{(CA[expandir.campo] || expandir.campo)} · {(BL[expandir.bloque] || expandir.bloque)}</span>
+                <button type="button" onClick={() => setExpandir(null)}
+                  style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ padding: 16 }}>
+                <textarea
+                  autoFocus value={valor} readOnly={ro}
+                  onChange={e => setPersona(expandir.bloque, expandir.campo, e.target.value)}
+                  style={{ width: '100%', minHeight: 140, boxSizing: 'border-box', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none', resize: 'vertical', color: '#1f2937' }}
+                />
+                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                  <button type="button" onClick={() => setExpandir(null)}
+                    style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: C.subBg, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Listo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
