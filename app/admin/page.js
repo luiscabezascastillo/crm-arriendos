@@ -320,6 +320,9 @@ function AdminContent() {
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
+  // Campos económicos que viven en el LOG (raw_data): porcentajes de corretaje,
+  // C.Especiales y Comentario por parte. Editables solo en P; se guardan en raw_data.
+  const [logEcon, setLogEcon] = useState({ porcentD:'', porcentA:'', cEspProp:'', comentProp:'', cEspArr:'', comentArr:'' })
   const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios, por idprop)
   // Estado editable de ARRENDATARIOS y AVALES (1 y 2). 11 campos por persona.
   const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
@@ -343,6 +346,17 @@ function AdminContent() {
 
   // Helper: leer una clave del raw_data del log (Capa 1)
   const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
+  // Helper: setear un campo económico del LOG (editable solo en P)
+  const setLogEconCampo = (campo, valor) => setLogEcon(prev => ({ ...prev, [campo]: valor }))
+  // Construye el objeto logEcon a partir de un raw_data del log
+  const econDesdeRaw = (rd) => ({
+    porcentD:   rd?.['Porcent-D'] ?? '',
+    porcentA:   rd?.['Porcent-A'] ?? '',
+    cEspProp:   rd?.['C.ESPECIALES PROPIETARIO'] ?? '',
+    comentProp: rd?.['COMENTARIO PROPIETARIO'] ?? '',
+    cEspArr:    rd?.['C.ESPECIALES ARRENDATARIO'] ?? '',
+    comentArr:  rd?.['COMENTARIO ARRENDTARIO'] ?? '',
+  })
   // Helper: leer un campo de la ficha del propietario (tabla propietarios, por idprop)
   const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
 
@@ -450,6 +464,7 @@ function AdminContent() {
       try {
         const { data: lrow } = await supabase.from('log').select('raw_data').eq('id_lcc', buscar).maybeSingle()
         setLogData(lrow?.raw_data || null)
+        setLogEcon(econDesdeRaw(lrow?.raw_data))
         setPersonas(construirPersonas(lrow?.raw_data, data))
         const a2 = lrow?.raw_data?.['Nombre-A2']
         const g2 = lrow?.raw_data?.['Nombre-G2']
@@ -457,7 +472,7 @@ function AdminContent() {
         setArr2Abierto(!!(a2 && String(a2).trim()))
         setAval2Abierto(!!(g2 && String(g2).trim()))
         setProp2Abierto(!!(d2 && String(d2).trim()))
-      } catch { setLogData(null); setPersonas(construirPersonas(null, data)); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
+      } catch { setLogData(null); setLogEcon(econDesdeRaw(null)); setPersonas(construirPersonas(null, data)); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
       // Propietario: leer su ficha de la tabla propietarios por idprop (fuente de verdad)
       try {
         if (data.idprop && String(data.idprop).trim()) {
@@ -468,7 +483,7 @@ function AdminContent() {
       setMsg({ type: 'ok', text: `✓ ${buscar} — ${data.propietario || ''} · ${data.inmueble || ''}` })
     } else {
       setForm({ ...FORM_VACIO, idadmon: buscar }); setIdadmonInput(buscar)
-      setLogData(null); setPropData(null); setPersonas({ arr1:{}, arr2:{}, aval1:{}, aval2:{} }); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
+      setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setPersonas({ arr1:{}, arr2:{}, aval1:{}, aval2:{} }); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
       setIsNew(true); setBloqueado(false)
       setMsg({ type: 'warn', text: `"${buscar}" no existe. Puedes crear un contrato nuevo.` })
     }
@@ -517,7 +532,7 @@ function AdminContent() {
     try {
       const res = await fetch('/api/cc1/guardar-personas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: form.idadmon, personas }),
+        body: JSON.stringify({ idadmon: form.idadmon, personas, econLog: logEcon }),
       })
       const dataP = await res.json()
       if (!res.ok) {
@@ -577,7 +592,7 @@ function AdminContent() {
       try {
         await fetch('/api/cc1/guardar-personas', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idadmon: form.idadmon, personas }),
+          body: JSON.stringify({ idadmon: form.idadmon, personas, econLog: logEcon }),
         })
       } catch { /* no abortamos: el aviso de facturación seguirá con lo que haya en BD */ }
 
@@ -600,6 +615,17 @@ function AdminContent() {
   }
 
   const ro = bloqueado
+  // Los campos económicos del LOG (porcentajes, C.Esp, Comentario) solo se editan en P.
+  const roLog = ro || (form.estado !== 'P' && !isNew)
+  // ADMON MES "Tipo": composición de si_fijo_admon (F=fijo) + adicionar_iva (SI).
+  const tipoAdmon = (form.si_fijo_admon || form.adicionar_iva)
+    ? ((form.si_fijo_admon === 'F' ? 'FIJO' : '%') + (form.adicionar_iva === 'SI' ? ' + IVA' : ''))
+    : ''
+  const setTipoAdmon = (val) => {
+    const fijo = String(val).startsWith('FIJO')
+    const iva = String(val).includes('+ IVA')
+    setForm(p => ({ ...p, si_fijo_admon: fijo ? 'F' : '', adicionar_iva: iva ? 'SI' : 'NO' }))
+  }
 
   return (
     <div style={{ height: '100vh', overflowY: 'auto', background: '#e8eef5' }}>
@@ -678,7 +704,7 @@ function AdminContent() {
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
 
-        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
+        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
             border: `1px solid ${C.border}`, background: '#fff',
@@ -1161,39 +1187,37 @@ function AdminContent() {
             display: 'grid', gridTemplateColumns: '1fr 1fr 0.55fr', gap: 0,
             border: `1px solid ${ECO.border}`, borderTop: 'none',
           }}>
-            {/* PROPIETARIO — 2 columnas × 4 filas */}
+            {/* PROPIETARIO — 2 columnas × 4 filas (Porcentaje/C.Esp/Coment vienen del LOG) */}
             <div style={{ borderRight: `1px solid ${ECO.border}` }}>
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>PROPIETARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
-                <EcoCell label="Porcentaje" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={ro} />
-                <EcoCell label="+ IVA" name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} ro={ro} />
+                <EcoCell label="Porcentaje" name="porcentD" value={logEcon.porcentD} onChange={e => setLogEconCampo('porcentD', e.target.value)} ro={roLog} />
                 <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={ro} money />
                 <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={ro} money />
                 <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={ro} money bold />
-                <EcoCell label="C. Esp." name="c_especiales" value={form.c_especiales} onChange={handleChange} ro={ro} />
-                <EcoCell label="Coment." name="comentario_comision" value={form.comentario_comision} onChange={handleChange} ro={ro} />
+                <EcoCell label="C. Esp." name="cEspProp" value={logEcon.cEspProp} onChange={e => setLogEconCampo('cEspProp', e.target.value)} ro={roLog} />
+                <EcoCell label="Coment." name="comentProp" value={logEcon.comentProp} onChange={e => setLogEconCampo('comentProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
-            {/* ARRENDATARIO — 2 columnas × 4 filas */}
+            {/* ARRENDATARIO — 2 columnas × 4 filas (Porcentaje/C.Esp/Coment vienen del LOG) */}
             <div style={{ borderRight: `1px solid ${ECO.border}` }}>
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ARRENDATARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
-                <EcoCell label="Porcentaje" name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} ro={ro} />
-                <EcoCell label="+ IVA" name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} ro={ro} />
+                <EcoCell label="Porcentaje" name="porcentA" value={logEcon.porcentA} onChange={e => setLogEconCampo('porcentA', e.target.value)} ro={roLog} />
                 <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={ro} money />
                 <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={ro} money />
                 <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={ro} money bold />
-                <EcoCell label="C. Esp." name="especial_b" value={form.especial_b} onChange={handleChange} ro={ro} />
-                <EcoCell label="Coment." name="especial_c" value={form.especial_c} onChange={handleChange} ro={ro} />
+                <EcoCell label="C. Esp." name="cEspArr" value={logEcon.cEspArr} onChange={e => setLogEconCampo('cEspArr', e.target.value)} ro={roLog} />
+                <EcoCell label="Coment." name="comentArr" value={logEcon.comentArr} onChange={e => setLogEconCampo('comentArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
-            {/* ADMON MES — 1 columna, 3 campos (gris, como ya estaba bien) */}
+            {/* ADMON MES — Cuantía=pct_adm, Tipo=si_fijo_admon+adicionar_iva */}
             <div>
               <div style={{ background: ECG.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
-              <EcoCell label="Tipo" name="quien_cobra" value={form.quien_cobra} onChange={handleChange} ro={ro} pal={ECG} />
-              <EcoCell label="Cuantía" name="cuota" value={form.cuota} onChange={handleChange} ro={ro} type="number" bold pal={ECG} />
+              <EcoCell label="Tipo" name="tipoAdmon" value={tipoAdmon} onChange={e => setTipoAdmon(e.target.value)} ro={ro} pal={ECG} options={['', '%', '% + IVA', 'FIJO', 'FIJO + IVA']} />
+              <EcoCell label="Cuantía" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={ro} bold pal={ECG} />
               <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} pal={ECG} />
             </div>
           </div>

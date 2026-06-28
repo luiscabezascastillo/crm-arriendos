@@ -74,25 +74,26 @@ function filaEco(label, valor, bold) {
 }
 
 // Cuadro DATOS ECONÓMICOS (HTML, verde) replicando el del Excel.
-function cuadroEconomicoHTML(dat) {
+function cuadroEconomicoHTML(dat, raw) {
+  const rd = raw || {}
   const sub = 'padding:3px 6px;background:#2f6b33;color:#fff;font-size:11px;font-weight:700;text-align:center;'
   const prop = `
     <tr><td colspan="2" style="${sub}">PROPIETARIO</td></tr>
-    ${filaEco('Porcentaje', dat.pct_adm)}
+    ${filaEco('Porcentaje', rd['Porcent-D'])}
     ${filaEco('Cantidad', m(dat.comision_d_base))}
     ${filaEco('Con IVA', m(dat.iva_comision_d))}
     ${filaEco('Total', m(dat.comision_d_total), true)}
-    ${filaEco('C. Especiales', dat.c_especiales)}
-    ${filaEco('Comentario', dat.comentario_comision)}
+    ${filaEco('C. Especiales', rd['C.ESPECIALES PROPIETARIO'])}
+    ${filaEco('Comentario', rd['COMENTARIO PROPIETARIO'])}
     ${filaEco('Boleta/Factura', dat.comision_cobrado)}`
   const arr = `
     <tr><td colspan="2" style="${sub}">ARRENDATARIO</td></tr>
-    ${filaEco('Porcentaje', dat.si_fijo_admon)}
+    ${filaEco('Porcentaje', rd['Porcent-A'])}
     ${filaEco('Cantidad', m(dat.comision_a_base))}
     ${filaEco('Con IVA', m(dat.iva_comision_a))}
     ${filaEco('Total', m(dat.comision_a_total), true)}
-    ${filaEco('C. Especiales', dat.especial_b)}
-    ${filaEco('Comentario', dat.especial_c)}
+    ${filaEco('C. Especiales', rd['C.ESPECIALES ARRENDATARIO'])}
+    ${filaEco('Comentario', rd['COMENTARIO ARRENDTARIO'])}
     ${filaEco('Boleta/Factura', dat.comision_a_pagado)}`
   return `
   <table style="border-collapse:collapse;border:1px solid #9ec79f;width:280px;margin-top:8px;">
@@ -162,6 +163,14 @@ export async function POST(req) {
     prop = pRow || null
   }
 
+  // 5b. raw_data del LOG (porcentajes de corretaje, C.Especiales y Comentario por parte)
+  let rawLog = {}
+  try {
+    const { data: lRow } = await supabaseAdmin
+      .from('log').select('raw_data').eq('id_lcc', idadmon).maybeSingle()
+    if (lRow?.raw_data && typeof lRow.raw_data === 'object') rawLog = lRow.raw_data
+  } catch { rawLog = {} }
+
   const concepto = conceptoFactura(dat)
   const datosProp = {
     nombre: v(dat.propietario || prop?.propietario),
@@ -225,7 +234,7 @@ export async function POST(req) {
     ${bloqueHTML('FACTURACION AL ARRENDATARIO', datosArr)}
     <p style="margin-top:16px;">Saludos.</p>
     <p style="margin:0;">Enviado por: ${esc(email)}<br><span style="color:#888;">CRM FCR (mensaje automático).</span></p>
-    ${cuadroEconomicoHTML(dat)}
+    ${cuadroEconomicoHTML(dat, rawLog)}
   </div>`
 
   const rFact = await enviarNotificacion({

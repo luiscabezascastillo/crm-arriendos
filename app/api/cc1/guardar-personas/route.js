@@ -69,6 +69,25 @@ export async function POST(req) {
   if (personas.aval1) aplicarPersona(raw, SUFIJOS.aval1, personas.aval1)
   if (personas.aval2) aplicarPersona(raw, SUFIJOS.aval2, personas.aval2)
 
+  // 2b) Fusionar los campos ECONÓMICOS que viven en el LOG (porcentajes de corretaje,
+  //     C.Especiales y Comentario por parte). Solo se envían desde el formulario cuando
+  //     el contrato está en P. Las claves siguen el nombre exacto del Excel (incluido el
+  //     typo "ARRENDTARIO" en COMENTARIO ARRENDATARIO, que se respeta verbatim).
+  const econ = body?.econLog
+  if (econ && typeof econ === 'object') {
+    const MAP_ECON = {
+      porcentD:   'Porcent-D',
+      porcentA:   'Porcent-A',
+      cEspProp:   'C.ESPECIALES PROPIETARIO',
+      comentProp: 'COMENTARIO PROPIETARIO',
+      cEspArr:    'C.ESPECIALES ARRENDATARIO',
+      comentArr:  'COMENTARIO ARRENDTARIO',
+    }
+    for (const k of Object.keys(MAP_ECON)) {
+      if (econ[k] !== undefined && econ[k] !== null) raw[MAP_ECON[k]] = String(econ[k])
+    }
+  }
+
   // 3) Guardar el raw_data fusionado de vuelta en log
   //    Si la fila de log no existía, la creamos (id_lcc = idadmon).
   let logResult
