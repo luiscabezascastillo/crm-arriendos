@@ -8,11 +8,11 @@ import Link from 'next/link'
 
 /* ── Colores fieles al Excel ── */
 const C = {
-  headerBg:   '#1a3a6b',   // azul oscuro cabeceras
+  headerBg:   '#1a3a6b',
   headerText: '#ffffff',
-  subBg:      '#2563a8',   // azul medio subencabezados
+  subBg:      '#2563a8',
   subText:    '#ffffff',
-  labelBg:    '#dbe5f1',   // azul claro etiquetas
+  labelBg:    '#dbe5f1',
   labelText:  '#1a3a6b',
   inputBg:    '#ffffff',
   border:     '#7a9cc7',
@@ -100,6 +100,25 @@ function IC({ name, value, onChange, readOnly, type='text', width, bold }) {
   )
 }
 
+/* ── Celda de SOLO LECTURA que muestra un valor del log (Capa 1) ── */
+function RO({ value }) {
+  return (
+    <input
+      type="text" value={value ?? ''} readOnly tabIndex={-1}
+      style={{
+        ...inputCell,
+        width: '100%',
+        background: '#eef2f7',
+        color: '#334155',
+        border: `1px solid ${C.border}`,
+        outline: 'none',
+        boxSizing: 'border-box',
+        cursor: 'default',
+      }}
+    />
+  )
+}
+
 /* ── Select editable ── */
 function SC({ name, value, onChange, readOnly, options, width }) {
   if (readOnly) return <IC name={name} value={value} onChange={() => {}} readOnly width={width} />
@@ -162,18 +181,22 @@ function AdminContent() {
   const router = useRouter()
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
+  const [logData, setLogData] = useState(null)
+  const [arr2Abierto, setArr2Abierto] = useState(false)
   const [bloqueado, setBloqueado] = useState(false)
   const [isNew, setIsNew] = useState(true)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
   const [adicionalesAbierto, setAdicionalesAbierto] = useState(false)
 
-  // ── Circuito de estados / permisos ──
-  const [cap, setCap] = useState(null)          // capacidades del usuario
+  const [cap, setCap] = useState(null)
   const [pendientes, setPendientes] = useState([])
   const [nuevoEstado, setNuevoEstado] = useState('')
   const [fechaEstado, setFechaEstado] = useState('')
   const [cambiando, setCambiando] = useState(false)
+
+  // Helper: leer una clave del raw_data del log (Capa 1)
+  const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
 
   useEffect(() => {
     const ultimo = localStorage.getItem('ultimo_idadmon')
@@ -189,7 +212,6 @@ function AdminContent() {
     } catch {}
   }
 
-  // Cambio de estado vía endpoint (cambia estado + crea P + email + histórico)
   async function cambiarEstado() {
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (!nuevoEstado) { setMsg({ type: 'warn', text: 'Elige el nuevo estado.' }); return }
@@ -214,7 +236,6 @@ function AdminContent() {
     setCambiando(false)
   }
 
-  // Aprobar / rechazar una alta pendiente
   async function resolverPendiente(idadmon, accion) {
     if (!window.confirm(`¿${accion === 'aprobar' ? 'Aprobar' : 'Rechazar'} el alta ${idadmon}?`)) return
     try {
@@ -237,9 +258,17 @@ function AdminContent() {
     if (data) {
       setForm(data); setIdadmonInput(buscar); setIsNew(false); setBloqueado(true)
       localStorage.setItem('ultimo_idadmon', buscar)
+      // Capa 1: leer también el registro completo del log (raw_data)
+      try {
+        const { data: lrow } = await supabase.from('log').select('raw_data').eq('id_lcc', buscar).maybeSingle()
+        setLogData(lrow?.raw_data || null)
+        const a2 = lrow?.raw_data?.['Nombre-A2']
+        setArr2Abierto(!!(a2 && String(a2).trim()))
+      } catch { setLogData(null); setArr2Abierto(false) }
       setMsg({ type: 'ok', text: `✓ ${buscar} — ${data.propietario || ''} · ${data.inmueble || ''}` })
     } else {
       setForm({ ...FORM_VACIO, idadmon: buscar }); setIdadmonInput(buscar)
+      setLogData(null); setArr2Abierto(false)
       setIsNew(true); setBloqueado(false)
       setMsg({ type: 'warn', text: `"${buscar}" no existe. Puedes crear un contrato nuevo.` })
     }
@@ -255,12 +284,11 @@ function AdminContent() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     setSaving(true); setMsg(null)
 
-    // ALTA NUEVA -> pasa por el endpoint (correlativo automático + control de aprobación + email)
     if (isNew) {
       try {
         const payload = { ...form }
         delete payload.id
-        delete payload.idadmon  // el correlativo lo asigna el servidor
+        delete payload.idadmon
         const res = await fetch('/api/cc1/alta', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ form: payload }),
@@ -280,7 +308,6 @@ function AdminContent() {
       return
     }
 
-    // EDICIÓN de contrato existente -> update directo (como antes)
     const payload = { ...form, updated_at: new Date().toISOString() }
     delete payload.id
     const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
@@ -311,7 +338,6 @@ function AdminContent() {
 
   const ro = bloqueado
 
-  /* ── Botones inferiores (reutilizables) ── */
   const BotonesInferiores = () => (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
       <button onClick={guardar} disabled={saving || bloqueado} style={{
@@ -356,7 +382,6 @@ function AdminContent() {
 
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 
-        {/* IDADMON input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.headerBg }}>IDADMON</span>
           <input type="text" value={idadmonInput}
@@ -372,7 +397,6 @@ function AdminContent() {
           />
         </div>
 
-        {/* RECUPERAR */}
         <button onClick={() => recuperar()} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: C.green, color: '#fff', fontSize: 12, fontWeight: 700,
@@ -381,7 +405,6 @@ function AdminContent() {
 
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 
-        {/* GUARDAR */}
         <button onClick={guardar} disabled={saving || bloqueado} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: bloqueado ? '#9ca3af' : C.green,
@@ -389,7 +412,6 @@ function AdminContent() {
           cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
         }}>{saving ? 'GUARDANDO...' : 'GUARDAR'}</button>
 
-        {/* TERMINAR */}
         <button onClick={terminar} disabled={bloqueado} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: bloqueado ? '#9ca3af' : C.red,
@@ -397,7 +419,6 @@ function AdminContent() {
           cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
         }}>TERMINAR</button>
 
-        {/* DESBLOQUEAR */}
         <button onClick={() => { setBloqueado(false); setMsg({ type: 'info', text: '🔓 Desbloqueado — puedes editar.' }) }} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: bloqueado ? C.amber : '#6b7280',
@@ -405,15 +426,13 @@ function AdminContent() {
           cursor: 'pointer', fontFamily: 'inherit',
         }}>{bloqueado ? '🔒 DESBLOQUEAR' : '🔓 DESBLOQUEADO'}</button>
 
-        {/* EXPORT (pendiente) */}
         <button disabled title="Pendiente de definir para la versión web" style={{
           padding: '5px 14px', borderRadius: 5, border: '1px dashed #9ca3af',
           background: 'transparent', color: '#9ca3af', fontSize: 12, fontWeight: 700,
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
 
-        {/* + NUEVO */}
-        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
+        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setArr2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
             border: `1px solid ${C.border}`, background: '#fff',
@@ -421,7 +440,6 @@ function AdminContent() {
             cursor: 'pointer', fontFamily: 'inherit',
           }}>+ NUEVO</button>
 
-        {/* Estado badge */}
         {form.idadmon && (
           <span style={{
             padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700,
@@ -435,7 +453,6 @@ function AdminContent() {
         )}
       </div>
 
-      {/* Mensaje */}
       {msg && (
         <div style={{
           margin: '8px 16px 0', padding: '7px 14px', borderRadius: 6,
@@ -445,7 +462,6 @@ function AdminContent() {
         }}>{msg.text}</div>
       )}
 
-      {/* ── CAMBIO DE ESTADO (circuito) ── */}
       {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
         <div style={{
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
@@ -480,7 +496,6 @@ function AdminContent() {
         </div>
       )}
 
-      {/* ── BANDEJA DE APROBACIÓN (solo responsable/Dirección) ── */}
       {cap?.puedeAprobar && pendientes.length > 0 && (
         <div style={{
           margin: '8px 16px 0', padding: '10px 14px', borderRadius: 6,
@@ -515,24 +530,18 @@ function AdminContent() {
       <div style={{ padding: '10px 16px 40px', overflowX: 'auto' }}>
         <table style={{
           borderCollapse: 'collapse', width: '100%',
-           fontSize: 11,
-          fontFamily: 'inherit',
+          fontSize: 11, fontFamily: 'inherit',
         }}>
-
-          {/* ══ FILA 1: HECHO ══ */}
           <tbody>
             <tr>
               <td colSpan={14} style={{ ...cell, background: '#fff', border: 'none', padding: '4px 0' }}>
-                <span style={{
-                  fontSize: 16, fontWeight: 700, color: C.red,
-                  letterSpacing: '0.1em',
-                }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: C.red, letterSpacing: '0.1em' }}>
                   {form.accion || 'HECHO'}
                 </span>
               </td>
             </tr>
 
-            {/* ══ PROPIETARIO cabecera ══ */}
+            {/* ══ PROPIETARIO ══ */}
             <tr>
               <td style={{ ...labelCell, width: 90, verticalAlign: 'middle' }} rowSpan={2}>PROPIETARIO</td>
               <SH cols={2} bg={C.subBg}>Nombre</SH>
@@ -592,9 +601,9 @@ function AdminContent() {
               <td colSpan={2} style={inputCell}><IC name="proporcional" value={form.proporcional} onChange={handleChange} readOnly={ro} /></td>
             </tr>
 
-            {/* ══ ARRENDATARIO cabecera ══ */}
+            {/* ══ ARRENDATARIO (Capa 1: rellenado desde log) ══ */}
             <tr>
-              <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={3}>ARRENDATARIO</td>
+              <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={2}>ARRENDATARIO</td>
               <SH cols={2} bg={C.subBg}>Nombres</SH>
               <SH cols={1} bg={C.subBg}>Género</SH>
               <SH cols={1} bg={C.subBg}>Estado</SH>
@@ -607,24 +616,60 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
+              {/* Nombre, RUT, Email, Teléfono -> de datos_arriendos (manda). Resto -> de log (solo lectura) */}
               <td colSpan={2} style={inputCell}><IC name="arrendatario" value={form.arrendatario} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}><IC name="sub_estado" value={form.sub_estado} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}><IC name="idprop" value={form.idprop} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
+              <td style={inputCell}><RO value={lp('Genero-A')} /></td>
+              <td style={inputCell}><RO value={lp('Estado-A')} /></td>
+              <td style={inputCell}><RO value={lp('Nacion-A')} /></td>
+              <td style={inputCell}><IC name="rut" value={form.rut} onChange={handleChange} readOnly={ro} /></td>
+              <td style={inputCell}><RO value={lp('Pasaporte-A')} /></td>
               <td colSpan={2} style={inputCell}><IC name="mail_arrendatario" value={form.mail_arrendatario} onChange={handleChange} readOnly={ro} /></td>
               <td style={inputCell}><IC name="movil" value={form.movil} onChange={handleChange} readOnly={ro} /></td>
-              <td colSpan={2} style={inputCell}></td>
-              <td style={inputCell}></td>
-            </tr>
-            <tr>
-              <td colSpan={13} style={{ ...inputCell, background: C.rowAlt, height: 22 }}></td>
+              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-A')} /></td>
+              <td style={inputCell}><RO value={lp('Empresa-A')} /></td>
             </tr>
 
-            {/* ══ AVALES ══ */}
+            {/* Botón: añadir 2º arrendatario */}
             <tr>
-              <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={3}>AVALES</td>
+              <td colSpan={14} style={{ ...cell, border: 'none', padding: '4px 0 2px' }}>
+                <button type="button" onClick={() => setArr2Abierto(v => !v)}
+                  style={{
+                    fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 5,
+                    border: `1px solid ${C.border}`, background: arr2Abierto ? C.labelBg : '#fff',
+                    color: C.headerBg, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  {arr2Abierto ? '− ocultar 2º arrendatario' : '+ añadir 2º arrendatario'}
+                </button>
+                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
+                  (poco frecuente — datos del registro LOG, por ahora de solo lectura)
+                </span>
+              </td>
+            </tr>
+
+            {/* Fila 2º arrendatario (desplegable, solo lectura desde log -A2) */}
+            {arr2Abierto && (
+              <tr>
+                <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>ARRENDATARIO 2</td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Nombre-A2')} /></td>
+                <td style={inputCell}><RO value={lp('Genero-A2')} /></td>
+                <td style={inputCell}><RO value={lp('Estado-A2')} /></td>
+                <td style={inputCell}><RO value={lp('Nacion-A2')} /></td>
+                <td style={inputCell}><RO value={lp('RUT de A2')} /></td>
+                <td style={inputCell}><RO value={lp('Pasaporte-A2')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('email de A2')} /></td>
+                <td style={inputCell}><RO value={lp('telefono de A2')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-A2')} /></td>
+                <td style={inputCell}><RO value={lp('Empresa-A2')} /></td>
+              </tr>
+            )}
+
+            <tr>
+              <td colSpan={14} style={{ ...inputCell, background: C.rowAlt, height: 14, border: 'none' }}></td>
+            </tr>
+
+            {/* ══ AVALES (sin cambios en Capa 1) ══ */}
+            <tr>
+              <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={2}>AVALES</td>
               <SH cols={2} bg={C.subBg}>Nombres</SH>
               <SH cols={1} bg={C.subBg}>Género</SH>
               <SH cols={1} bg={C.subBg}>Estado</SH>
@@ -641,7 +686,7 @@ function AdminContent() {
               <td style={inputCell}></td>
               <td style={inputCell}></td>
               <td style={inputCell}></td>
-              <td style={inputCell}><IC name="rut" value={form.rut} onChange={handleChange} readOnly={ro} /></td>
+              <td style={inputCell}></td>
               <td style={inputCell}></td>
               <td colSpan={2} style={inputCell}><IC name="mail_avalista" value={form.mail_avalista} onChange={handleChange} readOnly={ro} /></td>
               <td style={inputCell}><IC name="telefono_avalista" value={form.telefono_avalista} onChange={handleChange} readOnly={ro} /></td>
@@ -649,7 +694,7 @@ function AdminContent() {
               <td style={inputCell}></td>
             </tr>
             <tr>
-              <td colSpan={13} style={{ ...inputCell, background: C.rowAlt, height: 22 }}></td>
+              <td colSpan={14} style={{ ...inputCell, background: C.rowAlt, height: 14, border: 'none' }}></td>
             </tr>
 
             {/* ══ CONDICIONES ══ */}
@@ -700,7 +745,7 @@ function AdminContent() {
               <td colSpan={4} style={{ ...inputCell, background: C.rowAlt }}></td>
             </tr>
             <tr>
-              <td colSpan={13} style={{ ...inputCell, background: '#fff9c4', border: `1px solid ${C.border}` }}>
+              <td colSpan={13} style={{ ...inputCell, background: '#fff', border: `1px solid ${C.border}` }}>
                 <textarea name="comentarios" value={form.comentarios ?? ''} onChange={handleChange}
                   readOnly={ro} rows={2}
                   style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 11, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
@@ -711,7 +756,7 @@ function AdminContent() {
           </tbody>
         </table>
 
-        {/* ══ DATOS ECONÓMICOS — bloque a todo el ancho, 3 columnas ══ */}
+        {/* ══ DATOS ECONÓMICOS ══ */}
         <div style={{ marginTop: 16 }}>
           <div style={{
             ...headerCell, background: C.headerBg, padding: '5px 10px',
@@ -723,8 +768,6 @@ function AdminContent() {
             display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0,
             border: `1px solid ${C.border}`, borderTop: 'none',
           }}>
-
-            {/* Columna 1: PROPIETARIO */}
             <div style={{ borderRight: `1px solid ${C.border}` }}>
               <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>PROPIETARIO</div>
               <EcoRow label="Porcentaje"><IC name="pct_adm" value={form.pct_adm} onChange={handleChange} readOnly={ro} /></EcoRow>
@@ -736,8 +779,6 @@ function AdminContent() {
               <EcoRow label="Comentario"><IC name="comentario_comision" value={form.comentario_comision} onChange={handleChange} readOnly={ro} /></EcoRow>
               <EcoRow label="Boleta/Factura"><IC name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} readOnly={ro} /></EcoRow>
             </div>
-
-            {/* Columna 2: ARRENDATARIO */}
             <div style={{ borderRight: `1px solid ${C.border}` }}>
               <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ARRENDATARIO</div>
               <EcoRow label="Porcentaje"><IC name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} readOnly={ro} /></EcoRow>
@@ -749,31 +790,25 @@ function AdminContent() {
               <EcoRow label="Comentario"><IC name="especial_c" value={form.especial_c} onChange={handleChange} readOnly={ro} /></EcoRow>
               <EcoRow label="Boleta/Factura"><IC name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} readOnly={ro} /></EcoRow>
             </div>
-
-            {/* Columna 3: ADMON MES */}
             <div>
               <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ADMON MES</div>
               <EcoRow label="Tipo"><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={ro} /></EcoRow>
               <EcoRow label="Cuantía"><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
               <EcoRow label="Especial"><IC name="mowner" value={form.mowner} onChange={handleChange} readOnly={ro} /></EcoRow>
             </div>
-
           </div>
         </div>
 
-        {/* ══ BOTONES INFERIORES ══ */}
         <div style={{ marginTop: 16 }}>
           <BotonesInferiores />
         </div>
 
-        {/* ══ DATOS ADICIONALES — sección colapsable (cerrada por defecto) ══ */}
+        {/* ══ DATOS ADICIONALES ══ */}
         <div style={{
           marginTop: 20, background: '#fff',
-          border: `1px solid ${C.border}`, borderRadius: 8,
-          overflow: 'hidden',
+          border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden',
         }}>
-          <button
-            onClick={() => setAdicionalesAbierto(v => !v)}
+          <button onClick={() => setAdicionalesAbierto(v => !v)}
             style={{
               width: '100%', background: C.headerBg, color: '#fff', padding: '8px 14px',
               fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', border: 'none',
@@ -832,8 +867,7 @@ function AdminContent() {
 }
 
 const fieldInput = {
-  outline: 'none', fontFamily: 'inherit',
-  color: '#1f2937',
+  outline: 'none', fontFamily: 'inherit', color: '#1f2937',
 }
 
 export default function AdminPage() {
