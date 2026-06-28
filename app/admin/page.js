@@ -508,11 +508,12 @@ function AdminContent() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#e8eef5' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', background: '#e8eef5' }}>
       <TopNav />
 
       {/* ── BARRA DE BOTONES ── */}
       <div style={{
+        position: 'sticky', top: 0, zIndex: 1000,
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         padding: '8px 16px', background: '#f0f4f8',
         borderBottom: `2px solid ${C.headerBg}`,
@@ -607,7 +608,7 @@ function AdminContent() {
 
       {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
         <div style={{
-          position: 'sticky', top: 0, zIndex: 900,
+          position: 'sticky', top: 42, zIndex: 900,
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
           background: '#eef4fb', border: `1px solid ${C.headerBg}`,
           boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
