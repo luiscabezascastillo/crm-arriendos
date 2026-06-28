@@ -182,6 +182,8 @@ function AdminContent() {
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
+  const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios)
+  const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios, por idprop)
   const [arr2Abierto, setArr2Abierto] = useState(false)
   const [aval2Abierto, setAval2Abierto] = useState(false)
   const [prop2Abierto, setProp2Abierto] = useState(false)
@@ -199,6 +201,10 @@ function AdminContent() {
 
   // Helper: leer una clave del raw_data del log (Capa 1)
   const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
+  // Helper: leer un campo de la ficha del propietario (tabla propietarios)
+  const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
+  // Helper: leer un campo de la ficha del propietario (tabla propietarios, por idprop)
+  const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
 
   useEffect(() => {
     const ultimo = localStorage.getItem('ultimo_idadmon')
@@ -271,10 +277,17 @@ function AdminContent() {
         setAval2Abierto(!!(g2 && String(g2).trim()))
         setProp2Abierto(!!(d2 && String(d2).trim()))
       } catch { setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
+      // Propietario: leer su ficha de la tabla propietarios por idprop (fuente de verdad)
+      try {
+        if (data.idprop && String(data.idprop).trim()) {
+          const { data: prow } = await supabase.from('propietarios').select('*').eq('idprop', String(data.idprop).trim()).maybeSingle()
+          setPropData(prow || null)
+        } else { setPropData(null) }
+      } catch { setPropData(null) }
       setMsg({ type: 'ok', text: `✓ ${buscar} — ${data.propietario || ''} · ${data.inmueble || ''}` })
     } else {
       setForm({ ...FORM_VACIO, idadmon: buscar }); setIdadmonInput(buscar)
-      setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
+      setLogData(null); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
       setIsNew(true); setBloqueado(false)
       setMsg({ type: 'warn', text: `"${buscar}" no existe. Puedes crear un contrato nuevo.` })
     }
@@ -438,7 +451,7 @@ function AdminContent() {
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
 
-        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
+        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
             border: `1px solid ${C.border}`, background: '#fff',
@@ -547,7 +560,7 @@ function AdminContent() {
               </td>
             </tr>
 
-            {/* ══ PROPIETARIO (Capa 2: rellenado desde log -D, con 2º propietario) ══ */}
+            {/* ══ PROPIETARIO (lee de la tabla 'propietarios' por idprop; 2º propietario desde log) ══ */}
             <tr>
               <td style={{ ...labelCell, width: 90, verticalAlign: 'middle' }} rowSpan={2}>PROPIETARIO</td>
               <SH cols={2} bg={C.subBg}>Nombre</SH>
@@ -562,18 +575,19 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
-              {/* Nombre, Género -> de datos_arriendos (manda). Resto -> de log (solo lectura).
-                  OJO: "Estado" aquí es el ESTADO CIVIL (Estado-D del log), no el estado del contrato. */}
-              <td colSpan={2} style={inputCell}><IC name="propietario" value={form.propietario} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><IC name="genero" value={form.genero} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><RO value={lp('Estado-D')} /></td>
-              <td style={inputCell}><RO value={lp('Nacion-D')} /></td>
-              <td style={inputCell}><RO value={lp('RUT de D')} /></td>
-              <td style={inputCell}><RO value={lp('Pasaporte-D')} /></td>
-              <td colSpan={2} style={inputCell}><RO value={lp('email de D')} /></td>
-              <td style={inputCell}><RO value={lp('telefono de D')} /></td>
-              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-D')} /></td>
-              <td style={inputCell}><RO value={lp('Empresa-D')} /></td>
+              {/* PROPIETARIO: fuente de verdad = tabla 'propietarios' (por idprop).
+                  Opción A: solo los campos que esa tabla tiene; el resto queda vacío.
+                  Todo en solo lectura en esta capa (se editará en la ficha del propietario, no aquí). */}
+              <td colSpan={2} style={inputCell}><RO value={pp('propietario') || form.propietario} /></td>
+              <td style={inputCell}><RO value={pp('genero')} /></td>
+              <td style={inputCell}><RO value={''} /></td>
+              <td style={inputCell}><RO value={''} /></td>
+              <td style={inputCell}><RO value={pp('rut')} /></td>
+              <td style={inputCell}><RO value={''} /></td>
+              <td colSpan={2} style={inputCell}><RO value={pp('mail1')} /></td>
+              <td style={inputCell}><RO value={pp('telefono')} /></td>
+              <td colSpan={2} style={inputCell}><RO value={pp('direccion')} /></td>
+              <td style={inputCell}><RO value={''} /></td>
             </tr>
 
             {/* Botón: añadir 2º propietario */}
@@ -588,7 +602,9 @@ function AdminContent() {
                   {prop2Abierto ? '− ocultar 2º propietario' : '+ añadir 2º propietario'}
                 </button>
                 <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
-                  (muy poco frecuente — p. ej. propiedad heredada por dos titulares. Datos del LOG, por ahora de solo lectura)
+                  {form.idprop
+                    ? `Datos del propietario ${form.idprop} (ficha en tabla propietarios). El 2º propietario es muy poco frecuente — datos del LOG, solo lectura.`
+                    : '(muy poco frecuente — p. ej. propiedad heredada por dos titulares. Datos del LOG, por ahora de solo lectura)'}
                 </span>
               </td>
             </tr>
