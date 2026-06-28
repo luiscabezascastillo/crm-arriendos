@@ -415,20 +415,23 @@ function AdminContent() {
     setSaving(false)
   }
 
-  // Guardar SOLO arrendatarios y avales (desde el modal), sin tocar el resto del contrato.
-  async function guardarPersonasModal() {
+  // Guardar SOLO arrendatarios y avales (desde el modal). Recibe el 'draft' editado en el modal.
+  async function guardarPersonasModal(draft, abiertos) {
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     setGuardandoModal(true)
     try {
       const res = await fetch('/api/cc1/guardar-personas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: form.idadmon, personas }),
+        body: JSON.stringify({ idadmon: form.idadmon, personas: draft }),
       })
       const data = await res.json()
       if (!res.ok) {
         setMsg({ type: 'error', text: 'Error al guardar: ' + (data.error || '') })
         setGuardandoModal(false); return
       }
+      // Solo si se guarda bien, aplicamos el draft al estado real (tabla refleja lo guardado)
+      setPersonas(draft)
+      if (abiertos) { setArr2Abierto(!!abiertos.arr2); setAval2Abierto(!!abiertos.aval2) }
       setGuardandoModal(false); setModalAbierto(false)
       setMsg({ type: 'ok', text: '✓ Arrendatarios y avales guardados.' })
     } catch {
@@ -458,29 +461,6 @@ function AdminContent() {
   }
 
   const ro = bloqueado
-
-  // Input editable de un campo de persona (arrendatario/aval). Cuando ro=true, gris no editable.
-  const PE = ({ bloque, campo, bold }) => (
-    <input
-      type="text"
-      value={personas?.[bloque]?.[campo] ?? ''}
-      onChange={e => setPersona(bloque, campo, e.target.value)}
-      readOnly={ro}
-      style={{
-        ...inputCell,
-        width: '100%',
-        fontWeight: bold ? 600 : 400,
-        background: ro ? '#eef2f7' : C.inputBg,
-        color: ro ? '#334155' : '#1f2937',
-        border: `1px solid ${C.border}`,
-        outline: 'none',
-        boxSizing: 'border-box',
-        cursor: ro ? 'default' : 'text',
-      }}
-      onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
-      onBlur={e => e.target.style.background = ro ? '#eef2f7' : C.inputBg}
-    />
-  )
 
   const BotonesInferiores = () => (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1118,10 +1098,9 @@ function AdminContent() {
       {/* ══ MODAL: Editar arrendatarios y avales ══ */}
       {modalAbierto && (
         <ModalPersonas
-          personas={personas}
-          setPersona={setPersona}
-          arr2Abierto={arr2Abierto} setArr2Abierto={setArr2Abierto}
-          aval2Abierto={aval2Abierto} setAval2Abierto={setAval2Abierto}
+          personasIniciales={personas}
+          arr2Inicial={arr2Abierto}
+          aval2Inicial={aval2Abierto}
           guardando={guardandoModal}
           onGuardar={guardarPersonasModal}
           onCerrar={() => setModalAbierto(false)}
@@ -1136,54 +1115,70 @@ const fieldInput = {
   outline: 'none', fontFamily: 'inherit', color: '#1f2937',
 }
 
-/* ══ Modal de edición de arrendatarios y avales ══ */
-function ModalPersonas({ personas, setPersona, arr2Abierto, setArr2Abierto, aval2Abierto, setAval2Abierto, guardando, onGuardar, onCerrar, idadmon }) {
+/* ══ Estilos del modal (fuera para no recrearlos) ══ */
+const M_lab = { fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 3, display: 'block' }
+const M_inp = { width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }
+const M_ta = { ...M_inp, minHeight: 44, resize: 'vertical' }
+
+/* Campo de texto normal — definido FUERA del modal para no perder el foco al teclear */
+function MF({ value, onChange, label, col = 1 }) {
+  return (
+    <div style={{ gridColumn: `span ${col}` }}>
+      <label style={M_lab}>{label}</label>
+      <input style={M_inp} value={value ?? ''} onChange={onChange} />
+    </div>
+  )
+}
+/* Campo largo (domicilios) -> textarea */
+function MFT({ value, onChange, label, col = 2 }) {
+  return (
+    <div style={{ gridColumn: `span ${col}` }}>
+      <label style={M_lab}>{label}</label>
+      <textarea style={M_ta} value={value ?? ''} onChange={onChange} rows={2} />
+    </div>
+  )
+}
+/* Bloque de los 11 campos de una persona; edita el draft vía onCampo(campo, valor) */
+function MBloque({ datos, onCampo }) {
+  const d = datos || {}
+  const set = (campo) => (e) => onCampo(campo, e.target.value)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
+      <MF value={d.nombre}    onChange={set('nombre')}    label="Nombre" col={2} />
+      <MF value={d.genero}    onChange={set('genero')}    label="Género" />
+      <MF value={d.estado}    onChange={set('estado')}    label="Estado civil" />
+      <MF value={d.nacion}    onChange={set('nacion')}    label="Nacionalidad" />
+      <MF value={d.rut}       onChange={set('rut')}       label="RUT" />
+      <MF value={d.pasaporte} onChange={set('pasaporte')} label="Pasaporte" />
+      <MF value={d.telefono}  onChange={set('telefono')}  label="Teléfono" />
+      <MF value={d.email}     onChange={set('email')}     label="Email" col={2} />
+      <MF value={d.empresa}   onChange={set('empresa')}   label="Empresa" col={2} />
+      <MFT value={d.domHabit} onChange={set('domHabit')}  label="Domicilio habitacional" col={2} />
+      <MFT value={d.domLab}   onChange={set('domLab')}    label="Domicilio laboral" col={2} />
+    </div>
+  )
+}
+
+/* ══ Modal de edición de arrendatarios y avales (con draft interno: Cancelar revierte) ══ */
+function ModalPersonas({ personasIniciales, arr2Inicial, aval2Inicial, guardando, onGuardar, onCerrar, idadmon }) {
+  // draft = copia local; se edita aquí y solo se confirma al Guardar
+  const [draft, setDraft] = useState(() => ({
+    arr1:  { ...(personasIniciales?.arr1  || {}) },
+    arr2:  { ...(personasIniciales?.arr2  || {}) },
+    aval1: { ...(personasIniciales?.aval1 || {}) },
+    aval2: { ...(personasIniciales?.aval2 || {}) },
+  }))
+  const [arr2, setArr2] = useState(!!arr2Inicial)
+  const [aval2, setAval2] = useState(!!aval2Inicial)
+
+  const setCampo = (bloque) => (campo, valor) =>
+    setDraft(prev => ({ ...prev, [bloque]: { ...prev[bloque], [campo]: valor } }))
+
   const ov = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '30px 16px' }
   const card = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 880, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', fontFamily: '"DM Sans", system-ui, sans-serif', color: '#10183a' }
-  const lab = { fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 3, display: 'block' }
-  const inp = { width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }
-  const ta = { ...inp, minHeight: 44, resize: 'vertical' }
-
-  // Campo de texto normal
-  const F = ({ bloque, campo, label, col = 1 }) => (
-    <div style={{ gridColumn: `span ${col}` }}>
-      <label style={lab}>{label}</label>
-      <input style={inp} value={personas?.[bloque]?.[campo] ?? ''}
-        onChange={e => setPersona(bloque, campo, e.target.value)} />
-    </div>
-  )
-  // Campo de texto largo (domicilios) -> textarea
-  const FT = ({ bloque, campo, label, col = 2 }) => (
-    <div style={{ gridColumn: `span ${col}` }}>
-      <label style={lab}>{label}</label>
-      <textarea style={ta} value={personas?.[bloque]?.[campo] ?? ''}
-        onChange={e => setPersona(bloque, campo, e.target.value)} rows={2} />
-    </div>
-  )
-
-  // Bloque de los 11 campos de una persona
-  const Bloque = ({ bloque }) => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
-      <F bloque={bloque} campo="nombre" label="Nombre" col={2} />
-      <F bloque={bloque} campo="genero" label="Género" />
-      <F bloque={bloque} campo="estado" label="Estado civil" />
-      <F bloque={bloque} campo="nacion" label="Nacionalidad" />
-      <F bloque={bloque} campo="rut" label="RUT" />
-      <F bloque={bloque} campo="pasaporte" label="Pasaporte" />
-      <F bloque={bloque} campo="telefono" label="Teléfono" />
-      <F bloque={bloque} campo="email" label="Email" col={2} />
-      <F bloque={bloque} campo="empresa" label="Empresa" col={2} />
-      <FT bloque={bloque} campo="domHabit" label="Domicilio habitacional" col={2} />
-      <FT bloque={bloque} campo="domLab" label="Domicilio laboral" col={2} />
-    </div>
-  )
-
-  const Titulo = ({ children, extra }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a3a6b' }}>{children}</div>
-      {extra}
-    </div>
-  )
+  const tituloRow = { display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px' }
+  const tituloTxt = { fontSize: 13, fontWeight: 700, color: '#1a3a6b' }
+  const btnSec = (activo) => ({ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: '1px solid #c7d2e0', background: activo ? '#dbe5f1' : '#fff', color: '#1a3a6b', cursor: 'pointer' })
 
   return (
     <div style={ov} onClick={onCerrar}>
@@ -1196,29 +1191,29 @@ function ModalPersonas({ personas, setPersona, arr2Abierto, setArr2Abierto, aval
 
         {/* Cuerpo */}
         <div style={{ padding: 20, maxHeight: '70vh', overflowY: 'auto' }}>
-          <Titulo>Arrendatario 1</Titulo>
-          <Bloque bloque="arr1" />
+          <div style={tituloRow}><div style={tituloTxt}>Arrendatario 1</div></div>
+          <MBloque datos={draft.arr1} onCampo={setCampo('arr1')} />
 
-          <Titulo extra={
-            <button type="button" onClick={() => setArr2Abierto(v => !v)}
-              style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: '1px solid #c7d2e0', background: arr2Abierto ? '#dbe5f1' : '#fff', color: '#1a3a6b', cursor: 'pointer' }}>
-              {arr2Abierto ? '− quitar 2º arrendatario' : '+ añadir 2º arrendatario'}
+          <div style={tituloRow}>
+            <div style={tituloTxt}>Arrendatario 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></div>
+            <button type="button" onClick={() => setArr2(v => !v)} style={btnSec(arr2)}>
+              {arr2 ? '− quitar 2º arrendatario' : '+ añadir 2º arrendatario'}
             </button>
-          }>Arrendatario 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></Titulo>
-          {arr2Abierto && <Bloque bloque="arr2" />}
+          </div>
+          {arr2 && <MBloque datos={draft.arr2} onCampo={setCampo('arr2')} />}
 
           <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 4 }} />
 
-          <Titulo>Aval 1</Titulo>
-          <Bloque bloque="aval1" />
+          <div style={tituloRow}><div style={tituloTxt}>Aval 1</div></div>
+          <MBloque datos={draft.aval1} onCampo={setCampo('aval1')} />
 
-          <Titulo extra={
-            <button type="button" onClick={() => setAval2Abierto(v => !v)}
-              style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: '1px solid #c7d2e0', background: aval2Abierto ? '#dbe5f1' : '#fff', color: '#1a3a6b', cursor: 'pointer' }}>
-              {aval2Abierto ? '− quitar 2º aval' : '+ añadir 2º aval'}
+          <div style={tituloRow}>
+            <div style={tituloTxt}>Aval 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></div>
+            <button type="button" onClick={() => setAval2(v => !v)} style={btnSec(aval2)}>
+              {aval2 ? '− quitar 2º aval' : '+ añadir 2º aval'}
             </button>
-          }>Aval 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></Titulo>
-          {aval2Abierto && <Bloque bloque="aval2" />}
+          </div>
+          {aval2 && <MBloque datos={draft.aval2} onCampo={setCampo('aval2')} />}
         </div>
 
         {/* Pie */}
@@ -1227,7 +1222,7 @@ function ModalPersonas({ personas, setPersona, arr2Abierto, setArr2Abierto, aval
             style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Cancelar
           </button>
-          <button onClick={onGuardar} disabled={guardando}
+          <button onClick={() => onGuardar(draft, { arr2, aval2 })} disabled={guardando}
             style={{ padding: '8px 20px', borderRadius: 6, border: 'none', background: guardando ? '#9ca3af' : '#16a34a', color: '#fff', fontSize: 13, fontWeight: 700, cursor: guardando ? 'not-allowed' : 'pointer' }}>
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
