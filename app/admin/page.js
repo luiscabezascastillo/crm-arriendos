@@ -469,53 +469,31 @@ function AdminContent() {
     }
   }
 
-  async function terminar() {
+  async function cerrarYFacturar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
-    if (!window.confirm(`¿Terminar el contrato ${form.idadmon}? Estado pasará a Q y se enviará el aviso.`)) return
+    if (form.estado !== 'P') { setMsg({ type: 'warn', text: 'Esta acción solo aplica a contratos en estado P.' }); return }
+    if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nEl estado pasará de P a S, se bloqueará la ficha y se enviará la solicitud de facturación a Finanzas.`)) return
     setCambiando(true)
     try {
-      const res = await fetch('/api/cc1/cambiar-estado', {
+      const res = await fetch('/api/cc1/cerrar-facturar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: form.idadmon, estadoNuevo: 'Q' }),
+        body: JSON.stringify({ idadmon: form.idadmon }),
       })
       const data = await res.json()
-      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al terminar' }); setCambiando(false); return }
-      setForm(p => ({ ...p, estado: 'Q' })); setBloqueado(true)
-      let txt = `Contrato ${form.idadmon} terminado (Q).`
-      if (data.nuevoP) txt += ` Creado ${data.nuevoP} en P.`
-      setMsg({ type: 'ok', text: txt })
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al cerrar y facturar' }); setCambiando(false); return }
+      setForm(p => ({ ...p, estado: 'S' })); setBloqueado(true)
+      let txt = `Contrato ${form.idadmon} cerrado (estado S).`
+      const fallo = (data.emailEstado === false) || (data.emailFacturacion === false)
+      if (data.emailEstado === false) txt += ' AVISO de cambio de estado: FALLÓ.'
+      if (data.emailFacturacion === false) txt += ' Email a Finanzas: FALLÓ.'
+      if (!fallo) txt += ' Avisos enviados (cambio de estado + facturación a Finanzas).'
+      setMsg({ type: fallo ? 'warn' : 'ok', text: txt })
     } catch { setMsg({ type: 'error', text: 'Error de conexión' }) }
     setCambiando(false)
   }
 
   const ro = bloqueado
-
-  const BotonesInferiores = () => (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-      <button onClick={guardar} disabled={saving || bloqueado} style={{
-        padding: '7px 20px', borderRadius: 5, border: 'none',
-        background: bloqueado ? '#9ca3af' : C.green,
-        color: '#fff', fontSize: 12, fontWeight: 700,
-        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-      }}>{saving ? 'GUARDANDO...' : 'GUARDAR (BORRADOR o DATOS)'}</button>
-
-      <button disabled style={{
-        padding: '7px 20px', borderRadius: 5,
-        border: '1px dashed #9ca3af', background: 'transparent',
-        color: '#9ca3af', fontSize: 12, fontWeight: 700,
-        cursor: 'not-allowed', fontFamily: 'inherit',
-      }}>IMPRIMIR WORD BORRADOR CONTRATO</button>
-
-      <button onClick={terminar} disabled={bloqueado} style={{
-        padding: '7px 20px', borderRadius: 5, border: 'none',
-        background: bloqueado ? '#9ca3af' : C.red,
-        color: '#fff', fontSize: 12, fontWeight: 700,
-        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-        marginLeft: 'auto',
-      }}>TERMINAR PARA SACAR INFO DE FACTURACIÓN</button>
-    </div>
-  )
 
   return (
     <div style={{ height: '100vh', overflowY: 'auto', background: '#e8eef5' }}>
@@ -570,12 +548,16 @@ function AdminContent() {
           cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
         }}>{saving ? 'GUARDANDO...' : 'GUARDAR'}</button>
 
-        <button onClick={terminar} disabled={bloqueado} style={{
-          padding: '5px 14px', borderRadius: 5, border: 'none',
-          background: bloqueado ? '#9ca3af' : C.red,
-          color: '#fff', fontSize: 12, fontWeight: 700,
-          cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-        }}>TERMINAR</button>
+        {form.estado === 'P' && (
+          <button onClick={cerrarYFacturar} disabled={bloqueado || cambiando}
+            title="Cierra la carga del contrato: pasa de P a S, bloquea la ficha y envía la solicitud de facturación a Finanzas."
+            style={{
+              padding: '5px 14px', borderRadius: 5, border: 'none',
+              background: (bloqueado || cambiando) ? '#9ca3af' : C.red,
+              color: '#fff', fontSize: 12, fontWeight: 700,
+              cursor: (bloqueado || cambiando) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            }}>{cambiando ? 'PROCESANDO…' : 'CERRAR Y FACTURAR'}</button>
+        )}
 
         <button onClick={() => { setBloqueado(false); setMsg({ type: 'info', text: '🔓 Desbloqueado — puedes editar.' }) }} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
@@ -1109,10 +1091,6 @@ function AdminContent() {
               <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} pal={ECG} />
             </div>
           </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <BotonesInferiores />
         </div>
 
         {/* ══ DATOS ADICIONALES ══ */}
