@@ -40,7 +40,7 @@ const inputCell = {
   ...cell,
   background: C.inputBg,
   color: '#1f2937',
-  minWidth: 60,
+  overflow: 'hidden',
 }
 const headerCell = {
   ...cell,
@@ -119,22 +119,24 @@ function RO({ value }) {
   )
 }
 
-/* ── Celda de solo lectura con TOOLTIP en hover (muestra el texto completo aunque no quepa) ── */
+/* ── Celda de solo lectura: recorta con … y muestra el texto completo en hover (title) ── */
 function RT({ value }) {
-  const v = value ?? ''
+  const v = value == null ? '' : String(value)
   return (
-    <div title={v ? String(v) : ''} style={{
-      ...inputCell,
-      width: '100%',
+    <div title={v} style={{
+      border: `1px solid ${C.border}`,
+      padding: '3px 6px',
+      fontSize: 11,
       background: '#fff',
       color: '#1f2937',
-      border: `1px solid ${C.border}`,
       boxSizing: 'border-box',
+      width: '100%',
+      maxWidth: '100%',
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       cursor: 'default',
-      minHeight: 20,
+      minHeight: 22,
       lineHeight: '16px',
     }}>{v}</div>
   )
@@ -686,9 +688,25 @@ function AdminContent() {
           </div>
         )}
         <table style={{
-          borderCollapse: 'collapse', width: '100%',
+          borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed',
           fontSize: 11, fontFamily: 'inherit',
         }}>
+          <colgroup>
+            <col style={{ width: '6.5%' }} />   {/* label */}
+            <col style={{ width: '6.5%' }} />    {/* Nombre a */}
+            <col style={{ width: '6.5%' }} />    {/* Nombre b */}
+            <col style={{ width: '4%' }} />      {/* Género */}
+            <col style={{ width: '5.5%' }} />    {/* Estado */}
+            <col style={{ width: '6.5%' }} />    {/* Nacionalidad */}
+            <col style={{ width: '7.5%' }} />    {/* RUT */}
+            <col style={{ width: '6%' }} />      {/* Pasaporte */}
+            <col style={{ width: '6.5%' }} />    {/* Email a */}
+            <col style={{ width: '6.5%' }} />    {/* Email b */}
+            <col style={{ width: '7.5%' }} />    {/* Teléfono */}
+            <col style={{ width: '12%' }} />     {/* D. Habitacional */}
+            <col style={{ width: '10.5%' }} />   {/* Dom. laboral */}
+            <col style={{ width: '6.5%' }} />    {/* Empresa */}
+          </colgroup>
           <tbody>
             {/* ══ PROPIETARIO (lee de la tabla 'propietarios' por idprop; 2º propietario desde log) ══ */}
             <tr>
