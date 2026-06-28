@@ -179,24 +179,25 @@ function LB({ children, width, right }) {
 }
 
 /* ── Celda compacta etiqueta+valor para DATOS ECONÓMICOS (fondo gris, estilo Excel) ── */
-const ECO = { border: '#cbd1d9', labelBg: '#e3e6ea', labelTxt: '#374151', valBg: '#ffffff', valRo: '#f7f8fa', head: '#5b6470', sub: '#8b94a3' }
-function EcoCell({ label, name, value, onChange, ro, type = 'text', bold }) {
+const ECO = { border: '#9ec79f', labelBg: '#bcdcbd', labelTxt: '#1f5023', valBg: '#e8f4e8', valRo: '#e8f4e8', head: '#2f6b33', sub: '#2f6b33' }
+const ECG = { border: '#cbd1d9', labelBg: '#e3e6ea', labelTxt: '#374151', valBg: '#ffffff', valRo: '#f7f8fa', head: '#5b6470', sub: '#8b94a3' }
+function EcoCell({ label, name, value, onChange, ro, type = 'text', bold, pal = ECO }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${ECO.border}`, borderRight: `1px solid ${ECO.border}` }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${pal.border}`, borderRight: `1px solid ${pal.border}` }}>
       <div style={{
-        width: 64, flexShrink: 0, fontSize: 10, fontWeight: 600, color: ECO.labelTxt,
-        background: ECO.labelBg, padding: '0 5px', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
+        width: 64, flexShrink: 0, fontSize: 10, fontWeight: 600, color: pal.labelTxt,
+        background: pal.labelBg, padding: '0 5px', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
       }}>{label}</div>
       <input
         type={type} name={name} value={value ?? ''} onChange={onChange} readOnly={ro}
         style={{
           flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box',
-          border: 'none', outline: 'none', background: ro ? ECO.valRo : ECO.valBg,
+          border: 'none', outline: 'none', background: ro ? pal.valRo : pal.valBg,
           fontSize: 11, fontWeight: bold ? 700 : 400, color: '#1f2937',
           padding: '2px 5px', height: 22, fontFamily: 'inherit',
         }}
         onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
-        onBlur={e => e.target.style.background = ro ? ECO.valRo : ECO.valBg}
+        onBlur={e => e.target.style.background = ro ? pal.valRo : pal.valBg}
       />
     </div>
   )
@@ -1059,7 +1060,7 @@ function AdminContent() {
           </tbody>
         </table>
 
-        {/* ══ DATOS ECONÓMICOS (compacto, gris, centrado) ══ */}
+        {/* ══ DATOS ECONÓMICOS — encabezado verde fuerte; PROP/ARREND en verde; ADMON MES en gris ══ */}
         <div style={{ maxWidth: 820, margin: '16px auto 0' }}>
           <div style={{
             background: ECO.head, color: '#fff', padding: '4px 10px',
@@ -1100,12 +1101,12 @@ function AdminContent() {
                 <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} />
               </div>
             </div>
-            {/* ADMON MES — 1 columna, 3 campos */}
+            {/* ADMON MES — 1 columna, 3 campos (gris, como ya estaba bien) */}
             <div>
-              <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
-              <EcoCell label="Tipo" name="quien_cobra" value={form.quien_cobra} onChange={handleChange} ro={ro} />
-              <EcoCell label="Cuantía" name="cuota" value={form.cuota} onChange={handleChange} ro={ro} type="number" bold />
-              <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} />
+              <div style={{ background: ECG.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
+              <EcoCell label="Tipo" name="quien_cobra" value={form.quien_cobra} onChange={handleChange} ro={ro} pal={ECG} />
+              <EcoCell label="Cuantía" name="cuota" value={form.cuota} onChange={handleChange} ro={ro} type="number" bold pal={ECG} />
+              <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} pal={ECG} />
             </div>
           </div>
         </div>
