@@ -183,6 +183,8 @@ function AdminContent() {
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
   const [arr2Abierto, setArr2Abierto] = useState(false)
+  const [aval2Abierto, setAval2Abierto] = useState(false)
+  const [prop2Abierto, setProp2Abierto] = useState(false)
   const [bloqueado, setBloqueado] = useState(false)
   const [isNew, setIsNew] = useState(true)
   const [msg, setMsg] = useState(null)
@@ -263,12 +265,16 @@ function AdminContent() {
         const { data: lrow } = await supabase.from('log').select('raw_data').eq('id_lcc', buscar).maybeSingle()
         setLogData(lrow?.raw_data || null)
         const a2 = lrow?.raw_data?.['Nombre-A2']
+        const g2 = lrow?.raw_data?.['Nombre-G2']
+        const d2 = lrow?.raw_data?.['Nombre-D2']
         setArr2Abierto(!!(a2 && String(a2).trim()))
-      } catch { setLogData(null); setArr2Abierto(false) }
+        setAval2Abierto(!!(g2 && String(g2).trim()))
+        setProp2Abierto(!!(d2 && String(d2).trim()))
+      } catch { setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
       setMsg({ type: 'ok', text: `✓ ${buscar} — ${data.propietario || ''} · ${data.inmueble || ''}` })
     } else {
       setForm({ ...FORM_VACIO, idadmon: buscar }); setIdadmonInput(buscar)
-      setLogData(null); setArr2Abierto(false)
+      setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
       setIsNew(true); setBloqueado(false)
       setMsg({ type: 'warn', text: `"${buscar}" no existe. Puedes crear un contrato nuevo.` })
     }
@@ -432,7 +438,7 @@ function AdminContent() {
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
 
-        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setArr2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
+        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
             border: `1px solid ${C.border}`, background: '#fff',
@@ -541,7 +547,7 @@ function AdminContent() {
               </td>
             </tr>
 
-            {/* ══ PROPIETARIO ══ */}
+            {/* ══ PROPIETARIO (Capa 2: rellenado desde log -D, con 2º propietario) ══ */}
             <tr>
               <td style={{ ...labelCell, width: 90, verticalAlign: 'middle' }} rowSpan={2}>PROPIETARIO</td>
               <SH cols={2} bg={C.subBg}>Nombre</SH>
@@ -556,17 +562,53 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
+              {/* Nombre, Género -> de datos_arriendos (manda). Resto -> de log (solo lectura).
+                  OJO: "Estado" aquí es el ESTADO CIVIL (Estado-D del log), no el estado del contrato. */}
               <td colSpan={2} style={inputCell}><IC name="propietario" value={form.propietario} onChange={handleChange} readOnly={ro} /></td>
               <td style={inputCell}><IC name="genero" value={form.genero} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><IC name="estado" value={form.estado} onChange={handleChange} readOnly={ro} bold /></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}><IC name="rut" value={form.rut} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
-              <td colSpan={2} style={inputCell}><IC name="mail_arrendatario" value={form.mail_arrendatario} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><IC name="movil" value={form.movil} onChange={handleChange} readOnly={ro} /></td>
-              <td colSpan={2} style={inputCell}><IC name="otro_dato" value={form.otro_dato} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
+              <td style={inputCell}><RO value={lp('Estado-D')} /></td>
+              <td style={inputCell}><RO value={lp('Nacion-D')} /></td>
+              <td style={inputCell}><RO value={lp('RUT de D')} /></td>
+              <td style={inputCell}><RO value={lp('Pasaporte-D')} /></td>
+              <td colSpan={2} style={inputCell}><RO value={lp('email de D')} /></td>
+              <td style={inputCell}><RO value={lp('telefono de D')} /></td>
+              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-D')} /></td>
+              <td style={inputCell}><RO value={lp('Empresa-D')} /></td>
             </tr>
+
+            {/* Botón: añadir 2º propietario */}
+            <tr>
+              <td colSpan={14} style={{ ...cell, border: 'none', padding: '4px 0 2px' }}>
+                <button type="button" onClick={() => setProp2Abierto(v => !v)}
+                  style={{
+                    fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 5,
+                    border: `1px solid ${C.border}`, background: prop2Abierto ? C.labelBg : '#fff',
+                    color: C.headerBg, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  {prop2Abierto ? '− ocultar 2º propietario' : '+ añadir 2º propietario'}
+                </button>
+                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
+                  (muy poco frecuente — p. ej. propiedad heredada por dos titulares. Datos del LOG, por ahora de solo lectura)
+                </span>
+              </td>
+            </tr>
+
+            {/* Fila 2º propietario (sufijos IRREGULARES: D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12) */}
+            {prop2Abierto && (
+              <tr>
+                <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>PROPIETARIO 2</td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Nombre-D2')} /></td>
+                <td style={inputCell}><RO value={lp('Genero-D3')} /></td>
+                <td style={inputCell}><RO value={lp('Estado-D4')} /></td>
+                <td style={inputCell}><RO value={lp('Nacion-D5')} /></td>
+                <td style={inputCell}><RO value={lp('RUT de D6')} /></td>
+                <td style={inputCell}><RO value={lp('Pasaporte-D7')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('email de D8')} /></td>
+                <td style={inputCell}><RO value={lp('telefono de D9')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-D10')} /></td>
+                <td style={inputCell}><RO value={lp('Empresa-D12')} /></td>
+              </tr>
+            )}
 
             {/* ══ INMUEBLE ══ */}
             <tr>
@@ -667,7 +709,7 @@ function AdminContent() {
               <td colSpan={14} style={{ ...inputCell, background: C.rowAlt, height: 14, border: 'none' }}></td>
             </tr>
 
-            {/* ══ AVALES (sin cambios en Capa 1) ══ */}
+            {/* ══ AVALES (Capa 2: rellenado desde log -G, con 2º aval) ══ */}
             <tr>
               <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={2}>AVALES</td>
               <SH cols={2} bg={C.subBg}>Nombres</SH>
@@ -682,17 +724,53 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
+              {/* Nombre, Email, Teléfono -> de datos_arriendos (manda). Resto -> de log (solo lectura) */}
               <td colSpan={2} style={inputCell}><IC name="avalista" value={form.avalista} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}></td>
-              <td style={inputCell}></td>
+              <td style={inputCell}><RO value={lp('Genero-G')} /></td>
+              <td style={inputCell}><RO value={lp('Estado-G')} /></td>
+              <td style={inputCell}><RO value={lp('Nacion-G')} /></td>
+              <td style={inputCell}><RO value={lp('RUT de G')} /></td>
+              <td style={inputCell}><RO value={lp('Pasaporte-G')} /></td>
               <td colSpan={2} style={inputCell}><IC name="mail_avalista" value={form.mail_avalista} onChange={handleChange} readOnly={ro} /></td>
               <td style={inputCell}><IC name="telefono_avalista" value={form.telefono_avalista} onChange={handleChange} readOnly={ro} /></td>
-              <td colSpan={2} style={inputCell}></td>
-              <td style={inputCell}></td>
+              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-G')} /></td>
+              <td style={inputCell}><RO value={lp('Empresa-G')} /></td>
             </tr>
+
+            {/* Botón: añadir 2º aval */}
+            <tr>
+              <td colSpan={14} style={{ ...cell, border: 'none', padding: '4px 0 2px' }}>
+                <button type="button" onClick={() => setAval2Abierto(v => !v)}
+                  style={{
+                    fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 5,
+                    border: `1px solid ${C.border}`, background: aval2Abierto ? C.labelBg : '#fff',
+                    color: C.headerBg, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  {aval2Abierto ? '− ocultar 2º aval' : '+ añadir 2º aval'}
+                </button>
+                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
+                  (poco frecuente — datos del registro LOG, por ahora de solo lectura)
+                </span>
+              </td>
+            </tr>
+
+            {/* Fila 2º aval (desplegable, solo lectura desde log -G2) */}
+            {aval2Abierto && (
+              <tr>
+                <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>AVAL 2</td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Nombre-G2')} /></td>
+                <td style={inputCell}><RO value={lp('Genero-G2')} /></td>
+                <td style={inputCell}><RO value={lp('Estado-G2')} /></td>
+                <td style={inputCell}><RO value={lp('Nacion-G2')} /></td>
+                <td style={inputCell}><RO value={lp('RUT de G2')} /></td>
+                <td style={inputCell}><RO value={lp('Pasaporte-G2')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('email de G2')} /></td>
+                <td style={inputCell}><RO value={lp('telefono de G2')} /></td>
+                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-G2')} /></td>
+                <td style={inputCell}><RO value={lp('Empresa-G2')} /></td>
+              </tr>
+            )}
+
             <tr>
               <td colSpan={14} style={{ ...inputCell, background: C.rowAlt, height: 14, border: 'none' }}></td>
             </tr>
