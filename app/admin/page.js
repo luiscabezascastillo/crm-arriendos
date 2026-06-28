@@ -588,8 +588,10 @@ function AdminContent() {
 
       {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
         <div style={{
+          position: 'sticky', top: 0, zIndex: 900,
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
-          background: '#f8fafc', border: `1px solid ${C.border}`,
+          background: '#eef4fb', border: `1px solid ${C.headerBg}`,
+          boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.headerBg }}>CAMBIAR ESTADO:</span>
@@ -653,7 +655,7 @@ function AdminContent() {
       {/* ── FORMULARIO TIPO EXCEL ── */}
       <div style={{ padding: '10px 16px 40px', overflowX: 'auto' }}>
         {form.idadmon && !isNew && (
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setModalAbierto(true)}
               style={{
                 padding: '6px 14px', borderRadius: 6, border: 'none',
@@ -665,6 +667,26 @@ function AdminContent() {
             <span style={{ fontSize: 11, color: '#6b7280' }}>
               Los datos de arrendatarios y avales se editan en una ventana cómoda. (El propietario se edita en su ficha.)
             </span>
+            {/* Tarjeta de identificación (replica el recuadro del Excel: IDADMON · Estado · Fecha registro) */}
+            <div style={{
+              marginLeft: 'auto', display: 'flex', border: `1px solid ${C.headerBg}`,
+              borderRadius: 6, overflow: 'hidden', fontSize: 11,
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex' }}>
+                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>IDADMON</span>
+                  <span style={{ padding: '3px 10px', fontWeight: 700, color: C.headerBg }}>{form.idadmon}</span>
+                </div>
+                <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
+                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>ESTATUS</span>
+                  <span style={{ padding: '3px 10px' }}>{form.estado || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
+                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>FECHA REG</span>
+                  <span style={{ padding: '3px 10px' }}>{lp('FECHA REGISTRO') || '—'}</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         <table style={{
@@ -771,9 +793,9 @@ function AdminContent() {
             </tr>
             <tr>
               <LB>Comuna</LB>
-              <td colSpan={4} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={3} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={ro} /></td>
               <LB right>Comienzo</LB>
-              <td style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td colSpan={2} style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={ro} type="date" /></td>
               <LB right>Finalización</LB>
               <td colSpan={2} style={inputCell}><IC name="termino_inicial" value={form.termino_inicial} onChange={handleChange} readOnly={ro} type="date" /></td>
               <LB right>Ajuste</LB>
