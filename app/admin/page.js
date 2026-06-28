@@ -193,6 +193,25 @@ function EcoRow({ label, children }) {
   )
 }
 
+// Transiciones de estado permitidas (circuito de contratos).
+// P→S · S→SQ/Q · SQ→Q · Q→N/N-DICOM · N/N-DICOM = fin (sin transiciones).
+const TRANSICIONES = {
+  P: ['S'],
+  S: ['SQ', 'Q'],
+  SQ: ['Q'],
+  Q: ['N', 'N-DICOM'],
+  N: [],
+  'N-DICOM': [],
+}
+const ESTADO_LABEL = {
+  S: 'S – Contrato firmado',
+  SQ: 'SQ – Aviso de término',
+  Q: 'Q – Término (llaves)',
+  N: 'N – Cierre término',
+  'N-DICOM': 'N-DICOM – Cierre con DICOM',
+  P: 'P – Pendiente arrendar',
+}
+
 const msgColors = {
   ok:    { bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
   error: { bg: '#fef2f2', color: '#dc2626', border: '#fca5a5' },
@@ -596,26 +615,37 @@ function AdminContent() {
         }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.headerBg }}>CAMBIAR ESTADO:</span>
           <span style={{ fontSize: 11, color: '#6b7280' }}>Actual: <b>{form.estado || '—'}</b> →</span>
-          <select value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value)}
-            style={{ ...inputCell, width: 150, cursor: 'pointer', border: `1px solid ${C.border}` }}>
-            <option value="">elegir nuevo estado…</option>
-            <option value="S">S – Contrato firmado</option>
-            <option value="SQ">SQ – Aviso de término</option>
-            <option value="Q">Q – Término (llaves)</option>
-            <option value="N">N – Cierre término</option>
-            <option value="N-DICOM">N-DICOM – Cierre con DICOM</option>
-            <option value="P">P – Pendiente arrendar</option>
-          </select>
-          <span style={{ fontSize: 10, color: '#9ca3af' }}>Fecha:</span>
-          <input type="date" value={fechaEstado} onChange={e => setFechaEstado(e.target.value)}
-            style={{ ...inputCell, width: 140, border: `1px solid ${C.border}` }} />
-          <button onClick={cambiarEstado} disabled={cambiando || !nuevoEstado}
-            style={{
-              padding: '5px 14px', borderRadius: 5, border: 'none',
-              background: (cambiando || !nuevoEstado) ? '#9ca3af' : C.headerBg,
-              color: '#fff', fontSize: 12, fontWeight: 700,
-              cursor: (cambiando || !nuevoEstado) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            }}>{cambiando ? 'Procesando…' : 'Aplicar cambio'}</button>
+          {(() => {
+            // Normaliza el estado actual (admite "N DICOM" y "N_DICOM" como "N-DICOM")
+            const actual = (form.estado || '').toUpperCase().replace(/[ _]/g, '-')
+            const validos = TRANSICIONES[actual] || []
+            if (validos.length === 0) {
+              return (
+                <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic' }}>
+                  Estado final — no admite más cambios.
+                </span>
+              )
+            }
+            return (
+              <>
+                <select value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value)}
+                  style={{ ...inputCell, width: 200, cursor: 'pointer', border: `1px solid ${C.border}` }}>
+                  <option value="">elegir nuevo estado…</option>
+                  {validos.map(s => <option key={s} value={s}>{ESTADO_LABEL[s] || s}</option>)}
+                </select>
+                <span style={{ fontSize: 10, color: '#9ca3af' }}>Fecha:</span>
+                <input type="date" value={fechaEstado} onChange={e => setFechaEstado(e.target.value)}
+                  style={{ ...inputCell, width: 140, border: `1px solid ${C.border}` }} />
+                <button onClick={cambiarEstado} disabled={cambiando || !nuevoEstado}
+                  style={{
+                    padding: '5px 14px', borderRadius: 5, border: 'none',
+                    background: (cambiando || !nuevoEstado) ? '#9ca3af' : C.headerBg,
+                    color: '#fff', fontSize: 12, fontWeight: 700,
+                    cursor: (cambiando || !nuevoEstado) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  }}>{cambiando ? 'Procesando…' : 'Aplicar cambio'}</button>
+              </>
+            )
+          })()}
           <span style={{ fontSize: 10, color: '#9ca3af', flexBasis: '100%' }}>
             Al pasar a SQ o Q se crea automáticamente el siguiente IDADMON en P y se avisa a cambiosdeestado@.
           </span>
