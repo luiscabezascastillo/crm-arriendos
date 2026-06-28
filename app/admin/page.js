@@ -512,9 +512,12 @@ function AdminContent() {
       {/* TopNav trae su propio position:sticky (top:0, alto 52px). No anidarlo en otro sticky. */}
       <TopNav />
 
-      {/* ── BARRA DE BOTONES (sticky, pegada justo debajo del TopNav a 52px) ── */}
+      {/* ── CABECERA FIJA SECUNDARIA: barra de botones + mensajes + CAMBIAR ESTADO ──
+           Va sticky a top:52 (justo debajo del TopNav). Se agrupan para que CAMBIAR ESTADO
+           quede pegado debajo de la barra sin depender de alturas fijas (la barra puede ocupar 2 líneas). */}
+      <div style={{ position: 'sticky', top: 52, zIndex: 90, background: '#e8eef5' }}>
+      {/* ── BARRA DE BOTONES ── */}
       <div style={{
-        position: 'sticky', top: 52, zIndex: 90,
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         padding: '8px 16px', background: '#f0f4f8',
         borderBottom: `2px solid ${C.headerBg}`,
@@ -652,6 +655,7 @@ function AdminContent() {
           </span>
         </div>
       )}
+      </div>{/* fin cabecera fija secundaria (sticky top:52) */}
 
       {cap?.puedeAprobar && pendientes.length > 0 && (
         <div style={{
