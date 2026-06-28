@@ -183,6 +183,8 @@ function AdminContent() {
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
   const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios, por idprop)
+  // Estado editable de ARRENDATARIOS y AVALES (1 y 2). 11 campos por persona.
+  const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
   const [arr2Abierto, setArr2Abierto] = useState(false)
   const [aval2Abierto, setAval2Abierto] = useState(false)
   const [prop2Abierto, setProp2Abierto] = useState(false)
@@ -202,6 +204,43 @@ function AdminContent() {
   const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
   // Helper: leer un campo de la ficha del propietario (tabla propietarios, por idprop)
   const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
+
+  // Mapeo: campo lógico -> clave en raw_data del log, por persona.
+  const SUF = {
+    arr1:  { nombre:'Nombre-A',  genero:'Genero-A',  estado:'Estado-A',  nacion:'Nacion-A',  rut:'RUT de A',  pasaporte:'Pasaporte-A',  email:'email de A',  telefono:'telefono de A',  domHabit:'Dom-Habit-A',  domLab:'Dom-Lab-A',  empresa:'Empresa-A' },
+    arr2:  { nombre:'Nombre-A2', genero:'Genero-A2', estado:'Estado-A2', nacion:'Nacion-A2', rut:'RUT de A2', pasaporte:'Pasaporte-A2', email:'email de A2', telefono:'telefono de A2', domHabit:'Dom-Habit-A2', domLab:'Dom-Lab-A2', empresa:'Empresa-A2' },
+    aval1: { nombre:'Nombre-G',  genero:'Genero-G',  estado:'Estado-G',  nacion:'Nacion-G',  rut:'RUT de G',  pasaporte:'Pasaporte-G',  email:'email de G',  telefono:'telefono de G',  domHabit:'Dom-Habit-G',  domLab:'Dom-Lab-G',  empresa:'Empresa-G' },
+    aval2: { nombre:'Nombre-G2', genero:'Genero-G2', estado:'Estado-G2', nacion:'Nacion-G2', rut:'RUT de G2', pasaporte:'Pasaporte-G2', email:'email de G2', telefono:'telefono de G2', domHabit:'Dom-Habit-G2', domLab:'Dom-Lab-G2', empresa:'Empresa-G2' },
+  }
+
+  // Construir el estado 'personas' desde el raw_data del log y el resumen de datos_arriendos.
+  function construirPersonas(raw, dat) {
+    const r = raw || {}
+    const leer = (suf) => {
+      const o = {}
+      for (const campo of Object.keys(suf)) o[campo] = (r[suf[campo]] != null ? String(r[suf[campo]]) : '')
+      return o
+    }
+    const arr1  = leer(SUF.arr1)
+    const arr2  = leer(SUF.arr2)
+    const aval1 = leer(SUF.aval1)
+    const aval2 = leer(SUF.aval2)
+    // datos_arriendos manda en los campos compartidos de arrendatario 1 y aval 1
+    if (dat) {
+      if (dat.arrendatario      != null && dat.arrendatario      !== '') arr1.nombre   = dat.arrendatario
+      if (dat.rut               != null && dat.rut               !== '') arr1.rut      = dat.rut
+      if (dat.mail_arrendatario != null && dat.mail_arrendatario !== '') arr1.email    = dat.mail_arrendatario
+      if (dat.movil             != null && dat.movil             !== '') arr1.telefono = dat.movil
+      if (dat.avalista          != null && dat.avalista          !== '') aval1.nombre   = dat.avalista
+      if (dat.mail_avalista     != null && dat.mail_avalista     !== '') aval1.email    = dat.mail_avalista
+      if (dat.telefono_avalista != null && dat.telefono_avalista !== '') aval1.telefono = dat.telefono_avalista
+    }
+    return { arr1, arr2, aval1, aval2 }
+  }
+
+  // Editar un campo de una persona
+  const setPersona = (bloque, campo, valor) =>
+    setPersonas(prev => ({ ...prev, [bloque]: { ...prev[bloque], [campo]: valor } }))
 
   useEffect(() => {
     const ultimo = localStorage.getItem('ultimo_idadmon')
@@ -267,13 +306,14 @@ function AdminContent() {
       try {
         const { data: lrow } = await supabase.from('log').select('raw_data').eq('id_lcc', buscar).maybeSingle()
         setLogData(lrow?.raw_data || null)
+        setPersonas(construirPersonas(lrow?.raw_data, data))
         const a2 = lrow?.raw_data?.['Nombre-A2']
         const g2 = lrow?.raw_data?.['Nombre-G2']
         const d2 = lrow?.raw_data?.['Nombre-D2']
         setArr2Abierto(!!(a2 && String(a2).trim()))
         setAval2Abierto(!!(g2 && String(g2).trim()))
         setProp2Abierto(!!(d2 && String(d2).trim()))
-      } catch { setLogData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
+      } catch { setLogData(null); setPersonas(construirPersonas(null, data)); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false) }
       // Propietario: leer su ficha de la tabla propietarios por idprop (fuente de verdad)
       try {
         if (data.idprop && String(data.idprop).trim()) {
@@ -284,7 +324,7 @@ function AdminContent() {
       setMsg({ type: 'ok', text: `✓ ${buscar} — ${data.propietario || ''} · ${data.inmueble || ''}` })
     } else {
       setForm({ ...FORM_VACIO, idadmon: buscar }); setIdadmonInput(buscar)
-      setLogData(null); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
+      setLogData(null); setPropData(null); setPersonas({ arr1:{}, arr2:{}, aval1:{}, aval2:{} }); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false)
       setIsNew(true); setBloqueado(false)
       setMsg({ type: 'warn', text: `"${buscar}" no existe. Puedes crear un contrato nuevo.` })
     }
@@ -327,8 +367,26 @@ function AdminContent() {
     const payload = { ...form, updated_at: new Date().toISOString() }
     delete payload.id
     const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
-    if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }) }
-    else { localStorage.setItem('ultimo_idadmon', form.idadmon); setIsNew(false); setBloqueado(true); setMsg({ type: 'ok', text: '✓ Guardado correctamente.' }) }
+    if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }); setSaving(false); return }
+
+    // Guardar ARRENDATARIOS y AVALES en las dos tablas (log.raw_data completo + resumen en datos_arriendos)
+    try {
+      const res = await fetch('/api/cc1/guardar-personas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, personas }),
+      })
+      const dataP = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'warn', text: 'Contrato guardado, pero error al guardar personas: ' + (dataP.error || '') })
+        setSaving(false); return
+      }
+    } catch {
+      setMsg({ type: 'warn', text: 'Contrato guardado, pero fallo de conexión al guardar personas.' })
+      setSaving(false); return
+    }
+
+    localStorage.setItem('ultimo_idadmon', form.idadmon); setIsNew(false); setBloqueado(true)
+    setMsg({ type: 'ok', text: '✓ Guardado correctamente (contrato + arrendatarios/avales).' })
     setSaving(false)
   }
 
@@ -353,6 +411,29 @@ function AdminContent() {
   }
 
   const ro = bloqueado
+
+  // Input editable de un campo de persona (arrendatario/aval). Cuando ro=true, gris no editable.
+  const PE = ({ bloque, campo, bold }) => (
+    <input
+      type="text"
+      value={personas?.[bloque]?.[campo] ?? ''}
+      onChange={e => setPersona(bloque, campo, e.target.value)}
+      readOnly={ro}
+      style={{
+        ...inputCell,
+        width: '100%',
+        fontWeight: bold ? 600 : 400,
+        background: ro ? '#eef2f7' : C.inputBg,
+        color: ro ? '#334155' : '#1f2937',
+        border: `1px solid ${C.border}`,
+        outline: 'none',
+        boxSizing: 'border-box',
+        cursor: ro ? 'default' : 'text',
+      }}
+      onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+      onBlur={e => e.target.style.background = ro ? '#eef2f7' : C.inputBg}
+    />
+  )
 
   const BotonesInferiores = () => (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -549,14 +630,6 @@ function AdminContent() {
           fontSize: 11, fontFamily: 'inherit',
         }}>
           <tbody>
-            <tr>
-              <td colSpan={14} style={{ ...cell, background: '#fff', border: 'none', padding: '4px 0' }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: C.red, letterSpacing: '0.1em' }}>
-                  {form.accion || 'HECHO'}
-                </span>
-              </td>
-            </tr>
-
             {/* ══ PROPIETARIO (lee de la tabla 'propietarios' por idprop; 2º propietario desde log) ══ */}
             <tr>
               <td style={{ ...labelCell, width: 90, verticalAlign: 'middle' }} rowSpan={2}>PROPIETARIO</td>
@@ -568,7 +641,8 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Pasaporte</SH>
               <SH cols={2} bg={C.subBg}>Email</SH>
               <SH cols={1} bg={C.subBg}>Teléfono</SH>
-              <SH cols={2} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>Dom. laboral</SH>
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
@@ -583,7 +657,8 @@ function AdminContent() {
               <td style={inputCell}><RO value={''} /></td>
               <td colSpan={2} style={inputCell}><RO value={pp('mail1')} /></td>
               <td style={inputCell}><RO value={pp('telefono')} /></td>
-              <td colSpan={2} style={inputCell}><RO value={pp('direccion')} /></td>
+              <td style={inputCell}><RO value={pp('direccion')} /></td>
+              <td style={inputCell}><RO value={''} /></td>
               <td style={inputCell}><RO value={''} /></td>
             </tr>
 
@@ -601,7 +676,7 @@ function AdminContent() {
                 <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
                   {form.idprop
                     ? `Datos del propietario ${form.idprop} (ficha en tabla propietarios). El 2º propietario es muy poco frecuente — datos del LOG, solo lectura.`
-                    : '(muy poco frecuente — p. ej. propiedad heredada por dos titulares. Datos del LOG, por ahora de solo lectura)'}
+                    : '(muy poco frecuente — p. ej. propiedad heredada por dos titulares. Datos del LOG, solo lectura)'}
                 </span>
               </td>
             </tr>
@@ -618,7 +693,8 @@ function AdminContent() {
                 <td style={inputCell}><RO value={lp('Pasaporte-D7')} /></td>
                 <td colSpan={2} style={inputCell}><RO value={lp('email de D8')} /></td>
                 <td style={inputCell}><RO value={lp('telefono de D9')} /></td>
-                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-D10')} /></td>
+                <td style={inputCell}><RO value={lp('Dom-Habit-D10')} /></td>
+                <td style={inputCell}><RO value={lp('Dom-Lab-D11')} /></td>
                 <td style={inputCell}><RO value={lp('Empresa-D12')} /></td>
               </tr>
             )}
@@ -667,21 +743,24 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Pasaporte</SH>
               <SH cols={2} bg={C.subBg}>Email</SH>
               <SH cols={1} bg={C.subBg}>Teléfono</SH>
-              <SH cols={2} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>Dom. laboral</SH>
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
-              {/* Nombre, RUT, Email, Teléfono -> de datos_arriendos (manda). Resto -> de log (solo lectura) */}
-              <td colSpan={2} style={inputCell}><IC name="arrendatario" value={form.arrendatario} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><RO value={lp('Genero-A')} /></td>
-              <td style={inputCell}><RO value={lp('Estado-A')} /></td>
-              <td style={inputCell}><RO value={lp('Nacion-A')} /></td>
-              <td style={inputCell}><IC name="rut" value={form.rut} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><RO value={lp('Pasaporte-A')} /></td>
-              <td colSpan={2} style={inputCell}><IC name="mail_arrendatario" value={form.mail_arrendatario} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><IC name="movil" value={form.movil} onChange={handleChange} readOnly={ro} /></td>
-              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-A')} /></td>
-              <td style={inputCell}><RO value={lp('Empresa-A')} /></td>
+              {/* Todos los campos editan el estado 'personas'. arr1.nombre/rut/email/telefono
+                  se guardan también en datos_arriendos (resumen) además de en log. */}
+              <td colSpan={2} style={inputCell}><PE bloque="arr1" campo="nombre" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="genero" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="estado" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="nacion" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="rut" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="pasaporte" /></td>
+              <td colSpan={2} style={inputCell}><PE bloque="arr1" campo="email" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="telefono" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="domHabit" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="domLab" /></td>
+              <td style={inputCell}><PE bloque="arr1" campo="empresa" /></td>
             </tr>
 
             {/* Botón: añadir 2º arrendatario */}
@@ -696,25 +775,26 @@ function AdminContent() {
                   {arr2Abierto ? '− ocultar 2º arrendatario' : '+ añadir 2º arrendatario'}
                 </button>
                 <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
-                  (poco frecuente — datos del registro LOG, por ahora de solo lectura)
+                  (poco frecuente — datos del registro LOG)
                 </span>
               </td>
             </tr>
 
-            {/* Fila 2º arrendatario (desplegable, solo lectura desde log -A2) */}
+            {/* Fila 2º arrendatario (desplegable, editable -> log -A2) */}
             {arr2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>ARRENDATARIO 2</td>
-                <td colSpan={2} style={inputCell}><RO value={lp('Nombre-A2')} /></td>
-                <td style={inputCell}><RO value={lp('Genero-A2')} /></td>
-                <td style={inputCell}><RO value={lp('Estado-A2')} /></td>
-                <td style={inputCell}><RO value={lp('Nacion-A2')} /></td>
-                <td style={inputCell}><RO value={lp('RUT de A2')} /></td>
-                <td style={inputCell}><RO value={lp('Pasaporte-A2')} /></td>
-                <td colSpan={2} style={inputCell}><RO value={lp('email de A2')} /></td>
-                <td style={inputCell}><RO value={lp('telefono de A2')} /></td>
-                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-A2')} /></td>
-                <td style={inputCell}><RO value={lp('Empresa-A2')} /></td>
+                <td colSpan={2} style={inputCell}><PE bloque="arr2" campo="nombre" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="genero" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="estado" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="nacion" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="rut" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="pasaporte" /></td>
+                <td colSpan={2} style={inputCell}><PE bloque="arr2" campo="email" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="telefono" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="domHabit" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="domLab" /></td>
+                <td style={inputCell}><PE bloque="arr2" campo="empresa" /></td>
               </tr>
             )}
 
@@ -733,21 +813,23 @@ function AdminContent() {
               <SH cols={1} bg={C.subBg}>Pasaporte</SH>
               <SH cols={2} bg={C.subBg}>Email</SH>
               <SH cols={1} bg={C.subBg}>Teléfono</SH>
-              <SH cols={2} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>D. Habitacional</SH>
+              <SH cols={1} bg={C.subBg}>Dom. laboral</SH>
               <SH cols={1} bg={C.subBg}>Empresa</SH>
             </tr>
             <tr>
-              {/* Nombre, Email, Teléfono -> de datos_arriendos (manda). Resto -> de log (solo lectura) */}
-              <td colSpan={2} style={inputCell}><IC name="avalista" value={form.avalista} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><RO value={lp('Genero-G')} /></td>
-              <td style={inputCell}><RO value={lp('Estado-G')} /></td>
-              <td style={inputCell}><RO value={lp('Nacion-G')} /></td>
-              <td style={inputCell}><RO value={lp('RUT de G')} /></td>
-              <td style={inputCell}><RO value={lp('Pasaporte-G')} /></td>
-              <td colSpan={2} style={inputCell}><IC name="mail_avalista" value={form.mail_avalista} onChange={handleChange} readOnly={ro} /></td>
-              <td style={inputCell}><IC name="telefono_avalista" value={form.telefono_avalista} onChange={handleChange} readOnly={ro} /></td>
-              <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-G')} /></td>
-              <td style={inputCell}><RO value={lp('Empresa-G')} /></td>
+              {/* aval1.nombre/email/telefono se guardan también en datos_arriendos (resumen) además de log. */}
+              <td colSpan={2} style={inputCell}><PE bloque="aval1" campo="nombre" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="genero" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="estado" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="nacion" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="rut" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="pasaporte" /></td>
+              <td colSpan={2} style={inputCell}><PE bloque="aval1" campo="email" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="telefono" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="domHabit" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="domLab" /></td>
+              <td style={inputCell}><PE bloque="aval1" campo="empresa" /></td>
             </tr>
 
             {/* Botón: añadir 2º aval */}
@@ -762,25 +844,26 @@ function AdminContent() {
                   {aval2Abierto ? '− ocultar 2º aval' : '+ añadir 2º aval'}
                 </button>
                 <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
-                  (poco frecuente — datos del registro LOG, por ahora de solo lectura)
+                  (poco frecuente — datos del registro LOG)
                 </span>
               </td>
             </tr>
 
-            {/* Fila 2º aval (desplegable, solo lectura desde log -G2) */}
+            {/* Fila 2º aval (desplegable, editable -> log -G2) */}
             {aval2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>AVAL 2</td>
-                <td colSpan={2} style={inputCell}><RO value={lp('Nombre-G2')} /></td>
-                <td style={inputCell}><RO value={lp('Genero-G2')} /></td>
-                <td style={inputCell}><RO value={lp('Estado-G2')} /></td>
-                <td style={inputCell}><RO value={lp('Nacion-G2')} /></td>
-                <td style={inputCell}><RO value={lp('RUT de G2')} /></td>
-                <td style={inputCell}><RO value={lp('Pasaporte-G2')} /></td>
-                <td colSpan={2} style={inputCell}><RO value={lp('email de G2')} /></td>
-                <td style={inputCell}><RO value={lp('telefono de G2')} /></td>
-                <td colSpan={2} style={inputCell}><RO value={lp('Dom-Habit-G2')} /></td>
-                <td style={inputCell}><RO value={lp('Empresa-G2')} /></td>
+                <td colSpan={2} style={inputCell}><PE bloque="aval2" campo="nombre" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="genero" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="estado" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="nacion" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="rut" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="pasaporte" /></td>
+                <td colSpan={2} style={inputCell}><PE bloque="aval2" campo="email" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="telefono" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="domHabit" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="domLab" /></td>
+                <td style={inputCell}><PE bloque="aval2" campo="empresa" /></td>
               </tr>
             )}
 
