@@ -119,6 +119,27 @@ function RO({ value }) {
   )
 }
 
+/* ── Celda de solo lectura con TOOLTIP en hover (muestra el texto completo aunque no quepa) ── */
+function RT({ value }) {
+  const v = value ?? ''
+  return (
+    <div title={v ? String(v) : ''} style={{
+      ...inputCell,
+      width: '100%',
+      background: '#fff',
+      color: '#1f2937',
+      border: `1px solid ${C.border}`,
+      boxSizing: 'border-box',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      cursor: 'default',
+      minHeight: 20,
+      lineHeight: '16px',
+    }}>{v}</div>
+  )
+}
+
 /* ── Select editable ── */
 function SC({ name, value, onChange, readOnly, options, width }) {
   if (readOnly) return <IC name={name} value={value} onChange={() => {}} readOnly width={width} />
@@ -185,6 +206,8 @@ function AdminContent() {
   const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios, por idprop)
   // Estado editable de ARRENDATARIOS y AVALES (1 y 2). 11 campos por persona.
   const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
+  const [modalAbierto, setModalAbierto] = useState(false)   // modal de edición de personas
+  const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
   const [aval2Abierto, setAval2Abierto] = useState(false)
   const [prop2Abierto, setProp2Abierto] = useState(false)
@@ -388,6 +411,28 @@ function AdminContent() {
     localStorage.setItem('ultimo_idadmon', form.idadmon); setIsNew(false); setBloqueado(true)
     setMsg({ type: 'ok', text: '✓ Guardado correctamente (contrato + arrendatarios/avales).' })
     setSaving(false)
+  }
+
+  // Guardar SOLO arrendatarios y avales (desde el modal), sin tocar el resto del contrato.
+  async function guardarPersonasModal() {
+    if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
+    setGuardandoModal(true)
+    try {
+      const res = await fetch('/api/cc1/guardar-personas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, personas }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'error', text: 'Error al guardar: ' + (data.error || '') })
+        setGuardandoModal(false); return
+      }
+      setGuardandoModal(false); setModalAbierto(false)
+      setMsg({ type: 'ok', text: '✓ Arrendatarios y avales guardados.' })
+    } catch {
+      setGuardandoModal(false)
+      setMsg({ type: 'error', text: 'Fallo de conexión al guardar.' })
+    }
   }
 
   async function terminar() {
@@ -625,6 +670,21 @@ function AdminContent() {
 
       {/* ── FORMULARIO TIPO EXCEL ── */}
       <div style={{ padding: '10px 16px 40px', overflowX: 'auto' }}>
+        {form.idadmon && !isNew && (
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button type="button" onClick={() => setModalAbierto(true)}
+              style={{
+                padding: '6px 14px', borderRadius: 6, border: 'none',
+                background: C.subBg, color: '#fff', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              ✏ Editar arrendatarios y avales
+            </button>
+            <span style={{ fontSize: 11, color: '#6b7280' }}>
+              Los datos de arrendatarios y avales se editan en una ventana cómoda. (El propietario se edita en su ficha.)
+            </span>
+          </div>
+        )}
         <table style={{
           borderCollapse: 'collapse', width: '100%',
           fontSize: 11, fontFamily: 'inherit',
@@ -750,17 +810,17 @@ function AdminContent() {
             <tr>
               {/* Todos los campos editan el estado 'personas'. arr1.nombre/rut/email/telefono
                   se guardan también en datos_arriendos (resumen) además de en log. */}
-              <td colSpan={2} style={inputCell}><PE bloque="arr1" campo="nombre" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="genero" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="estado" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="nacion" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="rut" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="pasaporte" /></td>
-              <td colSpan={2} style={inputCell}><PE bloque="arr1" campo="email" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="telefono" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="domHabit" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="domLab" /></td>
-              <td style={inputCell}><PE bloque="arr1" campo="empresa" /></td>
+              <td colSpan={2} style={inputCell}><RT value={personas?.arr1?.nombre} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.genero} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.estado} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.nacion} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.rut} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.pasaporte} /></td>
+              <td colSpan={2} style={inputCell}><RT value={personas?.arr1?.email} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.telefono} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.domHabit} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.domLab} /></td>
+              <td style={inputCell}><RT value={personas?.arr1?.empresa} /></td>
             </tr>
 
             {/* Botón: añadir 2º arrendatario */}
@@ -784,17 +844,17 @@ function AdminContent() {
             {arr2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>ARRENDATARIO 2</td>
-                <td colSpan={2} style={inputCell}><PE bloque="arr2" campo="nombre" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="genero" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="estado" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="nacion" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="rut" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="pasaporte" /></td>
-                <td colSpan={2} style={inputCell}><PE bloque="arr2" campo="email" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="telefono" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="domHabit" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="domLab" /></td>
-                <td style={inputCell}><PE bloque="arr2" campo="empresa" /></td>
+                <td colSpan={2} style={inputCell}><RT value={personas?.arr2?.nombre} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.genero} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.estado} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.nacion} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.rut} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.pasaporte} /></td>
+                <td colSpan={2} style={inputCell}><RT value={personas?.arr2?.email} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.telefono} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.domHabit} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.domLab} /></td>
+                <td style={inputCell}><RT value={personas?.arr2?.empresa} /></td>
               </tr>
             )}
 
@@ -819,17 +879,17 @@ function AdminContent() {
             </tr>
             <tr>
               {/* aval1.nombre/email/telefono se guardan también en datos_arriendos (resumen) además de log. */}
-              <td colSpan={2} style={inputCell}><PE bloque="aval1" campo="nombre" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="genero" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="estado" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="nacion" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="rut" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="pasaporte" /></td>
-              <td colSpan={2} style={inputCell}><PE bloque="aval1" campo="email" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="telefono" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="domHabit" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="domLab" /></td>
-              <td style={inputCell}><PE bloque="aval1" campo="empresa" /></td>
+              <td colSpan={2} style={inputCell}><RT value={personas?.aval1?.nombre} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.genero} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.estado} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.nacion} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.rut} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.pasaporte} /></td>
+              <td colSpan={2} style={inputCell}><RT value={personas?.aval1?.email} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.telefono} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.domHabit} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.domLab} /></td>
+              <td style={inputCell}><RT value={personas?.aval1?.empresa} /></td>
             </tr>
 
             {/* Botón: añadir 2º aval */}
@@ -853,17 +913,17 @@ function AdminContent() {
             {aval2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>AVAL 2</td>
-                <td colSpan={2} style={inputCell}><PE bloque="aval2" campo="nombre" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="genero" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="estado" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="nacion" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="rut" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="pasaporte" /></td>
-                <td colSpan={2} style={inputCell}><PE bloque="aval2" campo="email" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="telefono" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="domHabit" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="domLab" /></td>
-                <td style={inputCell}><PE bloque="aval2" campo="empresa" /></td>
+                <td colSpan={2} style={inputCell}><RT value={personas?.aval2?.nombre} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.genero} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.estado} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.nacion} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.rut} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.pasaporte} /></td>
+                <td colSpan={2} style={inputCell}><RT value={personas?.aval2?.email} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.telefono} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.domHabit} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.domLab} /></td>
+                <td style={inputCell}><RT value={personas?.aval2?.empresa} /></td>
               </tr>
             )}
 
@@ -1036,12 +1096,127 @@ function AdminContent() {
           )}
         </div>
       </div>
+
+      {/* ══ MODAL: Editar arrendatarios y avales ══ */}
+      {modalAbierto && (
+        <ModalPersonas
+          personas={personas}
+          setPersona={setPersona}
+          arr2Abierto={arr2Abierto} setArr2Abierto={setArr2Abierto}
+          aval2Abierto={aval2Abierto} setAval2Abierto={setAval2Abierto}
+          guardando={guardandoModal}
+          onGuardar={guardarPersonasModal}
+          onCerrar={() => setModalAbierto(false)}
+          idadmon={form.idadmon}
+        />
+      )}
     </div>
   )
 }
 
 const fieldInput = {
   outline: 'none', fontFamily: 'inherit', color: '#1f2937',
+}
+
+/* ══ Modal de edición de arrendatarios y avales ══ */
+function ModalPersonas({ personas, setPersona, arr2Abierto, setArr2Abierto, aval2Abierto, setAval2Abierto, guardando, onGuardar, onCerrar, idadmon }) {
+  const ov = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '30px 16px' }
+  const card = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 880, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', fontFamily: '"DM Sans", system-ui, sans-serif', color: '#10183a' }
+  const lab = { fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 3, display: 'block' }
+  const inp = { width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }
+  const ta = { ...inp, minHeight: 44, resize: 'vertical' }
+
+  // Campo de texto normal
+  const F = ({ bloque, campo, label, col = 1 }) => (
+    <div style={{ gridColumn: `span ${col}` }}>
+      <label style={lab}>{label}</label>
+      <input style={inp} value={personas?.[bloque]?.[campo] ?? ''}
+        onChange={e => setPersona(bloque, campo, e.target.value)} />
+    </div>
+  )
+  // Campo de texto largo (domicilios) -> textarea
+  const FT = ({ bloque, campo, label, col = 2 }) => (
+    <div style={{ gridColumn: `span ${col}` }}>
+      <label style={lab}>{label}</label>
+      <textarea style={ta} value={personas?.[bloque]?.[campo] ?? ''}
+        onChange={e => setPersona(bloque, campo, e.target.value)} rows={2} />
+    </div>
+  )
+
+  // Bloque de los 11 campos de una persona
+  const Bloque = ({ bloque }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
+      <F bloque={bloque} campo="nombre" label="Nombre" col={2} />
+      <F bloque={bloque} campo="genero" label="Género" />
+      <F bloque={bloque} campo="estado" label="Estado civil" />
+      <F bloque={bloque} campo="nacion" label="Nacionalidad" />
+      <F bloque={bloque} campo="rut" label="RUT" />
+      <F bloque={bloque} campo="pasaporte" label="Pasaporte" />
+      <F bloque={bloque} campo="telefono" label="Teléfono" />
+      <F bloque={bloque} campo="email" label="Email" col={2} />
+      <F bloque={bloque} campo="empresa" label="Empresa" col={2} />
+      <FT bloque={bloque} campo="domHabit" label="Domicilio habitacional" col={2} />
+      <FT bloque={bloque} campo="domLab" label="Domicilio laboral" col={2} />
+    </div>
+  )
+
+  const Titulo = ({ children, extra }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a3a6b' }}>{children}</div>
+      {extra}
+    </div>
+  )
+
+  return (
+    <div style={ov} onClick={onCerrar}>
+      <div style={card} onClick={e => e.stopPropagation()}>
+        {/* Cabecera */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid #eee' }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Editar arrendatarios y avales <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 13 }}>· {idadmon}</span></div>
+          <button onClick={onCerrar} style={{ border: 'none', background: '#f0eee8', borderRadius: 6, width: 30, height: 30, cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+
+        {/* Cuerpo */}
+        <div style={{ padding: 20, maxHeight: '70vh', overflowY: 'auto' }}>
+          <Titulo>Arrendatario 1</Titulo>
+          <Bloque bloque="arr1" />
+
+          <Titulo extra={
+            <button type="button" onClick={() => setArr2Abierto(v => !v)}
+              style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: '1px solid #c7d2e0', background: arr2Abierto ? '#dbe5f1' : '#fff', color: '#1a3a6b', cursor: 'pointer' }}>
+              {arr2Abierto ? '− quitar 2º arrendatario' : '+ añadir 2º arrendatario'}
+            </button>
+          }>Arrendatario 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></Titulo>
+          {arr2Abierto && <Bloque bloque="arr2" />}
+
+          <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 4 }} />
+
+          <Titulo>Aval 1</Titulo>
+          <Bloque bloque="aval1" />
+
+          <Titulo extra={
+            <button type="button" onClick={() => setAval2Abierto(v => !v)}
+              style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: '1px solid #c7d2e0', background: aval2Abierto ? '#dbe5f1' : '#fff', color: '#1a3a6b', cursor: 'pointer' }}>
+              {aval2Abierto ? '− quitar 2º aval' : '+ añadir 2º aval'}
+            </button>
+          }>Aval 2 <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: 11 }}>(poco frecuente)</span></Titulo>
+          {aval2Abierto && <Bloque bloque="aval2" />}
+        </div>
+
+        {/* Pie */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1px solid #eee' }}>
+          <button onClick={onCerrar} disabled={guardando}
+            style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button onClick={onGuardar} disabled={guardando}
+            style={{ padding: '8px 20px', borderRadius: 6, border: 'none', background: guardando ? '#9ca3af' : '#16a34a', color: '#fff', fontSize: 13, fontWeight: 700, cursor: guardando ? 'not-allowed' : 'pointer' }}>
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function AdminPage() {
