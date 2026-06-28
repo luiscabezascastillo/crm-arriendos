@@ -182,7 +182,6 @@ function AdminContent() {
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
-  const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios)
   const [propData, setPropData] = useState(null)   // ficha del propietario (tabla propietarios, por idprop)
   const [arr2Abierto, setArr2Abierto] = useState(false)
   const [aval2Abierto, setAval2Abierto] = useState(false)
@@ -201,8 +200,6 @@ function AdminContent() {
 
   // Helper: leer una clave del raw_data del log (Capa 1)
   const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
-  // Helper: leer un campo de la ficha del propietario (tabla propietarios)
-  const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
   // Helper: leer un campo de la ficha del propietario (tabla propietarios, por idprop)
   const pp = (campo) => (propData && propData[campo] != null ? propData[campo] : '')
 
