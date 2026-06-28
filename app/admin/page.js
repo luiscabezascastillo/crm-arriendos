@@ -509,11 +509,12 @@ function AdminContent() {
 
   return (
     <div style={{ height: '100vh', overflowY: 'auto', background: '#e8eef5' }}>
+      {/* TopNav trae su propio position:sticky (top:0, alto 52px). No anidarlo en otro sticky. */}
       <TopNav />
 
-      {/* ── BARRA DE BOTONES ── */}
+      {/* ── BARRA DE BOTONES (sticky, pegada justo debajo del TopNav a 52px) ── */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 1000,
+        position: 'sticky', top: 52, zIndex: 90,
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         padding: '8px 16px', background: '#f0f4f8',
         borderBottom: `2px solid ${C.headerBg}`,
@@ -608,7 +609,6 @@ function AdminContent() {
 
       {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
         <div style={{
-          position: 'sticky', top: 42, zIndex: 900,
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
           background: '#eef4fb', border: `1px solid ${C.headerBg}`,
           boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
@@ -686,39 +686,44 @@ function AdminContent() {
       {/* ── FORMULARIO TIPO EXCEL ── */}
       <div style={{ padding: '10px 16px 40px', overflowX: 'auto' }}>
         {form.idadmon && !isNew && (
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setModalAbierto(true)}
-              style={{
-                padding: '6px 14px', borderRadius: 6, border: 'none',
-                background: C.subBg, color: '#fff', fontSize: 12, fontWeight: 700,
-                cursor: 'pointer', fontFamily: 'inherit',
+          <>
+            {/* Fila 1: botón de edición + texto de ayuda (alineados a la izquierda) */}
+            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setModalAbierto(true)}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, border: 'none',
+                  background: C.subBg, color: '#fff', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                ✏ Editar arrendatarios y avales
+              </button>
+              <span style={{ fontSize: 11, color: '#6b7280' }}>
+                Los datos de arrendatarios y avales se editan en una ventana cómoda. (El propietario se edita en su ficha.)
+              </span>
+            </div>
+            {/* Fila 2: tarjeta de identificación, centrada en su propio bloque (replica el recuadro del Excel) */}
+            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+              <div style={{
+                display: 'flex', border: `1px solid ${C.headerBg}`,
+                borderRadius: 6, overflow: 'hidden', fontSize: 11,
               }}>
-              ✏ Editar arrendatarios y avales
-            </button>
-            <span style={{ fontSize: 11, color: '#6b7280' }}>
-              Los datos de arrendatarios y avales se editan en una ventana cómoda. (El propietario se edita en su ficha.)
-            </span>
-            {/* Tarjeta de identificación (replica el recuadro del Excel: IDADMON · Estado · Fecha registro) */}
-            <div style={{
-              marginLeft: 'auto', display: 'flex', border: `1px solid ${C.headerBg}`,
-              borderRadius: 6, overflow: 'hidden', fontSize: 11,
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex' }}>
-                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>IDADMON</span>
-                  <span style={{ padding: '3px 10px', fontWeight: 700, color: C.headerBg }}>{form.idadmon}</span>
-                </div>
-                <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
-                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>ESTATUS</span>
-                  <span style={{ padding: '3px 10px' }}>{form.estado || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
-                  <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>FECHA REG</span>
-                  <span style={{ padding: '3px 10px' }}>{lp('FECHA REGISTRO') || '—'}</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>IDADMON</span>
+                    <span style={{ padding: '3px 10px', fontWeight: 700, color: C.headerBg }}>{form.idadmon}</span>
+                  </div>
+                  <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>ESTATUS</span>
+                    <span style={{ padding: '3px 10px' }}>{form.estado || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ background: C.headerBg, color: '#fff', fontWeight: 700, padding: '3px 8px', minWidth: 78 }}>FECHA REG</span>
+                    <span style={{ padding: '3px 10px' }}>{lp('FECHA REGISTRO') || '—'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </>
         )}
         <table style={{
           borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed',
