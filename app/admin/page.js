@@ -181,24 +181,60 @@ function LB({ children, width, right }) {
 /* ── Celda compacta etiqueta+valor para DATOS ECONÓMICOS (fondo gris, estilo Excel) ── */
 const ECO = { border: '#9ec79f', labelBg: '#bcdcbd', labelTxt: '#1f5023', valBg: '#e8f4e8', valRo: '#e8f4e8', head: '#2f6b33', sub: '#2f6b33' }
 const ECG = { border: '#cbd1d9', labelBg: '#e3e6ea', labelTxt: '#374151', valBg: '#ffffff', valRo: '#f7f8fa', head: '#5b6470', sub: '#8b94a3' }
-function EcoCell({ label, name, value, onChange, ro, type = 'text', bold, pal = ECO }) {
+
+// Formatea un entero con separador de miles es-CL: 10000 -> "10.000". Vacío -> ''.
+function fmtMiles(v) {
+  if (v === null || v === undefined || v === '') return ''
+  const n = Number(String(v).replace(/\./g, '').replace(/[^\d-]/g, ''))
+  if (isNaN(n)) return String(v)
+  return n.toLocaleString('es-CL')
+}
+
+// Celda económica. Soporta:
+//   money   -> muestra con separador de miles y sin flechas; guarda el número crudo.
+//   options -> render como <select> (p. ej. ['', 'BOLETA', 'FACTURA']).
+function EcoCell({ label, name, value, onChange, ro, type = 'text', bold, pal = ECO, money, options }) {
+  const baseInput = {
+    flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box',
+    border: 'none', outline: 'none', background: ro ? pal.valRo : pal.valBg,
+    fontSize: 11, fontWeight: bold ? 700 : 400, color: '#1f2937',
+    padding: '2px 5px', height: 22, fontFamily: 'inherit',
+  }
+  let control
+  if (options) {
+    control = (
+      <select name={name} value={value ?? ''} onChange={onChange} disabled={ro}
+        style={{ ...baseInput, cursor: ro ? 'default' : 'pointer' }}>
+        {options.map(o => <option key={o} value={o}>{o === '' ? '—' : o}</option>)}
+      </select>
+    )
+  } else if (money) {
+    control = (
+      <input
+        type="text" inputMode="numeric" name={name} value={fmtMiles(value)} readOnly={ro}
+        onChange={e => { const raw = e.target.value.replace(/\./g, '').replace(/[^\d]/g, ''); onChange({ target: { name, value: raw } }) }}
+        style={{ ...baseInput, textAlign: 'right' }}
+        onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+        onBlur={e => e.target.style.background = ro ? pal.valRo : pal.valBg}
+      />
+    )
+  } else {
+    control = (
+      <input
+        type={type} name={name} value={value ?? ''} onChange={onChange} readOnly={ro}
+        style={baseInput}
+        onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+        onBlur={e => e.target.style.background = ro ? pal.valRo : pal.valBg}
+      />
+    )
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${pal.border}`, borderRight: `1px solid ${pal.border}` }}>
       <div style={{
         width: 64, flexShrink: 0, fontSize: 10, fontWeight: 600, color: pal.labelTxt,
         background: pal.labelBg, padding: '0 5px', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
       }}>{label}</div>
-      <input
-        type={type} name={name} value={value ?? ''} onChange={onChange} readOnly={ro}
-        style={{
-          flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box',
-          border: 'none', outline: 'none', background: ro ? pal.valRo : pal.valBg,
-          fontSize: 11, fontWeight: bold ? 700 : 400, color: '#1f2937',
-          padding: '2px 5px', height: 22, fontFamily: 'inherit',
-        }}
-        onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
-        onBlur={e => e.target.style.background = ro ? pal.valRo : pal.valBg}
-      />
+      {control}
     </div>
   )
 }
@@ -473,9 +509,17 @@ function AdminContent() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (form.estado !== 'P') { setMsg({ type: 'warn', text: 'Esta acción solo aplica a contratos en estado P.' }); return }
-    if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nEl estado pasará de P a S, se bloqueará la ficha y se enviará la solicitud de facturación a Finanzas.`)) return
+    if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nSe guardarán los datos actuales, el estado pasará de P a S, se bloqueará la ficha y se enviará la solicitud de facturación a Finanzas.`)) return
     setCambiando(true)
     try {
+      // 1. Guardar la ficha ANTES de facturar, para que el email lleve los datos actuales
+      //    (el endpoint de facturación lee desde la BD, no desde la pantalla).
+      const payload = { ...form, updated_at: new Date().toISOString() }
+      delete payload.id
+      const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
+      if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de facturar: ' + eSave.message }); setCambiando(false); return }
+
+      // 2. Cerrar (P->S) + enviar avisos
       const res = await fetch('/api/cc1/cerrar-facturar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idadmon: form.idadmon }),
@@ -1061,12 +1105,12 @@ function AdminContent() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={ro} />
                 <EcoCell label="+ IVA" name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} ro={ro} />
-                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={ro} type="number" />
-                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={ro} type="number" />
-                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={ro} type="number" bold />
+                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={ro} money />
+                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={ro} money />
+                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={ro} money bold />
                 <EcoCell label="C. Esp." name="c_especiales" value={form.c_especiales} onChange={handleChange} ro={ro} />
                 <EcoCell label="Coment." name="comentario_comision" value={form.comentario_comision} onChange={handleChange} ro={ro} />
-                <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={ro} />
+                <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
             {/* ARRENDATARIO — 2 columnas × 4 filas */}
@@ -1075,12 +1119,12 @@ function AdminContent() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} ro={ro} />
                 <EcoCell label="+ IVA" name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} ro={ro} />
-                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={ro} type="number" />
-                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={ro} type="number" />
-                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={ro} type="number" bold />
+                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={ro} money />
+                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={ro} money />
+                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={ro} money bold />
                 <EcoCell label="C. Esp." name="especial_b" value={form.especial_b} onChange={handleChange} ro={ro} />
                 <EcoCell label="Coment." name="especial_c" value={form.especial_c} onChange={handleChange} ro={ro} />
-                <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} />
+                <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
             {/* ADMON MES — 1 columna, 3 campos (gris, como ya estaba bien) */}

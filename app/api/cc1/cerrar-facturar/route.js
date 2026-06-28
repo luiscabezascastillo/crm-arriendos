@@ -26,10 +26,17 @@ import { buildSubject, enviarNotificacion } from '../../../../lib/cc1Email'
 const FACTURACION_TO = 'karina.morales@fondocapital.com'   // Finanzas
 const FACTURACION_CC = 'anthony.mendoza@fondocapital.com'  // Legal (copia)
 
-// Muestra un valor o '—' si está vacío.
+// Muestra un valor o '' si está vacío.
 function v(x) {
   if (x === null || x === undefined || x === '') return ''
   return String(x)
+}
+// Importe con separador de miles es-CL (10000 -> "10.000"). Vacío -> ''.
+function m(x) {
+  if (x === null || x === undefined || x === '') return ''
+  const n = Number(String(x).replace(/\./g, '').replace(/[^\d-]/g, ''))
+  if (isNaN(n)) return String(x)
+  return n.toLocaleString('es-CL')
 }
 // Escapa para HTML.
 function esc(x) {
@@ -72,18 +79,18 @@ function cuadroEconomicoHTML(dat) {
   const prop = `
     <tr><td colspan="2" style="${sub}">PROPIETARIO</td></tr>
     ${filaEco('Porcentaje', dat.pct_adm)}
-    ${filaEco('Cantidad', dat.comision_d_base)}
-    ${filaEco('Con IVA', dat.iva_comision_d)}
-    ${filaEco('Total', dat.comision_d_total, true)}
+    ${filaEco('Cantidad', m(dat.comision_d_base))}
+    ${filaEco('Con IVA', m(dat.iva_comision_d))}
+    ${filaEco('Total', m(dat.comision_d_total), true)}
     ${filaEco('C. Especiales', dat.c_especiales)}
     ${filaEco('Comentario', dat.comentario_comision)}
     ${filaEco('Boleta/Factura', dat.comision_cobrado)}`
   const arr = `
     <tr><td colspan="2" style="${sub}">ARRENDATARIO</td></tr>
     ${filaEco('Porcentaje', dat.si_fijo_admon)}
-    ${filaEco('Cantidad', dat.comision_a_base)}
-    ${filaEco('Con IVA', dat.iva_comision_a)}
-    ${filaEco('Total', dat.comision_a_total, true)}
+    ${filaEco('Cantidad', m(dat.comision_a_base))}
+    ${filaEco('Con IVA', m(dat.iva_comision_a))}
+    ${filaEco('Total', m(dat.comision_a_total), true)}
     ${filaEco('C. Especiales', dat.especial_b)}
     ${filaEco('Comentario', dat.especial_c)}
     ${filaEco('Boleta/Factura', dat.comision_a_pagado)}`
@@ -162,9 +169,9 @@ export async function POST(req) {
     direccion: v(prop?.direccion),
     email: v(prop?.mail1),
     telefono: v(prop?.telefono),
-    base: v(dat.comision_d_base),
-    iva: v(dat.iva_comision_d),
-    total: v(dat.comision_d_total),
+    base: m(dat.comision_d_base),
+    iva: m(dat.iva_comision_d),
+    total: m(dat.comision_d_total),
     concepto,
   }
   const datosArr = {
@@ -173,9 +180,9 @@ export async function POST(req) {
     direccion: '',
     email: v(dat.mail_arrendatario),
     telefono: v(dat.movil),
-    base: v(dat.comision_a_base),
-    iva: v(dat.iva_comision_a),
-    total: v(dat.comision_a_total),
+    base: m(dat.comision_a_base),
+    iva: m(dat.iva_comision_a),
+    total: m(dat.comision_a_total),
     concepto,
   }
 
