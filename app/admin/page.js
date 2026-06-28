@@ -178,17 +178,26 @@ function LB({ children, width, right }) {
   )
 }
 
-/* ── Fila etiqueta+input para los paneles de DATOS ECONÓMICOS (fuera de la tabla) ── */
-function EcoRow({ label, children }) {
+/* ── Celda compacta etiqueta+valor para DATOS ECONÓMICOS (fondo gris, estilo Excel) ── */
+const ECO = { border: '#cbd1d9', labelBg: '#e3e6ea', labelTxt: '#374151', valBg: '#ffffff', valRo: '#f7f8fa', head: '#5b6470', sub: '#8b94a3' }
+function EcoCell({ label, name, value, onChange, ro, type = 'text', bold }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${C.border}` }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${ECO.border}`, borderRight: `1px solid ${ECO.border}` }}>
       <div style={{
-        ...labelCell, width: 110, flexShrink: 0, display: 'flex', alignItems: 'center',
-        borderTop: 'none', borderLeft: 'none', borderRight: `1px solid ${C.border}`, borderBottom: 'none',
+        width: 64, flexShrink: 0, fontSize: 10, fontWeight: 600, color: ECO.labelTxt,
+        background: ECO.labelBg, padding: '0 5px', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
       }}>{label}</div>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#fff' }}>
-        {children}
-      </div>
+      <input
+        type={type} name={name} value={value ?? ''} onChange={onChange} readOnly={ro}
+        style={{
+          flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box',
+          border: 'none', outline: 'none', background: ro ? ECO.valRo : ECO.valBg,
+          fontSize: 11, fontWeight: bold ? 700 : 400, color: '#1f2937',
+          padding: '2px 5px', height: 22, fontFamily: 'inherit',
+        }}
+        onFocus={e => { if (!ro) e.target.style.background = '#fffbeb' }}
+        onBlur={e => e.target.style.background = ro ? ECO.valRo : ECO.valBg}
+      />
     </div>
   )
 }
@@ -1050,45 +1059,53 @@ function AdminContent() {
           </tbody>
         </table>
 
-        {/* ══ DATOS ECONÓMICOS ══ */}
-        <div style={{ marginTop: 16 }}>
+        {/* ══ DATOS ECONÓMICOS (compacto, gris, centrado) ══ */}
+        <div style={{ maxWidth: 820, margin: '16px auto 0' }}>
           <div style={{
-            ...headerCell, background: C.headerBg, padding: '5px 10px',
-            fontSize: 11, letterSpacing: '0.05em', borderRadius: '6px 6px 0 0',
+            background: ECO.head, color: '#fff', padding: '4px 10px',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textAlign: 'center',
+            borderRadius: '6px 6px 0 0',
           }}>
             DATOS ECONÓMICOS
           </div>
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0,
-            border: `1px solid ${C.border}`, borderTop: 'none',
+            display: 'grid', gridTemplateColumns: '1fr 1fr 0.55fr', gap: 0,
+            border: `1px solid ${ECO.border}`, borderTop: 'none',
           }}>
-            <div style={{ borderRight: `1px solid ${C.border}` }}>
-              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>PROPIETARIO</div>
-              <EcoRow label="Porcentaje"><IC name="pct_adm" value={form.pct_adm} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="+ IVA"><IC name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Cantidad"><IC name="comision_d_base" value={form.comision_d_base} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
-              <EcoRow label="Con IVA"><IC name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
-              <EcoRow label="Total"><IC name="comision_d_total" value={form.comision_d_total} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
-              <EcoRow label="C. Especiales"><IC name="c_especiales" value={form.c_especiales} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Comentario"><IC name="comentario_comision" value={form.comentario_comision} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Boleta/Factura"><IC name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} readOnly={ro} /></EcoRow>
+            {/* PROPIETARIO — 2 columnas × 4 filas */}
+            <div style={{ borderRight: `1px solid ${ECO.border}` }}>
+              <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>PROPIETARIO</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
+                <EcoCell label="Porcentaje" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={ro} />
+                <EcoCell label="+ IVA" name="adicionar_iva" value={form.adicionar_iva} onChange={handleChange} ro={ro} />
+                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={ro} type="number" />
+                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={ro} type="number" />
+                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={ro} type="number" bold />
+                <EcoCell label="C. Esp." name="c_especiales" value={form.c_especiales} onChange={handleChange} ro={ro} />
+                <EcoCell label="Coment." name="comentario_comision" value={form.comentario_comision} onChange={handleChange} ro={ro} />
+                <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={ro} />
+              </div>
             </div>
-            <div style={{ borderRight: `1px solid ${C.border}` }}>
-              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ARRENDATARIO</div>
-              <EcoRow label="Porcentaje"><IC name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="+ IVA"><IC name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Cantidad"><IC name="comision_a_base" value={form.comision_a_base} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
-              <EcoRow label="Con IVA"><IC name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} readOnly={ro} type="number" /></EcoRow>
-              <EcoRow label="Total"><IC name="comision_a_total" value={form.comision_a_total} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
-              <EcoRow label="C. Especiales"><IC name="especial_b" value={form.especial_b} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Comentario"><IC name="especial_c" value={form.especial_c} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Boleta/Factura"><IC name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} readOnly={ro} /></EcoRow>
+            {/* ARRENDATARIO — 2 columnas × 4 filas */}
+            <div style={{ borderRight: `1px solid ${ECO.border}` }}>
+              <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ARRENDATARIO</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
+                <EcoCell label="Porcentaje" name="si_fijo_admon" value={form.si_fijo_admon} onChange={handleChange} ro={ro} />
+                <EcoCell label="+ IVA" name="tiene_contrato_admon" value={form.tiene_contrato_admon} onChange={handleChange} ro={ro} />
+                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={ro} type="number" />
+                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={ro} type="number" />
+                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={ro} type="number" bold />
+                <EcoCell label="C. Esp." name="especial_b" value={form.especial_b} onChange={handleChange} ro={ro} />
+                <EcoCell label="Coment." name="especial_c" value={form.especial_c} onChange={handleChange} ro={ro} />
+                <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} />
+              </div>
             </div>
+            {/* ADMON MES — 1 columna, 3 campos */}
             <div>
-              <div style={{ ...labelCell, background: C.subBg, color: '#fff', textAlign: 'center', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>ADMON MES</div>
-              <EcoRow label="Tipo"><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={ro} /></EcoRow>
-              <EcoRow label="Cuantía"><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={ro} type="number" bold /></EcoRow>
-              <EcoRow label="Especial"><IC name="mowner" value={form.mowner} onChange={handleChange} readOnly={ro} /></EcoRow>
+              <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
+              <EcoCell label="Tipo" name="quien_cobra" value={form.quien_cobra} onChange={handleChange} ro={ro} />
+              <EcoCell label="Cuantía" name="cuota" value={form.cuota} onChange={handleChange} ro={ro} type="number" bold />
+              <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} />
             </div>
           </div>
         </div>
