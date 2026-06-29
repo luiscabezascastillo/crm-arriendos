@@ -408,14 +408,6 @@ export default function CC1Page() {
         <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => {}} />
         <OperacionesBtn opciones={opEspecialesCC1} router={router} />
         <ActionBtn label="Cierre"                     bg="#dc2626" icon={Ico.lock}  onClick={() => {}} />
-        <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
-          <button onClick={irAFormulario} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
-            background: '#1a56db', color: '#fff', border: 'none', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-            {Ico.plus} Nuevo / Asignar arriendo
-          </button>
-          <button style={{ padding: '7px 10px', background: '#1447c3', color: '#fff', border: 'none',
-            borderLeft: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: 13 }}>▾</button>
-        </div>
       </div>
 
       <div style={{ padding: '20px 24px' }}>
@@ -440,11 +432,6 @@ export default function CC1Page() {
                 ✕ Limpiar filtros
               </button>
             )}
-            <button onClick={irAFormulario} style={{ padding: '7px 14px', background: '#1a56db', color: '#fff', border: 'none',
-              borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', gap: 5 }}>
-              {Ico.plus} Nuevo arriendo
-            </button>
           </div>
         </div>
 
