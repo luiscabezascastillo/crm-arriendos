@@ -260,7 +260,7 @@ export default function CC1Page() {
   const [filtroIdadmon, setFiltroIdadmon] = useState('')
   const [filtroInmueble, setFiltroInmueble] = useState('')
   const [filtroPropietario, setFiltroPropietario] = useState('')
-  // 'default' = orden por defecto multi-columna: Propietario ↑ · Inmueble ↑ · Estado ↓.
+  // 'default' = orden por defecto multi-columna: Estado ↓ · Propietario ↑ · Inmueble ↑.
   // En cuanto el usuario pincha una columna, se pasa a orden simple por esa columna.
   const [sortCol, setSortCol] = useState('default')
   const [sortDir, setSortDir] = useState('desc')
@@ -290,16 +290,18 @@ export default function CC1Page() {
       .from('datos_arriendos')
       .select('idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual', { count: 'exact' })
 
-    // Orden: por defecto multi-columna (Propietario ↑ · Inmueble ↑ · Estado ↓);
-    // si el usuario eligió una columna, orden simple por esa columna.
-    if (sortCol === 'default') {
-      query = query
-        .order('propietario', { ascending: true })
-        .order('inmueble', { ascending: true })
-        .order('estado', { ascending: false })
-    } else {
-      query = query.order(sortCol, { ascending: sortDir === 'asc' })
-    }
+    // Orden estable estilo Excel: la columna elegida manda como criterio principal,
+    // y SIEMPRE se mantienen detrás los criterios por defecto (Estado ↓ · Propietario ↑ ·
+    // Inmueble ↑) como desempate. Así la agrupación no se pierde al ordenar ni al filtrar.
+    const ordenBase = [
+      ['estado', false],
+      ['propietario', true],
+      ['inmueble', true],
+    ]
+    const claves = (sortCol === 'default')
+      ? ordenBase
+      : [[sortCol, sortDir === 'asc'], ...ordenBase.filter(([c]) => c !== sortCol)]
+    claves.forEach(([c, asc]) => { query = query.order(c, { ascending: asc }) })
 
     query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
