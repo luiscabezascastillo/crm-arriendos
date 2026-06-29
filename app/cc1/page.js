@@ -260,7 +260,9 @@ export default function CC1Page() {
   const [filtroIdadmon, setFiltroIdadmon] = useState('')
   const [filtroInmueble, setFiltroInmueble] = useState('')
   const [filtroPropietario, setFiltroPropietario] = useState('')
-  const [sortCol, setSortCol] = useState('estado')
+  // 'default' = orden por defecto multi-columna: Propietario ↑ · Inmueble ↑ · Estado ↓.
+  // En cuanto el usuario pincha una columna, se pasa a orden simple por esa columna.
+  const [sortCol, setSortCol] = useState('default')
   const [sortDir, setSortDir] = useState('desc')
   const [propiedades, setPropiedades] = useState([])
   const [loading, setLoading] = useState(true)
@@ -287,8 +289,19 @@ export default function CC1Page() {
     let query = supabase
       .from('datos_arriendos')
       .select('idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual', { count: 'exact' })
-      .order(sortCol, { ascending: sortDir === 'asc' })
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+
+    // Orden: por defecto multi-columna (Propietario ↑ · Inmueble ↑ · Estado ↓);
+    // si el usuario eligió una columna, orden simple por esa columna.
+    if (sortCol === 'default') {
+      query = query
+        .order('propietario', { ascending: true })
+        .order('inmueble', { ascending: true })
+        .order('estado', { ascending: false })
+    } else {
+      query = query.order(sortCol, { ascending: sortDir === 'asc' })
+    }
+
+    query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
     if (search) query = query.or(`idadmon.ilike.%${search}%,inmueble.ilike.%${search}%,propietario.ilike.%${search}%,arrendatario.ilike.%${search}%`)
     if (filtroEstado) query = query.eq('estado', filtroEstado)
@@ -339,7 +352,7 @@ export default function CC1Page() {
   function limpiarTodo() {
     setSearch(''); setFiltroEstado(''); setFiltroIdadmon('')
     setFiltroInmueble(''); setFiltroPropietario('')
-    setSortCol('estado'); setSortDir('desc')
+    setSortCol('default'); setSortDir('desc')
   }
 
   const hayFiltros = search || filtroEstado || filtroIdadmon || filtroInmueble || filtroPropietario
