@@ -9,8 +9,9 @@ import TopNav from '@/app/components/ui/TopNav'
 // ════════════════════════════════════════════════════════════════════════
 // Endpoint de envío del recordatorio de arriendo.
 // Tabla de control de envíos: notificaciones_arriendo (una fila por idadmon+mes).
-//   fecha_envio NULL = no enviado · inhibir true = bloqueado · comentario libre
-//   Solo se envía si: hay email, no está inhibido y fecha_envio es NULL.
+//   control_envio (col C del Excel): fecha = enviado · texto = no enviar · vacío = pendiente
+//   comentario (col W): nota informativa, no afecta al envío.
+//   Regla: SOLO se envía si hay email y control_envio está vacío.
 // ════════════════════════════════════════════════════════════════════════
 const ENDPOINT_ENVIO = '/api/procesos/notificaciones/enviar'
 const CC_ENVIO = 'administracion@fondocapital.com'
@@ -70,17 +71,23 @@ function tipoComunicacion(c) {
   if (r === 'FIJO' || r === '') return 'vacío'
   return 'AJUSTE'
 }
-function fmtFechaEnvio(ts) {
-  if (!ts) return ''
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ''
+// ¿El texto del control parece una fecha/timestamp ISO? ('2026-06-26 17:33:11' o ISO)
+function esFechaIso(s) {
+  if (!s) return false
+  return /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2})?/.test(String(s).trim())
+}
+// Formatea el control-fecha a 'dd/mm HH:MM' para mostrar
+function fmtControlFecha(s) {
+  const t = String(s).trim().replace(' ', 'T')
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return String(s)
   const p = (x) => String(x).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 const ENVIO = {
   FALTAN: 'Faltan datos',
-  INHIBIDO: 'Inhibido',
+  BLOQUEADO: 'Bloqueado',
   ENVIADO: 'Enviado',
   PENDIENTE: 'Pendiente',
 }
@@ -197,6 +204,7 @@ export default function NotificacionesPage() {
   const [toast, setToast] = useState(null)
 
   const [comentarioEdit, setComentarioEdit] = useState(null)
+  const [controlEdit, setControlEdit] = useState(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/api/auth/signin')
@@ -230,7 +238,7 @@ export default function NotificacionesPage() {
     if (!mes) return
     const { data, error } = await supabase
       .from(TABLA_NOTI)
-      .select('idadmon, fecha_envio, inhibir, comentario')
+      .select('idadmon, control_envio, comentario')
       .eq('mes_notificacion', mes)
     if (error) { setNotiMap(new Map()); return }
     const m = new Map()
@@ -250,18 +258,19 @@ export default function NotificacionesPage() {
       const tieneArr = !!(c.arrendatario && c.arrendatario.trim())
 
       let envioEstado, sendable
-      const tieneComentario = !!(noti && noti.comentario && String(noti.comentario).trim())
+      const control = noti && noti.control_envio != null ? String(noti.control_envio).trim() : ''
+      const controlEsFecha = control !== '' && esFechaIso(control)
       if (!tieneEmail || !tieneArr) { envioEstado = ENVIO.FALTAN; sendable = false }
-      else if (noti && noti.fecha_envio) { envioEstado = ENVIO.ENVIADO; sendable = false }
-      else if (noti && noti.inhibir) { envioEstado = ENVIO.INHIBIDO; sendable = false }
-      else if (tieneComentario) { envioEstado = ENVIO.INHIBIDO; sendable = false }
+      else if (controlEsFecha) { envioEstado = ENVIO.ENVIADO; sendable = false }
+      else if (control !== '') { envioEstado = ENVIO.BLOQUEADO; sendable = false }
       else { envioEstado = ENVIO.PENDIENTE; sendable = true }
 
       const av = ajusteVigente(c, mesSel)
       return {
         ...c, apagar, tipoCom, envioEstado, sendable,
-        fechaEnvio: noti?.fecha_envio || null,
-        comentario: noti?.comentario || '',
+        control,                                   // texto de la columna C (fecha o motivo)
+        controlEsFecha,
+        comentario: noti?.comentario || '',        // columna W (nota informativa)
         ajusteTipo: av ? av.tipo : null,
         ajusteMonto: av ? av.monto : 0,
       }
@@ -393,17 +402,23 @@ export default function NotificacionesPage() {
     if (error) { setToast('Error guardando: ' + error.message); setTimeout(() => setToast(null), 4000); return false }
     return true
   }
-  async function toggleInhibir(f) {
+  function abrirControl(f) {
     setMenuFila(null)
-    const estaInhibido = f.envioEstado === ENVIO.INHIBIDO
-    // Regla única (como Excel): comentario con contenido = no enviar.
-    // Inhibir escribe 'INHIBIDO'; Reactivar limpia el comentario.
-    const ok = await upsertNoti(f.idadmon, { comentario: estaInhibido ? null : 'INHIBIDO', inhibir: !estaInhibido })
-    if (ok) { setSeleccionados((p) => { const n = new Set(p); n.delete(f.idadmon); return n }); cargarNoti(mesSel) }
+    setControlEdit({ idadmon: f.idadmon, texto: f.controlEsFecha ? '' : (f.control || '') })
+  }
+  async function guardarControl() {
+    if (!controlEdit) return
+    const ok = await upsertNoti(controlEdit.idadmon, { control_envio: controlEdit.texto.trim() || null })
+    if (ok) {
+      setControlEdit(null)
+      setSeleccionados((p) => { const n = new Set(p); n.delete(controlEdit.idadmon); return n })
+      cargarNoti(mesSel)
+    }
   }
   async function reabrir(f) {
     setMenuFila(null)
-    const ok = await upsertNoti(f.idadmon, { fecha_envio: null })
+    // Vaciar el control = permitir envío (como dejar en blanco la celda del Excel)
+    const ok = await upsertNoti(f.idadmon, { control_envio: null })
     if (ok) cargarNoti(mesSel)
   }
   function abrirComentario(f) {
@@ -463,17 +478,19 @@ export default function NotificacionesPage() {
       setResultado(data)
 
       if (!data.error && !modoPrueba && Array.isArray(data.detalle)) {
-        const ahora = new Date().toISOString()
+        const ahora = new Date()
+        const p = (x) => String(x).padStart(2, '0')
+        const sello = `${ahora.getFullYear()}-${p(ahora.getMonth() + 1)}-${p(ahora.getDate())} ${p(ahora.getHours())}:${p(ahora.getMinutes())}:${p(ahora.getSeconds())}`
         const okIds = data.detalle.filter((d) => d.ok).map((d) => d.idadmon)
         if (okIds.length) {
           const filasUpsert = okIds.map((id) => {
             const f = filaPorId.get(id)
             return {
-              idadmon: id, mes_notificacion: mesSel, fecha_envio: ahora,
+              idadmon: id, mes_notificacion: mesSel, control_envio: sello,
               email_usado: f ? f.mail_arrendatario : null,
               apagar_enviado: f ? f.apagar : null,
               revision_enviada: f ? f.revision : null,
-              actualizado_en: ahora,
+              actualizado_en: new Date().toISOString(),
             }
           })
           await supabase.from(TABLA_NOTI).upsert(filasUpsert, { onConflict: 'idadmon,mes_notificacion' })
@@ -502,34 +519,37 @@ export default function NotificacionesPage() {
   }
 
   function CeldaEnvio({ f }) {
-    const map = {
-      [ENVIO.ENVIADO]:   { color: '#166534', bg: '#F0FDF4', txt: `✓ ${fmtFechaEnvio(f.fechaEnvio)}` },
-      [ENVIO.INHIBIDO]:  { color: '#6B7280', bg: '#F3F4F6', txt: '⊘ Inhibido' },
-      [ENVIO.FALTAN]:    { color: '#DC2626', bg: '#FEF2F2', txt: '⚠ Faltan datos' },
-      [ENVIO.PENDIENTE]: { color: '#92400E', bg: '#FFFBEB', txt: '— Pendiente' },
+    // Texto y estilo según estado
+    let color, bg, txt, full
+    if (f.envioEstado === ENVIO.ENVIADO) {
+      color = '#166534'; bg = '#F0FDF4'; txt = `✓ ${fmtControlFecha(f.control)}`; full = `Enviado ${f.control}`
+    } else if (f.envioEstado === ENVIO.FALTAN) {
+      color = '#DC2626'; bg = '#FEF2F2'; txt = '⚠ Faltan datos'; full = 'Sin email o sin arrendatario'
+    } else if (f.envioEstado === ENVIO.BLOQUEADO) {
+      color = '#6B7280'; bg = '#F3F4F6'; txt = f.control; full = f.control   // muestra el texto real de la columna C
+    } else {
+      color = '#92400E'; bg = '#FFFBEB'; txt = '— Pendiente'; full = 'Pendiente de envío'
     }
-    const s = map[f.envioEstado] || map[ENVIO.PENDIENTE]
     return (
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span title={f.comentario || ''}
-          style={{ fontSize: 11, fontWeight: 600, color: s.color, background: s.bg, padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-          {s.txt}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <span title={full}
+          style={{ fontSize: 11, fontWeight: 600, color, background: bg, padding: '2px 7px', borderRadius: 6,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130, display: 'inline-block' }}>
+          {txt}
         </span>
-        {f.comentario && <span title={f.comentario} style={{ fontSize: 11, color: '#9CA3AF' }}>💬</span>}
+        {f.comentario && <span title={f.comentario} style={{ fontSize: 11, color: '#9CA3AF', flexShrink: 0 }}>💬</span>}
         <button onClick={() => setMenuFila(menuFila === f.idadmon ? null : f.idadmon)}
-          title="Acciones" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '0 2px' }}>⋯</button>
+          title="Acciones" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '0 2px', flexShrink: 0 }}>⋯</button>
         {menuFila === f.idadmon && (
           <>
             <div onClick={() => setMenuFila(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, width: 190,
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, width: 210,
               background: '#fff', border: '1px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 4 }}>
-              <button onClick={() => toggleInhibir(f)} style={menuItem}>
-                {f.envioEstado === ENVIO.INHIBIDO ? '↻ Reactivar' : '⊘ Inhibir'}
-              </button>
-              <button onClick={() => abrirComentario(f)} style={menuItem}>✎ Editar comentario</button>
-              {f.envioEstado === ENVIO.ENVIADO && (
-                <button onClick={() => reabrir(f)} style={menuItem}>↺ Reabrir (permitir reenvío)</button>
+              <button onClick={() => abrirControl(f)} style={menuItem}>✎ Editar control de envío</button>
+              {f.envioEstado !== ENVIO.PENDIENTE && f.envioEstado !== ENVIO.FALTAN && (
+                <button onClick={() => reabrir(f)} style={menuItem}>↺ Vaciar control (permitir envío)</button>
               )}
+              <button onClick={() => abrirComentario(f)} style={menuItem}>💬 Editar comentario</button>
             </div>
           </>
         )}
@@ -716,6 +736,24 @@ export default function NotificacionesPage() {
                   {enviando ? 'Enviando…' : (modoPrueba ? 'Enviar prueba' : 'Confirmar envío real')}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {controlEdit && (
+        <div onClick={() => setControlEdit(null)} style={{ position: 'fixed', inset: 0, zIndex: 55, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 440, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: '#2C2C2A' }}>Control de envío · {controlEdit.idadmon}</h3>
+            <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 10px' }}>
+              Si escribes cualquier texto (p. ej. «OBSERVACIONES»), este contrato <strong>no se enviará</strong>. Déjalo <strong>vacío</strong> para permitir el envío. La fecha de envío se escribe aquí automáticamente al enviar.
+            </p>
+            <input type="text" value={controlEdit.texto} onChange={(e) => setControlEdit({ ...controlEdit, texto: e.target.value })}
+              placeholder="Vacío = se enviará · texto = no enviar"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
+              <button onClick={() => setControlEdit(null)} style={{ fontSize: 13, padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={guardarControl} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1a56db', color: '#fff', cursor: 'pointer' }}>Guardar</button>
             </div>
           </div>
         </div>
