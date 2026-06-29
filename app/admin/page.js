@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useLayoutEffect, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
 import Link from 'next/link'
@@ -330,6 +330,8 @@ const ESTADOS_CERRADOS = new Set(['Q', 'N', 'N-DICOM', 'N_DICOM'])
 
 function AdminContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const idParam = (searchParams.get('idadmon') || '').trim().toUpperCase()
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
@@ -438,11 +440,20 @@ function AdminContent() {
   // Pop-up de expansión para campos largos (domicilios). Guarda { bloque, campo } o null.
   const abrirExpandir = (bloque, campo) => setExpandir({ bloque, campo })
 
+  useEffect(() => { cargarCapacidades() }, [])
+
+  // Al entrar (o si cambia el ?idadmon= de la URL), prioriza el IDADMON de la URL.
+  // Solo si no viene ninguno se usa el último visto (localStorage) como respaldo.
   useEffect(() => {
-    const ultimo = localStorage.getItem('ultimo_idadmon')
-    if (ultimo) { setIdadmonInput(ultimo); recuperar(ultimo) }
-    cargarCapacidades()
-  }, [])
+    if (idParam) {
+      setIdadmonInput(idParam)
+      recuperar(idParam)
+    } else {
+      const ultimo = localStorage.getItem('ultimo_idadmon')
+      if (ultimo) { setIdadmonInput(ultimo); recuperar(ultimo) }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idParam])
 
   async function cargarCapacidades() {
     try {
