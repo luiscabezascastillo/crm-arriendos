@@ -14,6 +14,7 @@ import TopNav from '@/app/components/ui/TopNav'
 //   Regla: SOLO se envía si hay email y control_envio está vacío.
 // ════════════════════════════════════════════════════════════════════════
 const ENDPOINT_ENVIO = '/api/procesos/notificaciones/enviar'
+const ENDPOINT_PREVIEW = '/api/procesos/notificaciones/preview'
 const CC_ENVIO = 'administracion@fondocapital.com'
 const TABLA_NOTI = 'notificaciones_arriendo'
 
@@ -205,6 +206,7 @@ export default function NotificacionesPage() {
 
   const [comentarioEdit, setComentarioEdit] = useState(null)
   const [controlEdit, setControlEdit] = useState(null)
+  const [preview, setPreview] = useState(null) // { idadmon, asunto, html } | { loading } | { error }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/api/auth/signin')
@@ -238,7 +240,7 @@ export default function NotificacionesPage() {
     if (!mes) return
     const { data, error } = await supabase
       .from(TABLA_NOTI)
-      .select('idadmon, control_envio, comentario')
+      .select('idadmon, control_envio, comentario, apagar_enviado')
       .eq('mes_notificacion', mes)
     if (error) { setNotiMap(new Map()); return }
     const m = new Map()
@@ -251,11 +253,15 @@ export default function NotificacionesPage() {
 
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
-      const apagar = calcularApagar(c)
+      const apagarCalc = calcularApagar(c)
       const tipoCom = tipoComunicacion(c)
       const noti = notiMap.get(c.idadmon)
       const tieneEmail = splitEmails(c.mail_arrendatario).length > 0
       const tieneArr = !!(c.arrendatario && c.arrendatario.trim())
+
+      // Override: si la notificación tiene apagar_enviado, ese importe manda (casos especiales)
+      const tieneOverride = noti && noti.apagar_enviado != null && noti.apagar_enviado !== ''
+      const apagar = tieneOverride ? Math.round(num(noti.apagar_enviado)) : apagarCalc
 
       let envioEstado, sendable
       const control = noti && noti.control_envio != null ? String(noti.control_envio).trim() : ''
@@ -267,7 +273,7 @@ export default function NotificacionesPage() {
 
       const av = ajusteVigente(c, mesSel)
       return {
-        ...c, apagar, tipoCom, envioEstado, sendable,
+        ...c, apagar, apagarCalc, tieneOverride, tipoCom, envioEstado, sendable,
         control,                                   // texto de la columna C (fecha o motivo)
         controlEsFecha,
         comentario: noti?.comentario || '',        // columna W (nota informativa)
@@ -430,6 +436,35 @@ export default function NotificacionesPage() {
     const ok = await upsertNoti(comentarioEdit.idadmon, { comentario: comentarioEdit.texto || null })
     if (ok) { setComentarioEdit(null); cargarNoti(mesSel) }
   }
+  async function verPreview(f) {
+    setMenuFila(null)
+    setPreview({ idadmon: f.idadmon, loading: true })
+    try {
+      const res = await fetch(ENDPOINT_PREVIEW, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mes: mesSel, mesLabel: mesLabel(mesSel),
+          valorUf: idxMes ? idxMes.valor_uf : null,
+          notificacion: {
+            idadmon: f.idadmon, arrendatario: f.arrendatario, propiedad: f.inmueble,
+            apagar: f.apagar, revision: f.revision,
+            ajusteTipo: f.ajusteTipo, ajusteMonto: f.ajusteMonto,
+          },
+        }),
+      })
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status}${txt ? ' · ' + txt.slice(0, 120) : ''}`)
+      }
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPreview({ idadmon: f.idadmon, asunto: data.asunto, html: data.html,
+        email: f.mail_arrendatario, apagar: f.apagar })
+    } catch (err) {
+      setPreview({ idadmon: f.idadmon, error: err.message })
+    }
+  }
 
   function abrirModal() {
     if (seleccionados.size === 0) return
@@ -545,6 +580,7 @@ export default function NotificacionesPage() {
             <div onClick={() => setMenuFila(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
             <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, width: 210,
               background: '#fff', border: '1px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 4 }}>
+              <button onClick={() => verPreview(f)} style={menuItem}>👁 Vista previa del correo</button>
               <button onClick={() => abrirControl(f)} style={menuItem}>✎ Editar control de envío</button>
               {f.envioEstado !== ENVIO.PENDIENTE && f.envioEstado !== ENVIO.FALTAN && (
                 <button onClick={() => reabrir(f)} style={menuItem}>↺ Vaciar control (permitir envío)</button>
@@ -663,7 +699,9 @@ export default function NotificacionesPage() {
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.arrendatario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><RevBadge revision={c.revision} /></td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: '#2C2C2A', textAlign: 'right' }}>${fmtMiles(c.apagar)}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: c.tieneOverride ? '#1a56db' : '#2C2C2A', textAlign: 'right' }}
+                      title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
+                      ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
                   </tr>
@@ -725,6 +763,12 @@ export default function NotificacionesPage() {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              {aEnviar.length > 0 && !(resultado && !resultado.error) && (
+                <button onClick={() => verPreview(aEnviar[0])} disabled={enviando}
+                  style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: enviando ? 'default' : 'pointer', marginRight: 'auto' }}>
+                  👁 Ver ejemplo
+                </button>
+              )}
               <button onClick={() => setModalAbierto(false)} disabled={enviando}
                 style={{ fontSize: 13, padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: enviando ? 'default' : 'pointer', opacity: enviando ? 0.6 : 1 }}>
                 {resultado && !resultado.error ? 'Cerrar' : 'Cancelar'}
@@ -736,6 +780,38 @@ export default function NotificacionesPage() {
                   {enviando ? 'Enviando…' : (modoPrueba ? 'Enviar prueba' : 'Confirmar envío real')}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 56, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 680, maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E7EB' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: '#2C2C2A' }}>Vista previa · {preview.idadmon}</h3>
+                <button onClick={() => setPreview(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: '#9CA3AF', lineHeight: 1 }}>×</button>
+              </div>
+              {preview.asunto && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#6B7280' }}>
+                  <div><strong>Para:</strong> {preview.email || '—'}</div>
+                  <div><strong>Asunto:</strong> {preview.asunto}</div>
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', background: '#F3F4F6', padding: 16 }}>
+              {preview.loading ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>Generando vista previa…</div>
+              ) : preview.error ? (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '12px 14px', color: '#991B1B', fontSize: 13 }}>Error: {preview.error}</div>
+              ) : (
+                <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden' }} dangerouslySetInnerHTML={{ __html: preview.html }} />
+              )}
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <span style={{ fontSize: 11, color: '#9CA3AF', marginRight: 'auto', alignSelf: 'center' }}>Esto es solo una vista previa · no se ha enviado nada.</span>
+              <button onClick={() => setPreview(null)} style={{ fontSize: 13, padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cerrar</button>
             </div>
           </div>
         </div>
