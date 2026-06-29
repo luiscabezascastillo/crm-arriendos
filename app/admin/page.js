@@ -315,6 +315,17 @@ const msgColors = {
   info:  { bg: '#eff6ff', color: '#1447c3', border: '#93c5fd' },
 }
 
+// Campos de AJUSTE/REAJUSTE MENSUAL: en un contrato activo (S/SQ) se pueden editar
+// SIN la advertencia de "datos contractuales". Todo lo demás se considera contractual.
+const AJUSTE_MENSUAL = new Set([
+  'fecha_reajuste1', 'cantidad_reajuste1', 'fecha_reajuste2', 'cantidad_reajuste2',
+  'fecha_reajuste3', 'cantidad_reajuste3', 'fecha_reajuste4', 'cantidad_reajuste4',
+  'fecha_reajuste5', 'cantidad_reajuste5', 'fecha_reajuste6', 'cantidad_reajuste6',
+  'cuota', 'unid', 'revision',
+])
+// Estados de contrato ACTIVO firmado: editar datos contractuales dispara la advertencia.
+const ESTADOS_ACTIVOS = new Set(['S', 'SQ'])
+
 function AdminContent() {
   const router = useRouter()
   const [idadmonInput, setIdadmonInput] = useState('')
@@ -393,9 +404,26 @@ function AdminContent() {
     return { arr1, arr2, aval1, aval2 }
   }
 
-  // Editar un campo de una persona
-  const setPersona = (bloque, campo, valor) =>
+  // Campos contractuales ya confirmados en esta sesión de edición (para no repetir el aviso).
+  const contractOkRef = useRef(new Set())
+
+  // Decide si se permite editar un campo. En contrato activo (S/SQ), si el campo es
+  // contractual (no es ajuste mensual) y aún no se confirmó, pide confirmación (Opción B).
+  // Devuelve true si se permite el cambio, false si el usuario cancela.
+  const permiteEdicionContractual = (clave, esAjuste) => {
+    if (!ESTADOS_ACTIVOS.has(form.estado)) return true   // P, nuevo, Q, N... no avisan aquí
+    if (esAjuste) return true                             // ajuste/reajuste mensual: sin aviso
+    if (contractOkRef.current.has(clave)) return true     // ya confirmado este campo
+    const ok = window.confirm('Ojo, estás intentando cambiar los datos contractuales de un contrato activo.\n\n¿Seguro que quieres modificar este dato?')
+    if (ok) { contractOkRef.current.add(clave); return true }
+    return false
+  }
+
+  // Editar un campo de una persona (arrendatario/aval = datos contractuales)
+  const setPersona = (bloque, campo, valor) => {
+    if (!permiteEdicionContractual('persona:' + bloque + '.' + campo, false)) return
     setPersonas(prev => ({ ...prev, [bloque]: { ...prev[bloque], [campo]: valor } }))
+  }
 
   // Pop-up de expansión para campos largos (domicilios). Guarda { bloque, campo } o null.
   const abrirExpandir = (bloque, campo) => setExpandir({ bloque, campo })
@@ -454,6 +482,7 @@ function AdminContent() {
 
   async function recuperar(id) {
     const buscar = (id || idadmonInput).trim().toUpperCase()
+    contractOkRef.current = new Set()   // nueva sesión de edición: re-avisar si toca
     if (!buscar) { setMsg({ type: 'warn', text: 'Introduce un IDADMON' }); return }
     setMsg({ type: 'info', text: 'Buscando...' })
     const { data } = await supabase.from('datos_arriendos').select('*').eq('idadmon', buscar).single()
@@ -492,6 +521,7 @@ function AdminContent() {
   function handleChange(e) {
     if (bloqueado) return
     const { name, value, type, checked } = e.target
+    if (!permiteEdicionContractual(name, AJUSTE_MENSUAL.has(name))) return
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
   }
 
@@ -622,6 +652,7 @@ function AdminContent() {
     ? ((form.si_fijo_admon === 'F' ? 'FIJO' : '%') + (form.adicionar_iva === 'SI' ? ' + IVA' : ''))
     : ''
   const setTipoAdmon = (val) => {
+    if (!permiteEdicionContractual('tipoAdmon', false)) return
     const fijo = String(val).startsWith('FIJO')
     const iva = String(val).includes('+ IVA')
     setForm(p => ({ ...p, si_fijo_admon: fijo ? 'F' : '', adicionar_iva: iva ? 'SI' : 'NO' }))
@@ -704,7 +735,7 @@ function AdminContent() {
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
 
-        <button onClick={() => { setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
+        <button onClick={() => { contractOkRef.current = new Set(); setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
             border: `1px solid ${C.border}`, background: '#fff',
