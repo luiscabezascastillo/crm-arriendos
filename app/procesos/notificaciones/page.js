@@ -85,6 +85,14 @@ function fmtControlFecha(s) {
   const p = (x) => String(x).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
+// Fecha simple 'dd/mm/yyyy' (para fecha_inicio, que es date)
+function fmtFecha(s) {
+  if (!s) return ''
+  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
+  if (isNaN(d.getTime())) return String(s)
+  const p = (x) => String(x).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
+}
 
 const ENVIO = {
   FALTAN: 'Faltan datos',
@@ -113,15 +121,16 @@ function RevBadge({ revision }) {
 }
 
 const COLS = [
-  { key: 'idadmon',           label: 'IDADMON',      w: '6.5%', align: 'left',  val: (c) => c.idadmon || '' },
-  { key: 'envioEstado',       label: 'Envío',        w: '12%',  align: 'left',  val: (c) => c.envioEstado || '' },
+  { key: 'idadmon',           label: 'IDADMON',      w: '6%',   align: 'left',  val: (c) => c.idadmon || '' },
+  { key: 'envioEstado',       label: 'Envío',        w: '11%',  align: 'left',  val: (c) => c.envioEstado || '' },
   { key: 'propietario',       label: 'Propietario',  w: '12%',  align: 'left',  val: (c) => c.propietario || '' },
-  { key: 'inmueble',          label: 'Propiedad',    w: '14%',  align: 'left',  val: (c) => c.inmueble || '' },
-  { key: 'arrendatario',      label: 'Arrendatario', w: '11%',  align: 'left',  val: (c) => c.arrendatario || '' },
-  { key: 'revision',          label: 'Revisión',     w: '9%',   align: 'left',  val: (c) => (c.revision || '').trim() },
-  { key: 'apagar',            label: 'A pagar',      w: '8.5%', align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
-  { key: 'tipoCom',           label: 'Comunic.',     w: '6.5%', align: 'left',  val: (c) => c.tipoCom || '' },
-  { key: 'mail_arrendatario', label: 'email',        w: '9.5%', align: 'left',  val: (c) => c.mail_arrendatario || '' },
+  { key: 'inmueble',          label: 'Propiedad',    w: '13%',  align: 'left',  val: (c) => c.inmueble || '' },
+  { key: 'arrendatario',      label: 'Arrendatario', w: '12%',  align: 'left',  val: (c) => c.arrendatario || '' },
+  { key: 'fecha_inicio',      label: 'Inicio',       w: '8%',   align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
+  { key: 'revision',          label: 'Revisión',     w: '7.5%', align: 'left',  val: (c) => (c.revision || '').trim() },
+  { key: 'apagar',            label: 'A pagar',      w: '8%',   align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
+  { key: 'tipoCom',           label: 'Comunic.',     w: '6%',   align: 'left',  val: (c) => c.tipoCom || '' },
+  { key: 'mail_arrendatario', label: 'email',        w: '9%',   align: 'left',  val: (c) => c.mail_arrendatario || '' },
 ]
 
 const menuItem = {
@@ -231,7 +240,7 @@ export default function NotificacionesPage() {
           .select('mes, valor_uf, ipc_3m, ipc_6m, ipc_12m, uf_3m, uf_6m, uf_12m')
           .order('mes', { ascending: false }),
         supabase.from('datos_arriendos')
-          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
           .eq('estado', 'S'),
       ])
       const idxList = idx || []
@@ -754,6 +763,7 @@ export default function NotificacionesPage() {
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.arrendatario || '—'}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha_inicio) || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><RevBadge revision={c.revision} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: c.tieneOverride ? '#1a56db' : '#2C2C2A', textAlign: 'right' }}
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
