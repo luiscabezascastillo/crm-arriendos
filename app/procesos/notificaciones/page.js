@@ -41,6 +41,29 @@ function calcularApagar(c) {
     num(c.cantidad_reajuste4) + num(c.cantidad_reajuste5) + num(c.cantidad_reajuste6)
   return Math.round(num(c.cuota) + sumaReajustes)
 }
+
+// Ajuste vigente del mes (solo contratos en pesos, nunca UF).
+// Devuelve el reajuste con monto > 0 cuya fecha es la más reciente <= primer día
+// del mes procesado. Si no hay, devuelve null (no se pinta bloque de ajuste).
+//   mes: 'YYYY-MM-01'  ·  monto redondeado a entero
+function ajusteVigente(c, mes) {
+  if (esUF(c.revision) || !mes) return null
+  const tope = mes // ISO 'YYYY-MM-01'; comparación lexicográfica de fechas ISO es válida
+  let mejorFecha = null
+  let mejorMonto = 0
+  for (let i = 1; i <= 6; i++) {
+    const f = c['fecha_reajuste' + i]
+    const m = num(c['cantidad_reajuste' + i])
+    if (!f || m <= 0) continue
+    const fIso = String(f).slice(0, 10)
+    if (fIso <= tope && (mejorFecha === null || fIso > mejorFecha)) {
+      mejorFecha = fIso
+      mejorMonto = m
+    }
+  }
+  if (mejorFecha === null) return null
+  return { tipo: c.revision || '', monto: Math.round(mejorMonto) }
+}
 function tipoComunicacion(c) {
   if (esUF(c.revision)) return 'UF'
   const r = (c.revision || '').trim().toUpperCase()
@@ -191,7 +214,7 @@ export default function NotificacionesPage() {
           .select('mes, valor_uf, ipc_3m, ipc_6m, ipc_12m, uf_3m, uf_6m, uf_12m')
           .order('mes', { ascending: false }),
         supabase.from('datos_arriendos')
-          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6')
+          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
           .eq('estado', 'S'),
       ])
       const idxList = idx || []
@@ -234,14 +257,16 @@ export default function NotificacionesPage() {
       else if (tieneComentario) { envioEstado = ENVIO.INHIBIDO; sendable = false }
       else { envioEstado = ENVIO.PENDIENTE; sendable = true }
 
+      const av = ajusteVigente(c, mesSel)
       return {
         ...c, apagar, tipoCom, envioEstado, sendable,
         fechaEnvio: noti?.fecha_envio || null,
         comentario: noti?.comentario || '',
-        ajuste: esUF(c.revision) ? 0 : Math.max(0, apagar - num(c.cuota)),
+        ajusteTipo: av ? av.tipo : null,
+        ajusteMonto: av ? av.monto : 0,
       }
     })
-  }, [contratos, notiMap])
+  }, [contratos, notiMap, mesSel])
 
   const filaPorId = useMemo(() => {
     const m = new Map()
@@ -414,7 +439,8 @@ export default function NotificacionesPage() {
       apagar: f.apagar,
       revision: f.revision,
       tipoCom: f.tipoCom,
-      ajuste: f.ajuste,
+      ajusteTipo: f.ajusteTipo,
+      ajusteMonto: f.ajusteMonto,
     }))
 
     try {

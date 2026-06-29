@@ -32,7 +32,6 @@ function primerDia(mes) {
 function plantillaArriendo(n, ctx) {
   const M = (ctx.mesLabel || '').toUpperCase()
   const uf = esUF(n.revision)
-  const ajuste = Number(n.ajuste) || 0
 
   const bloqueUF = uf
     ? `<p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 12px;">
@@ -41,11 +40,11 @@ function plantillaArriendo(n, ctx) {
        </p>`
     : ''
 
-  const bloqueAjuste = (!uf && ajuste > 0)
+  const bloqueAjuste = (!uf && Number(n.ajusteMonto) > 0)
     ? `<p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 12px;">
-         Su contrato especifica un ajuste${n.revision ? ` <strong>${n.revision}</strong>` : ''}
-         ${n.fechaAjuste ? `que se le aplica desde el ${n.fechaAjuste} ` : ''}que, de acuerdo con el
-         incremento de la UF/IPC, le corresponde un ajuste de <strong>${fmt(ajuste)}</strong> pesos.
+         Su contrato especifica un ajuste${n.ajusteTipo ? ` <strong>${n.ajusteTipo}</strong>` : ''}
+         que se le aplica desde el ${primerDia(ctx.mes)} que, de acuerdo con el
+         incremento de la UF/IPC, le corresponde un ajuste de <strong>${fmt(n.ajusteMonto)}</strong> pesos.
        </p>`
     : ''
 
