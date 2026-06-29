@@ -44,7 +44,7 @@ export async function POST(request) {
         await transporter.sendMail({
           from: `"Fondo Capital" <${process.env.GMAIL_USER}>`,
           to: destinatarios.join(', '),
-          cc: emailOverride ? undefined : (cc || undefined),
+          cc: cc || undefined,
           subject: asunto,
           html,
         })

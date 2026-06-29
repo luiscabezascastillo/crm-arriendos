@@ -778,7 +778,7 @@ export default function NotificacionesPage() {
           display: 'flex', alignItems: 'center', gap: 16, background: '#2C2C2A', color: '#fff', padding: '12px 18px', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,0.25)' }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{seleccionados.size} seleccionado{seleccionados.size === 1 ? '' : 's'}</span>
           <span style={{ fontSize: 12, color: '#C9C7BF' }}>Total ${fmtMiles(totalSeleccionado)}</span>
-          <button onClick={abrirModal} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Enviar notificación</button>
+          <button onClick={abrirModal} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Revisar y enviar</button>
           <button onClick={copiarEmails} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Copiar emails</button>
           <button onClick={limpiarSeleccion} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Limpiar</button>
         </div>
