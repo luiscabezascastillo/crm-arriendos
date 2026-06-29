@@ -49,7 +49,7 @@ const PROCESOS = [
     etapas: ['Detectar', 'Aviso 1', 'Gestión', 'Legal', 'Cierre'], conecta: null, href: '/op/deudas' },
   { key: 'notificaciones', titulo: 'Notificaciones', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual',
     descripcion: 'Avisos automáticos a arrendatarios',
-    etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'], conecta: null, href: null },
+    etapas: ['Generar', 'Enviar', 'Acuses', 'No entregados'], conecta: null, href: '/procesos/notificaciones' },
 
   // ── MANTENCIÓN ──
   { key: 'incidencia', titulo: 'Incidencia', responsable: 'Mantención', participa: ['Administración', 'Finanzas'], frecuencia: 'Puntual',
