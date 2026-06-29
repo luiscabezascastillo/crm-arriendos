@@ -129,7 +129,7 @@ const menuItem = {
   borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: '#374151',
 }
 
-function FilterPopover({ col, valores, seleccion, onToggle, onAll, onClear, onSort, ordenActual, onClose }) {
+function FilterPopover({ col, valores, seleccion, onToggle, onAll, onSoloEstos, onClear, onSort, ordenActual, onClose }) {
   const [q, setQ] = useState('')
   const lista = valores.filter((v) => v.toLowerCase().includes(q.trim().toLowerCase()))
   const todosMarcados = lista.length > 0 && lista.every((v) => seleccion.has(v))
@@ -155,6 +155,13 @@ function FilterPopover({ col, valores, seleccion, onToggle, onAll, onClear, onSo
         <input type="text" placeholder="Buscar valor…" value={q} onChange={(e) => setQ(e.target.value)}
           style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6,
             border: '1px solid #D3D1C7', fontSize: 12, fontFamily: 'inherit', marginBottom: 6, outline: 'none' }} />
+        {q.trim() !== '' && lista.length > 0 && (
+          <button onClick={() => onSoloEstos(lista)}
+            style={{ width: '100%', fontSize: 11, fontWeight: 600, padding: '6px 8px', borderRadius: 6, marginBottom: 6,
+              border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+            Mostrar solo estos ({lista.length})
+          </button>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', fontSize: 12, color: '#374151', cursor: 'pointer', fontWeight: 600 }}>
           <input type="checkbox" checked={todosMarcados} onChange={() => onAll(lista, !todosMarcados)} />
           (Seleccionar todo)
@@ -365,6 +372,30 @@ export default function NotificacionesPage() {
     })
   }
   function limpiarSeleccion() { setSeleccionados(new Set()) }
+  // Selecciona de golpe todos los enviables (Pendientes) de la vista filtrada actual
+  function seleccionarPendientes() {
+    setSeleccionados((prev) => {
+      const n = new Set(prev)
+      filas.forEach((f) => { if (f.sendable) n.add(f.idadmon) })
+      return n
+    })
+  }
+  // Copia al portapapeles los emails de los seleccionados, separados por ';'
+  async function copiarEmails() {
+    const set = new Set()
+    seleccionados.forEach((id) => {
+      const f = filaPorId.get(id)
+      if (f) splitEmails(f.mail_arrendatario).forEach((e) => set.add(e))
+    })
+    const txt = Array.from(set).join('; ')
+    try {
+      await navigator.clipboard.writeText(txt)
+      setToast(`${set.size} email(s) copiados al portapapeles`)
+    } catch {
+      setToast('No se pudo copiar; emails: ' + txt.slice(0, 80) + '…')
+    }
+    setTimeout(() => setToast(null), 3500)
+  }
 
   const totalSeleccionado = useMemo(() => {
     let t = 0
@@ -374,19 +405,35 @@ export default function NotificacionesPage() {
 
   function toggleValor(colKey, valor) {
     setFiltros((prev) => {
+      const total = distinct[colKey] ? distinct[colKey].length : 0
       const actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
       actual.has(valor) ? actual.delete(valor) : actual.add(valor)
       const next = { ...prev }
-      if (actual.size === distinct[colKey].length) delete next[colKey]; else next[colKey] = actual
+      if (actual.size === 0 || actual.size === total) delete next[colKey]; else next[colKey] = actual
       return next
     })
   }
+  // marcar=true sobre la lista visible del buscador → el filtro pasa a ser SOLO esa lista
+  // (comportamiento Excel: buscas algo, "seleccionar todo" deja únicamente lo buscado)
   function setTodosFiltro(colKey, listaVisible, marcar) {
     setFiltros((prev) => {
-      const actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
-      listaVisible.forEach((v) => { marcar ? actual.add(v) : actual.delete(v) })
+      const total = distinct[colKey] ? distinct[colKey].length : 0
+      const todosVisibles = distinct[colKey] && listaVisible.length === total
+      let actual
+      if (marcar) {
+        if (todosVisibles) {
+          // marcar todo sin búsqueda activa → sin filtro
+          const next = { ...prev }; delete next[colKey]; return next
+        }
+        // marcar todo lo buscado → filtro = solo esa lista
+        actual = new Set(listaVisible)
+      } else {
+        // desmarcar lo visible
+        actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
+        listaVisible.forEach((v) => actual.delete(v))
+      }
       const next = { ...prev }
-      if (actual.size === distinct[colKey].length) delete next[colKey]; else next[colKey] = actual
+      if (actual.size === 0 || actual.size === total) delete next[colKey]; else next[colKey] = actual
       return next
     })
   }
@@ -622,7 +669,15 @@ export default function NotificacionesPage() {
               Valor UF {mesLabel(mesSel)}: ${fmtMiles(idxMes.valor_uf)}
             </div>
           )}
-          <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button onClick={seleccionarPendientes} disabled={kpis.pendientes === 0}
+            title="Marca todos los pendientes de la vista filtrada"
+            style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8,
+              border: '1px solid ' + (kpis.pendientes ? '#1D9E75' : '#D3D1C7'),
+              background: kpis.pendientes ? '#E1F5EE' : '#F3F4F6', color: kpis.pendientes ? '#085041' : '#9CA3AF',
+              cursor: kpis.pendientes ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+            ✓ Seleccionar pendientes ({kpis.pendientes})
+          </button>
+          <div style={{ position: 'relative' }}>
             <input type="text" placeholder="IDADMON, inmueble, propietario, arrendatario…"
               value={search} onChange={(e) => setSearch(e.target.value)}
               style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#F9FAFB', fontSize: 12, color: '#374151', fontFamily: 'inherit', width: 320, outline: 'none' }} />
@@ -672,6 +727,7 @@ export default function NotificacionesPage() {
                           ordenActual={orden && orden.col === col.key ? orden.dir : null}
                           onToggle={(v) => toggleValor(col.key, v)}
                           onAll={(lista, marcar) => setTodosFiltro(col.key, lista, marcar)}
+                          onSoloEstos={(lista) => { setFiltros((prev) => ({ ...prev, [col.key]: new Set(lista) })); setFiltroAbierto(null) }}
                           onClear={() => { limpiarFiltro(col.key); setFiltroAbierto(null) }}
                           onSort={(dir) => { aplicarOrden(col.key, dir); setFiltroAbierto(null) }}
                           onClose={() => setFiltroAbierto(null)} />
@@ -723,6 +779,7 @@ export default function NotificacionesPage() {
           <span style={{ fontSize: 13, fontWeight: 600 }}>{seleccionados.size} seleccionado{seleccionados.size === 1 ? '' : 's'}</span>
           <span style={{ fontSize: 12, color: '#C9C7BF' }}>Total ${fmtMiles(totalSeleccionado)}</span>
           <button onClick={abrirModal} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Enviar notificación</button>
+          <button onClick={copiarEmails} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Copiar emails</button>
           <button onClick={limpiarSeleccion} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Limpiar</button>
         </div>
       )}
