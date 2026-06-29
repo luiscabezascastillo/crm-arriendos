@@ -22,7 +22,6 @@ const opEspecialesCC1 = [
   { label: 'Creación y edición de Contratos',              href: '/op/contratos' },
   { label: 'Preparación liquidación de Paola',             href: '/op/liquidacion-paola' },
   { label: 'Actualización mensual de Comunidad Feliz',          href: '/op/comunidad-feliz' },
-  { label: 'Consolidación y explotación datos de Cartolas', href: '/op/cartolas' },
   { label: 'Deudas de servicios',                                    href: '/op/deudas' },
 ]
 
