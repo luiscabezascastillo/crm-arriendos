@@ -325,6 +325,8 @@ const AJUSTE_MENSUAL = new Set([
 ])
 // Estados de contrato ACTIVO firmado: editar datos contractuales dispara la advertencia.
 const ESTADOS_ACTIVOS = new Set(['S', 'SQ'])
+// Estados de TÉRMINO / CERRADO: cualquier edición (incluso ajustes) dispara advertencia reforzada.
+const ESTADOS_CERRADOS = new Set(['Q', 'N', 'N-DICOM', 'N_DICOM'])
 
 function AdminContent() {
   const router = useRouter()
@@ -407,11 +409,19 @@ function AdminContent() {
   // Campos contractuales ya confirmados en esta sesión de edición (para no repetir el aviso).
   const contractOkRef = useRef(new Set())
 
-  // Decide si se permite editar un campo. En contrato activo (S/SQ), si el campo es
-  // contractual (no es ajuste mensual) y aún no se confirmó, pide confirmación (Opción B).
+  // Decide si se permite editar un campo, con confirmación (Opción B) según el estado:
+  //   - S/SQ (activo): avisa solo en datos CONTRACTUALES; ajustes mensuales libres.
+  //   - Q/N/N-DICOM (término/cerrado): avisa en CUALQUIER edición (aviso reforzado).
+  //   - P / nuevo / otros: sin aviso.
   // Devuelve true si se permite el cambio, false si el usuario cancela.
   const permiteEdicionContractual = (clave, esAjuste) => {
-    if (!ESTADOS_ACTIVOS.has(form.estado)) return true   // P, nuevo, Q, N... no avisan aquí
+    if (ESTADOS_CERRADOS.has(form.estado)) {
+      if (contractOkRef.current.has(clave)) return true
+      const ok = window.confirm('ATENCIÓN: este contrato está EN TÉRMINO o CERRADO (Q / N / N-DICOM).\n\nSus datos no deberían modificarse. Solo continúa si estás corrigiendo un error.\n\n¿Seguro que quieres modificar este dato?')
+      if (ok) { contractOkRef.current.add(clave); return true }
+      return false
+    }
+    if (!ESTADOS_ACTIVOS.has(form.estado)) return true   // P, nuevo... no avisan
     if (esAjuste) return true                             // ajuste/reajuste mensual: sin aviso
     if (contractOkRef.current.has(clave)) return true     // ya confirmado este campo
     const ok = window.confirm('Ojo, estás intentando cambiar los datos contractuales de un contrato activo.\n\n¿Seguro que quieres modificar este dato?')
