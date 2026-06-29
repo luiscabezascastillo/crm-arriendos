@@ -123,10 +123,10 @@ function RevBadge({ revision }) {
 const COLS = [
   { key: 'idadmon',           label: 'IDADMON',      w: '6%',   align: 'left',  val: (c) => c.idadmon || '' },
   { key: 'envioEstado',       label: 'Envío',        w: '11%',  align: 'left',  val: (c) => c.envioEstado || '' },
+  { key: 'fecha_inicio',      label: 'Inicio',       w: '8%',   align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
   { key: 'propietario',       label: 'Propietario',  w: '12%',  align: 'left',  val: (c) => c.propietario || '' },
   { key: 'inmueble',          label: 'Propiedad',    w: '13%',  align: 'left',  val: (c) => c.inmueble || '' },
   { key: 'arrendatario',      label: 'Arrendatario', w: '12%',  align: 'left',  val: (c) => c.arrendatario || '' },
-  { key: 'fecha_inicio',      label: 'Inicio',       w: '8%',   align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
   { key: 'revision',          label: 'Revisión',     w: '7.5%', align: 'left',  val: (c) => (c.revision || '').trim() },
   { key: 'apagar',            label: 'A pagar',      w: '8%',   align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
   { key: 'tipoCom',           label: 'Comunic.',     w: '6%',   align: 'left',  val: (c) => c.tipoCom || '' },
@@ -767,10 +767,10 @@ export default function NotificacionesPage() {
                     </td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, fontWeight: 600, color: '#2C2C2A' }}>{c.idadmon}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><CeldaEnvio f={c} /></td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha_inicio) || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.arrendatario || '—'}</td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha_inicio) || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><RevBadge revision={c.revision} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: c.tieneOverride ? '#1a56db' : '#2C2C2A', textAlign: 'right' }}
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
