@@ -10,12 +10,12 @@ const PORTAL_URL = 'https://portal-propietarios-rose.vercel.app'
 const PAGE_SIZE = 15
 
 const estadoMap = {
-  S:        { bg: '#eff6ff', color: '#1a56db' },
-  SQ:       { bg: '#f0fdf4', color: '#16a34a' },
-  P:        { bg: '#fffbeb', color: '#d97706' },
-  Q:        { bg: '#fffbeb', color: '#d97706' },
-  O:        { bg: '#ecfeff', color: '#0891b2' },
-  Inactiva: { bg: '#fef2f2', color: '#dc2626' },
+  S:          { bg: '#eff6ff', color: '#1a56db' },
+  SQ:         { bg: '#f0fdf4', color: '#16a34a' },
+  P:          { bg: '#fffbeb', color: '#d97706' },
+  Q:          { bg: '#fffbeb', color: '#d97706' },
+  N:          { bg: '#f3f4f6', color: '#6b7280' },
+  'N-DICOM':  { bg: '#fef2f2', color: '#dc2626' },
 }
 
 const opEspecialesCC1 = [
@@ -169,7 +169,7 @@ function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, 
 function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const estados = ['S', 'P', 'Q', 'SQ', 'O', 'Inactiva']
+  const estados = ['S', 'P', 'Q', 'SQ', 'N', 'N-DICOM']
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
