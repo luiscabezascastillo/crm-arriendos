@@ -450,7 +450,7 @@ export default function CC1Page() {
           </div>
         </div>
 
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 85 }} />
@@ -465,7 +465,7 @@ export default function CC1Page() {
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
                   <ColFilter label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal={filtroIdadmon} onSearch={setFiltroIdadmon} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
@@ -485,7 +485,7 @@ export default function CC1Page() {
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
-                <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase' }}>Portal</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
             </thead>
             <tbody>
