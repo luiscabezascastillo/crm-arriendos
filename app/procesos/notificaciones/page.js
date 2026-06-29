@@ -333,8 +333,8 @@ export default function NotificacionesPage() {
     let r = filasBase.filter((f) =>
       COLS.every((col) => {
         const sel = filtros[col.key]
-        if (!sel || sel.size === 0) return true
-        return sel.has(col.val(f))
+        if (!sel) return true            // sin filtro en esta columna
+        return sel.has(col.val(f))       // Set vacío → no pasa ninguna
       })
     )
     if (orden) {
@@ -418,31 +418,38 @@ export default function NotificacionesPage() {
       const actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
       actual.has(valor) ? actual.delete(valor) : actual.add(valor)
       const next = { ...prev }
-      if (actual.size === 0 || actual.size === total) delete next[colKey]; else next[colKey] = actual
+      if (actual.size === total) delete next[colKey]   // todos marcados → sin filtro
+      else next[colKey] = actual                        // incluido size 0 (vacío = nada visible)
       return next
     })
   }
   // marcar=true sobre la lista visible del buscador → el filtro pasa a ser SOLO esa lista
-  // (comportamiento Excel: buscas algo, "seleccionar todo" deja únicamente lo buscado)
+  // marcar=false sobre la lista visible → se desmarcan esos valores (puede quedar vacío)
   function setTodosFiltro(colKey, listaVisible, marcar) {
     setFiltros((prev) => {
       const total = distinct[colKey] ? distinct[colKey].length : 0
       const todosVisibles = distinct[colKey] && listaVisible.length === total
-      let actual
+      const next = { ...prev }
       if (marcar) {
         if (todosVisibles) {
-          // marcar todo sin búsqueda activa → sin filtro
-          const next = { ...prev }; delete next[colKey]; return next
+          // marcar todo sin búsqueda activa → sin filtro (todos pasan)
+          delete next[colKey]
+          return next
         }
         // marcar todo lo buscado → filtro = solo esa lista
-        actual = new Set(listaVisible)
-      } else {
-        // desmarcar lo visible
-        actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
-        listaVisible.forEach((v) => actual.delete(v))
+        next[colKey] = new Set(listaVisible)
+        return next
       }
-      const next = { ...prev }
-      if (actual.size === 0 || actual.size === total) delete next[colKey]; else next[colKey] = actual
+      // desmarcar: partir del set actual (o de todos) y quitar lo visible
+      const actual = prev[colKey] ? new Set(prev[colKey]) : new Set(distinct[colKey])
+      listaVisible.forEach((v) => actual.delete(v))
+      if (actual.size === total) {
+        // (no debería pasar al desmarcar, pero por seguridad) todos → sin filtro
+        delete next[colKey]
+      } else {
+        // incluido el caso size === 0: se guarda el Set (vacío = no se muestra nada)
+        next[colKey] = actual
+      }
       return next
     })
   }
