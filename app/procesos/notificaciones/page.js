@@ -83,13 +83,13 @@ function RevBadge({ revision }) {
 
 const COLS = [
   { key: 'idadmon',           label: 'IDADMON',      w: '6.5%', align: 'left',  val: (c) => c.idadmon || '' },
+  { key: 'envioEstado',       label: 'Envío',        w: '12%',  align: 'left',  val: (c) => c.envioEstado || '' },
   { key: 'propietario',       label: 'Propietario',  w: '12%',  align: 'left',  val: (c) => c.propietario || '' },
   { key: 'inmueble',          label: 'Propiedad',    w: '14%',  align: 'left',  val: (c) => c.inmueble || '' },
-  { key: 'arrendatario',      label: 'Arrendatario', w: '12%',  align: 'left',  val: (c) => c.arrendatario || '' },
+  { key: 'arrendatario',      label: 'Arrendatario', w: '11%',  align: 'left',  val: (c) => c.arrendatario || '' },
   { key: 'revision',          label: 'Revisión',     w: '9%',   align: 'left',  val: (c) => (c.revision || '').trim() },
   { key: 'apagar',            label: 'A pagar',      w: '8.5%', align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
   { key: 'tipoCom',           label: 'Comunic.',     w: '6.5%', align: 'left',  val: (c) => c.tipoCom || '' },
-  { key: 'envioEstado',       label: 'Envío',        w: '12%',  align: 'left',  val: (c) => c.envioEstado || '' },
   { key: 'mail_arrendatario', label: 'email',        w: '9.5%', align: 'left',  val: (c) => c.mail_arrendatario || '' },
 ]
 
@@ -227,9 +227,11 @@ export default function NotificacionesPage() {
       const tieneArr = !!(c.arrendatario && c.arrendatario.trim())
 
       let envioEstado, sendable
+      const tieneComentario = !!(noti && noti.comentario && String(noti.comentario).trim())
       if (!tieneEmail || !tieneArr) { envioEstado = ENVIO.FALTAN; sendable = false }
-      else if (noti && noti.inhibir) { envioEstado = ENVIO.INHIBIDO; sendable = false }
       else if (noti && noti.fecha_envio) { envioEstado = ENVIO.ENVIADO; sendable = false }
+      else if (noti && noti.inhibir) { envioEstado = ENVIO.INHIBIDO; sendable = false }
+      else if (tieneComentario) { envioEstado = ENVIO.INHIBIDO; sendable = false }
       else { envioEstado = ENVIO.PENDIENTE; sendable = true }
 
       return {
@@ -368,8 +370,10 @@ export default function NotificacionesPage() {
   }
   async function toggleInhibir(f) {
     setMenuFila(null)
-    const actual = f.envioEstado === ENVIO.INHIBIDO
-    const ok = await upsertNoti(f.idadmon, { inhibir: !actual })
+    const estaInhibido = f.envioEstado === ENVIO.INHIBIDO
+    // Regla única (como Excel): comentario con contenido = no enviar.
+    // Inhibir escribe 'INHIBIDO'; Reactivar limpia el comentario.
+    const ok = await upsertNoti(f.idadmon, { comentario: estaInhibido ? null : 'INHIBIDO', inhibir: !estaInhibido })
     if (ok) { setSeleccionados((p) => { const n = new Set(p); n.delete(f.idadmon); return n }); cargarNoti(mesSel) }
   }
   async function reabrir(f) {
@@ -608,13 +612,13 @@ export default function NotificacionesPage() {
                         style={{ cursor: c.sendable ? 'pointer' : 'not-allowed', opacity: c.sendable ? 1 : 0.35 }} />
                     </td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, fontWeight: 600, color: '#2C2C2A' }}>{c.idadmon}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><CeldaEnvio f={c} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.arrendatario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><RevBadge revision={c.revision} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: '#2C2C2A', textAlign: 'right' }}>${fmtMiles(c.apagar)}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom}</td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><CeldaEnvio f={c} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
                   </tr>
                 )
@@ -696,7 +700,7 @@ export default function NotificacionesPage() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 420, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 10px', color: '#2C2C2A' }}>Comentario · {comentarioEdit.idadmon}</h3>
             <textarea value={comentarioEdit.texto} onChange={(e) => setComentarioEdit({ ...comentarioEdit, texto: e.target.value })}
-              rows={4} placeholder="Anotación libre (no bloquea el envío; para bloquear usa Inhibir)"
+              rows={4} placeholder="Si escribes cualquier cosa aquí, este contrato NO se enviará este mes. Déjalo vacío para permitir el envío."
               style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical' }} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
               <button onClick={() => setComentarioEdit(null)} style={{ fontSize: 13, padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancelar</button>
