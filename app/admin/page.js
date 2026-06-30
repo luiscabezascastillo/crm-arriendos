@@ -352,6 +352,11 @@ function AdminContent() {
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
   const [adicionalesAbierto, setAdicionalesAbierto] = useState(false)
+  // Correcciones excepcionales: desbloquea los campos del contrato (excepto IDADMON
+  // y estado) en un contrato activo. Solo Anthony/Dirección. Con motivo y registro.
+  const [correccionAbierta, setCorreccionAbierta] = useState(false)
+  const [modalCorrAbierto, setModalCorrAbierto] = useState(false)
+  const [motivoCorr, setMotivoCorr] = useState('')
 
   const [cap, setCap] = useState(null)
   const [pendientes, setPendientes] = useState([])
@@ -596,6 +601,21 @@ function AdminContent() {
     }
 
     localStorage.setItem('ultimo_idadmon', form.idadmon); setIsNew(false); setBloqueado(true)
+
+    // Si era una corrección excepcional, registrar el motivo en el histórico
+    if (correccionAbierta) {
+      try {
+        await fetch('/api/cc1/registrar-correccion', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: form.idadmon, motivo: motivoCorr.trim() }),
+        })
+      } catch { /* el registro no debe romper el guardado */ }
+      setCorreccionAbierta(false); setMotivoCorr('')
+      setMsg({ type: 'ok', text: '✓ Corrección guardada y registrada.' })
+      setSaving(false)
+      return
+    }
+
     setMsg({ type: 'ok', text: '✓ Guardado correctamente (contrato + arrendatarios/avales).' })
     setSaving(false)
   }
@@ -666,8 +686,9 @@ function AdminContent() {
   }
 
   const ro = bloqueado
-  // Los campos económicos del LOG (porcentajes, C.Esp, Comentario) solo se editan en P.
-  const roLog = ro || (form.estado !== 'P' && !isNew)
+  // Los campos económicos del LOG (porcentajes, C.Esp, Comentario) solo se editan en P,
+  // salvo corrección excepcional activa (Anthony/Dirección). IDADMON y estado quedan fuera.
+  const roLog = ro || (form.estado !== 'P' && !isNew && !correccionAbierta)
   // ADMON MES "Tipo": composición de si_fijo_admon (F=fijo) + adicionar_iva (SI).
   const tipoAdmon = (form.si_fijo_admon || form.adicionar_iva)
     ? ((form.si_fijo_admon === 'F' ? 'FIJO' : '%') + (form.adicionar_iva === 'SI' ? ' + IVA' : ''))
@@ -755,6 +776,25 @@ function AdminContent() {
           background: 'transparent', color: '#9ca3af', fontSize: 12, fontWeight: 700,
           cursor: 'not-allowed', fontFamily: 'inherit',
         }}>EXPORT</button>
+
+        {cap?.puedeAprobar && form.idadmon && !isNew && form.estado !== 'P' && !correccionAbierta && (
+          <button onClick={() => { setMotivoCorr(''); setModalCorrAbierto(true) }} title="Corregir errores en un contrato activo (queda registrado)"
+            style={{ padding: '5px 14px', borderRadius: 5, border: 'none',
+              background: C.amber, color: '#fff', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit' }}>
+            ⚠ Correcciones excepcionales
+          </button>
+        )}
+        {correccionAbierta && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 5,
+            background: '#fef3c7', border: '1px solid #fcd34d', fontSize: 12, color: '#92400e' }}>
+            ✏ Corrección excepcional activa — edita y pulsa Guardar
+            <button onClick={() => { setCorreccionAbierta(false); setMotivoCorr('') }}
+              style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #d6b34a', background: '#fff', cursor: 'pointer', fontSize: 11 }}>
+              Cancelar
+            </button>
+          </span>
+        )}
 
         <button onClick={() => { contractOkRef.current = new Set(); setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
@@ -999,33 +1039,33 @@ function AdminContent() {
             <tr>
               <td style={labelCell} rowSpan={3}>INMUEBLE</td>
               <LB>Dirección 1</LB>
-              <td colSpan={4} style={inputCell}><IC name="inmueble" value={form.inmueble} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={4} style={inputCell}><IC name="inmueble" value={form.inmueble} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Moneda</LB>
-              <td style={inputCell}><SC name="unid" value={form.unid} onChange={handleChange} readOnly={ro} options={[{v:'$',l:'Pesos'},{v:'UF',l:'UF'}]} /></td>
+              <td style={inputCell}><SC name="unid" value={form.unid} onChange={handleChange} readOnly={roLog} options={[{v:'$',l:'Pesos'},{v:'UF',l:'UF'}]} /></td>
               <LB right>Monto</LB>
-              <td colSpan={2} style={inputCell}><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={ro} type="number" bold /></td>
+              <td colSpan={2} style={inputCell}><IC name="cuota" value={form.cuota} onChange={handleChange} readOnly={roLog} type="number" bold /></td>
               <LB right>A quién pagar</LB>
-              <td colSpan={2} style={inputCell}><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={2} style={inputCell}><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
             <tr>
               <LB>Comuna</LB>
-              <td colSpan={3} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={3} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Comienzo</LB>
-              <td colSpan={2} style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td colSpan={2} style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB right>Finalización</LB>
-              <td colSpan={2} style={inputCell}><IC name="termino_inicial" value={form.termino_inicial} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td colSpan={2} style={inputCell}><IC name="termino_inicial" value={form.termino_inicial} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB right>Ajuste</LB>
-              <td colSpan={2} style={inputCell}><IC name="revision" value={form.revision} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={2} style={inputCell}><IC name="revision" value={form.revision} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
             <tr>
               <LB>Características</LB>
-              <td colSpan={4} style={inputCell}><IC name="tipo" value={form.tipo} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={4} style={inputCell}><IC name="tipo" value={form.tipo} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Bodega</LB>
-              <td style={inputCell}><IC name="bodega" value={form.bodega} onChange={handleChange} readOnly={ro} /></td>
+              <td style={inputCell}><IC name="bodega" value={form.bodega} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Estacionamiento</LB>
-              <td colSpan={2} style={inputCell}><IC name="estac" value={form.estac} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={2} style={inputCell}><IC name="estac" value={form.estac} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Proporcional</LB>
-              <td colSpan={2} style={inputCell}><IC name="proporcional" value={form.proporcional} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={2} style={inputCell}><IC name="proporcional" value={form.proporcional} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
 
             {/* ══ ARRENDATARIO (Capa 1: rellenado desde log) ══ */}
@@ -1046,17 +1086,17 @@ function AdminContent() {
             <tr>
               {/* Todos los campos editan el estado 'personas'. arr1.nombre/rut/email/telefono
                   se guardan también en datos_arriendos (resumen) además de en log. */}
-              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.nombre} bloque="arr1" campo="nombre" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.genero} bloque="arr1" campo="genero" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.estado} bloque="arr1" campo="estado" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.nacion} bloque="arr1" campo="nacion" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.rut} bloque="arr1" campo="rut" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.pasaporte} bloque="arr1" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
-              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.email} bloque="arr1" campo="email" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.telefono} bloque="arr1" campo="telefono" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.domHabit} bloque="arr1" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.domLab} bloque="arr1" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-              <td style={inputCell}><PCell value={personas?.arr1?.empresa} bloque="arr1" campo="empresa" onSet={setPersona} ro={ro} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.nombre} bloque="arr1" campo="nombre" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.genero} bloque="arr1" campo="genero" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.estado} bloque="arr1" campo="estado" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.nacion} bloque="arr1" campo="nacion" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.rut} bloque="arr1" campo="rut" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.pasaporte} bloque="arr1" campo="pasaporte" onSet={setPersona} ro={roLog} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.arr1?.email} bloque="arr1" campo="email" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.telefono} bloque="arr1" campo="telefono" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.domHabit} bloque="arr1" campo="domHabit" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.domLab} bloque="arr1" campo="domLab" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.arr1?.empresa} bloque="arr1" campo="empresa" onSet={setPersona} ro={roLog} /></td>
             </tr>
 
             {/* Botón: añadir 2º arrendatario */}
@@ -1080,17 +1120,17 @@ function AdminContent() {
             {arr2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>ARRENDATARIO 2</td>
-                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.nombre} bloque="arr2" campo="nombre" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.genero} bloque="arr2" campo="genero" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.estado} bloque="arr2" campo="estado" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.nacion} bloque="arr2" campo="nacion" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.rut} bloque="arr2" campo="rut" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.pasaporte} bloque="arr2" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
-                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.email} bloque="arr2" campo="email" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.telefono} bloque="arr2" campo="telefono" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.domHabit} bloque="arr2" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.domLab} bloque="arr2" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-                <td style={inputCell}><PCell value={personas?.arr2?.empresa} bloque="arr2" campo="empresa" onSet={setPersona} ro={ro} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.nombre} bloque="arr2" campo="nombre" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.genero} bloque="arr2" campo="genero" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.estado} bloque="arr2" campo="estado" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.nacion} bloque="arr2" campo="nacion" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.rut} bloque="arr2" campo="rut" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.pasaporte} bloque="arr2" campo="pasaporte" onSet={setPersona} ro={roLog} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.arr2?.email} bloque="arr2" campo="email" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.telefono} bloque="arr2" campo="telefono" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.domHabit} bloque="arr2" campo="domHabit" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.domLab} bloque="arr2" campo="domLab" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.arr2?.empresa} bloque="arr2" campo="empresa" onSet={setPersona} ro={roLog} /></td>
               </tr>
             )}
 
@@ -1115,17 +1155,17 @@ function AdminContent() {
             </tr>
             <tr>
               {/* aval1.nombre/email/telefono se guardan también en datos_arriendos (resumen) además de log. */}
-              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.nombre} bloque="aval1" campo="nombre" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.genero} bloque="aval1" campo="genero" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.estado} bloque="aval1" campo="estado" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.nacion} bloque="aval1" campo="nacion" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.rut} bloque="aval1" campo="rut" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.pasaporte} bloque="aval1" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
-              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.email} bloque="aval1" campo="email" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.telefono} bloque="aval1" campo="telefono" onSet={setPersona} ro={ro} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.domHabit} bloque="aval1" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.domLab} bloque="aval1" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-              <td style={inputCell}><PCell value={personas?.aval1?.empresa} bloque="aval1" campo="empresa" onSet={setPersona} ro={ro} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.nombre} bloque="aval1" campo="nombre" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.genero} bloque="aval1" campo="genero" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.estado} bloque="aval1" campo="estado" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.nacion} bloque="aval1" campo="nacion" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.rut} bloque="aval1" campo="rut" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.pasaporte} bloque="aval1" campo="pasaporte" onSet={setPersona} ro={roLog} /></td>
+              <td colSpan={2} style={inputCell}><PCell value={personas?.aval1?.email} bloque="aval1" campo="email" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.telefono} bloque="aval1" campo="telefono" onSet={setPersona} ro={roLog} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.domHabit} bloque="aval1" campo="domHabit" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.domLab} bloque="aval1" campo="domLab" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+              <td style={inputCell}><PCell value={personas?.aval1?.empresa} bloque="aval1" campo="empresa" onSet={setPersona} ro={roLog} /></td>
             </tr>
 
             {/* Botón: añadir 2º aval */}
@@ -1149,17 +1189,17 @@ function AdminContent() {
             {aval2Abierto && (
               <tr>
                 <td style={{ ...labelCell, verticalAlign: 'middle', background: '#eef2f7' }}>AVAL 2</td>
-                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.nombre} bloque="aval2" campo="nombre" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.genero} bloque="aval2" campo="genero" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.estado} bloque="aval2" campo="estado" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.nacion} bloque="aval2" campo="nacion" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.rut} bloque="aval2" campo="rut" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.pasaporte} bloque="aval2" campo="pasaporte" onSet={setPersona} ro={ro} /></td>
-                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.email} bloque="aval2" campo="email" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.telefono} bloque="aval2" campo="telefono" onSet={setPersona} ro={ro} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.domHabit} bloque="aval2" campo="domHabit" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.domLab} bloque="aval2" campo="domLab" onSet={setPersona} ro={ro} area onExpand={abrirExpandir} /></td>
-                <td style={inputCell}><PCell value={personas?.aval2?.empresa} bloque="aval2" campo="empresa" onSet={setPersona} ro={ro} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.nombre} bloque="aval2" campo="nombre" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.genero} bloque="aval2" campo="genero" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.estado} bloque="aval2" campo="estado" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.nacion} bloque="aval2" campo="nacion" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.rut} bloque="aval2" campo="rut" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.pasaporte} bloque="aval2" campo="pasaporte" onSet={setPersona} ro={roLog} /></td>
+                <td colSpan={2} style={inputCell}><PCell value={personas?.aval2?.email} bloque="aval2" campo="email" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.telefono} bloque="aval2" campo="telefono" onSet={setPersona} ro={roLog} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.domHabit} bloque="aval2" campo="domHabit" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.domLab} bloque="aval2" campo="domLab" onSet={setPersona} ro={roLog} area onExpand={abrirExpandir} /></td>
+                <td style={inputCell}><PCell value={personas?.aval2?.empresa} bloque="aval2" campo="empresa" onSet={setPersona} ro={roLog} /></td>
               </tr>
             )}
 
@@ -1171,53 +1211,53 @@ function AdminContent() {
             <tr>
               <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={5}>CONDICIONES</td>
               <LB>Garantía</LB>
-              <td colSpan={2} style={inputCell}><IC name="garantia_pedida" value={form.garantia_pedida} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td colSpan={2} style={inputCell}><IC name="garantia_pedida" value={form.garantia_pedida} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <LB>A quién</LB>
-              <td style={inputCell}><IC name="quien_tiene_garantia" value={form.quien_tiene_garantia} onChange={handleChange} readOnly={ro} /></td>
+              <td style={inputCell}><IC name="quien_tiene_garantia" value={form.quien_tiene_garantia} onChange={handleChange} readOnly={roLog} /></td>
               <LB>Extensión</LB>
-              <td style={inputCell}><IC name="comentar_renovacion" value={form.comentar_renovacion} onChange={handleChange} readOnly={ro} /></td>
+              <td style={inputCell}><IC name="comentar_renovacion" value={form.comentar_renovacion} onChange={handleChange} readOnly={roLog} /></td>
               <LB>Nuevo final</LB>
-              <td colSpan={2} style={inputCell}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={ro} type="date" bold /></td>
+              <td colSpan={2} style={inputCell}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog} type="date" bold /></td>
               <LB>Especial primeros meses</LB>
-              <td colSpan={3} style={inputCell}><IC name="especial_a" value={form.especial_a} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={3} style={inputCell}><IC name="especial_a" value={form.especial_a} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
             <tr>
               <LB>Plazo 1</LB>
-              <td style={inputCell}><IC name="fecha1" value={form.fecha1} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td style={inputCell}><IC name="fecha1" value={form.fecha1} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 1</LB>
-              <td style={inputCell}><IC name="cuota1" value={form.cuota1} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="cuota1" value={form.cuota1} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <LB>Plazo 2</LB>
-              <td style={inputCell}><IC name="fecha2" value={form.fecha2} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td style={inputCell}><IC name="fecha2" value={form.fecha2} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 2</LB>
-              <td style={inputCell}><IC name="cuota2" value={form.cuota2} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="cuota2" value={form.cuota2} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <LB>Meses</LB>
-              <td style={inputCell}><IC name="meses" value={form.meses} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="meses" value={form.meses} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <td colSpan={3} style={{ ...inputCell, background: C.rowAlt }}></td>
             </tr>
             <tr>
               <LB>Plazo 3</LB>
-              <td style={inputCell}><IC name="fecha3" value={form.fecha3} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td style={inputCell}><IC name="fecha3" value={form.fecha3} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 3</LB>
-              <td style={inputCell}><IC name="cuota3" value={form.cuota3} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="cuota3" value={form.cuota3} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <LB>Plazo 4</LB>
-              <td style={inputCell}><IC name="fecha4" value={form.fecha4} onChange={handleChange} readOnly={ro} type="date" /></td>
+              <td style={inputCell}><IC name="fecha4" value={form.fecha4} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 4</LB>
-              <td style={inputCell}><IC name="cuota4" value={form.cuota4} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="cuota4" value={form.cuota4} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <LB>Cantidad</LB>
-              <td style={inputCell}><IC name="cantidad" value={form.cantidad} onChange={handleChange} readOnly={ro} type="number" bold /></td>
+              <td style={inputCell}><IC name="cantidad" value={form.cantidad} onChange={handleChange} readOnly={roLog} type="number" bold /></td>
               <td colSpan={3} style={{ ...inputCell, background: C.rowAlt }}></td>
             </tr>
             <tr>
               <LB cols={4}>Cláusula aceleración</LB>
-              <td colSpan={4} style={inputCell}><IC name="tipo_aceleracion" value={form.tipo_aceleracion} onChange={handleChange} readOnly={ro} /></td>
+              <td colSpan={4} style={inputCell}><IC name="tipo_aceleracion" value={form.tipo_aceleracion} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Multas</LB>
-              <td style={inputCell}><IC name="multa_diaria" value={form.multa_diaria} onChange={handleChange} readOnly={ro} type="number" /></td>
+              <td style={inputCell}><IC name="multa_diaria" value={form.multa_diaria} onChange={handleChange} readOnly={roLog} type="number" /></td>
               <td colSpan={4} style={{ ...inputCell, background: C.rowAlt }}></td>
             </tr>
             <tr>
               <td colSpan={13} style={{ ...inputCell, background: '#fff', border: `1px solid ${C.border}` }}>
                 <textarea name="comentarios" value={form.comentarios ?? ''} onChange={handleChange}
-                  readOnly={ro} rows={2}
+                  readOnly={roLog} rows={2}
                   style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 11, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
                   placeholder="COMENTARIOS..." />
               </td>
@@ -1244,12 +1284,12 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>PROPIETARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentD" value={logEcon.porcentD} onChange={e => setLogEconCampo('porcentD', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={ro} money />
-                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={ro} money />
-                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={ro} money bold />
+                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={roLog} money />
+                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={roLog} money />
+                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={roLog} money bold />
                 <EcoCell label="C. Esp." name="cEspProp" value={logEcon.cEspProp} onChange={e => setLogEconCampo('cEspProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentProp" value={logEcon.comentProp} onChange={e => setLogEconCampo('comentProp', e.target.value)} ro={roLog} />
-                <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
+                <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
             {/* ARRENDATARIO — 2 columnas × 4 filas (Porcentaje/C.Esp/Coment vienen del LOG) */}
@@ -1257,20 +1297,20 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ARRENDATARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentA" value={logEcon.porcentA} onChange={e => setLogEconCampo('porcentA', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={ro} money />
-                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={ro} money />
-                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={ro} money bold />
+                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={roLog} money />
+                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={roLog} money />
+                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={roLog} money bold />
                 <EcoCell label="C. Esp." name="cEspArr" value={logEcon.cEspArr} onChange={e => setLogEconCampo('cEspArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentArr" value={logEcon.comentArr} onChange={e => setLogEconCampo('comentArr', e.target.value)} ro={roLog} />
-                <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={ro} options={['', 'BOLETA', 'FACTURA']} />
+                <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
               </div>
             </div>
             {/* ADMON MES — Cuantía=pct_adm, Tipo=si_fijo_admon+adicionar_iva */}
             <div>
               <div style={{ background: ECG.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
-              <EcoCell label="Tipo" name="tipoAdmon" value={tipoAdmon} onChange={e => setTipoAdmon(e.target.value)} ro={ro} pal={ECG} options={['', '%', '% + IVA', 'FIJO', 'FIJO + IVA']} />
-              <EcoCell label="Cuantía" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={ro} bold pal={ECG} />
-              <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={ro} pal={ECG} />
+              <EcoCell label="Tipo" name="tipoAdmon" value={tipoAdmon} onChange={e => setTipoAdmon(e.target.value)} ro={roLog} pal={ECG} options={['', '%', '% + IVA', 'FIJO', 'FIJO + IVA']} />
+              <EcoCell label="Cuantía" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={roLog} bold pal={ECG} />
+              <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={roLog} pal={ECG} />
             </div>
           </div>
         </div>
@@ -1321,7 +1361,7 @@ function AdminContent() {
                 <div key={name}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: C.labelText, marginBottom: 3 }}>{label}</div>
                   <input type={type} name={name} value={form[name] ?? ''} onChange={handleChange}
-                    readOnly={ro}
+                    readOnly={roLog}
                     style={{
                       ...fieldInput,
                       width: '100%', padding: '5px 8px', fontSize: 11,
@@ -1334,6 +1374,40 @@ function AdminContent() {
           )}
         </div>
       </div>
+
+      {/* ══ MODAL: Motivo de corrección excepcional ══ */}
+      {modalCorrAbierto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setModalCorrAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 22,
+            width: 'min(540px, 92vw)', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <h3 style={{ margin: '0 0 8px', color: C.headerBg, fontSize: 17 }}>⚠ Correcciones excepcionales</h3>
+            <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px', lineHeight: 1.5 }}>
+              Vas a habilitar la edición de un contrato activo para corregir un error. Esto debería usarse
+              muy pocas veces. Escribe el motivo de la corrección: quedará registrado con tu nombre y la fecha.
+              <br /><br />
+              No se podrán cambiar el IDADMON ni el estado del contrato.
+            </p>
+            <textarea value={motivoCorr} onChange={e => setMotivoCorr(e.target.value)} rows={3}
+              placeholder="Motivo (ej.: la cuota se cargó mal en el alta; corrijo de 250.000 a 265.000)"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'inherit', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setModalCorrAbierto(false)}
+                style={{ fontSize: 13, padding: '8px 16px', borderRadius: 6, border: '1px solid #cbd5e1',
+                  background: '#fff', color: '#475569', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={() => { setCorreccionAbierta(true); setBloqueado(false); setModalCorrAbierto(false); setMsg({ type: 'info', text: 'Edición habilitada. Corrige y pulsa Guardar.' }) }}
+                disabled={motivoCorr.trim().length < 5}
+                style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: motivoCorr.trim().length < 5 ? '#9ca3af' : C.amber,
+                  color: '#fff', cursor: motivoCorr.trim().length < 5 ? 'not-allowed' : 'pointer' }}>
+                Habilitar edición
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL: Editar arrendatarios y avales ══ */}
       {modalAbierto && (
@@ -1365,7 +1439,7 @@ function AdminContent() {
               </div>
               <div style={{ padding: 16 }}>
                 <textarea
-                  autoFocus value={valor} readOnly={ro}
+                  autoFocus value={valor} readOnly={roLog}
                   onChange={e => setPersona(expandir.bloque, expandir.campo, e.target.value)}
                   style={{ width: '100%', minHeight: 140, boxSizing: 'border-box', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none', resize: 'vertical', color: '#1f2937' }}
                 />
