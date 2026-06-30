@@ -41,7 +41,7 @@ const PROCESOS = [
   { key: 'servicios', titulo: 'Servicios', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Mensual', produccion: true,
     descripcion: 'Consulta y carga mensual deudas de servicios',
     etapas: [], conecta: null, href: '/op/deudas' },
-  { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal',
+  { key: 'descuentos', titulo: 'Descuentos', responsable: 'Administración', participa: ['Finanzas'], frecuencia: 'Semanal', produccion: true,
     descripcion: 'Descuentos a propietarios',
     etapas: ['Revisar', 'Autorizar', 'Aplicar', 'Confirmar'], conecta: 'Liquidación', href: null },
   { key: 'cobranza', titulo: 'Cobranza', responsable: 'Administración', participa: ['Finanzas', 'Legal'], frecuencia: 'Puntual',
@@ -74,7 +74,7 @@ const PROCESOS = [
     etapas: [], conecta: null, href: null },
 
   // ── FINANZAS ──
-  { key: 'termino', titulo: 'Término', responsable: 'Finanzas', participa: ['Administración', 'Legal'], frecuencia: 'Puntual',
+  { key: 'termino', titulo: 'Término', responsable: 'Finanzas', participa: ['Administración', 'Legal'], frecuencia: 'Puntual', produccion: true,
     descripcion: 'Aviso legal, recepción y garantías',
     etapas: ['Aviso', 'Registro', 'Legal', 'Excel', 'Recepción', 'GGCC', 'Garantías', 'Cierre'], conecta: 'Términos', href: '/procesos/terminos' },
   { key: 'liquidacion', titulo: 'Liquidación', responsable: 'Finanzas', participa: ['Administración'], frecuencia: 'Mensual',
