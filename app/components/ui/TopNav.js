@@ -45,6 +45,7 @@ const DOCS = {
   manual_deudas: 'https://docs.google.com/document/d/1gdZTAa3snBe2o9up3EqSGKOz6zMKlp-8/preview',
   manual_terminos: 'https://docs.google.com/document/d/19tsg6pTtkEXHMugI4Wmp8ClJkTaiQLYt/preview',
   manual_publicaciones: 'https://docs.google.com/document/d/11fYLCV_VT2xSPRO1RsrkBaAM7HZlI7ky/preview',
+  manual_descuentos: '/manuales/descuentos.pdf',
 };
 
 // Portales del ecosistema FCR (selector FCR). CRM Interno es el actual.
@@ -303,6 +304,8 @@ export default function TopNav() {
               onClick={() => { abrirDoc('manual_terminos'); setAyudaOpen(false); }}>🔑 Guía de Términos</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
               onClick={() => { abrirDoc('manual_publicaciones'); setAyudaOpen(false); }}>🏠 Manual de Publicaciones</button>
+            <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
+              onClick={() => { abrirDoc('manual_descuentos'); setAyudaOpen(false); }}>💸 Manual de Descuentos</button>
           </div>
         )}
       </div>
