@@ -31,7 +31,7 @@ const EDITABLES = new Set([
 
 const money = (n) => {
   const v = Number(n);
-  return Number.isFinite(v) ? v.toLocaleString('es-CL') : (n ?? '');
+  return Number.isFinite(v) ? Math.round(v).toLocaleString('es-CL') : (n ?? '');
 };
 
 const C = {

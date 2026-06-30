@@ -47,6 +47,14 @@ export async function POST(req) {
       if (tx.length < 45) return Response.json({ error: 'El texto para liquidación debe tener al menos 45 caracteres' }, { status: 400 });
       cambios.texto_explicativo_para_carta_a_propietario = tx;
     }
+    // Montos: redondear a 0 decimales
+    for (const campo of ['monto_a_imputar', 'monto_a_transferir']) {
+      if (cambios[campo] != null && cambios[campo] !== '') {
+        const n = Math.round(Number(cambios[campo]));
+        if (!Number.isFinite(n)) return Response.json({ error: campo + ' inválido' }, { status: 400 });
+        cambios[campo] = String(n);
+      }
+    }
 
     // Construir patch solo con campos editables que cambian de verdad
     const patch = {};

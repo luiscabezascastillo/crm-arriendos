@@ -47,10 +47,10 @@ export async function POST(req) {
       return Response.json({ error: 'El texto para liquidación debe tener al menos 45 caracteres' }, { status: 400 });
     }
 
-    const montoImputar = Number(b.monto_a_imputar);
+    const montoImputar = Math.round(Number(b.monto_a_imputar));
     if (!Number.isFinite(montoImputar)) return Response.json({ error: 'MONTO A IMPUTAR inválido' }, { status: 400 });
     const montoTransferir = b.monto_a_transferir === '' || b.monto_a_transferir == null
-      ? null : Number(b.monto_a_transferir);
+      ? null : Math.round(Number(b.monto_a_transferir));
 
     // --- num correlativo (MAX(num::int)+1) ---
     const { data: maxRow } = await supa
