@@ -14,7 +14,7 @@
 
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
-import { supabaseAdmin, getCapacidades } from '../../../../lib/cc1Permisos'
+import { supabaseAdmin, getCapacidades, puedeTransicion } from '../../../../lib/cc1Permisos'
 import { buildSubject, enviarNotificacion } from '../../../../lib/cc1Email'
 
 // Campos que hereda el nuevo IDADMON en P (solo inmueble/propietario)
@@ -62,6 +62,14 @@ export async function POST(req) {
 
   const estadoAnterior = contrato.estado
   const emailsEnviados = []
+
+  // Validar que ESTE rol puede hacer ESTA transición concreta
+  if (!puedeTransicion(cap, estadoAnterior, estadoNuevo)) {
+    return Response.json({
+      error: `No tienes permiso para la transición ${estadoAnterior} → ${estadoNuevo}. ` +
+             `Validar inicio (P→S) y cerrar (Q→N) son exclusivos del responsable de Gestión LOG.`,
+    }, { status: 403 })
+  }
 
   // 3. Cambiar el estado del contrato
   const { error: e1 } = await supabaseAdmin
