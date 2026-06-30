@@ -82,7 +82,7 @@ export default function ServiciosLuzPage() {
         if (data.omitido) {
           todosResultados.push({ idadmon, codigo_ele, status: 'omitido', mensaje: 'código excluido' })
         } else if (data.error) {
-          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: data.error })
+          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: data.error + (data.textoDebug ? ' :: ' + data.textoDebug : '') })
           fallidos++
         } else if (data.ok) {
           todosResultados.push({ idadmon, codigo_ele, status: 'ok', deuda: data.deuda })
@@ -241,7 +241,7 @@ export default function ServiciosLuzPage() {
             <div style={s.sectionTitle}>Fallidos ({resultados.filter(r => r.status === 'error').length})</div>
             <div style={{ ...s.log, maxHeight: '120px' }}>
               {resultados.filter(r => r.status === 'error').map((r, i) => (
-                <div key={i} style={{ color: '#f87171', fontSize: '11px' }}>{r.idadmon} / {r.codigo_ele} — {r.mensaje}</div>
+                <div key={i} style={{ color: '#f87171', fontSize: '11px', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{r.idadmon} / {r.codigo_ele} — {r.mensaje}</div>
               ))}
             </div>
           </div>

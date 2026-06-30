@@ -40,7 +40,7 @@ export async function POST(request) {
       if (!codigo) return Response.json({ error: 'Falta el código' }, { status: 400 })
       const res = await consultarEnel(codigo)
       if (res.omitido) return Response.json({ omitido: true })
-      if (res.error) return Response.json({ error: res.error })
+      if (res.error) return Response.json({ error: res.error, textoDebug: res.textoDebug })
       // Guardar también cuando la deuda es 0 (sin deuda) — fecha = hoy
       const hoy = new Date().toISOString().split('T')[0]
       const fecha = res.fecha || hoy
