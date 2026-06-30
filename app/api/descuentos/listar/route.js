@@ -13,12 +13,12 @@ export async function GET() {
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     // Orden por NUM (como el Excel). num puede traer decimales históricos (2003.2);
-    // ordenamos por su valor numérico, descendente (lo más nuevo arriba).
+    // ordenamos por su valor numérico, ascendente (los más altos abajo).
     const rows = (data || []).slice().sort((a, b) => {
       const na = parseFloat(a.num), nb = parseFloat(b.num);
-      const va = Number.isFinite(na) ? na : -Infinity;
-      const vb = Number.isFinite(nb) ? nb : -Infinity;
-      return vb - va;
+      const va = Number.isFinite(na) ? na : Infinity;
+      const vb = Number.isFinite(nb) ? nb : Infinity;
+      return va - vb;
     });
 
     return Response.json({ caps, rows });
