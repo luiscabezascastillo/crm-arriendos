@@ -39,3 +39,40 @@ Se alimenta de `datos_arriendos` con `.eq('estado','S')` (solo contratos activos
 
 ## Caso especial A00684 (herencia)
 Propiedad heredada por 2 hijos. Por ahora se resuelve con override manual (`apagar_enviado`). La resolución correcta (división entre 2 propietarios) corresponde al futuro módulo de Liquidaciones. No reintroducir su triplicación en cargas Excel.
+
+## CÃ¡lculo del importe a pagar (`apagar`)
+
+Solo se procesan/notifican IDADMON en estado `S`. Todo cÃ¡lculo filtra `estado = 'S'`.
+
+El importe ya estÃ¡ calculado y volcado en `datos_arriendos` por el VBA. El CRM lee y presenta, no recalcula. `indices_mensuales` es solo informativo para este caso (`Valor UF` del mes).
+
+FÃ³rmula en dos ramas, sin comparar fechas:
+
+- `revision === 'UF'` â†’ `apagar = round(cuota Ã— uf_peso_factor)`.
+  - `uf_peso_factor` es el valor de la UF del mes escrito por el VBA.
+  - No multiplicar ademÃ¡s por `valor_uf` de `indices_mensuales`.
+- Resto (`IPC semestral`, `IPC anual`, `IPC trimestral`, `IPC 6 meses`, `Semestral con UF`, `FIJO`, `null`) â†’ `apagar = round(cuota + Î£ cantidad_reajuste1..6)`.
+  - Los reajustes no aplicados valen `0`; por eso se suman los seis sin filtrar por fecha.
+  - `IPC 6 meses` se trata como `IPC semestral`.
+
+**JustificaciÃ³n:** regla de negocio definitiva validada en el Chat 17; rige el mÃ³dulo y evita reimplementar o duplicar cÃ¡lculos.
+
+## PÃ¡gina y acceso â€” Parte A
+
+Ruta: `app/procesos/notificaciones/page.js`.
+
+La Parte A es un visor de solo lectura: no escribe en base de datos ni envÃ­a correos.
+
+Comportamiento:
+
+- Lee contratos en estado `S` desde `datos_arriendos`.
+- Presenta los registros ordenados por `propietario` â†’ `inmueble`.
+- La columna de email del arrendatario es `mail_arrendatario`, no `email_arrendatario`.
+- `mail_arrendatario` puede contener varios correos separados por `;`.
+
+Accesos:
+
+- Desde el botÃ³n **Calcular ajustes** del listado CC1: `router.push('/procesos/notificaciones')`.
+- Pendiente: enlazar tambiÃ©n la tarjeta **Notificaciones** del motor de procesos (`app/procesos/page.js`) cambiando `href: null` por `href: '/procesos/notificaciones'`.
+
+**JustificaciÃ³n:** documenta ubicaciÃ³n real, punto de acceso y nombre exacto de columna.
