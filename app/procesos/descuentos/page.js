@@ -34,6 +34,22 @@ const money = (n) => {
   return Number.isFinite(v) ? Math.round(v).toLocaleString('es-CL') : (n ?? '');
 };
 
+// Meses para el dropdown: el actual + los 5 siguientes, en formato "JULIO 2026".
+const MESES_NOM = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+  'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+function opcionesMes() {
+  const hoy = new Date();
+  const out = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+    out.push(`${MESES_NOM[d.getMonth()]} ${d.getFullYear()}`);
+  }
+  return out;
+}
+
+// Cuántas filas mostrar por defecto (las más recientes)
+const TOPE_DEFECTO = 30;
+
 const C = {
   azul: '#1f4e79', azulClaro: '#dbe5f1', borde: '#c9d3e0',
   verde: '#2e7d32', rojo: '#c62828', ambar: '#b8860b', gris: '#6b7280',
@@ -63,7 +79,9 @@ export default function DescuentosPage() {
   const [filtros, setFiltros] = useState({});       // { col: Set(valores seleccionados) }
   const [menuCol, setMenuCol] = useState(null);     // col con menú abierto
   const [busca, setBusca] = useState('');           // texto del buscador del menú
+  const [verTodos, setVerTodos] = useState(false);  // mostrar todo el histórico o solo lo reciente
   const menuRef = useRef(null);
+  const scrollRef = useRef(null);   // contenedor scrolleable de la tabla
 
   useEffect(() => {
     function onDoc(e) {
@@ -97,6 +115,23 @@ export default function DescuentosPage() {
       })
     );
   }, [rows, filtros]);
+
+  const hayFiltroActivo = Object.values(filtros).some((s) => s && s.size > 0);
+  // rows viene con el NUM más alto/reciente AL FINAL. Por defecto mostramos los
+  // 30 del final (los más recientes). Con filtro activo o "ver todos", todas.
+  const visibles = useMemo(() => {
+    if (verTodos || hayFiltroActivo) return filtradas;
+    return filtradas.slice(-TOPE_DEFECTO);
+  }, [filtradas, verTodos, hayFiltroActivo]);
+
+  // En la vista por defecto (sin filtro, sin "ver todos"), dejar el scroll al
+  // fondo para que el último subido quede a la vista sin mover nada.
+  useEffect(() => {
+    if (loading) return;
+    if (verTodos || hayFiltroActivo) return;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [visibles, loading, verTodos, hayFiltroActivo]);
 
   function toggleValor(col, valor) {
     setFiltros((prev) => {
@@ -211,7 +246,7 @@ export default function DescuentosPage() {
       {loading ? (
         <div style={{ color: C.gris }}>Cargando…</div>
       ) : (
-        <div style={{ overflowX: 'auto', border: `1px solid ${C.borde}`, borderRadius: 6, background: '#fff' }}>
+        <div ref={scrollRef} style={{ maxHeight: '62vh', overflow: 'auto', border: `1px solid ${C.borde}`, borderRadius: 6, background: '#fff' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
             <thead>
               <tr>
@@ -248,7 +283,7 @@ export default function DescuentosPage() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map((r) => {
+              {visibles.map((r) => {
                 const enEd = editId === r.id;
                 return (
                   <>
@@ -287,7 +322,7 @@ export default function DescuentosPage() {
                   </>
                 );
               })}
-              {filtradas.length === 0 && (
+              {visibles.length === 0 && (
                 <tr><td colSpan={COLS.length + 1} style={{ ...td(), textAlign: 'center', color: C.gris, padding: 20 }}>
                   No hay registros con los filtros actuales.
                 </td></tr>
@@ -297,8 +332,21 @@ export default function DescuentosPage() {
         </div>
       )}
 
-      <div style={{ marginTop: 8, fontSize: 12, color: C.gris }}>
-        {filtradas.length} de {rows.length} registros
+      <div style={{ marginTop: 8, fontSize: 12, color: C.gris, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span>
+          Mostrando {visibles.length} de {filtradas.length}
+          {filtradas.length !== rows.length ? ` (filtrados de ${rows.length})` : ' registros'}
+        </span>
+        {!verTodos && !hayFiltroActivo && filtradas.length > TOPE_DEFECTO && (
+          <button onClick={() => setVerTodos(true)} style={btnMini(C.azul)}>
+            Ver todos ({filtradas.length})
+          </button>
+        )}
+        {verTodos && !hayFiltroActivo && filtradas.length > TOPE_DEFECTO && (
+          <button onClick={() => setVerTodos(false)} style={btnMini(C.gris)}>
+            Ver solo los últimos {TOPE_DEFECTO}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -463,7 +511,12 @@ function FormAlta({ onCreado }) {
         <Campo label="Propietario"><input value={f.propietario} onChange={(e) => set('propietario', e.target.value)} style={inp} /></Campo>
         <Campo label="Inmueble"><input value={f.inmueble} onChange={(e) => set('inmueble', e.target.value)} style={inp} /></Campo>
 
-        <Campo label="Mes a imputar *"><input value={f.mes_a_imputar} onChange={(e) => set('mes_a_imputar', e.target.value.toUpperCase())} placeholder="JULIO 2026" style={inp} /></Campo>
+        <Campo label="Mes a imputar *">
+          <select value={f.mes_a_imputar} onChange={(e) => set('mes_a_imputar', e.target.value)} style={inp}>
+            <option value="">— elegir —</option>
+            {opcionesMes().map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </Campo>
         <Campo label="Imputar a *">
           <select value={f.repercutir_a} onChange={(e) => set('repercutir_a', e.target.value)} style={inp}>
             {REPERCUTIR_A.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -476,8 +529,8 @@ function FormAlta({ onCreado }) {
           </select>
         </Campo>
 
-        <Campo label="Monto a imputar *"><input type="number" value={f.monto_a_imputar} onChange={(e) => set('monto_a_imputar', e.target.value)} style={inp} /></Campo>
-        <Campo label="Monto a transferir"><input type="number" value={f.monto_a_transferir} onChange={(e) => set('monto_a_transferir', e.target.value)} style={inp} /></Campo>
+        <Campo label="Monto a imputar *"><input type="text" inputMode="numeric" value={f.monto_a_imputar} onChange={(e) => set('monto_a_imputar', e.target.value)} style={inp} /></Campo>
+        <Campo label="Monto a transferir"><input type="text" inputMode="numeric" value={f.monto_a_transferir} onChange={(e) => set('monto_a_transferir', e.target.value)} style={inp} /></Campo>
         <Campo label="¿Necesita factura/boleta?">
           <select value={f.factura_boleta} onChange={(e) => set('factura_boleta', e.target.value)} style={inp}>
             <option value="NO">NO</option><option value="SI">SI</option>
@@ -531,7 +584,7 @@ const inp = { padding: '6px 8px', border: '1px solid #c9d3e0', borderRadius: 4, 
 const linkMini = { color: '#1f4e79', cursor: 'pointer', fontSize: 11, marginLeft: 4, textDecoration: 'underline' };
 function btn(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 5, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }; }
 function btnMini(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }; }
-function th() { return { position: 'relative', background: '#1f4e79', color: '#fff', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap', border: '1px solid #173a5c', fontSize: 12 }; }
+function th() { return { position: 'sticky', top: 0, zIndex: 10, background: '#1f4e79', color: '#fff', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap', border: '1px solid #173a5c', fontSize: 12 }; }
 function td() { return { padding: '4px 8px', borderBottom: '1px solid #eef1f5', borderRight: '1px solid #f3f5f8', verticalAlign: 'top' }; }
 const thMini = { background: '#f0e6c8', padding: '3px 6px', textAlign: 'left', border: '1px solid #e0d4a8', fontSize: 11 };
 const tdMini = { padding: '3px 6px', borderBottom: '1px solid #f0ead8', fontSize: 11 };
