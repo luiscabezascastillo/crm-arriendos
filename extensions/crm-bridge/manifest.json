@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CRM Bridge — Fondo Capital",
-  "version": "2.2",
+  "version": "2.3",
   "description": "Proxy para consultas ENEL (vía Sencillito) y Aguas Andinas desde CRM Arriendos",
   "permissions": [
     "tabs",
@@ -33,6 +33,12 @@
       "matches": ["https://sencillito.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sencillito.com/*"],
+      "js": ["senc-main.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ],
   "action": {

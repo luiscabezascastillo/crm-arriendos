@@ -110,20 +110,36 @@ export default function ServiciosLuzPage() {
     let procesados = 0, exitosos = 0, fallidos = 0
     const todosResultados = []
 
+    // Pausa entre consultas para no saturar Sencillito (evita HTTP 429).
+    const PAUSA_MS = 1500
+    const espera = (ms) => new Promise(r => setTimeout(r, ms))
+
     for (let i = 0; i < codigos.length; i++) {
       if (cancelarRef.current) { addLog('warn', 'Proceso detenido por el usuario'); break }
       const { idadmon, idinmue, codigo_ele } = codigos[i]
       if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length}…`)
 
-      try {
-        // 1) Consultar la deuda vía extensión (Sencillito, navegador real)
-        const resp = await enviarAExtension({ type: 'CONSULTAR_ENEL', codigo: codigo_ele })
+      // Reintento simple ante HTTP 429 (backoff): hasta 3 intentos con espera creciente.
+      let resp = null
+      for (let intento = 0; intento < 3; intento++) {
+        try {
+          resp = await enviarAExtension({ type: 'CONSULTAR_ENEL', codigo: codigo_ele })
+        } catch (e) {
+          resp = { ok: false, error: e.message }
+        }
+        const es429 = resp && !resp.ok && /(^|\D)429(\D|$)/.test(String(resp.error || ''))
+        if (!es429) break
+        // 429: esperar más y reintentar
+        addLog('warn', `429 en ${codigo_ele}, esperando…`)
+        await espera(3000 * (intento + 1))
+      }
 
+      try {
         if (!resp || !resp.ok) {
           todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: (resp && resp.error) || 'sin respuesta de la extensión' })
           fallidos++
         } else {
-          // 2) Guardar en el servidor (Supabase no tiene anti-bot)
+          // Guardar en el servidor (Supabase no tiene anti-bot)
           const hoy = new Date().toISOString().split('T')[0]
           const fecha = resp.fecha || hoy
           const g = await fetch('/api/servicios/luz', {
@@ -149,6 +165,9 @@ export default function ServiciosLuzPage() {
       procesados++
       setProgreso({ procesados, exitosos, fallidos })
       setResultados([...todosResultados])
+
+      // Pausa antes del siguiente (salvo el último)
+      if (i < codigos.length - 1) await espera(PAUSA_MS)
     }
 
     addLog('ok', `✓ Completado: ${exitosos} exitosos, ${fallidos} fallidos de ${procesados}`)
