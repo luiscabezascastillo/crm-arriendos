@@ -7,6 +7,10 @@ const MESES_DISPONIBLES = [
   'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
 ]
 
+// Extensión CRM Bridge (consulta Servipag desde el navegador real)
+const EXTENSION_ID = 'jnhdggkodeajhgjgpchdjmmmdgnndgdd'
+const SERVIPAG_URL = 'https://portal.servipag.com/paymentexpress/category/luz/company/enel'
+
 export default function ServiciosLuzPage() {
   const router = useRouter()
   const [mes, setMes] = useState('JUNIO 2026')
@@ -19,6 +23,8 @@ export default function ServiciosLuzPage() {
   const [progreso, setProgreso] = useState({ procesados: 0, exitosos: 0, fallidos: 0 })
   const [log, setLog] = useState([])
   const [resultados, setResultados] = useState([])
+  const [extOk, setExtOk] = useState(null)   // null=sin probar, true/false=resultado PING
+  const [extVer, setExtVer] = useState('')
   const procesandoRef = useRef(false)
   const cancelarRef = useRef(false)
   const logRef = useRef(null)
@@ -52,8 +58,46 @@ export default function ServiciosLuzPage() {
     setLog(prev => [...prev, { tipo, mensaje, ts: new Date().toLocaleTimeString('es-CL') }])
   }
 
+  // ── Comunicación con la extensión CRM Bridge ──
+  function extDisponible() {
+    return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage
+  }
+
+  function enviarAExtension(mensaje) {
+    return new Promise((resolve, reject) => {
+      if (!extDisponible()) { reject(new Error('Chrome extension API no disponible (usa Chrome con la extensión instalada)')); return }
+      try {
+        chrome.runtime.sendMessage(EXTENSION_ID, mensaje, (resp) => {
+          const err = chrome.runtime.lastError
+          if (err) { reject(new Error(err.message || 'La extensión no respondió (¿instalada y activa?)')); return }
+          resolve(resp)
+        })
+      } catch (e) { reject(e) }
+    })
+  }
+
+  async function verificarExtension() {
+    try {
+      const r = await enviarAExtension({ type: 'PING' })
+      if (r && r.ok) { setExtOk(true); setExtVer(r.version || ''); addLog('ok', `Extensión conectada (${r.version || '?'})`) }
+      else { setExtOk(false); addLog('error', 'La extensión respondió pero sin OK') }
+    } catch (e) {
+      setExtOk(false); addLog('error', `Extensión no disponible: ${e.message}`)
+    }
+  }
+
   async function iniciarConsulta() {
     if (codigos.length === 0 || procesandoRef.current) return
+
+    // Verificar extensión antes de empezar
+    try {
+      const ping = await enviarAExtension({ type: 'PING' })
+      if (!ping || !ping.ok) { addLog('error', 'La extensión no respondió al PING. Instálala/actívala y recarga.'); setExtOk(false); return }
+      setExtOk(true); setExtVer(ping.version || '')
+    } catch (e) {
+      addLog('error', `No se pudo contactar la extensión: ${e.message}`); setExtOk(false); return
+    }
+
     procesandoRef.current = true
     cancelarRef.current = false
     setFase('procesando')
@@ -72,25 +116,30 @@ export default function ServiciosLuzPage() {
       if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length}…`)
 
       try {
-        const res = await fetch('/api/servicios/luz', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'consultar_guardar', mes, idadmon, idinmue, codigo: codigo_ele }),
-        })
-        const data = await res.json()
+        // 1) Consultar la deuda vía extensión (Servipag, navegador real)
+        const resp = await enviarAExtension({ type: 'CONSULTAR_ENEL', codigo: codigo_ele })
 
-        if (data.omitido) {
-          todosResultados.push({ idadmon, codigo_ele, status: 'omitido', mensaje: 'código excluido' })
-        } else if (data.error) {
-          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: data.error + (data.textoDebug ? ' :: ' + data.textoDebug : '') })
+        if (!resp || !resp.ok) {
+          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: (resp && resp.error) || 'sin respuesta de la extensión' })
           fallidos++
-        } else if (data.ok) {
-          todosResultados.push({ idadmon, codigo_ele, status: 'ok', deuda: data.deuda })
-          exitosos++
-          if (exitosos % 10 === 0) addLog('ok', `${exitosos} guardados`)
         } else {
-          todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: 'respuesta inesperada' })
-          fallidos++
+          // 2) Guardar en el servidor (Supabase no tiene anti-bot)
+          const hoy = new Date().toISOString().split('T')[0]
+          const fecha = resp.fecha || hoy
+          const g = await fetch('/api/servicios/luz', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'guardar', mes, idadmon, idinmue, deuda: resp.deuda, fecha }),
+          })
+          const gd = await g.json()
+          if (gd.error) {
+            todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: 'guardar: ' + gd.error })
+            fallidos++
+          } else {
+            todosResultados.push({ idadmon, codigo_ele, status: 'ok', deuda: resp.deuda })
+            exitosos++
+            if (exitosos % 10 === 0) addLog('ok', `${exitosos} guardados`)
+          }
         }
       } catch (e) {
         todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: e.message })
@@ -156,6 +205,34 @@ export default function ServiciosLuzPage() {
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
             {cargando ? 'Cargando…' : `${totalPendientes ?? '...'} códigos sin consultar en ${mes}`}
           </div>
+        </div>
+
+        {/* Extensión / Servipag */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>Conexión con Servipag (extensión)</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.6, marginBottom: 10 }}>
+            La consulta se hace desde tu navegador con la extensión <strong style={{ color: '#e2e8f0' }}>CRM Bridge</strong>.
+            Necesitas: (1) la extensión instalada y activa, y (2) una pestaña de Servipag abierta.
+          </div>
+          <div style={s.toggleRow}>
+            <button style={{ ...s.btn('#3b82f6', false), flex: 1 }} onClick={verificarExtension}>
+              {extOk === null ? '🔌 Verificar extensión' : extOk ? `✓ Conectada ${extVer}` : '✗ Reintentar conexión'}
+            </button>
+            <button style={{ ...s.btn('#6366f1', false), flex: 1 }} onClick={() => window.open(SERVIPAG_URL, '_blank')}>
+              ↗ Abrir Servipag
+            </button>
+          </div>
+          {extOk === false && (
+            <div style={{ fontSize: '11px', color: '#f87171', marginTop: 8, lineHeight: 1.5 }}>
+              No se pudo contactar la extensión. Abre chrome://extensions, comprueba que CRM Bridge está activa
+              (versión 2.1) y que su ID coincide. Luego recarga esta página.
+            </div>
+          )}
+          {extOk === true && (
+            <div style={{ fontSize: '11px', color: '#4ade80', marginTop: 8 }}>
+              Extensión lista. Abre Servipag (botón de arriba) y deja esa pestaña abierta mientras consultas.
+            </div>
+          )}
         </div>
 
         {/* Progreso */}
