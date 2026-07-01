@@ -3,25 +3,28 @@
 import { useEffect, useMemo, useState, useRef, forwardRef } from 'react';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
 
-// ------- columnas de la tabla (orden y etiqueta) -------
+// ------- columnas de la tabla (orden, etiqueta, ancho px, alineación, truncado) -------
+// w = ancho fijo en px (table-layout: fixed). trunc = recorta con ellipsis + hover.
 const COLS = [
-  { key: 'num', label: 'Núm' },
-  { key: 'fecha', label: 'Fecha' },
-  { key: 'mes_a_imputar', label: 'Mes a imputar' },
-  { key: 'ingresado_por', label: 'Ingresado por' },
-  { key: 'idadmon', label: 'IDADMON' },
-  { key: 'inmueble', label: 'Inmueble' },
-  { key: 'propietario', label: 'Propietario' },
-  { key: 'repercutir_a', label: 'Imputar a' },
-  { key: 'idadmon_relacionado', label: 'IDADMON rel.' },
-  { key: 'monto_a_imputar', label: 'Monto imputar' },
-  { key: 'monto_a_transferir', label: 'Monto transferir' },
-  { key: 'tipo', label: 'Tipo' },
-  { key: 'texto_explicativo_para_carta_a_propietario', label: 'Texto liquidación' },
-  { key: 'comentarios_karina', label: 'Comentarios Karina' },
-  { key: 'texto_para_contabilidad', label: 'Texto contabilidad' },
-  { key: 'verificado', label: 'Verificado' },
+  { key: 'num', label: 'Núm', w: 42, align: 'right' },
+  { key: 'fecha', label: 'Fecha', w: 66 },
+  { key: 'mes_a_imputar', label: 'Mes imp.', w: 82 },
+  { key: 'ingresado_por', label: 'Ingresó', w: 72, trunc: true },
+  { key: 'idadmon', label: 'IDADMON', w: 62 },
+  { key: 'inmueble', label: 'Inmueble', w: 140, trunc: true },
+  { key: 'propietario', label: 'Propietario', w: 116, trunc: true },
+  { key: 'repercutir_a', label: 'Imputar a', w: 98, trunc: true },
+  { key: 'idadmon_relacionado', label: 'ID rel.', w: 62 },
+  { key: 'monto_a_imputar', label: 'M. imputar', w: 80, align: 'right' },
+  { key: 'monto_a_transferir', label: 'M. transf.', w: 80, align: 'right' },
+  { key: 'tipo', label: 'Tipo', w: 88 },
+  { key: 'texto_explicativo_para_carta_a_propietario', label: 'Texto liquid.', w: 138, trunc: true },
+  { key: 'comentarios_karina', label: 'Coment. Karina', w: 104, trunc: true },
+  { key: 'texto_para_contabilidad', label: 'Texto contab.', w: 184 },
+  { key: 'verificado', label: 'Verificado', w: 72 },
 ];
+const ACCIONES_W = 132;
+const TABLE_W = COLS.reduce((a, c) => a + c.w, 0) + ACCIONES_W;
 
 // campos que el corrector puede editar inline
 const EDITABLES = new Set([
@@ -34,6 +37,18 @@ const money = (n) => {
   const v = Number(n);
   return Number.isFinite(v) ? Math.round(v).toLocaleString('es-CL') : (n ?? '');
 };
+
+// Fecha a formato uniforme dd/mm/yy. Acepta dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd.
+const p2 = (x) => String(x).padStart(2, '0');
+function fmtFecha(s) {
+  if (!s) return '';
+  const str = String(s).trim();
+  let m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);      // ISO yyyy-mm-dd
+  if (m) return `${p2(m[3])}/${p2(m[2])}/${m[1].slice(2)}`;
+  m = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);        // dd/mm/yyyy o dd-mm-yyyy
+  if (m) { const y = m[3].length === 4 ? m[3].slice(2) : p2(m[3]); return `${p2(m[1])}/${p2(m[2])}/${y}`; }
+  return str; // formato desconocido: se deja tal cual
+}
 
 // Meses para el dropdown: el actual + los 5 siguientes, en formato "JULIO 2026".
 const MESES_NOM = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
@@ -248,18 +263,22 @@ export default function DescuentosPage() {
         <div style={{ color: C.gris }}>Cargando…</div>
       ) : (
         <div ref={scrollRef} style={{ maxHeight: '62vh', overflow: 'auto', border: `1px solid ${C.borde}`, borderRadius: 6, background: '#fff' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+          <table style={{ borderCollapse: 'collapse', width: TABLE_W, tableLayout: 'fixed', fontSize: 12 }}>
+            <colgroup>
+              {COLS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
+              <col style={{ width: ACCIONES_W }} />
+            </colgroup>
             <thead>
               <tr>
                 {COLS.map((c) => (
-                  <th key={c.key} style={th()}>
+                  <th key={c.key} style={{ ...th(), textAlign: c.align || 'left' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'space-between' }}>
-                      <span>{c.label}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
                       <button
                         onClick={() => { setMenuCol(menuCol === c.key ? null : c.key); setBusca(''); }}
                         title="Filtrar"
                         style={{
-                          border: 'none', cursor: 'pointer', borderRadius: 3, padding: '1px 4px',
+                          border: 'none', cursor: 'pointer', borderRadius: 3, padding: '1px 4px', flexShrink: 0,
                           background: colFiltrada(c.key) ? C.ambar : 'rgba(255,255,255,.25)',
                           color: '#fff', fontSize: 11,
                         }}
@@ -290,8 +309,8 @@ export default function DescuentosPage() {
                   <>
                     <tr key={r.id} style={{ background: r.verificado ? '#f1f8f1' : '#fff' }}>
                       {COLS.map((c) => (
-                        <td key={c.key} style={td()}>
-                          {renderCelda(r, c.key, { enEd, editBuf, setEditBuf, caps, toggleVerificado })}
+                        <td key={c.key} style={{ ...td(), textAlign: c.align || 'left' }}>
+                          {renderCelda(r, c.key, { enEd, editBuf, setEditBuf, caps, toggleVerificado, col: c })}
                         </td>
                       ))}
                       <td style={td()}>
@@ -355,7 +374,7 @@ export default function DescuentosPage() {
 
 // ---------- celda (lectura o edición inline) ----------
 function renderCelda(r, key, ctx) {
-  const { enEd, editBuf, setEditBuf, caps, toggleVerificado } = ctx;
+  const { enEd, editBuf, setEditBuf, caps, toggleVerificado, col } = ctx;
 
   if (key === 'verificado') {
     return r.verificado
@@ -374,20 +393,25 @@ function renderCelda(r, key, ctx) {
       <input
         value={editBuf[key] ?? ''}
         onChange={(e) => setEditBuf((b) => ({ ...b, [key]: e.target.value }))}
-        style={{ width: key.includes('texto') ? 220 : 90, fontSize: 12, padding: '2px 4px' }}
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '2px 4px' }}
       />
     );
   }
 
-  let v = r[key];
   if (key === 'texto_para_contabilidad') {
     return <CeldaTextoContab texto={r.texto_para_contabilidad} />;
   }
+
+  let v = r[key];
+  if (key === 'fecha') v = fmtFecha(v);
   if (key === 'monto_a_imputar' || key === 'monto_a_transferir') v = money(v);
-  if (key === 'texto_explicativo_para_carta_a_propietario' || key === 'inmueble' || key === 'comentarios_karina') {
-    return <span title={r[key] || ''} style={{ display: 'inline-block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || ''}</span>;
+
+  // columnas largas marcadas trunc: recorte con ellipsis + hover con el valor completo
+  if (col && col.trunc) {
+    return <span title={r[key] || ''} style={{ display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || ''}</span>;
   }
-  return <span>{v ?? ''}</span>;
+  // columnas cortas (num, fecha, idadmon, montos, tipo): sin ajuste de línea
+  return <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v ?? ''}</span>;
 }
 
 // ---------- celda TEXTO PARA CONTABILIDAD (lectura + hover + copiar) ----------
@@ -420,11 +444,11 @@ function CeldaTextoContab({ texto }) {
   if (!t) return <span style={{ color: '#999' }}>—</span>;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, maxWidth: 300 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0 }}>
       <span
         title={t}
         style={{
-          display: 'inline-block', maxWidth: 250, overflow: 'hidden',
+          flex: 1, minWidth: 0, overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}
       >{t}</span>
@@ -640,7 +664,7 @@ const inp = { padding: '6px 8px', border: '1px solid #c9d3e0', borderRadius: 4, 
 const linkMini = { color: '#1f4e79', cursor: 'pointer', fontSize: 11, marginLeft: 4, textDecoration: 'underline' };
 function btn(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 5, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }; }
 function btnMini(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }; }
-function th() { return { position: 'sticky', top: 0, zIndex: 10, background: '#1f4e79', color: '#fff', padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap', border: '1px solid #173a5c', fontSize: 12 }; }
-function td() { return { padding: '4px 8px', borderBottom: '1px solid #eef1f5', borderRight: '1px solid #f3f5f8', verticalAlign: 'top' }; }
+function th() { return { position: 'sticky', top: 0, zIndex: 10, background: '#1f4e79', color: '#fff', padding: '5px 6px', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', border: '1px solid #173a5c', fontSize: 11.5 }; }
+function td() { return { padding: '3px 6px', borderBottom: '1px solid #eef1f5', borderRight: '1px solid #f3f5f8', verticalAlign: 'middle', overflow: 'hidden', fontSize: 11.5 }; }
 const thMini = { background: '#f0e6c8', padding: '3px 6px', textAlign: 'left', border: '1px solid #e0d4a8', fontSize: 11 };
 const tdMini = { padding: '3px 6px', borderBottom: '1px solid #f0ead8', fontSize: 11 };
