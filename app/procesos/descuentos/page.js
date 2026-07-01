@@ -19,6 +19,7 @@ const COLS = [
   { key: 'tipo', label: 'Tipo' },
   { key: 'texto_explicativo_para_carta_a_propietario', label: 'Texto liquidación' },
   { key: 'comentarios_karina', label: 'Comentarios Karina' },
+  { key: 'texto_para_contabilidad', label: 'Texto contabilidad' },
   { key: 'verificado', label: 'Verificado' },
 ];
 
@@ -379,11 +380,66 @@ function renderCelda(r, key, ctx) {
   }
 
   let v = r[key];
+  if (key === 'texto_para_contabilidad') {
+    return <CeldaTextoContab texto={r.texto_para_contabilidad} />;
+  }
   if (key === 'monto_a_imputar' || key === 'monto_a_transferir') v = money(v);
   if (key === 'texto_explicativo_para_carta_a_propietario' || key === 'inmueble' || key === 'comentarios_karina') {
     return <span title={r[key] || ''} style={{ display: 'inline-block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || ''}</span>;
   }
   return <span>{v ?? ''}</span>;
+}
+
+// ---------- celda TEXTO PARA CONTABILIDAD (lectura + hover + copiar) ----------
+// Muestra el texto precalculado que Karina lleva al BI. Truncado con ellipsis,
+// hover nativo (title) para leerlo entero, y botón 📋 que copia el texto completo.
+function CeldaTextoContab({ texto }) {
+  const [copiado, setCopiado] = useState(false);
+  const t = (texto ?? '').toString();
+
+  async function copiar() {
+    if (!t) return;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(t);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1200);
+    } catch { /* si falla la copia, no rompemos nada */ }
+  }
+
+  if (!t) return <span style={{ color: '#999' }}>—</span>;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, maxWidth: 300 }}>
+      <span
+        title={t}
+        style={{
+          display: 'inline-block', maxWidth: 250, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}
+      >{t}</span>
+      <button
+        onClick={copiar}
+        title={copiado ? 'Copiado' : 'Copiar texto para contabilidad'}
+        style={{
+          border: 'none', cursor: 'pointer', borderRadius: 4, fontSize: 11,
+          padding: '2px 6px', flexShrink: 0, lineHeight: 1.4,
+          background: copiado ? '#2e7d32' : '#dbe5f1',
+          color: copiado ? '#fff' : '#1f4e79',
+        }}
+      >{copiado ? '✓' : '📋'}</button>
+    </div>
+  );
 }
 
 // ---------- menú de filtro estilo Excel ----------
