@@ -253,7 +253,7 @@ export default function BiVista() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado (check1 oculto)' : ''} · edita desde UNIQUE CONCEPT</div>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado (check1 oculto)' : ''} · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)</div>
           </div>
           <button onClick={() => router.push('/procesos/bi')}
             style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
@@ -273,7 +273,7 @@ export default function BiVista() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
           <button onClick={guardarYRefrescar} disabled={refreshing}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
-            {refreshing ? 'Guardando y refrescando…' : 'Guardar / Refrescar'}
+            {refreshing ? 'Actualizando…' : '🔄 Refrescar lista'}
           </button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
