@@ -10,6 +10,7 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + Math.round(v).toLocaleString('es-CL') }
+const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
 
 // Mes AAMM -> etiqueta legible y viceversa
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -48,6 +49,7 @@ export default function LiquidacionesPage() {
   const [propietarios, setPropietarios] = useState([])   // resumen por propietario
   const [detalles, setDetalles] = useState({})            // idprop -> [inmuebles]
   const [expandido, setExpandido] = useState(null)        // idprop expandido
+  const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
   const [busca, setBusca] = useState('')
 
   // Acceso
@@ -77,9 +79,9 @@ export default function LiquidacionesPage() {
     if (error) { setError(error.message); return }
     const delProp = (data || []).filter(d => d.idprop === idprop)
     const ids = delProp.map(d => d.idadmon)
-    let descs = [], coments = [], arriendos = []
+    let descs = [], coments = [], arriendos = [], pagos = []
     if (ids.length) {
-      const [rDesc, rCom, rArr] = await Promise.all([
+      const [rDesc, rCom, rArr, rPag] = await Promise.all([
         supabase.from('descuentos')
           .select('idadmon, monto_a_transferir, texto_explicativo_para_carta_a_propietario')
           .in('idadmon', ids).eq('mes_a_imputar', aammToTxt(mes)).eq('repercutir_a', 'PROPIETARIO'),
@@ -88,8 +90,10 @@ export default function LiquidacionesPage() {
         supabase.from('datos_arriendos')
           .select('idadmon, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
           .in('idadmon', ids),
+        supabase.from('bi')
+          .select('idadmon2, fecha, reg, arriendo').eq('liquidacion_mes2', mes).in('idadmon2', ids),
       ])
-      descs = rDesc.data || []; coments = rCom.data || []; arriendos = rArr.data || []
+      descs = rDesc.data || []; coments = rCom.data || []; arriendos = rArr.data || []; pagos = rPag.data || []
     }
     // Ajuste del mes = cantidad_reajusteN cuya fecha cae en el mes AAMM liquidado
     const ajustes = {}
@@ -113,7 +117,10 @@ export default function LiquidacionesPage() {
     })
     const sumaDesc = {}
     descs.forEach(d => { sumaDesc[d.idadmon] = (sumaDesc[d.idadmon] || 0) + n0(d.monto_a_transferir) })
-    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc } }))
+    // pagos del BI agrupados por inmueble (para el desglose al pinchar Recibido)
+    const pagosPorInm = {}
+    pagos.forEach(pg => { (pagosPorInm[pg.idadmon2] = pagosPorInm[pg.idadmon2] || []).push(pg) })
+    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm } }))
   }
 
   function cambiarMes(m) { setMes(m); cargarMes(m) }
@@ -251,23 +258,44 @@ export default function LiquidacionesPage() {
                           {det.map(d => {
                             const sd = sumaDesc[d.idadmon]
                             const notasInm = pie.filter(f => f.idadmon === d.idadmon)
+                            const pagosInm = (detObj.pagosPorInm && detObj.pagosPorInm[d.idadmon]) || []
+                            const verPagos = pagoAbierto === 'R' + d.idadmon
+                            const verDescs = pagoAbierto === 'D' + d.idadmon
+                            const clic = key => setPagoAbierto(prev => prev === key ? null : key)
                             return (
                             <div key={d.idadmon}>
                             <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
                               <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 24)}</span></div>
                               <div style={{ textAlign: 'right' }}>{fmtPesos(d.base)}</div>
-                              <div style={{ textAlign: 'right', color: n0(d.recibido_banco) === 0 ? '#dc2626' : '#666' }}>{fmtPesos(d.recibido_banco)}</div>
+                              <div style={{ textAlign: 'right' }}>
+                                {n0(d.recibido_banco) > 0 && pagosInm.length > 0
+                                  ? <span onClick={() => clic('R' + d.idadmon)} style={{ cursor: 'pointer', color: '#185FA5', borderBottom: '1px dotted #185FA5' }}>{fmtPesos(d.recibido_banco)}</span>
+                                  : <span style={{ color: n0(d.recibido_banco) === 0 ? '#dc2626' : '#666' }}>{fmtPesos(d.recibido_banco)}</span>}
+                              </div>
                               <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.comision) === 0 ? '—' : fmtPesos(d.comision)}</div>
                               <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.iva_comision) === 0 ? '—' : fmtPesos(d.iva_comision)}</div>
-                              <div style={{ textAlign: 'right', color: sd ? (sd < 0 ? '#dc2626' : '#1D9E75') : '#ccc', fontWeight: sd ? 600 : 400 }}>{sd ? fmtPesos(sd) : '—'}</div>
+                              <div style={{ textAlign: 'right' }}>
+                                {sd
+                                  ? <span onClick={() => clic('D' + d.idadmon)} style={{ cursor: 'pointer', color: sd < 0 ? '#dc2626' : '#1D9E75', fontWeight: 600, borderBottom: '1px dotted ' + (sd < 0 ? '#dc2626' : '#1D9E75') }}>{fmtPesos(sd)}</span>
+                                  : <span style={{ color: '#ccc' }}>—</span>}
+                              </div>
                               <div style={{ textAlign: 'right', fontWeight: 600 }}>{fmtPesos(d.neto_transferir)}</div>
                               <div style={{ textAlign: 'center', fontSize: 10 }}>
                                 {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
                               </div>
                             </div>
-                            {/* Descuentos / ajustes / comentarios indentados bajo el inmueble */}
-                            {notasInm.map((f, i) => (
-                              <div key={i} style={{ display: 'flex', gap: 10, padding: '3px 12px 3px 34px', fontSize: 11, background: d.hubo_falta ? '#FEF6F6' : '#FBFBF9', alignItems: 'baseline' }}>
+                            {/* Desglose de pagos del BI (al pinchar Recibido) */}
+                            {verPagos && pagosInm.map((pg, i) => (
+                              <div key={'p' + i} style={{ display: 'flex', gap: 12, padding: '3px 12px 3px 34px', fontSize: 11, background: '#F0F6FC', alignItems: 'baseline' }}>
+                                <span style={{ color: '#8Fb4dd', width: 12 }}>↳</span>
+                                <span style={{ color: '#666', width: 80 }}>{fmtFecha(pg.fecha)}</span>
+                                <span style={{ color: '#9ca3af', width: 70 }}>Reg {pg.reg}</span>
+                                <span style={{ color: '#185FA5', fontWeight: 600 }}>{fmtPesos(pg.arriendo)}</span>
+                              </div>
+                            ))}
+                            {/* Detalle de descuentos/ajustes/comentarios (al pinchar Descuentos) */}
+                            {verDescs && notasInm.map((f, i) => (
+                              <div key={'d' + i} style={{ display: 'flex', gap: 10, padding: '3px 12px 3px 34px', fontSize: 11, background: '#FBFBF9', alignItems: 'baseline' }}>
                                 <span style={{ color: '#c0bdb2', width: 12 }}>↳</span>
                                 <span style={{ textAlign: 'right', width: 78, fontWeight: 600, color: f.cantidad == null ? '#ccc' : (f.cantidad < 0 ? '#dc2626' : '#1D9E75') }}>{f.cantidad == null ? '—' : fmtPesos(f.cantidad)}</span>
                                 <span style={{ color: '#666' }}>{f.texto}</span>
