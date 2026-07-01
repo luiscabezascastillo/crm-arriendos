@@ -1,25 +1,24 @@
 // ============================================================
 // CRM Bridge - Fondo Capital
 // background.js  (service worker, Manifest V3)
-// VERSION: v5  (2026-06-30)   <-- sello visible para no confundir versiones
+// VERSION: v7  (2026-07-01)
 // ------------------------------------------------------------
-// Cambio CLAVE v5 frente a v4:
-//   Se REACTIVA ENEL a través de Servipag. El fetch (POST + polling) NO se
-//   hace aqui: se delega al content.js que vive dentro de portal.servipag.com
-//   (que SI pasa el Cloudflare Turnstile, como una consulta manual). El
-//   background solo:
-//     1) localiza la pestana de portal.servipag.com
-//     2) le manda { type:'SERVIPAG_FETCH', codigo } via chrome.tabs.sendMessage
+// Cambio v7 frente a v5:
+//   ENEL se consulta ahora via SENCILLITO (no Servipag). El fetch (GET
+//   simple) lo hace el content.js que vive dentro de sencillito.com
+//   (hereda la sesion Liferay: userId + authToken). El background solo:
+//     1) localiza la pestana de sencillito.com
+//     2) le manda { type:'SENCILLITO_FETCH', codigo } via chrome.tabs.sendMessage
 //     3) devuelve al CRM lo que responda el content.js  { ok, deuda, fecha }
 //
-//   Agua sigue EXACTAMENTE igual que en v4 (AGUA_FETCH delegado al content).
+//   Agua sigue EXACTAMENTE igual (AGUA_FETCH delegado al content).
 //
 // Contrato con las paginas del CRM:
 //   /op/servicios/luz/page.js   -> PING, CONSULTAR_ENEL {codigo} -> {ok, deuda, fecha}
 //   /op/servicios/agua/page.js  -> PING, CONSULTAR_AGUA {codigo} -> {ok, deuda}
 // ============================================================
 
-const VERSION = 'v5'
+const VERSION = 'v7'
 
 // ============================================================
 // LISTENER PRINCIPAL - mensajes desde el CRM (pagina web)
@@ -57,35 +56,35 @@ chrome.runtime.onMessage.addListener((msg) => {
 })
 
 // ============================================================
-// ENEL (via Servipag) - delega el fetch al content.js de la pestana
+// ENEL (via Sencillito) - delega el fetch al content.js de la pestana
 // ============================================================
 async function consultarEnel(codigo) {
   if (!codigo) throw new Error('Falta el codigo de Enel')
 
-  // Localizar la pestana de Servipag
-  const tabs = await chrome.tabs.query({ url: '*://portal.servipag.com/*' })
+  // Localizar la pestana de Sencillito
+  const tabs = await chrome.tabs.query({ url: '*://sencillito.com/*' })
   if (!tabs.length) {
-    throw new Error('Abre una pestana de Servipag (portal.servipag.com/paymentexpress/category/luz/company/enel)')
+    throw new Error('Abre una pestana de Sencillito (sencillito.com/pagos-de-la-factura?industriaId=13&convenioId=6001) estando logueado')
   }
   const tabId = tabs[0].id
 
   let resp
   try {
-    resp = await chrome.tabs.sendMessage(tabId, { type: 'SERVIPAG_FETCH', codigo })
+    resp = await chrome.tabs.sendMessage(tabId, { type: 'SENCILLITO_FETCH', codigo })
   } catch (e) {
     throw new Error(
-      'No respondio el content script en la pestana de Servipag. ' +
+      'No respondio el content script en la pestana de Sencillito. ' +
       'Recarga esa pestana (F5) y reintenta. Detalle: ' + (e.message || e)
     )
   }
 
-  if (!resp) throw new Error('Respuesta vacia del content script (Servipag)')
+  if (!resp) throw new Error('Respuesta vacia del content script (Sencillito)')
   if (!resp.ok) throw new Error(resp.error || 'Error desconocido en la consulta de Enel')
   return { deuda: resp.deuda, fecha: resp.fecha }
 }
 
 // ============================================================
-// AGUAS ANDINAS - delega el fetch al content.js de la pestana (igual que v4)
+// AGUAS ANDINAS - delega el fetch al content.js de la pestana (igual que v5)
 // ============================================================
 async function consultarAgua(codigo) {
   if (!codigo) throw new Error('Falta el codigo de agua')

@@ -1,19 +1,33 @@
 // ============================================================
 // CRM Bridge - content.js
-// VERSION: v5  (2026-06-30)
+// VERSION: v7  (2026-07-01)
 // ------------------------------------------------------------
-// Se inyecta en enel.cl, aguasandinas.cl y portal.servipag.com
-// (ver manifest content_scripts). Corre DENTRO de la pagina => sus fetch
-// heredan la sesion, las cookies anti-bot y pasan el Cloudflare Turnstile,
-// igual que la consola de DevTools. Por eso los fetch se hacen AQUI, no en
-// el service worker (que en perfiles no-default no envia cookies).
+// Se inyecta en aguasandinas.cl y sencillito.com (ver manifest
+// content_scripts). Corre DENTRO de la pagina => sus fetch heredan la
+// sesion y las cookies, igual que la consola de DevTools.
+//
+// CAMBIO v7 frente a v5/v6:
+//   ENEL ya NO se consulta via Servipag (Cloudflare bloqueaba todo).
+//   Ahora se consulta via SENCILLITO, que expone un GET simple sin
+//   captcha ni Cloudflare:
+//     GET https://sencillito.com/o/portal-publico/consulta-saldo/
+//         ?accountReference=<CODIGO>&utilityNumber=20182&utilityVersion=1
+//         &industriaId=13&productTypeId=null&userId=<UID>&session_key=null&p_auth=<AUTH>
+//   El userId y el p_auth (authToken) se leen de Liferay (la plataforma
+//   de Sencillito), asi siempre estan frescos:
+//     Liferay.ThemeDisplay.getUserId()  -> userId
+//     Liferay.authToken                 -> p_auth
+//   Respuesta JSON: { invoices: [ { accountReference, amount, ... } ], errorMessage }
+//   amount = deuda en pesos (entero). Sin deuda -> invoices vacio o amount 0.
+//
+//   Aguas Andinas sigue EXACTAMENTE igual (AGUA_FETCH).
 //
 // Mensajes que atiende (desde el background, via chrome.tabs.sendMessage):
 //   { type: 'AGUA_FETCH', codigo }     -> { ok, deuda }        | { ok:false, error }
-//   { type: 'SERVIPAG_FETCH', codigo } -> { ok, deuda, fecha } | { ok:false, error }
+//   { type: 'SENCILLITO_FETCH', codigo } -> { ok, deuda, fecha } | { ok:false, error }
 // ============================================================
 
-console.log('[CRM Bridge v5] content script activo en', window.location.href)
+console.log('[CRM Bridge v7] content script activo en', window.location.href)
 
 // Avisar al background que esta pestana esta lista
 try {
@@ -21,6 +35,13 @@ try {
 } catch (e) {}
 
 const P_AGUA = '_cl_aguasandinas_pago_cuenta_pub_PagarCuentaPubPorltetPortlet_INSTANCE_jL3QTDf9o9xo'
+
+// Constantes de Sencillito para Enel (fijas)
+const SENC_BASE = 'https://sencillito.com/o/portal-publico/consulta-saldo/'
+const SENC_UTILITY_NUMBER = '20182'   // Enel
+const SENC_UTILITY_VERSION = '1'
+const SENC_INDUSTRIA = '13'           // Luz
+const SENC_CONVENIO = '6001'          // Enel
 
 // ============================================================
 // LISTENER: mensajes del background
@@ -33,8 +54,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true // async
   }
 
-  if (msg && msg.type === 'SERVIPAG_FETCH') {
-    consultarServipagAqui(msg.codigo)
+  if (msg && msg.type === 'SENCILLITO_FETCH') {
+    consultarSencillitoAqui(msg.codigo)
       .then((r) => sendResponse({ ok: true, deuda: r.deuda, fecha: r.fecha }))
       .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }))
     return true // async
@@ -42,81 +63,116 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 })
 
 // ============================================================
-// ENEL via SERVIPAG - POST (registrar consulta) + polling (queryStatus)
-// Se ejecuta dentro de portal.servipag.com, hereda cookies y pasa Turnstile.
-// Enel = company.id 107, category.id 14, type "standard".
-// El identifier es el numero de cliente COMPLETO con guion y DV (ej. 3290040-2).
+// Parametros de sesion de Sencillito (Liferay)
+// Se leen frescos en cada consulta: userId + authToken (p_auth).
 // ============================================================
-async function consultarServipagAqui(codigoBruto) {
-  const identifier = String(codigoBruto || '').trim()
-  if (!identifier) throw new Error('codigo invalido: ' + codigoBruto)
+function obtenerSesionSencillito() {
+  let userId = null
+  let authToken = null
+  try {
+    if (typeof Liferay !== 'undefined') {
+      if (Liferay.ThemeDisplay && typeof Liferay.ThemeDisplay.getUserId === 'function') {
+        userId = Liferay.ThemeDisplay.getUserId()
+      }
+      if (Liferay.authToken) authToken = Liferay.authToken
+    }
+  } catch (e) {}
+  return { userId, authToken }
+}
 
-  const BASE = 'https://portal.servipag.com/portal/bill/v3/query/'
+// ============================================================
+// ENEL via SENCILLITO - GET simple (sin captcha, sin Cloudflare)
+// Se ejecuta dentro de sencillito.com, hereda la sesion.
+// El accountReference es el codigo COMPLETO con guion y DV (ej. 3290097-6).
+// ============================================================
+async function consultarSencillitoAqui(codigoBruto) {
+  const accRef = String(codigoBruto || '').trim()
+  if (!accRef) throw new Error('codigo invalido: ' + codigoBruto)
 
-  // PASO 1: registrar la consulta -> devuelve queryId
-  const bodyQuery = {
-    bill: {
-      company: { id: 107 },
-      category: { id: 14 },
-      type: 'standard',
-      metaData: [{ name: 'identifier', value: identifier }],
-    },
-    queryId: '',
+  const { userId, authToken } = obtenerSesionSencillito()
+  if (!userId || !authToken) {
+    throw new Error(accRef + ': no se pudo leer la sesion de Sencillito (Liferay). Recarga la pestana de Sencillito estando logueado.')
   }
+
+  const url = SENC_BASE +
+    '?accountReference=' + encodeURIComponent(accRef) +
+    '&utilityNumber=' + SENC_UTILITY_NUMBER +
+    '&utilityVersion=' + SENC_UTILITY_VERSION +
+    '&industriaId=' + SENC_INDUSTRIA +
+    '&productTypeId=null' +
+    '&userId=' + encodeURIComponent(userId) +
+    '&session_key=null' +
+    '&p_auth=' + encodeURIComponent(authToken)
 
   let r
   try {
-    r = await fetch(BASE, {
-      method: 'POST',
+    r = await fetch(url, {
+      method: 'GET',
       credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(bodyQuery),
+      headers: { 'accept': '*/*' },
     })
   } catch (e) {
-    throw new Error(identifier + ': fallo de red en POST query (' + (e.message || e) + ')')
+    throw new Error(accRef + ': fallo de red en GET consulta-saldo (' + (e.message || e) + ')')
   }
-  if (!r.ok) throw new Error(identifier + ': POST query HTTP ' + r.status)
+  // Sencillito responde 200 o 202 con el JSON (202 = aceptado/procesado)
+  if (r.status !== 200 && r.status !== 202) {
+    throw new Error(accRef + ': GET consulta-saldo HTTP ' + r.status)
+  }
 
   let j
-  try { j = await r.json() } catch { throw new Error(identifier + ': POST query sin JSON') }
-  const queryId = j && j.data && j.data.queryId
-  if (!queryId) throw new Error(identifier + ': no se obtuvo queryId (' + (j?.result?.mensaje || 'sin mensaje') + ')')
+  try { j = await r.json() } catch { throw new Error(accRef + ': respuesta sin JSON') }
 
-  // PASO 2: polling hasta queryStatus === 1 (finalizada con exito)
-  const urlPoll = BASE + encodeURIComponent(queryId) + '/lastcall/false'
-  const MAX = 15
-  for (let intento = 0; intento < MAX; intento++) {
-    await sleep(1000)
-    let rp
-    try {
-      rp = await fetch(urlPoll, { method: 'GET', credentials: 'include' })
-    } catch (e) {
-      continue // reintenta en el siguiente ciclo
-    }
-    if (!rp.ok) continue
-
-    let jp
-    try { jp = await rp.json() } catch { continue }
-    const fila = jp && jp.data && jp.data[0]
-    if (!fila) continue
-
-    const estado = fila.queryStatus
-    if (estado === 1) {
-      // PASO 3: leer resultado
-      const deuda = parseInt(fila.totalAmount, 10)
-      const fecha = fila.expirationDate ? normFecha(fila.expirationDate) : null
-      return { deuda: isNaN(deuda) ? 0 : deuda, fecha }
-    }
-    // estado === 0 -> seguir sondeando
+  if (j.errorMessage) {
+    throw new Error(accRef + ': ' + j.errorMessage)
   }
 
-  throw new Error(identifier + ': la consulta no finalizo tras ' + MAX + ' intentos')
+  const invoices = Array.isArray(j.invoices) ? j.invoices : []
+  if (invoices.length === 0) {
+    // Sin facturas pendientes -> deuda 0
+    return { deuda: 0, fecha: null }
+  }
+
+  // Tomar la factura de mayor monto (DEUDA ACTUAL) como deuda vigente.
+  // amount viene como string de pesos, ej "173122".
+  let mejor = invoices[0]
+  for (const inv of invoices) {
+    const a = parseInt(inv.amount, 10) || 0
+    const b = parseInt(mejor.amount, 10) || 0
+    if (a > b) mejor = inv
+  }
+
+  const deuda = parseInt(mejor.amount, 10)
+  const fecha = extraerFecha(mejor)
+  return { deuda: isNaN(deuda) ? 0 : deuda, fecha }
 }
 
-// dd/mm/yyyy -> yyyy-mm-dd (para guardar en Supabase). Si no encaja, devuelve tal cual.
+// Intenta sacar una fecha de vencimiento del invoice.
+// Sencillito trae "dateTime" tipo "20260701005246" (yyyymmdd...) y a veces
+// un campo VENCIMIENTO dentro de "fields". Devuelve yyyy-mm-dd o null.
+function extraerFecha(inv) {
+  // 1) buscar en fields un label tipo VENCIMIENTO con dd/mm/yyyy
+  if (Array.isArray(inv.fields)) {
+    for (const f of inv.fields) {
+      const label = String(f.label || '').toUpperCase()
+      if (label.indexOf('VENC') !== -1) {
+        const nf = normFecha(f.value)
+        if (nf) return nf
+      }
+    }
+  }
+  // 2) dateTime "20260701005246" -> 2026-07-01 (es fecha de consulta, no de venc.,
+  //    pero sirve como respaldo si no hay VENCIMIENTO)
+  if (inv.dateTime && /^\d{8}/.test(String(inv.dateTime))) {
+    const s = String(inv.dateTime)
+    return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)
+  }
+  return null
+}
+
+// dd/mm/yyyy -> yyyy-mm-dd. Si no encaja, devuelve null.
 function normFecha(s) {
-  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (!m) return String(s)
+  const m = String(s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
   const dd = m[1].padStart(2, '0')
   const mm = m[2].padStart(2, '0')
   return m[3] + '-' + mm + '-' + dd
@@ -125,7 +181,7 @@ function normFecha(s) {
 function sleep(ms) { return new Promise((res) => setTimeout(res, ms)) }
 
 // ============================================================
-// AGUAS ANDINAS - 2 POST encadenados DENTRO de la pagina (igual que v4)
+// AGUAS ANDINAS - 2 POST encadenados DENTRO de la pagina (igual que v4/v5)
 // ============================================================
 async function consultarAguaAqui(codigoBruto) {
   const cuenta = String(codigoBruto || '').trim().split('-')[0].replace(/\D/g, '')

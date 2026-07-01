@@ -7,9 +7,9 @@ const MESES_DISPONIBLES = [
   'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
 ]
 
-// Extensión CRM Bridge (consulta Servipag desde el navegador real)
+// Extensión CRM Bridge (consulta ENEL vía Sencillito desde el navegador real)
 const EXTENSION_ID = 'jnhdggkodeajhgjgpchdjmmmdgnndgdd'
-const SERVIPAG_URL = 'https://portal.servipag.com/paymentexpress/category/luz/company/enel'
+const SENCILLITO_URL = 'https://sencillito.com/pagos-de-la-factura?industriaId=13&convenioId=6001'
 
 export default function ServiciosLuzPage() {
   const router = useRouter()
@@ -23,7 +23,7 @@ export default function ServiciosLuzPage() {
   const [progreso, setProgreso] = useState({ procesados: 0, exitosos: 0, fallidos: 0 })
   const [log, setLog] = useState([])
   const [resultados, setResultados] = useState([])
-  const [extOk, setExtOk] = useState(null)   // null=sin probar, true/false=resultado PING
+  const [extOk, setExtOk] = useState(null)
   const [extVer, setExtVer] = useState('')
   const procesandoRef = useRef(false)
   const cancelarRef = useRef(false)
@@ -116,7 +116,7 @@ export default function ServiciosLuzPage() {
       if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length}…`)
 
       try {
-        // 1) Consultar la deuda vía extensión (Servipag, navegador real)
+        // 1) Consultar la deuda vía extensión (Sencillito, navegador real)
         const resp = await enviarAExtension({ type: 'CONSULTAR_ENEL', codigo: codigo_ele })
 
         if (!resp || !resp.ok) {
@@ -207,30 +207,30 @@ export default function ServiciosLuzPage() {
           </div>
         </div>
 
-        {/* Extensión / Servipag */}
+        {/* Conexión con Sencillito (extensión) */}
         <div style={s.section}>
-          <div style={s.sectionTitle}>Conexión con Servipag (extensión)</div>
+          <div style={s.sectionTitle}>Conexión con Sencillito (extensión)</div>
           <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.6, marginBottom: 10 }}>
             La consulta se hace desde tu navegador con la extensión <strong style={{ color: '#e2e8f0' }}>CRM Bridge</strong>.
-            Necesitas: (1) la extensión instalada y activa, y (2) una pestaña de Servipag abierta.
+            Necesitas: (1) la extensión instalada y activa, y (2) una pestaña de Sencillito abierta <strong style={{ color: '#e2e8f0' }}>e iniciada sesión</strong>.
           </div>
           <div style={s.toggleRow}>
             <button style={{ ...s.btn('#3b82f6', false), flex: 1 }} onClick={verificarExtension}>
               {extOk === null ? '🔌 Verificar extensión' : extOk ? `✓ Conectada ${extVer}` : '✗ Reintentar conexión'}
             </button>
-            <button style={{ ...s.btn('#6366f1', false), flex: 1 }} onClick={() => window.open(SERVIPAG_URL, '_blank')}>
-              ↗ Abrir Servipag
+            <button style={{ ...s.btn('#6366f1', false), flex: 1 }} onClick={() => window.open(SENCILLITO_URL, '_blank')}>
+              ↗ Abrir Sencillito
             </button>
           </div>
           {extOk === false && (
             <div style={{ fontSize: '11px', color: '#f87171', marginTop: 8, lineHeight: 1.5 }}>
               No se pudo contactar la extensión. Abre chrome://extensions, comprueba que CRM Bridge está activa
-              (versión 2.1) y que su ID coincide. Luego recarga esta página.
+              (versión 2.2) y que su ID coincide. Luego recarga esta página.
             </div>
           )}
           {extOk === true && (
             <div style={{ fontSize: '11px', color: '#4ade80', marginTop: 8 }}>
-              Extensión lista. Abre Servipag (botón de arriba) y deja esa pestaña abierta mientras consultas.
+              Extensión lista. Abre Sencillito (botón de arriba), inicia sesión y deja esa pestaña abierta mientras consultas.
             </div>
           )}
         </div>
@@ -274,7 +274,7 @@ export default function ServiciosLuzPage() {
         {fase === 'procesando' && (
           <div style={s.section}>
             <div style={{ fontSize: '12px', color: '#3b82f6', lineHeight: '1.6', marginBottom: '12px' }}>
-              ⏳ Consultando ENEL vía Servipag… puedes dejar esta pestaña abierta.
+              ⏳ Consultando ENEL vía Sencillito… deja abierta la pestaña de Sencillito (con sesión iniciada).
             </div>
             <button style={s.btn('#ef4444', false)} onClick={detener}>■ Detener</button>
           </div>

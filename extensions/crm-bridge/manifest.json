@@ -1,17 +1,16 @@
 {
   "manifest_version": 3,
   "name": "CRM Bridge — Fondo Capital",
-  "version": "2.1",
-  "description": "Proxy para consultas ENEL (vía Servipag) y Aguas Andinas desde CRM Arriendos",
+  "version": "2.2",
+  "description": "Proxy para consultas ENEL (vía Sencillito) y Aguas Andinas desde CRM Arriendos",
   "permissions": [
     "tabs",
     "scripting",
     "storage"
   ],
   "host_permissions": [
-    "https://www.enel.cl/*",
     "https://www.aguasandinas.cl/*",
-    "https://portal.servipag.com/*",
+    "https://sencillito.com/*",
     "http://localhost:3000/*",
     "https://crm-arriendos.vercel.app/*"
   ],
@@ -26,17 +25,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.enel.cl/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    },
-    {
       "matches": ["https://www.aguasandinas.cl/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://portal.servipag.com/*"],
+      "matches": ["https://sencillito.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
