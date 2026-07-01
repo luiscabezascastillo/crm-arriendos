@@ -29,6 +29,7 @@ const COLS = [
   { key: 'recibido',               h: 'RECIBIDO',       w: 86,  align: 'right', filt: true },
   { key: 'arriendo',               h: 'ARRIENDO',       w: 86,  align: 'right', filt: true },
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
+  { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
 ]
 const I_REG = COLS.findIndex(c => c.key === 'reg')
 const I_UC = COLS.findIndex(c => c.key === 'unique_concept')
@@ -60,6 +61,9 @@ export default function BiVista() {
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
   const [copiando, setCopiando] = useState(false)
+  const [descOpen, setDescOpen] = useState(null)   // { idadmon, x, y } popover de descuentos
+  const [descRows, setDescRows] = useState([])
+  const [descLoading, setDescLoading] = useState(false)
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -181,6 +185,39 @@ export default function BiVista() {
     } finally { setCopiando(false) }
   }
 
+  // Parte B: traer los descuentos de un IDADMON y su texto_para_contabilidad.
+  // Lectura server-side (service role) para no depender del RLS de descuentos.
+  const abrirDescuentos = async (r, e) => {
+    const idadmon = String(r.idadmon2 || '').trim().toUpperCase()
+    if (!idadmon) return
+    const rc = e.currentTarget.getBoundingClientRect()
+    if (descOpen && descOpen.idadmon === idadmon) { setDescOpen(null); return }
+    setDescOpen({ idadmon, x: rc.left, y: rc.bottom + 2 })
+    setDescLoading(true); setDescRows([])
+    try {
+      const res = await fetch(`/api/descuentos/por-idadmon?idadmon=${encodeURIComponent(idadmon)}`)
+      const d = await res.json()
+      setDescRows(d.rows || [])
+    } catch { setDescRows([]) }
+    finally { setDescLoading(false) }
+  }
+
+  const copiarTexto = async (t) => {
+    const txt = String(t ?? '')
+    if (!txt) return
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(txt)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'
+        document.body.appendChild(ta); ta.select()
+        document.execCommand('copy'); document.body.removeChild(ta)
+      }
+      flash('✓ Texto copiado')
+    } catch { /* si falla, no rompemos nada */ }
+  }
+
   if (status === 'loading' || loading)
     return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando movimientos…</div></>)
 
@@ -193,6 +230,16 @@ export default function BiVista() {
     if (c.key === '_check1') return r._check1 == null
       ? <span style={{ color: '#B4B2A9' }}>—</span>
       : <span style={{ fontWeight: 600, color: r._check1 === 0 ? '#1D9E75' : '#9B1C1C' }}>{r._check1}</span>
+    if (c.key === '_descuentos') {
+      const id = String(r.idadmon2 || '').trim()
+      if (!id) return <span style={{ color: '#B4B2A9' }}>—</span>
+      const abierto = descOpen && descOpen.idadmon === id.toUpperCase()
+      return (
+        <button onClick={(e) => abrirDescuentos(r, e)}
+          title="Ver el/los texto(s) para contabilidad del descuento de este IDADMON y copiar"
+          style={{ border: '0.5px solid #C8C5BC', background: abierto ? '#E6F1FB' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '2px 7px' }}>📋</button>
+      )
+    }
     if (!c.ro) return (
       <input value={r[c.key] ?? ''} title={r[c.key] ?? ''} onChange={e => onLocal(r.id, c.key, e.target.value)}
         onFocus={e => { e.target.dataset.orig = (r[c.key] ?? ''); e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
@@ -241,6 +288,44 @@ export default function BiVista() {
             <button onClick={quitarFiltro} style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Quitar</button>
             <button onClick={aplicarFiltro} style={{ fontSize: 11, border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, padding: '4px 14px', cursor: 'pointer' }}>Aplicar</button>
           </div>
+        </div>
+      </>
+    )
+  }
+
+  // ---- popover de descuentos (texto para contabilidad, con copiar) ----
+  const renderPopDescuentos = () => {
+    if (!descOpen) return null
+    const W = 430
+    const left = Math.min(descOpen.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 12)
+    return (
+      <>
+        <div onClick={() => setDescOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+        <div style={{ position: 'fixed', left, top: descOpen.y, width: W, maxHeight: 340, overflow: 'auto', background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
+          <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #EDEBE4', fontWeight: 600, color: '#5F5E5A', position: 'sticky', top: 0, background: '#fff' }}>
+            Descuentos de {descOpen.idadmon}
+          </div>
+          {descLoading
+            ? <div style={{ padding: 12, color: '#888780' }}>Cargando…</div>
+            : descRows.length === 0
+              ? <div style={{ padding: 12, color: '#888780' }}>Sin descuentos para este IDADMON.</div>
+              : descRows.map((d, i) => (
+                <div key={i} style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: '#888780', marginBottom: 2 }}>
+                      N° {d.num || '—'} · {d.tipo || ''} · {d.repercutir_a || ''} · {d.mes_a_imputar || ''}
+                    </div>
+                    <div style={{ color: '#2C2C2A', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {d.texto_para_contabilidad || <span style={{ color: '#B4B2A9' }}>(sin texto de contabilidad)</span>}
+                    </div>
+                  </div>
+                  {d.texto_para_contabilidad && (
+                    <button onClick={() => copiarTexto(d.texto_para_contabilidad)} title="Copiar texto para contabilidad"
+                      style={{ flexShrink: 0, border: 'none', background: '#E6F1FB', color: '#0C447C', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>📋</button>
+                  )}
+                </div>
+              ))
+          }
         </div>
       </>
     )
@@ -331,6 +416,7 @@ export default function BiVista() {
         </div>
       </div>
       {renderPop()}
+      {renderPopDescuentos()}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#2C2C2A', color: '#fff', fontSize: 13, padding: '10px 18px', borderRadius: 8, zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
           {toast}
