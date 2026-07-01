@@ -34,7 +34,15 @@ export default function LiquidacionesPage() {
   const rol = session?.user?.role
 
   const [accesoOk, setAccesoOk] = useState(null)
-  const [mes, setMes] = useState('2501')
+  // Mes de liquidación en curso: el mes actual, pero a partir del día 23
+  // ya se prepara el mes siguiente (calendario de cierre de FCR).
+  function mesEnCurso() {
+    const h = new Date()
+    let y = h.getFullYear(), m = h.getMonth()  // m: 0-11
+    if (h.getDate() >= 23) { m += 1; if (m > 11) { m = 0; y += 1 } }
+    return String(y).slice(2) + String(m + 1).padStart(2, '0')
+  }
+  const [mes, setMes] = useState(mesEnCurso())
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [propietarios, setPropietarios] = useState([])   // resumen por propietario
