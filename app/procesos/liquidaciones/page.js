@@ -250,8 +250,10 @@ export default function LiquidacionesPage() {
                           </div>
                           {det.map(d => {
                             const sd = sumaDesc[d.idadmon]
+                            const notasInm = pie.filter(f => f.idadmon === d.idadmon)
                             return (
-                            <div key={d.idadmon} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
+                            <div key={d.idadmon}>
+                            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
                               <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 24)}</span></div>
                               <div style={{ textAlign: 'right' }}>{fmtPesos(d.base)}</div>
                               <div style={{ textAlign: 'right', color: n0(d.recibido_banco) === 0 ? '#dc2626' : '#666' }}>{fmtPesos(d.recibido_banco)}</div>
@@ -262,6 +264,15 @@ export default function LiquidacionesPage() {
                               <div style={{ textAlign: 'center', fontSize: 10 }}>
                                 {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
                               </div>
+                            </div>
+                            {/* Descuentos / ajustes / comentarios indentados bajo el inmueble */}
+                            {notasInm.map((f, i) => (
+                              <div key={i} style={{ display: 'flex', gap: 10, padding: '3px 12px 3px 34px', fontSize: 11, background: d.hubo_falta ? '#FEF6F6' : '#FBFBF9', alignItems: 'baseline' }}>
+                                <span style={{ color: '#c0bdb2', width: 12 }}>↳</span>
+                                <span style={{ textAlign: 'right', width: 78, fontWeight: 600, color: f.cantidad == null ? '#ccc' : (f.cantidad < 0 ? '#dc2626' : '#1D9E75') }}>{f.cantidad == null ? '—' : fmtPesos(f.cantidad)}</span>
+                                <span style={{ color: '#666' }}>{f.texto}</span>
+                              </div>
+                            ))}
                             </div>
                           )})}
                           {/* Fila TOTALES */}
@@ -275,20 +286,6 @@ export default function LiquidacionesPage() {
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_transferir)}</div>
                             <div></div>
                           </div>
-                        </div>
-                      )}
-
-                      {/* Pie de textos: IDADMON · cantidad · texto (descuentos + ajustes + comentarios) */}
-                      {detObj && pie.length > 0 && (
-                        <div style={{ marginTop: 10, background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8, padding: '8px 12px' }}>
-                          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 6 }}>Notas para el propietario (irán en la carta)</div>
-                          {pie.map((f, i) => (
-                            <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 90px 1fr', gap: 8, padding: '3px 0', fontSize: 12, borderTop: i > 0 ? '1px dashed #F0EEE8' : 'none', alignItems: 'baseline' }}>
-                              <span style={{ fontWeight: 600, color: '#1a1a2e' }}>{f.idadmon}</span>
-                              <span style={{ textAlign: 'right', color: f.cantidad == null ? '#ccc' : (f.cantidad < 0 ? '#dc2626' : '#1D9E75'), fontWeight: 600 }}>{f.cantidad == null ? '—' : fmtPesos(f.cantidad)}</span>
-                              <span style={{ color: '#555' }}>{f.texto}</span>
-                            </div>
-                          ))}
                         </div>
                       )}
 
