@@ -111,7 +111,8 @@ export default function ServiciosLuzPage() {
     const todosResultados = []
 
     // Pausa entre consultas para no saturar Sencillito (evita HTTP 429).
-    const PAUSA_MS = 1500
+    // Sencillito es estricto: 4s de separacion es lo que tolera de forma fiable.
+    const PAUSA_MS = 4000
     const espera = (ms) => new Promise(r => setTimeout(r, ms))
 
     for (let i = 0; i < codigos.length; i++) {
@@ -119,9 +120,10 @@ export default function ServiciosLuzPage() {
       const { idadmon, idinmue, codigo_ele } = codigos[i]
       if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length}…`)
 
-      // Reintento simple ante HTTP 429 (backoff): hasta 3 intentos con espera creciente.
+      // Reintento ante HTTP 429 con backoff largo (el castigo de Sencillito dura).
+      // Hasta 4 intentos: espera 15s, 30s, 45s entre ellos.
       let resp = null
-      for (let intento = 0; intento < 3; intento++) {
+      for (let intento = 0; intento < 4; intento++) {
         try {
           resp = await enviarAExtension({ type: 'CONSULTAR_ENEL', codigo: codigo_ele })
         } catch (e) {
@@ -129,9 +131,11 @@ export default function ServiciosLuzPage() {
         }
         const es429 = resp && !resp.ok && /(^|\D)429(\D|$)/.test(String(resp.error || ''))
         if (!es429) break
-        // 429: esperar más y reintentar
-        addLog('warn', `429 en ${codigo_ele}, esperando…`)
-        await espera(3000 * (intento + 1))
+        if (intento < 3) {
+          const seg = 15 * (intento + 1)
+          addLog('warn', `429 en ${codigo_ele}, esperando ${seg}s…`)
+          await espera(seg * 1000)
+        }
       }
 
       try {
@@ -201,7 +205,7 @@ export default function ServiciosLuzPage() {
   }
 
   const pct = totalCodigos > 0 ? Math.round((progreso.procesados / totalCodigos) * 100) : 0
-  const tiempoEstimado = Math.max(1, Math.round(totalCodigos * 4 / 60))
+  const tiempoEstimado = Math.max(1, Math.round(totalCodigos * 4.5 / 60))
 
   return (
     <div style={s.page}>
