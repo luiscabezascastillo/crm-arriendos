@@ -92,6 +92,18 @@ export default function BiVista() {
   }
   useEffect(() => { fetchInitial({}) }, [])
 
+  // Guarda primero lo que se esté editando (celda con foco) y LUEGO refresca.
+  // Sin esto, si el usuario escribe en una celda y pulsa el botón sin salir
+  // de ella, el onBlur no llega a dispararse y la recarga borra lo escrito.
+  const guardarYRefrescar = async () => {
+    const ae = document.activeElement
+    if (ae && ae.tagName === 'INPUT') {
+      ae.blur()                                   // dispara el onBlur -> guardarCelda
+      await new Promise(res => setTimeout(res, 350)) // esperar a que guarde en Supabase
+    }
+    fetchInitial()
+  }
+
   const loadMore = async () => {
     if (loadingMore || noMore || loading || rows.length === 0) return
     setLoadingMore(true)
@@ -255,9 +267,9 @@ export default function BiVista() {
 
         {/* BARRA DE ACCIONES */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-          <button onClick={() => fetchInitial()} disabled={refreshing}
+          <button onClick={guardarYRefrescar} disabled={refreshing}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
-            {refreshing ? 'Refrescando…' : 'Guardar / Refrescar'}
+            {refreshing ? 'Guardando y refrescando…' : 'Guardar / Refrescar'}
           </button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
