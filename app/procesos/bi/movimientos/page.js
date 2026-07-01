@@ -194,7 +194,7 @@ export default function BiVista() {
       ? <span style={{ color: '#B4B2A9' }}>—</span>
       : <span style={{ fontWeight: 600, color: r._check1 === 0 ? '#1D9E75' : '#9B1C1C' }}>{r._check1}</span>
     if (!c.ro) return (
-      <input value={r[c.key] ?? ''} onChange={e => onLocal(r.id, c.key, e.target.value)}
+      <input value={r[c.key] ?? ''} title={r[c.key] ?? ''} onChange={e => onLocal(r.id, c.key, e.target.value)}
         onFocus={e => { e.target.dataset.orig = (r[c.key] ?? ''); e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
         onBlur={e => {
           const orig = e.target.dataset.orig ?? ''
@@ -204,8 +204,8 @@ export default function BiVista() {
         }}
         style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, background: 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
     )
-    if (c.money) { const s = fmt(r[c.key]); return <span style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
-    return <span>{r[c.key] ?? '—'}</span>
+    if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
   }
 
   // ---- popover de filtro (server-side, contiene) ----
