@@ -60,16 +60,52 @@ export default function LiquidacionesPage() {
     setCargando(false)
   }
 
-  // Cargar el detalle por inmueble de un propietario (solo la primera vez que se expande)
+  // Cargar detalle por inmueble + descuentos + comentarios + ajustes del mes
   async function toggle(idprop) {
     if (expandido === idprop) { setExpandido(null); return }
     setExpandido(idprop)
-    if (detalles[idprop]) return   // ya cargado
+    if (detalles[idprop]) return
     const { data, error } = await supabase.rpc('calcular_liquidacion', { p_mes: mes })
     if (error) { setError(error.message); return }
-    // filtrar solo los de este propietario (la función devuelve todos)
     const delProp = (data || []).filter(d => d.idprop === idprop)
-    setDetalles(prev => ({ ...prev, [idprop]: delProp }))
+    const ids = delProp.map(d => d.idadmon)
+    let descs = [], coments = [], arriendos = []
+    if (ids.length) {
+      const [rDesc, rCom, rArr] = await Promise.all([
+        supabase.from('descuentos')
+          .select('idadmon, monto_a_transferir, texto_explicativo_para_carta_a_propietario')
+          .in('idadmon', ids).eq('relacionado', mes).eq('repercutir_a', 'PROPIETARIO'),
+        supabase.from('comentarios_liquidacion')
+          .select('idadmon, comentario').in('idadmon', ids).eq('mes', mes),
+        supabase.from('datos_arriendos')
+          .select('idadmon, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
+          .in('idadmon', ids),
+      ])
+      descs = rDesc.data || []; coments = rCom.data || []; arriendos = rArr.data || []
+    }
+    // Ajuste del mes = cantidad_reajusteN cuya fecha cae en el mes AAMM liquidado
+    const ajustes = {}
+    arriendos.forEach(a => {
+      for (let i = 1; i <= 6; i++) {
+        const f = a['fecha_reajuste' + i], c = n0(a['cantidad_reajuste' + i])
+        if (f && c !== 0) {
+          const aamm = String(f).slice(2, 4) + String(f).slice(5, 7)  // YYYY-MM-DD -> AAMM
+          if (aamm === mes) ajustes[a.idadmon] = c
+        }
+      }
+    })
+    // Pie de textos: IDADMON · cantidad · texto
+    const pie = []
+    ids.forEach(id => {
+      descs.filter(d => d.idadmon === id).forEach(d =>
+        pie.push({ idadmon: id, cantidad: n0(d.monto_a_transferir), texto: d.texto_explicativo_para_carta_a_propietario || 'Descuento' }))
+      if (ajustes[id]) pie.push({ idadmon: id, cantidad: ajustes[id], texto: 'Ajuste del mes' })
+      coments.filter(c => c.idadmon === id && c.comentario).forEach(c =>
+        pie.push({ idadmon: id, cantidad: null, texto: c.comentario }))
+    })
+    const sumaDesc = {}
+    descs.forEach(d => { sumaDesc[d.idadmon] = (sumaDesc[d.idadmon] || 0) + n0(d.monto_a_transferir) })
+    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc } }))
   }
 
   function cambiarMes(m) { setMes(m); cargarMes(m) }
@@ -150,7 +186,11 @@ export default function LiquidacionesPage() {
             {lista.map(p => {
               const alertas = alertasDe(p)
               const abierto = expandido === p.idprop
-              const det = detalles[p.idprop] || []
+              const detObj = detalles[p.idprop] || null
+              const det = detObj ? detObj.inmuebles : []
+              const pie = detObj ? detObj.pie : []
+              const sumaDesc = detObj ? detObj.sumaDesc : {}
+              const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr'
               return (
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
@@ -182,40 +222,59 @@ export default function LiquidacionesPage() {
                       ))}
 
                       {/* Tabla de inmuebles */}
-                      {det.length === 0 ? <div style={{ fontSize: 12, color: '#888', padding: 8 }}>Cargando inmuebles…</div> : (
+                      {!detObj ? <div style={{ fontSize: 12, color: '#888', padding: 8 }}>Cargando inmuebles…</div> : (
                         <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8, overflow: 'hidden' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.7fr 0.9fr 0.6fr', gap: 4, padding: '6px 12px', background: '#FAFAF8', fontSize: 11, color: '#9ca3af', fontWeight: 700 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '6px 12px', background: '#FAFAF8', fontSize: 11, color: '#9ca3af', fontWeight: 700 }}>
                             <div>Inmueble</div>
                             <div style={{ textAlign: 'right' }}>A cobrar</div>
                             <div style={{ textAlign: 'right' }}>Recibido</div>
                             <div style={{ textAlign: 'right' }}>Comisión</div>
                             <div style={{ textAlign: 'right' }}>IVA</div>
+                            <div style={{ textAlign: 'right' }}>Descuentos</div>
                             <div style={{ textAlign: 'right' }}>A transferir</div>
                             <div style={{ textAlign: 'center' }}>Aviso</div>
                           </div>
-                          {det.map(d => (
-                            <div key={d.idadmon} style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.7fr 0.9fr 0.6fr', gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
-                              <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 28)}</span></div>
+                          {det.map(d => {
+                            const sd = sumaDesc[d.idadmon]
+                            return (
+                            <div key={d.idadmon} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
+                              <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 24)}</span></div>
                               <div style={{ textAlign: 'right' }}>{fmtPesos(d.base)}</div>
                               <div style={{ textAlign: 'right', color: n0(d.recibido_banco) === 0 ? '#dc2626' : '#666' }}>{fmtPesos(d.recibido_banco)}</div>
                               <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.comision) === 0 ? '—' : fmtPesos(d.comision)}</div>
                               <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.iva_comision) === 0 ? '—' : fmtPesos(d.iva_comision)}</div>
+                              <div style={{ textAlign: 'right', color: sd ? (sd < 0 ? '#dc2626' : '#1D9E75') : '#ccc', fontWeight: sd ? 600 : 400 }}>{sd ? fmtPesos(sd) : '—'}</div>
                               <div style={{ textAlign: 'right', fontWeight: 600 }}>{fmtPesos(d.neto_transferir)}</div>
                               <div style={{ textAlign: 'center', fontSize: 10 }}>
                                 {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
                               </div>
                             </div>
-                          ))}
+                          )})}
                           {/* Fila TOTALES */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.7fr 0.9fr 0.6fr', gap: 4, padding: '8px 12px', borderTop: '2px solid #E8E6E0', fontSize: 12, fontWeight: 700, background: '#FAFAF8' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '8px 12px', borderTop: '2px solid #E8E6E0', fontSize: 12, fontWeight: 700, background: '#FAFAF8' }}>
                             <div>TOTALES · {p.n_propiedades} inmuebles</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_base)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_recibido)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_comision)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_iva)}</div>
+                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_descuentos)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_transferir)}</div>
                             <div></div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Pie de textos: IDADMON · cantidad · texto (descuentos + ajustes + comentarios) */}
+                      {detObj && pie.length > 0 && (
+                        <div style={{ marginTop: 10, background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8, padding: '8px 12px' }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 6 }}>Notas para el propietario (irán en la carta)</div>
+                          {pie.map((f, i) => (
+                            <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 90px 1fr', gap: 8, padding: '3px 0', fontSize: 12, borderTop: i > 0 ? '1px dashed #F0EEE8' : 'none', alignItems: 'baseline' }}>
+                              <span style={{ fontWeight: 600, color: '#1a1a2e' }}>{f.idadmon}</span>
+                              <span style={{ textAlign: 'right', color: f.cantidad == null ? '#ccc' : (f.cantidad < 0 ? '#dc2626' : '#1D9E75'), fontWeight: 600 }}>{f.cantidad == null ? '—' : fmtPesos(f.cantidad)}</span>
+                              <span style={{ color: '#555' }}>{f.texto}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
 
