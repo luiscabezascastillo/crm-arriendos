@@ -81,6 +81,13 @@ function TablaVista() {
   const [draft, setDraft] = useState({})
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
+  // Chequeo de duplicados (modal)
+  const [dupOpen, setDupOpen] = useState(false)
+  const [dupLoading, setDupLoading] = useState(false)
+  const [dupErr, setDupErr] = useState(null)
+  const [dupGrupos, setDupGrupos] = useState([])
+  const [dupSel, setDupSel] = useState(() => new Set())   // ids marcados para borrar
+  const [dupBorrando, setDupBorrando] = useState(false)
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -172,6 +179,48 @@ function TablaVista() {
   }
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
 
+  // ── Chequeo de duplicados ─────────────────────────────────────────────
+  // Abre el modal y pide al servidor los grupos de filas idénticas (mismos
+  // fecha/idadmon/concepto/cargo/abono/saldo/comentarios). Marca por defecto
+  // los "sobrantes" (todas menos la primera de cada grupo, que se conserva).
+  const abrirDuplicados = async () => {
+    setDupOpen(true); setDupLoading(true); setDupErr(null); setDupGrupos([]); setDupSel(new Set())
+    try {
+      const res = await fetch('/api/cartolas/duplicados')
+      const data = await res.json()
+      if (!res.ok) { setDupErr(data.error || 'Error al detectar'); setDupLoading(false); return }
+      const grupos = data.grupos || []
+      // Preselección: todos los sobrantes (índice > 0 en cada grupo ya ordenado por id asc)
+      const sel = new Set()
+      for (const g of grupos) g.filas.slice(1).forEach(f => sel.add(f.id))
+      setDupGrupos(grupos); setDupSel(sel)
+    } catch { setDupErr('Error de conexión') }
+    setDupLoading(false)
+  }
+
+  const toggleDup = (id) => setDupSel(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+
+  const eliminarDuplicados = async () => {
+    const ids = [...dupSel]
+    if (ids.length === 0) return
+    if (!window.confirm(`Se eliminarán ${ids.length} fila(s) duplicada(s) de CUENTAS. Se conserva siempre la primera de cada grupo. Esta acción no se puede deshacer. ¿Continuar?`)) return
+    setDupBorrando(true); setDupErr(null)
+    try {
+      const res = await fetch('/api/cartolas/duplicados', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setDupErr(data.error || 'Error al eliminar'); setDupBorrando(false); return }
+      flash(`✓ ${data.borrados} fila(s) eliminada(s)`)
+      setDupBorrando(false)
+      await abrirDuplicados()   // re-escanea para mostrar lo que quede
+      fetchInitial()            // refresca la tabla principal
+    } catch { setDupErr('Error de conexión'); setDupBorrando(false) }
+  }
+
   if (status === 'loading' || loading)
     return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div>)
 
@@ -257,10 +306,17 @@ function TablaVista() {
               {!puedeEditar && ' · solo lectura'}
             </div>
           </div>
-          <button onClick={() => fetchInitial()} disabled={refreshing}
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
-            {refreshing ? 'Refrescando…' : 'Refrescar'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={abrirDuplicados}
+              title="Buscar filas duplicadas en CUENTAS (misma fecha, IDADMON, concepto, cargo y abono)"
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>
+              🔍 Duplicados
+            </button>
+            <button onClick={() => fetchInitial()} disabled={refreshing}
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+              {refreshing ? 'Refrescando…' : 'Refrescar'}
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 10, fontSize: 11, color: '#5F5E5A', alignItems: 'center' }}>
@@ -308,6 +364,72 @@ function TablaVista() {
         </div>
       </div>
       {renderPop()}
+      {dupOpen && (
+        <>
+          <div onClick={() => !dupBorrando && setDupOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(760px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71 }}>
+            <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Duplicados en CUENTAS</div>
+                <div style={{ fontSize: 11, color: '#888780' }}>Filas idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios. Se conserva la primera de cada grupo.</div>
+              </div>
+              <button onClick={() => !dupBorrando && setDupOpen(false)}
+                style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
+            </div>
+
+            <div style={{ padding: '14px 18px', overflow: 'auto' }}>
+              {dupLoading && <div style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Escaneando la tabla…</div>}
+              {dupErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{dupErr}</div>}
+              {!dupLoading && !dupErr && dupGrupos.length === 0 && (
+                <div style={{ padding: 30, textAlign: 'center', color: '#1D9E75', fontSize: 14, fontWeight: 600 }}>✓ No se encontraron duplicados.</div>
+              )}
+              {!dupLoading && dupGrupos.map((g, gi) => (
+                <div key={gi} style={{ border: '0.5px solid #E4E2DA', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
+                  <div style={{ background: '#FBF7EC', padding: '6px 10px', fontSize: 11, color: '#8a6d1e', fontWeight: 600 }}>
+                    Grupo {gi + 1} · {g.filas.length} filas idénticas · {g.filas[0].fecha} · {g.filas[0].idadmon || '—'}
+                  </div>
+                  {g.filas.map((f, fi) => {
+                    const conservar = fi === 0
+                    const marcado = dupSel.has(f.id)
+                    return (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderTop: fi ? '0.5px solid #EDEBE4' : 'none', background: conservar ? '#F3FAF0' : (marcado ? '#FDF3F3' : '#fff') }}>
+                        <div style={{ width: 90, flexShrink: 0 }}>
+                          {conservar
+                            ? <span style={{ fontSize: 10, fontWeight: 700, color: '#1D9E75' }}>CONSERVAR</span>
+                            : <label style={{ fontSize: 10, fontWeight: 700, color: '#9B1C1C', display: 'flex', alignItems: 'center', gap: 5, cursor: puedeEditar ? 'pointer' : 'default' }}>
+                                <input type="checkbox" checked={marcado} disabled={!puedeEditar} onChange={() => toggleDup(f.id)} /> BORRAR
+                              </label>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#2C2C2A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {f.concepto || '—'}
+                        </div>
+                        <div style={{ width: 90, textAlign: 'right', fontSize: 11, color: '#9B1C1C', flexShrink: 0 }}>{fmt(f.cargo) || '—'}</div>
+                        <div style={{ width: 90, textAlign: 'right', fontSize: 11, color: '#085041', flexShrink: 0 }}>{fmt(f.abono) || '—'}</div>
+                        <div style={{ width: 44, textAlign: 'right', fontSize: 10, color: '#B4B2A9', flexShrink: 0 }}>#{f.id}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {!dupLoading && dupGrupos.length > 0 && (
+              <div style={{ padding: '12px 18px', borderTop: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ fontSize: 12, color: '#5F5E5A' }}>
+                  {dupGrupos.length} grupo(s) · {dupSel.size} fila(s) marcada(s) para borrar
+                  {!puedeEditar && <span style={{ color: '#9B1C1C' }}> · solo lectura (no puedes borrar)</span>}
+                </div>
+                {puedeEditar && (
+                  <button onClick={eliminarDuplicados} disabled={dupBorrando || dupSel.size === 0}
+                    style={{ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: dupSel.size === 0 ? '#D3D1C7' : '#C0392B', color: '#fff', cursor: dupSel.size === 0 ? 'default' : 'pointer' }}>
+                    {dupBorrando ? 'Eliminando…' : `Eliminar seleccionados (${dupSel.size})`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#2C2C2A', color: '#fff', fontSize: 13, padding: '10px 18px', borderRadius: 8, zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
           {toast}
