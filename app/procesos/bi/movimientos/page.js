@@ -29,12 +29,8 @@ const COLS = [
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
-  { key: 'trim',                   h: 'TRIM',           w: 60,  align: 'left', filt: true },
-  { key: 'mes',                    h: 'MES',            w: 58,  align: 'left', filt: true },
-  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
+  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      ro: true, w: 80,  align: 'left', filt: true },
   { key: 'idadmon2',               h: 'IDADMON',        w: 84,  align: 'left', filt: true },
-  { key: 'recibido',               h: 'RECIBIDO',       w: 86,  align: 'right', filt: true },
-  { key: 'arriendo',               h: 'ARRIENDO',       w: 86,  align: 'right', filt: true },
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
   { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
@@ -50,6 +46,20 @@ function colorFila(m) {
 }
 // IDADMON válido: A + 5 dígitos (ej. A00819).
 const esIdadmonValido = (uc) => /^A\d{5}$/.test(String(uc ?? '').trim().toUpperCase())
+
+// LIQ. MES2 (AAMM) según la fecha de hoy (hora de Chile):
+//   día >= 23 -> mes actual + 1   ·   día <= 22 -> mes actual
+// Ej.: 23-jun -> 2607 · del 24-jun al 22-jul -> 2607 · 23-jul -> 2608.
+function liqMes2Actual(base = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(base)
+  const g = (t) => Number(partes.find((p) => p.type === t)?.value)
+  let y = g('year'), m = g('month')
+  const day = g('day')
+  if (day >= 23) { m += 1; if (m > 12) { m = 1; y += 1 } }
+  return `${String(y).slice(-2)}${String(m).padStart(2, '0')}`
+}
 function bgCelda(ci, r) {
   if (ci === I_REG) return '#C19A6B'
   if (ci >= I_UC) return colorFila(r)
@@ -113,6 +123,23 @@ export default function BiVista() {
     setRefreshing(false); setLoading(false)
   }
   useEffect(() => { fetchInitial({}) }, [])
+
+  // Autollenado de LIQ. MES2: a las filas cargadas SIN valor se les escribe el mes de
+  // liquidación en curso (regla del día 23). Las históricas (ya con valor) NO se tocan.
+  // El ref evita reintentos infinitos si alguna escritura fallara.
+  const liqDoneRef = useRef(new Set())
+  useEffect(() => {
+    const actual = liqMes2Actual()
+    const pend = rows.filter(r => !String(r.liquidacion_mes2 ?? '').trim() && !liqDoneRef.current.has(r.id))
+    if (pend.length === 0) return
+    const ids = pend.map(r => r.id)
+    ids.forEach(id => liqDoneRef.current.add(id))
+    ;(async () => {
+      const { error } = await supabase.from('bi').update({ liquidacion_mes2: actual }).in('id', ids)
+      if (error) return   // si falla, no rompemos la vista; el ref impide reintentos en bucle
+      setRows(rs => rs.map(r => ids.includes(r.id) ? { ...r, liquidacion_mes2: actual } : r))
+    })()
+  }, [rows])
 
   // Guarda primero lo que se esté editando (celda con foco) y LUEGO refresca.
   // Sin esto, si el usuario escribe en una celda y pulsa el botón sin salir
@@ -359,6 +386,10 @@ export default function BiVista() {
           }}
           style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
       )
+    }
+    if (c.key === 'liquidacion_mes2') {
+      const v = String(r.liquidacion_mes2 ?? '').trim() || liqMes2Actual()
+      return <span title={v} style={{ color: '#5F5E5A' }}>{v}</span>
     }
     if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
