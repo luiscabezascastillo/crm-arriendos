@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, forwardRef } from 'react';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
+import TopNav from '@/app/components/ui/TopNav';
 
 // ------- columnas de la tabla (orden, etiqueta, ancho px, alineación, truncado) -------
 // w = ancho fijo en px (table-layout: fixed). trunc = recorta con ellipsis + hover.
@@ -250,7 +251,9 @@ export default function DescuentosPage() {
   }
 
   return (
-    <div style={{ padding: 20, background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
+    <>
+      <TopNav />
+      <div style={{ padding: 20, background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <h1 style={{ color: C.azul, margin: 0, fontSize: 24 }}>Descuentos</h1>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -376,7 +379,8 @@ export default function DescuentosPage() {
           onGuardado={async () => { await cargar(); }}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
