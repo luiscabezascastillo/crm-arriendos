@@ -10,6 +10,13 @@ const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
 const LIMITE = 50
 
+// Extrae el RUT (dígitos-guión-verificador) del texto del detalle del movimiento.
+// "Transferencia de otro banco 16111735-8" -> "16111735-8". Sin RUT -> ''.
+function extraerRut(txt) {
+  const m = String(txt ?? '').match(/(\d{5,9})-([\dkK])/)
+  return m ? `${m[1]}-${m[2].toUpperCase()}` : ''
+}
+
 const COLS = [
   { key: 'fecha',                  h: 'Fecha',          ro: true, w: 84,  align: 'left',  filt: true },
   { key: 'detalle_movimiento',     h: 'Detalle mov.',   ro: true, w: 230, align: 'left',  filt: true, wrap: true },
@@ -30,6 +37,7 @@ const COLS = [
   { key: 'arriendo',               h: 'ARRIENDO',       w: 86,  align: 'right', filt: true },
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
+  { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
 ]
 const I_REG = COLS.findIndex(c => c.key === 'reg')
 const I_UC = COLS.findIndex(c => c.key === 'unique_concept')
@@ -65,6 +73,13 @@ export default function BiVista() {
   const [descRows, setDescRows] = useState([])
   const [descLoading, setDescLoading] = useState(false)
   const [descQuery, setDescQuery] = useState('')   // buscador libre dentro del popover
+  // Drawer "Asociar RUT" (busca en cuentas y escribe en bi_admon)
+  const [asocOpen, setAsocOpen] = useState(null)   // { row, rut }
+  const [asocLoading, setAsocLoading] = useState(false)
+  const [asocCands, setAsocCands] = useState([])   // [{ idadmon, veces }]
+  const [asocErr, setAsocErr] = useState(null)
+  const [asocId, setAsocId] = useState('')         // idadmon escrito a mano
+  const [asocGuardando, setAsocGuardando] = useState(false)
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -162,6 +177,39 @@ export default function BiVista() {
     if (error) { setError('No se pudo guardar: ' + error.message); return }
     setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
     flash('✓ Guardado')
+  }
+
+  // ── Asociar RUT a IDADMON en bi_admon (origen: cuentas) ──────────────────
+  const abrirAsociar = async (r) => {
+    const rut = extraerRut(r.detalle_movimiento)
+    if (!rut) { flash('No se encontró un RUT en el detalle'); return }
+    setAsocOpen({ row: r, rut }); setAsocCands([]); setAsocErr(null); setAsocId(''); setAsocLoading(true)
+    try {
+      const res = await fetch('/api/bi/asociar-rut?rut=' + encodeURIComponent(rut))
+      const d = await res.json()
+      if (!res.ok) { setAsocErr(d.error || 'Error al buscar'); setAsocLoading(false); return }
+      setAsocCands(d.candidatos || [])
+    } catch { setAsocErr('Error de conexión') }
+    setAsocLoading(false)
+  }
+
+  const asociarRut = async (idadmon) => {
+    const id = String(idadmon || '').trim().toUpperCase()
+    if (!/^A\d{5}$/.test(id)) { setAsocErr('IDADMON no válido (debe ser Axxxxx, ej. A00819)'); return }
+    const { row, rut } = asocOpen
+    setAsocGuardando(true); setAsocErr(null)
+    try {
+      const res = await fetch('/api/bi/asociar-rut', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut, idadmon: id }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setAsocErr(d.error || 'Error al asociar'); setAsocGuardando(false); return }
+      // Rellena también el IDADMON en esta fila (resuelve el FALTA actual).
+      await guardarCelda(row.id, 'unique_concept', id)
+      flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${id})` : `✓ Asociado ${rut} → ${id}`)
+      setAsocGuardando(false); setAsocOpen(null)
+    } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
   }
 
   const copiarFaltan = async () => {
@@ -276,6 +324,18 @@ export default function BiVista() {
             ? 'Buscar el descuento que justifica este egreso (por importe) y pegar su texto en UNIQUE CONCEPT'
             : 'Ver el/los texto(s) para contabilidad del descuento de este IDADMON'}
           style={{ border: '0.5px solid #C8C5BC', background: abierto ? '#E6F1FB' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '2px 7px' }}>📋</button>
+      )
+    }
+    if (c.key === '_asociar') {
+      const esAbono = num(r.abonos) > 0
+      const rut = extraerRut(r.detalle_movimiento)
+      if (!esAbono || !rut) return <span style={{ color: '#B4B2A9' }}>—</span>
+      const resuelto = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
+      const abierto = asocOpen && asocOpen.row?.id === r.id
+      return (
+        <button onClick={() => abrirAsociar(r)}
+          title={`Asociar el RUT ${rut} a un IDADMON en bi_admon (busca en CUENTAS a qué contrato pagó antes)`}
+          style={{ border: '0.5px solid ' + (resuelto ? '#C8C5BC' : '#9BD7C2'), background: abierto ? '#E1F5EE' : (resuelto ? '#fff' : '#F0FAF6'), color: resuelto ? '#8A8780' : '#085041', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 7px' }}>➕ RUT</button>
       )
     }
     if (!c.ro) return (
@@ -483,6 +543,52 @@ export default function BiVista() {
       </div>
       {renderPop()}
       {renderPopDescuentos()}
+      {asocOpen && (
+        <>
+          <div onClick={() => !asocGuardando && setAsocOpen(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(520px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71 }}>
+            <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Asociar RUT a IDADMON</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A' }}>RUT <b>{asocOpen.rut}</b> — se guardará en <code>bi_admon</code> para autocompletar sus abonos futuros.</div>
+              </div>
+              <button onClick={() => !asocGuardando && setAsocOpen(null)}
+                style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
+            </div>
+
+            <div style={{ padding: '14px 18px', overflow: 'auto' }}>
+              {asocErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{asocErr}</div>}
+
+              <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>Según pagos anteriores en CUENTAS:</div>
+              {asocLoading && <div style={{ padding: 16, textAlign: 'center', color: '#888780', fontSize: 13 }}>Buscando en el historial…</div>}
+              {!asocLoading && asocCands.length === 0 && (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#FBF7EC', color: '#8a6d1e', fontSize: 12, marginBottom: 12 }}>
+                  Este RUT no aparece en CUENTAS con ningún IDADMON. Escríbelo a mano abajo.
+                </div>
+              )}
+              {!asocLoading && asocCands.map((c) => (
+                <button key={c.idadmon} onClick={() => asociarRut(c.idadmon)} disabled={asocGuardando}
+                  style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 12px', marginBottom: 6, border: '0.5px solid #9BD7C2', background: '#F0FAF6', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                  <span style={{ fontWeight: 700, color: '#085041' }}>{c.idadmon}</span>
+                  <span style={{ fontSize: 11, color: '#5F5E5A' }}>pagó {c.veces} vez(ces) · asociar →</span>
+                </button>
+              ))}
+
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '0.5px solid #EDEBE4' }}>
+                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>O escribe el IDADMON a mano:</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={asocId} onChange={e => setAsocId(e.target.value.toUpperCase())} placeholder="A00819"
+                    style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid #D3D1C7', borderRadius: 8, textTransform: 'uppercase' }} />
+                  <button onClick={() => asociarRut(asocId)} disabled={asocGuardando || !asocId.trim()}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '7px 16px', borderRadius: 8, border: 'none', background: asocId.trim() ? '#1D9E75' : '#D3D1C7', color: '#fff', cursor: asocId.trim() ? 'pointer' : 'default' }}>
+                    {asocGuardando ? 'Asociando…' : 'Asociar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#2C2C2A', color: '#fff', fontSize: 13, padding: '10px 18px', borderRadius: 8, zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
           {toast}
