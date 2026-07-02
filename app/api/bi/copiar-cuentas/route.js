@@ -61,39 +61,67 @@ export async function POST() {
     for (const d of da || []) if (!mapa[d.idadmon]) mapa[d.idadmon] = d
   }
 
-  // 4) armar las filas de cuentas (solo las validas)
+  // 4) armar las filas de cuentas (solo las validas), guardando su reg para el dedupe
   const ts = ahoraCL()
   const sinMatch = new Set()
-  const filas = validas.map((r) => {
+  const preparadas = validas.map((r) => {
     const idadmon = String(r.unique_concept).trim()
     const info = mapa[idadmon] || null
     if (!info) sinMatch.add(idadmon)
+    const reg = r.reg != null && String(r.reg).trim() !== '' ? String(r.reg).trim() : null
     return {
-      fecha: r.fecha,
-      idadmon: idadmon,
-      concepto: r.detalle_movimiento,
-      cargo: num(r.cargos),
-      abono: num(r.abonos),
-      saldo: null,
-      comentarios: 'BI',
-      calif: r.reg != null && String(r.reg) !== '' ? String(r.reg) : null,
-      justificantes: ts,
-      estado: info?.estado ?? null,
-      propietario: info?.propietario ?? null,
-      inmueble: info?.inmueble ?? null,
-      updated_at: new Date().toISOString(),
+      biId: r.id,
+      reg,
+      fila: {
+        fecha: r.fecha,
+        idadmon,
+        concepto: r.detalle_movimiento,
+        cargo: num(r.cargos),
+        abono: num(r.abonos),
+        saldo: null,
+        comentarios: 'BI',
+        calif: reg,
+        justificantes: ts,
+        estado: info?.estado ?? null,
+        propietario: info?.propietario ?? null,
+        inmueble: info?.inmueble ?? null,
+        updated_at: new Date().toISOString(),
+      },
     }
   })
 
-  // 5) insertar en cuentas
-  const { error: e3, count } = await supabaseAdmin
-    .from('cuentas')
-    .insert(filas, { count: 'exact' })
-  if (e3) return NextResponse.json({ error: 'Error insertando en cuentas: ' + e3.message }, { status: 500 })
-  const copiados = count ?? filas.length
+  // 4b) DEDUPE: comprobar qué reg ya están en cuentas (columna calif) para NO duplicar
+  const regs = [...new Set(preparadas.map((p) => p.reg).filter(Boolean))]
+  const yaEnCuentas = new Set()
+  if (regs.length) {
+    const { data: exist, error: eDup } = await supabaseAdmin
+      .from('cuentas')
+      .select('calif')
+      .in('calif', regs)
+    if (eDup) return NextResponse.json({ error: 'Error comprobando duplicados en cuentas: ' + eDup.message }, { status: 500 })
+    for (const x of exist || []) {
+      const c = String(x.calif ?? '').trim()
+      if (c) yaEnCuentas.add(c)
+    }
+  }
 
-  // 6) marcar PASADO SOLO las validas (las invalidas se quedan en FALTA, intactas)
-  const idsValidas = validas.map((r) => r.id)
+  const nuevas   = preparadas.filter((p) => !(p.reg && yaEnCuentas.has(p.reg)))
+  const omitidas = preparadas.filter((p) =>   p.reg && yaEnCuentas.has(p.reg))
+  const detalleOmitidos = omitidas.map((p) => ({ reg: p.reg, idadmon: p.fila.idadmon }))
+
+  // 5) insertar en cuentas SOLO las nuevas (las omitidas ya estaban: no se duplican)
+  let copiados = 0
+  if (nuevas.length) {
+    const { error: e3, count } = await supabaseAdmin
+      .from('cuentas')
+      .insert(nuevas.map((p) => p.fila), { count: 'exact' })
+    if (e3) return NextResponse.json({ error: 'Error insertando en cuentas: ' + e3.message }, { status: 500 })
+    copiados = count ?? nuevas.length
+  }
+
+  // 6) marcar PASADO todas las validas procesadas: las nuevas (ya insertadas) y
+  //    las omitidas (que ya estaban en cuentas), para que no vuelvan a intentar colarse.
+  const idsValidas = preparadas.map((p) => p.biId)
   const { error: e4 } = await supabaseAdmin
     .from('bi')
     .update({ check2_pasar_a_cartola: 'PASADO', updated_at: new Date().toISOString() })
@@ -110,7 +138,8 @@ export async function POST() {
   return NextResponse.json({
     ok: true,
     copiados,
-    invalidos: detalleInvalidos,          // las que se quedaron en FALTA por no tener IDADMON valido
+    omitidos_ya_existian: detalleOmitidos,   // mismo reg ya en cuentas: NO se duplicaron
+    invalidos: detalleInvalidos,             // sin IDADMON valido: se quedan en FALTA
     idadmons_sin_match: [...sinMatch],
   })
 }
