@@ -44,7 +44,7 @@ export async function POST(req) {
     }
     if (cambios.texto_explicativo_para_carta_a_propietario != null) {
       const tx = String(cambios.texto_explicativo_para_carta_a_propietario).trim();
-      if (tx.length < 45) return Response.json({ error: 'El texto para liquidación debe tener al menos 45 caracteres' }, { status: 400 });
+      if (tx.length < 15) return Response.json({ error: 'El texto para liquidación debe tener al menos 15 caracteres' }, { status: 400 });
       cambios.texto_explicativo_para_carta_a_propietario = tx;
     }
     // Montos: redondear a 0 decimales

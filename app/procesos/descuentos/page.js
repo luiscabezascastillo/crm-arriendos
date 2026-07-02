@@ -579,8 +579,8 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
   async function guardar() {
     setErr('');
     const txt = String(buf.texto_explicativo_para_carta_a_propietario ?? '').trim();
-    if (txt !== '' && txt.length < 45) {
-      setErr('El texto para liquidación debe tener al menos 45 caracteres.'); return;
+    if (txt !== '' && txt.length < 15) {
+      setErr('El texto para liquidación debe tener al menos 15 caracteres.'); return;
     }
     const cambios = {};
     EDIT_CAMPOS.forEach(({ k }) => {
@@ -767,7 +767,7 @@ function FormAlta({ onCreado }) {
 
   async function guardar() {
     setErr('');
-    if (textoLen < 45) { setErr('El texto para liquidación debe tener al menos 45 caracteres.'); return; }
+    if (textoLen < 15) { setErr('El texto para liquidación debe tener al menos 15 caracteres.'); return; }
     setSaving(true);
     try {
       const r = await fetch('/api/descuentos/crear', {
@@ -835,7 +835,7 @@ function FormAlta({ onCreado }) {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <Campo label={`Texto para liquidación * (mín. 45 — ${textoLen})`}>
+        <Campo label={`Texto para liquidación * (mín. 15 — ${textoLen})`}>
           <textarea value={f.texto_explicativo_para_carta_a_propietario}
             onChange={(e) => set('texto_explicativo_para_carta_a_propietario', e.target.value)}
             rows={2} style={{ ...inp, resize: 'vertical' }} />
