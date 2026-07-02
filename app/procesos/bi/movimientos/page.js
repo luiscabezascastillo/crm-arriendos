@@ -61,9 +61,10 @@ export default function BiVista() {
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
   const [copiando, setCopiando] = useState(false)
-  const [descOpen, setDescOpen] = useState(null)   // { idadmon, x, y } popover de descuentos
+  const [descOpen, setDescOpen] = useState(null)   // { row, x, y, modo } popover de descuentos
   const [descRows, setDescRows] = useState([])
   const [descLoading, setDescLoading] = useState(false)
+  const [descQuery, setDescQuery] = useState('')   // buscador libre dentro del popover
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -185,21 +186,55 @@ export default function BiVista() {
     } finally { setCopiando(false) }
   }
 
-  // Parte B: traer los descuentos de un IDADMON y su texto_para_contabilidad.
+  // Parte B: localizar el descuento que justifica un movimiento y pegar su
+  // texto_para_contabilidad en UNIQUE CONCEPT. Dos modos:
+  //  - abono con IDADMON  -> descuentos de ese IDADMON
+  //  - egreso (cargo)     -> descuentos con monto_a_transferir = cargo (candidatos por importe)
   // Lectura server-side (service role) para no depender del RLS de descuentos.
-  const abrirDescuentos = async (r, e) => {
-    const idadmon = String(r.idadmon2 || '').trim().toUpperCase()
-    if (!idadmon) return
-    const rc = e.currentTarget.getBoundingClientRect()
-    if (descOpen && descOpen.idadmon === idadmon) { setDescOpen(null); return }
-    setDescOpen({ idadmon, x: rc.left, y: rc.bottom + 2 })
-    setDescLoading(true); setDescRows([])
+  const buscarDescuentos = async ({ monto, q }) => {
+    setDescLoading(true)
     try {
-      const res = await fetch(`/api/descuentos/por-idadmon?idadmon=${encodeURIComponent(idadmon)}`)
+      const p = new URLSearchParams()
+      if (monto != null) p.set('monto', String(monto))
+      if (q) p.set('q', q)
+      const res = await fetch(`/api/descuentos/buscar?${p.toString()}`)
       const d = await res.json()
       setDescRows(d.rows || [])
     } catch { setDescRows([]) }
     finally { setDescLoading(false) }
+  }
+
+  const abrirDescuentos = async (r, e) => {
+    const rc = e.currentTarget.getBoundingClientRect()
+    if (descOpen && descOpen.row?.id === r.id) { setDescOpen(null); return }
+    const idadmon = String(r.idadmon2 || '').trim().toUpperCase()
+    const cargo = num(r.cargos)
+    const modo = cargo > 0 ? 'importe' : 'idadmon'
+    setDescOpen({ row: r, x: rc.left, y: rc.bottom + 2, modo })
+    setDescRows([]); setDescQuery('')
+    if (modo === 'importe') await buscarDescuentos({ monto: Math.round(cargo) })
+    else if (idadmon) {
+      setDescLoading(true)
+      try {
+        const res = await fetch(`/api/descuentos/por-idadmon?idadmon=${encodeURIComponent(idadmon)}`)
+        const d = await res.json()
+        setDescRows(d.rows || [])
+      } catch { setDescRows([]) }
+      finally { setDescLoading(false) }
+    }
+  }
+
+  // Pega el texto_para_contabilidad del descuento elegido en UNIQUE CONCEPT de la fila.
+  const usarEnUniqueConcept = async (d) => {
+    if (!descOpen?.row) return
+    const txt = String(d.texto_para_contabilidad || '').trim()
+    if (!txt) return
+    const actual = String(descOpen.row.unique_concept || '').trim()
+    // si ya hay un texto de contabilidad (empieza por "num Axxxxx"), pedir confirmación
+    const yaTieneTexto = /^\d+\s+A\d{5}\b/.test(actual)
+    if (yaTieneTexto && !confirm(`UNIQUE CONCEPT ya tiene:\n\n${actual}\n\n¿Reemplazar por?\n\n${txt}`)) return
+    await guardarCelda(descOpen.row.id, 'unique_concept', txt)
+    setDescOpen(null)
   }
 
   const copiarTexto = async (t) => {
@@ -231,12 +266,15 @@ export default function BiVista() {
       ? <span style={{ color: '#B4B2A9' }}>—</span>
       : <span style={{ fontWeight: 600, color: r._check1 === 0 ? '#1D9E75' : '#9B1C1C' }}>{r._check1}</span>
     if (c.key === '_descuentos') {
-      const id = String(r.idadmon2 || '').trim()
-      if (!id) return <span style={{ color: '#B4B2A9' }}>—</span>
-      const abierto = descOpen && descOpen.idadmon === id.toUpperCase()
+      const tieneId = String(r.idadmon2 || '').trim() !== ''
+      const esEgreso = num(r.cargos) > 0
+      if (!tieneId && !esEgreso) return <span style={{ color: '#B4B2A9' }}>—</span>
+      const abierto = descOpen && descOpen.row?.id === r.id
       return (
         <button onClick={(e) => abrirDescuentos(r, e)}
-          title="Ver el/los texto(s) para contabilidad del descuento de este IDADMON y copiar"
+          title={esEgreso
+            ? 'Buscar el descuento que justifica este egreso (por importe) y pegar su texto en UNIQUE CONCEPT'
+            : 'Ver el/los texto(s) para contabilidad del descuento de este IDADMON'}
           style={{ border: '0.5px solid #C8C5BC', background: abierto ? '#E6F1FB' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '2px 7px' }}>📋</button>
       )
     }
@@ -296,32 +334,60 @@ export default function BiVista() {
   // ---- popover de descuentos (texto para contabilidad, con copiar) ----
   const renderPopDescuentos = () => {
     if (!descOpen) return null
-    const W = 430
+    const W = 460
     const left = Math.min(descOpen.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 12)
+    const r = descOpen.row
+    const cargo = num(r?.cargos)
+    const esImporte = descOpen.modo === 'importe'
+    const unico = !descLoading && descRows.length === 1   // precarga: único candidato
     return (
       <>
         <div onClick={() => setDescOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-        <div style={{ position: 'fixed', left, top: descOpen.y, width: W, maxHeight: 340, overflow: 'auto', background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
+        <div style={{ position: 'fixed', left, top: descOpen.y, width: W, maxHeight: 420, overflow: 'auto', background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
           <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #EDEBE4', fontWeight: 600, color: '#5F5E5A', position: 'sticky', top: 0, background: '#fff' }}>
-            Descuentos de {descOpen.idadmon}
+            {esImporte
+              ? <>Egreso de <b>{fmt(cargo)}</b> · descuentos con transferir = {fmt(cargo)}</>
+              : <>Descuentos de {String(r?.idadmon2 || '').trim().toUpperCase()}</>}
           </div>
+
+          {/* buscador para navegar (por IDADMON, N° o texto) */}
+          <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 6 }}>
+            <input value={descQuery} onChange={e => setDescQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && descQuery.trim()) buscarDescuentos({ q: descQuery.trim() }) }}
+              placeholder="Buscar por IDADMON, N° o texto…"
+              style={{ flex: 1, border: '1px solid #C8C5BC', borderRadius: 6, padding: '4px 8px', fontSize: 12 }} />
+            <button onClick={() => descQuery.trim() && buscarDescuentos({ q: descQuery.trim() })}
+              style={{ border: 'none', background: '#5F6B7A', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 10px' }}>Buscar</button>
+            {esImporte && (
+              <button onClick={() => { setDescQuery(''); buscarDescuentos({ monto: Math.round(cargo) }) }}
+                title="Volver a los candidatos por importe"
+                style={{ border: '0.5px solid #C8C5BC', background: '#fff', color: '#5F5E5A', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>↺ importe</button>
+            )}
+          </div>
+
           {descLoading
             ? <div style={{ padding: 12, color: '#888780' }}>Cargando…</div>
             : descRows.length === 0
-              ? <div style={{ padding: 12, color: '#888780' }}>Sin descuentos para este IDADMON.</div>
+              ? <div style={{ padding: 12, color: '#888780' }}>
+                  {esImporte ? 'Ningún descuento con ese importe. Usa el buscador para localizarlo.' : 'Sin resultados.'}
+                </div>
               : descRows.map((d, i) => (
-                <div key={i} style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div key={i} style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 8, alignItems: 'flex-start', background: unico ? '#F3FAF6' : '#fff' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 11, color: '#888780', marginBottom: 2 }}>
-                      N° {d.num || '—'} · {d.tipo || ''} · {d.repercutir_a || ''} · {d.mes_a_imputar || ''}
+                      N° {d.num || '—'} · {d.idadmon || ''} · {d.tipo || ''} · transferir {fmt(d.monto_a_transferir)}{unico ? ' · (único candidato)' : ''}
                     </div>
                     <div style={{ color: '#2C2C2A', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                       {d.texto_para_contabilidad || <span style={{ color: '#B4B2A9' }}>(sin texto de contabilidad)</span>}
                     </div>
                   </div>
                   {d.texto_para_contabilidad && (
-                    <button onClick={() => copiarTexto(d.texto_para_contabilidad)} title="Copiar texto para contabilidad"
-                      style={{ flexShrink: 0, border: 'none', background: '#E6F1FB', color: '#0C447C', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>📋</button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => usarEnUniqueConcept(d)} title="Pegar este texto en UNIQUE CONCEPT de la fila"
+                        style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px', whiteSpace: 'nowrap' }}>Usar este</button>
+                      <button onClick={() => copiarTexto(d.texto_para_contabilidad)} title="Solo copiar al portapapeles"
+                        style={{ border: 'none', background: '#E6F1FB', color: '#0C447C', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>📋</button>
+                    </div>
                   )}
                 </div>
               ))
