@@ -332,11 +332,11 @@ const MCOLS = [
 ]
 
 // Proporcional del PRIMER mes, calculado desde datos_arriendos:
-//  - día de inicio inclusive
-//  - base = días reales del mes
-//  - renta = condición especial (cantidad) si existe; si no, cuota normal
+//  - día de inicio inclusive · base = días reales del mes
+//  - condición especial (cantidad): SIEMPRE en pesos (no se convierte por UF)
+//  - cuota normal: si unid='UF' se convierte con la UF del mes de inicio (indices_mensuales)
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
-function calcProporcional(f) {
+function calcProporcional(f, ufMesInicio) {
   if (!f || !f.fecha_inicio) return null
   const s = String(f.fecha_inicio).slice(0, 10)          // 'YYYY-MM-DD'
   const [Y, M, D] = s.split('-').map(Number)
@@ -344,11 +344,23 @@ function calcProporcional(f) {
   const diasMes = new Date(Y, M, 0).getDate()            // último día del mes M (1-based)
   const diasCobrar = diasMes - D + 1                     // inclusive
   const especial = num(f.cantidad) > 0
-  const renta = especial ? num(f.cantidad) : num(f.cuota)
-  if (renta <= 0) return null
-  const prop = Math.round(renta * diasCobrar / diasMes)
+  const esUF = String(f.unid || '').trim().toUpperCase() === 'UF'
+
+  let renta, faltaUF = false
+  if (especial) {
+    renta = num(f.cantidad)                              // condición especial: siempre pesos
+  } else if (esUF) {
+    if (!ufMesInicio) { faltaUF = true; renta = 0 }      // no hay UF del mes de inicio en indices_mensuales
+    else renta = Math.round(num(f.cuota) * ufMesInicio)
+  } else {
+    renta = num(f.cuota)                                 // cuota en pesos
+  }
+  if (renta <= 0 && !faltaUF) return null
+
+  const prop = faltaUF ? null : Math.round(renta * diasCobrar / diasMes)
   return {
-    prop, renta, diasCobrar, diasMes, especial,
+    prop, renta, diasCobrar, diasMes, especial, esUF, faltaUF,
+    ufMesInicio: ufMesInicio || null, cuotaUF: esUF ? num(f.cuota) : null,
     mesNombre: MESES_ES[M - 1], anio: Y, dia: D,
     inicioDia1: D === 1,
   }
@@ -364,6 +376,7 @@ function CartolaIdadmonVista() {
   const [movs, setMovs] = useState([])          // movimientos con _saldo corrido
   const [consultado, setConsultado] = useState(false)
   const [aviso, setAviso] = useState(null)      // "en TÉRMINO" / "HISTÓRICO"
+  const [ufMesInicio, setUfMesInicio] = useState(null)   // valor_uf del mes de inicio (indices_mensuales)
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -371,12 +384,12 @@ function CartolaIdadmonVista() {
     const id = idInput.trim().toUpperCase()
     if (!id) return
     setBuscando(true); setError(null); setAviso(null); setConsultado(true)
-    setFicha(null); setMovs([])
+    setFicha(null); setMovs([]); setUfMesInicio(null)
 
     // 1) ficha en datos_arriendos (idadmon es único -> una fila)
     const { data: da, error: e1 } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia, fecha_inicio, cuota, meses, cantidad')
+      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia, fecha_inicio, cuota, meses, cantidad, unid')
       .eq('idadmon', id)
       .limit(1)
     if (e1) { setError('Error leyendo ficha: ' + e1.message); setBuscando(false); return }
@@ -386,6 +399,18 @@ function CartolaIdadmonVista() {
       const est = String(f.estado || '').trim().toUpperCase()
       if (est === 'Q') setAviso('Este IDADMON está en ESTADO Q (TÉRMINO).')
       else if (est === 'N') setAviso('Este IDADMON está en ESTADO N (HISTÓRICO).')
+
+      // UF del mes de inicio (origen: indices_mensuales, día 1 del mes de inicio)
+      // Solo se necesita si el contrato es UF y no hay condición especial.
+      if (f.fecha_inicio && String(f.unid || '').trim().toUpperCase() === 'UF' && !(num(f.cantidad) > 0)) {
+        const mes1 = String(f.fecha_inicio).slice(0, 7) + '-01'   // 'YYYY-MM-01'
+        const { data: im } = await supabase
+          .from('indices_mensuales')
+          .select('valor_uf')
+          .eq('mes', mes1)
+          .limit(1)
+        if (im && im[0]) setUfMesInicio(num(im[0].valor_uf))
+      }
     }
 
     // 2) movimientos en cuentas
@@ -418,9 +443,9 @@ function CartolaIdadmonVista() {
   const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
 
   // Proporcional del primer mes (desde datos_arriendos) y cotejo con la cartola
-  const propCalc = calcProporcional(ficha)
+  const propCalc = calcProporcional(ficha, ufMesInicio)
   const filaPropCartola = movs.find(m => esInicio(m) && /PROPORCIONAL/i.test(String(m.concepto || '')))
-  const descuadre = propCalc && !propCalc.inicioDia1 && filaPropCartola
+  const descuadre = propCalc && propCalc.prop != null && !propCalc.inicioDia1 && filaPropCartola
     && Math.abs(num(filaPropCartola.cargo) - propCalc.prop) > 1
 
   const Dato = ({ label, value, strong }) => (
@@ -496,10 +521,19 @@ function CartolaIdadmonVista() {
               <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 6 }}>Proporcional del primer mes · calculado desde datos_arriendos</div>
               {propCalc.inicioDia1 ? (
                 <div style={{ fontSize: 13, color: '#5F5E5A' }}>El contrato inicia el día 1 de {propCalc.mesNombre}: mes completo, sin proporcional.</div>
+              ) : propCalc.faltaUF ? (
+                <div style={{ fontSize: 13, color: '#92400E', fontWeight: 600 }}>
+                  ⚠ Contrato en UF (cuota {propCalc.cuotaUF} UF) pero no hay valor_uf para {propCalc.mesNombre} {propCalc.anio} en indices_mensuales. No se puede calcular el proporcional.
+                </div>
               ) : (
                 <>
                   <div style={{ fontSize: 13, color: '#2C2C2A' }}>
-                    Renta base <b>{money(propCalc.renta)}</b> {propCalc.especial ? '(condición especial)' : '(cuota normal)'} · {propCalc.diasCobrar} de {propCalc.diasMes} días de {propCalc.mesNombre} {propCalc.anio}
+                    Renta base <b>{money(propCalc.renta)}</b>{' '}
+                    {propCalc.especial
+                      ? '(condición especial)'
+                      : propCalc.esUF
+                        ? `(${propCalc.cuotaUF} UF × ${money(propCalc.ufMesInicio)} UF de ${propCalc.mesNombre})`
+                        : '(cuota normal)'} · {propCalc.diasCobrar} de {propCalc.diasMes} días de {propCalc.mesNombre} {propCalc.anio}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#0C447C', marginTop: 2 }}>
                     Proporcional calculado: {money(propCalc.prop)}
