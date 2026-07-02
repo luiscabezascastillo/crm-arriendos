@@ -471,7 +471,7 @@ function AdminContent() {
   }, [])
 
   // Valores por defecto al abrir un contrato EDITABLE (estado P / corrección):
-  // corretaje 50%/50% y administración 8,00%, solo si están vacíos (no pisa lo heredado).
+  // corretaje 50%/50% si están vacíos (no pisa lo heredado). El pct_adm se calcula aparte.
   useEffect(() => {
     const editable = !(bloqueado || (form.estado !== 'P' && !isNew && !correccionAbierta))
     if (!editable) return
@@ -480,8 +480,42 @@ function AdminContent() {
       porcentD: String(prev.porcentD ?? '').trim() ? prev.porcentD : '50%',
       porcentA: String(prev.porcentA ?? '').trim() ? prev.porcentA : '50%',
     }))
-    setForm(prev => (String(prev.pct_adm ?? '').trim() ? prev : { ...prev, pct_adm: '8.00' }))
   }, [bloqueado, form.estado, isNew, correccionAbierta])
+
+  // pct_adm por defecto = % de administración MÁS REPETIDO entre los contratos del mismo
+  // idprop en estado S/SQ/Q (empate → el más alto, más beneficio para la empresa). Si el
+  // propietario no tiene otros contratos con dato → 8. Sobrescribe UNA vez al cargar el
+  // contrato (no repisa lo que se teclee después). Solo en contratos editables.
+  const pctAdmRef = useRef(null)
+  useEffect(() => {
+    const editable = !(bloqueado || (form.estado !== 'P' && !isNew && !correccionAbierta))
+    if (!editable) return
+    const idprop = String(form.idprop ?? '').trim()
+    const clave = `${form.idadmon || ''}|${idprop}`
+    if (pctAdmRef.current === clave) return   // ya aplicado para este contrato
+    pctAdmRef.current = clave
+    ;(async () => {
+      let val = '8'   // fallback
+      if (idprop) {
+        let q = supabase.from('datos_arriendos')
+          .select('idadmon, pct_adm').eq('idprop', idprop).in('estado', ['S', 'SQ', 'Q'])
+        const { data } = await q
+        const counts = new Map()
+        for (const d of data || []) {
+          if (String(d.idadmon ?? '').trim() === String(form.idadmon ?? '').trim()) continue // excluye el propio
+          const n = Number(String(d.pct_adm ?? '').replace(',', '.').replace(/[^\d.-]/g, ''))
+          if (!Number.isFinite(n) || String(d.pct_adm ?? '').trim() === '') continue
+          counts.set(n, (counts.get(n) || 0) + 1)
+        }
+        let best = null
+        for (const [n, c] of counts) {
+          if (!best || c > best.c || (c === best.c && n > best.n)) best = { n, c }
+        }
+        if (best) val = String(best.n)
+      }
+      setForm(prev => ({ ...prev, pct_adm: val }))
+    })()
+  }, [form.idprop, form.idadmon, bloqueado, form.estado, isNew, correccionAbierta])
 
   // Auto-cálculo del corretaje (solo en contratos editables):
   //   Cantidad = cuota (en pesos) × %   ·   Con IVA = 19% de Cantidad   ·   Total = Cantidad + IVA
