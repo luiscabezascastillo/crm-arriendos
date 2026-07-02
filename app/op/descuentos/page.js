@@ -230,6 +230,7 @@ export default function DescuentosPage() {
 
   // -------------------- FICHA (drawer) --------------------
   const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
+  const [hoverId, setHoverId] = useState(null);   // fila resaltada bajo el ratón
 
   async function toggleVerificado(r) {
     try {
@@ -264,6 +265,8 @@ export default function DescuentosPage() {
           : caps.crear
             ? 'Puedes añadir descuentos nuevos. Los registros existentes no se pueden modificar.'
             : 'Solo lectura.'}
+        {' · '}
+        <span style={{ color: C.azul, fontWeight: 600 }}>Pincha en cualquier fila para abrir su ficha (ver{caps.corregir ? ' / editar' : ''}).</span>
       </div>
 
       {error && <div style={{ color: C.rojo, marginBottom: 10 }}>{error}</div>}
@@ -317,8 +320,14 @@ export default function DescuentosPage() {
               {visibles.map((r) => (
                 <tr key={r.id}
                   onClick={() => setDescSel(r)}
-                  title="Ver ficha del descuento"
-                  style={{ background: r.verificado ? '#f1f8f1' : '#fff', cursor: 'pointer' }}>
+                  onMouseEnter={() => setHoverId(r.id)}
+                  onMouseLeave={() => setHoverId((h) => (h === r.id ? null : h))}
+                  title="Pincha para ver / editar la ficha"
+                  style={{
+                    background: hoverId === r.id ? '#dbe9fb' : (r.verificado ? '#f1f8f1' : '#fff'),
+                    cursor: 'pointer',
+                    boxShadow: hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
+                  }}>
                   {COLS.map((c) => (
                     <td key={c.key} style={{ ...td(), textAlign: c.align || 'left' }}>
                       {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
