@@ -404,7 +404,7 @@ function TablaVista() {
             <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Duplicados en CUENTAS</div>
-                <div style={{ fontSize: 11, color: '#888780' }}>Idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios · calif · justificantes (comparación estricta). Se conserva la de menor id.</div>
+                <div style={{ fontSize: 11, color: '#888780' }}>Idénticas en fecha · IDADMON · concepto · cargo · abono · comentarios · calif (no se comparan saldo ni justificantes). Se conserva la de menor id.</div>
               </div>
               <button onClick={() => !dupBorrando && setDupOpen(false)}
                 style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
@@ -465,10 +465,8 @@ function TablaVista() {
                     <div style={{ flex: 1, minWidth: 0 }}>Concepto</div>
                     <div style={{ width: 78, textAlign: 'right', flexShrink: 0 }}>Cargo</div>
                     <div style={{ width: 78, textAlign: 'right', flexShrink: 0 }}>Abono</div>
-                    <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>Saldo</div>
-                    <div style={{ width: 110, flexShrink: 0 }}>Comentarios</div>
-                    <div style={{ width: 60, flexShrink: 0 }}>Calif</div>
-                    <div style={{ width: 100, flexShrink: 0 }}>Justif.</div>
+                    <div style={{ width: 130, flexShrink: 0 }}>Comentarios</div>
+                    <div style={{ width: 70, flexShrink: 0 }}>Calif</div>
                     <div style={{ width: 44, textAlign: 'right', flexShrink: 0 }}>id</div>
                   </div>
                   {g.filas.map((f, fi) => {
@@ -488,10 +486,8 @@ function TablaVista() {
                         <div style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.concepto || ''}>{f.concepto || '—'}</div>
                         <div style={{ width: 78, textAlign: 'right', color: '#9B1C1C', flexShrink: 0 }}>{fmt(f.cargo) || '—'}</div>
                         <div style={{ width: 78, textAlign: 'right', color: '#085041', flexShrink: 0 }}>{fmt(f.abono) || '—'}</div>
-                        <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>{fmt(f.saldo) || '—'}</div>
-                        <div style={{ width: 110, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.comentarios || ''}>{f.comentarios || '—'}</div>
-                        <div style={{ width: 60, flexShrink: 0, color: '#B8860B', fontWeight: 600 }}>{f.calif || '—'}</div>
-                        <div style={{ width: 100, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#888780' }} title={f.justificantes || ''}>{f.justificantes || '—'}</div>
+                        <div style={{ width: 130, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.comentarios || ''}>{f.comentarios || '—'}</div>
+                        <div style={{ width: 70, flexShrink: 0, color: '#B8860B', fontWeight: 600 }}>{f.calif || '—'}</div>
                         <div style={{ width: 44, textAlign: 'right', fontSize: 10, color: '#B4B2A9', flexShrink: 0 }}>#{f.id}</div>
                       </div>
                     )

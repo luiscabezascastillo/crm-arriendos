@@ -21,9 +21,10 @@ const supaAdmin = createClient(
   { auth: { persistSession: false } }
 )
 
-// Campos que definen un duplicado. Criterio (A): comparación estricta que incluye
-// el folio `calif` y `justificantes` (equivale a las columnas A:I completas del Excel).
-const CAMPOS = ['fecha', 'idadmon', 'concepto', 'cargo', 'abono', 'saldo', 'comentarios', 'calif', 'justificantes']
+// Campos que definen un duplicado. Criterio pedido (7 campos):
+// fecha · idadmon · concepto · cargo · abono · comentarios · calif
+// (NO se comparan `saldo` ni `justificantes`).
+const CAMPOS = ['fecha', 'idadmon', 'concepto', 'cargo', 'abono', 'comentarios', 'calif']
 
 function claveDe(r) {
   return CAMPOS.map(c => {
