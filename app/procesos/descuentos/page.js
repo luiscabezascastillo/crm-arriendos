@@ -23,15 +23,72 @@ const COLS = [
   { key: 'texto_para_contabilidad', label: 'Texto contab.', w: 184 },
   { key: 'verificado', label: 'Verificado', w: 72 },
 ];
-const ACCIONES_W = 132;
-const TABLE_W = COLS.reduce((a, c) => a + c.w, 0) + ACCIONES_W;
+const TABLE_W = COLS.reduce((a, c) => a + c.w, 0);
 
-// campos que el corrector puede editar inline
-const EDITABLES = new Set([
-  'mes_a_imputar', 'idadmon', 'inmueble', 'propietario', 'repercutir_a',
-  'idadmon_relacionado', 'monto_a_imputar', 'monto_a_transferir', 'tipo',
-  'texto_explicativo_para_carta_a_propietario', 'comentarios_karina',
-]);
+// ---- Ficha (drawer): etiquetas legibles de cada campo ----
+const LABELS = {
+  num: 'Núm', fecha: 'Fecha', mes_a_imputar: 'Mes a imputar', ingresado_por: 'Ingresado por',
+  idadmon: 'IDADMON', inmueble: 'Inmueble', propietario: 'Propietario', repercutir_a: 'Imputar a',
+  idadmon_relacionado: 'IDADMON relacionado', relacionado: 'Enlace justificante',
+  monto_a_imputar: 'Monto a imputar', monto_a_transferir: 'Monto a transferir',
+  link_admon: 'Enlace Admon (link)', admon_piensa_que_se_necesita_factura_boleta: '¿Necesita factura/boleta?',
+  justificante_compra: 'Justificante compra', numero: 'Número', a_nombre_de_quien: '¿A nombre de quién?',
+  factura_boleta_de_venta: 'Factura / Boleta de venta', tipo: 'Tipo',
+  texto_explicativo_para_carta_a_propietario: 'Texto para liquidación (carta)',
+  texto_para_contabilidad: 'Texto para contabilidad', aclaracion: 'Aclaración',
+  comentarios_karina: 'Comentarios Karina', visto_bueno_de_karina_y_mas_comentarios: 'Visto bueno Karina y comentarios',
+  comentario_interno2: 'Comentario interno 2',
+  auditoria_1: 'Auditoría 1', auditoria_2: 'Auditoría 2', auditoria_3: 'Auditoría 3',
+  mmdd: 'MMDD', check1: 'check1', check2: 'check2', check3_estado: 'check3 / estado',
+  fecha_contable: 'Fecha contable',
+  creado_por: 'Creado por', creado_at: 'Creado', modificado_por: 'Modificado por', modificado_at: 'Modificado',
+  verificado: 'Verificado', verificado_por: 'Verificado por', verificado_at: 'Verificado el',
+  origen: 'Origen', updated_at: 'Actualizado', sync_hash: 'sync_hash', id: 'ID',
+};
+
+// Secciones para el modo VER (mostrar todo, ordenado)
+const SECCIONES_VER = [
+  { titulo: 'Identificación', campos: ['num', 'fecha', 'mes_a_imputar', 'ingresado_por', 'tipo'] },
+  { titulo: 'Inmueble y propietario', campos: ['idadmon', 'inmueble', 'propietario', 'repercutir_a', 'idadmon_relacionado', 'relacionado'] },
+  { titulo: 'Montos', campos: ['monto_a_imputar', 'monto_a_transferir'] },
+  { titulo: 'Documentación', campos: ['justificante_compra', 'numero', 'a_nombre_de_quien', 'factura_boleta_de_venta', 'admon_piensa_que_se_necesita_factura_boleta', 'link_admon'] },
+  { titulo: 'Textos', campos: ['texto_explicativo_para_carta_a_propietario', 'texto_para_contabilidad', 'aclaracion', 'comentarios_karina', 'visto_bueno_de_karina_y_mas_comentarios', 'comentario_interno2'] },
+  { titulo: 'Contable / auditoría', campos: ['auditoria_1', 'auditoria_2', 'auditoria_3', 'mmdd', 'check1', 'check2', 'check3_estado', 'fecha_contable'] },
+  { titulo: 'Trazabilidad', campos: ['creado_por', 'creado_at', 'modificado_por', 'modificado_at', 'verificado', 'verificado_por', 'verificado_at', 'origen', 'updated_at'] },
+];
+
+// Campos editables desde la ficha (alineados con el endpoint /api/descuentos/corregir)
+const EDIT_CAMPOS = [
+  { k: 'mes_a_imputar', tipo: 'mes' },
+  { k: 'idadmon', tipo: 'texto', upper: true },
+  { k: 'inmueble', tipo: 'texto' },
+  { k: 'propietario', tipo: 'texto' },
+  { k: 'repercutir_a', tipo: 'select' },
+  { k: 'idadmon_relacionado', tipo: 'texto', upper: true },
+  { k: 'relacionado', tipo: 'texto' },
+  { k: 'monto_a_imputar', tipo: 'numero' },
+  { k: 'monto_a_transferir', tipo: 'numero' },
+  { k: 'link_admon', tipo: 'texto' },
+  { k: 'admon_piensa_que_se_necesita_factura_boleta', tipo: 'sino' },
+  { k: 'tipo', tipo: 'select' },
+  { k: 'texto_explicativo_para_carta_a_propietario', tipo: 'area' },
+  { k: 'texto_para_contabilidad', tipo: 'area' },
+  { k: 'aclaracion', tipo: 'area' },
+  { k: 'comentarios_karina', tipo: 'area' },
+  { k: 'visto_bueno_de_karina_y_mas_comentarios', tipo: 'area' },
+  { k: 'fecha_contable', tipo: 'texto' },
+];
+
+const fmtValor = (k, v) => {
+  if (v == null || v === '') return '—';
+  if (k === 'fecha' || k === 'fecha_contable') return fmtFecha(v);
+  if (k === 'monto_a_imputar' || k === 'monto_a_transferir') return money(v);
+  if (k === 'verificado') return v ? 'Sí' : 'No';
+  if ((k === 'creado_at' || k === 'modificado_at' || k === 'updated_at' || k === 'verificado_at')) {
+    try { return new Date(v).toLocaleString('es-CL'); } catch { return String(v); }
+  }
+  return String(v);
+};
 
 const money = (n) => {
   const v = Number(n);
@@ -170,38 +227,9 @@ export default function DescuentosPage() {
   // -------------------- ALTA --------------------
   const [showForm, setShowForm] = useState(false);
 
-  // -------------------- CORRECCIÓN INLINE --------------------
-  const [editId, setEditId] = useState(null);
-  const [editBuf, setEditBuf] = useState({});
-  const [savingEdit, setSavingEdit] = useState(false);
-
-  function empezarEdicion(r) {
-    setEditId(r.id);
-    const buf = {};
-    EDITABLES.forEach((k) => { buf[k] = r[k] ?? ''; });
-    setEditBuf(buf);
-  }
-  async function guardarEdicion(r) {
-    setSavingEdit(true);
-    try {
-      const cambios = {};
-      EDITABLES.forEach((k) => {
-        const nuevo = editBuf[k] ?? '';
-        const viejo = r[k] ?? '';
-        if (String(nuevo) !== String(viejo)) cambios[k] = nuevo === '' ? null : nuevo;
-      });
-      if (Object.keys(cambios).length === 0) { setEditId(null); return; }
-      const res = await fetch('/api/descuentos/corregir', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: r.id, cambios }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'Error al corregir');
-      setEditId(null);
-      await cargar();
-    } catch (e) { alert(e.message); }
-    finally { setSavingEdit(false); }
-  }
+  // -------------------- FICHA (drawer) --------------------
+  const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
+  const [hoverId, setHoverId] = useState(null);   // fila resaltada bajo el ratón
 
   async function toggleVerificado(r) {
     try {
@@ -213,21 +241,6 @@ export default function DescuentosPage() {
       if (!res.ok) throw new Error(j.error || 'Error al verificar');
       await cargar();
     } catch (e) { alert(e.message); }
-  }
-
-  // -------------------- BITÁCORA --------------------
-  const [bitaId, setBitaId] = useState(null);
-  const [bitaRows, setBitaRows] = useState([]);
-  const [bitaLoad, setBitaLoad] = useState(false);
-  async function verBitacora(r) {
-    if (bitaId === r.id) { setBitaId(null); return; }
-    setBitaId(r.id); setBitaLoad(true); setBitaRows([]);
-    try {
-      const res = await fetch(`/api/descuentos/bitacora?descuento_id=${r.id}`, { cache: 'no-store' });
-      const j = await res.json();
-      setBitaRows(j.rows || []);
-    } catch { setBitaRows([]); }
-    finally { setBitaLoad(false); }
   }
 
   return (
@@ -251,6 +264,8 @@ export default function DescuentosPage() {
           : caps.crear
             ? 'Puedes añadir descuentos nuevos. Los registros existentes no se pueden modificar.'
             : 'Solo lectura.'}
+        {' · '}
+        <span style={{ color: C.azul, fontWeight: 600 }}>Pincha en cualquier fila para abrir su ficha (ver{caps.corregir ? ' / editar' : ''}).</span>
       </div>
 
       {error && <div style={{ color: C.rojo, marginBottom: 10 }}>{error}</div>}
@@ -266,7 +281,6 @@ export default function DescuentosPage() {
           <table style={{ borderCollapse: 'collapse', width: TABLE_W, tableLayout: 'fixed', fontSize: 12 }}>
             <colgroup>
               {COLS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
-              <col style={{ width: ACCIONES_W }} />
             </colgroup>
             <thead>
               <tr>
@@ -299,51 +313,30 @@ export default function DescuentosPage() {
                     )}
                   </th>
                 ))}
-                <th style={th()}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {visibles.map((r) => {
-                const enEd = editId === r.id;
-                return (
-                  <>
-                    <tr key={r.id} style={{ background: r.verificado ? '#f1f8f1' : '#fff' }}>
-                      {COLS.map((c) => (
-                        <td key={c.key} style={{ ...td(), textAlign: c.align || 'left' }}>
-                          {renderCelda(r, c.key, { enEd, editBuf, setEditBuf, caps, toggleVerificado, col: c })}
-                        </td>
-                      ))}
-                      <td style={td()}>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          {caps.corregir && !enEd && (
-                            <button onClick={() => empezarEdicion(r)} style={btnMini(C.azul)}>Corregir</button>
-                          )}
-                          {enEd && (
-                            <>
-                              <button disabled={savingEdit} onClick={() => guardarEdicion(r)} style={btnMini(C.verde)}>
-                                {savingEdit ? '…' : 'Guardar'}
-                              </button>
-                              <button onClick={() => setEditId(null)} style={btnMini(C.gris)}>Cancelar</button>
-                            </>
-                          )}
-                          <button onClick={() => verBitacora(r)} style={btnMini(C.ambar)}>
-                            {bitaId === r.id ? 'Ocultar' : 'Bitácora'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {bitaId === r.id && (
-                      <tr>
-                        <td colSpan={COLS.length + 1} style={{ ...td(), background: '#fffdf5' }}>
-                          <Bitacora rows={bitaRows} loading={bitaLoad} creado={r} />
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                );
-              })}
+              {visibles.map((r) => (
+                <tr key={r.id}
+                  onMouseEnter={() => setHoverId(r.id)}
+                  onMouseLeave={() => setHoverId((h) => (h === r.id ? null : h))}
+                  title="Pincha para ver / editar la ficha"
+                  style={{
+                    background: hoverId === r.id ? '#dbe9fb' : (r.verificado ? '#f1f8f1' : '#fff'),
+                    cursor: 'pointer',
+                    boxShadow: hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
+                  }}>
+                  {COLS.map((c) => (
+                    <td key={c.key}
+                      onClick={() => setDescSel(r)}
+                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer' }}>
+                      {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
+                    </td>
+                  ))}
+                </tr>
+              ))}
               {visibles.length === 0 && (
-                <tr><td colSpan={COLS.length + 1} style={{ ...td(), textAlign: 'center', color: C.gris, padding: 20 }}>
+                <tr><td colSpan={COLS.length} style={{ ...td(), textAlign: 'center', color: C.gris, padding: 20 }}>
                   No hay registros con los filtros actuales.
                 </td></tr>
               )}
@@ -368,34 +361,32 @@ export default function DescuentosPage() {
           </button>
         )}
       </div>
+
+      {descSel && (
+        <FichaDescuento
+          descuento={descSel}
+          caps={caps}
+          onClose={() => setDescSel(null)}
+          onGuardado={async () => { await cargar(); }}
+        />
+      )}
     </div>
   );
 }
 
-// ---------- celda (lectura o edición inline) ----------
+// ---------- celda (solo lectura; la edición es por la ficha) ----------
 function renderCelda(r, key, ctx) {
-  const { enEd, editBuf, setEditBuf, caps, toggleVerificado, col } = ctx;
+  const { caps, toggleVerificado, col } = ctx;
+  const stop = (e) => e.stopPropagation();   // evita abrir el drawer al pulsar controles
 
   if (key === 'verificado') {
     return r.verificado
       ? <span style={{ color: '#2e7d32', fontWeight: 600 }} title={`${r.verificado_por || ''} ${r.verificado_at ? new Date(r.verificado_at).toLocaleDateString('es-CL') : ''}`}>
-          ✓ {caps.verificar && <a onClick={() => toggleVerificado(r)} style={linkMini}>quitar</a>}
+          ✓ {caps.verificar && <a onClick={(e) => { stop(e); toggleVerificado(r); }} style={linkMini}>quitar</a>}
         </span>
       : (caps.verificar
-          ? <button onClick={() => toggleVerificado(r)} style={btnMini('#2e7d32')}>Verificar</button>
+          ? <button onClick={(e) => { stop(e); toggleVerificado(r); }} style={btnMini('#2e7d32')}>Verificar</button>
           : <span style={{ color: '#999' }}>—</span>);
-  }
-
-  if (enEd && EDITABLES.has(key)) {
-    if (key === 'tipo') return <SelectMini value={editBuf.tipo} opts={TIPOS} onChange={(v) => setEditBuf((b) => ({ ...b, tipo: v }))} />;
-    if (key === 'repercutir_a') return <SelectMini value={editBuf.repercutir_a} opts={REPERCUTIR_A} onChange={(v) => setEditBuf((b) => ({ ...b, repercutir_a: v }))} />;
-    return (
-      <input
-        value={editBuf[key] ?? ''}
-        onChange={(e) => setEditBuf((b) => ({ ...b, [key]: e.target.value }))}
-        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '2px 4px' }}
-      />
-    );
   }
 
   if (key === 'texto_para_contabilidad') {
@@ -421,7 +412,8 @@ function CeldaTextoContab({ texto }) {
   const [copiado, setCopiado] = useState(false);
   const t = (texto ?? '').toString();
 
-  async function copiar() {
+  async function copiar(e) {
+    if (e) e.stopPropagation();   // no abrir el drawer al copiar
     if (!t) return;
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -534,6 +526,194 @@ function Bitacora({ rows, loading, creado }) {
       )}
     </div>
   );
+}
+
+// ---------- FICHA DEL DESCUENTO (drawer lateral: ver / editar) ----------
+function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
+  const [row, setRow] = useState(descuento);
+  const [modo, setModo] = useState('ver');
+  const [buf, setBuf] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [bitaRows, setBitaRows] = useState([]);
+  const [bitaLoad, setBitaLoad] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      setBitaLoad(true);
+      try {
+        const res = await fetch(`/api/descuentos/bitacora?descuento_id=${row.id}`, { cache: 'no-store' });
+        const j = await res.json();
+        if (vivo) setBitaRows(j.rows || []);
+      } catch { if (vivo) setBitaRows([]); }
+      finally { if (vivo) setBitaLoad(false); }
+    })();
+    return () => { vivo = false; };
+  }, [row.id]);
+
+  function entrarEdicion() {
+    const b = {};
+    EDIT_CAMPOS.forEach(({ k }) => { b[k] = row[k] ?? ''; });
+    setBuf(b); setErr(''); setModo('editar');
+  }
+
+  async function recargarBitacora() {
+    try {
+      const res = await fetch(`/api/descuentos/bitacora?descuento_id=${row.id}`, { cache: 'no-store' });
+      const j = await res.json();
+      setBitaRows(j.rows || []);
+    } catch { /* nada */ }
+  }
+
+  async function guardar() {
+    setErr('');
+    const txt = String(buf.texto_explicativo_para_carta_a_propietario ?? '').trim();
+    if (txt !== '' && txt.length < 45) {
+      setErr('El texto para liquidación debe tener al menos 45 caracteres.'); return;
+    }
+    const cambios = {};
+    EDIT_CAMPOS.forEach(({ k }) => {
+      const nuevo = buf[k] ?? '';
+      const viejo = row[k] ?? '';
+      if (String(nuevo) !== String(viejo)) cambios[k] = nuevo === '' ? null : nuevo;
+    });
+    if (Object.keys(cambios).length === 0) { setModo('ver'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/descuentos/corregir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, cambios }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Error al corregir');
+      if (j.row) setRow(j.row);
+      setModo('ver');
+      await recargarBitacora();
+      onGuardado && onGuardado();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const editable = !!caps.corregir;
+
+  return (
+    <>
+      <div onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.28)', zIndex: 200 }} />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, height: '100vh', width: 'min(560px, 96vw)',
+        background: '#fff', zIndex: 201, boxShadow: '-6px 0 24px rgba(0,0,0,.18)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* cabecera */}
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.borde}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.azul }}>Descuento N° {row.num || '—'}</div>
+            <div style={{ fontSize: 12, color: C.gris }}>
+              {row.idadmon || '—'} · {row.tipo || ''} · {fmtFecha(row.fecha)}{row.verificado ? ' · ✓ verificado' : ''}
+            </div>
+          </div>
+          <button onClick={onClose} style={btnMini(C.gris)}>✕ Cerrar</button>
+        </div>
+
+        {/* barra de modo */}
+        <div style={{ padding: '10px 18px', borderBottom: `1px solid ${C.borde}`, display: 'flex', gap: 8, alignItems: 'center', background: '#fafbfd' }}>
+          {modo === 'ver' ? (
+            editable
+              ? <button onClick={entrarEdicion} style={btn(C.azul)}>✎ Editar</button>
+              : <span style={{ fontSize: 12, color: C.gris }}>Solo lectura.</span>
+          ) : (
+            <>
+              <button disabled={saving} onClick={guardar} style={btn(C.verde)}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
+              <button disabled={saving} onClick={() => { setModo('ver'); setErr(''); }} style={btn(C.gris)}>Cancelar</button>
+            </>
+          )}
+          {err && <span style={{ color: C.rojo, fontSize: 12 }}>{err}</span>}
+        </div>
+
+        {/* cuerpo */}
+        <div style={{ overflow: 'auto', padding: '14px 18px', flex: 1 }}>
+          {modo === 'ver'
+            ? SECCIONES_VER.map((sec) => (
+                <div key={sec.titulo} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.azul, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6, borderBottom: `1px solid ${C.azulClaro || C.borde}`, paddingBottom: 3 }}>
+                    {sec.titulo}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                    {sec.campos.map((k) => {
+                      const largo = ['texto_explicativo_para_carta_a_propietario', 'texto_para_contabilidad', 'aclaracion', 'comentarios_karina', 'visto_bueno_de_karina_y_mas_comentarios', 'comentario_interno2', 'inmueble', 'propietario'].includes(k);
+                      return (
+                        <div key={k} style={{ gridColumn: largo ? '1 / -1' : 'auto', minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: C.gris }}>{LABELS[k] || k}</div>
+                          <div style={{ fontSize: 13, color: '#222', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{fmtValor(k, row[k])}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {EDIT_CAMPOS.map((cfg) => {
+                  const largo = cfg.tipo === 'area';
+                  return (
+                    <div key={cfg.k} style={{ gridColumn: largo ? '1 / -1' : 'auto' }}>
+                      <Campo label={LABELS[cfg.k] || cfg.k}>
+                        {editorCampo(cfg, buf[cfg.k] ?? '', (val) => setBuf((b) => ({ ...b, [cfg.k]: val })))}
+                      </Campo>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${C.borde}` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.azul, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>Bitácora</div>
+            <Bitacora rows={bitaRows} loading={bitaLoad} creado={row} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// control de edición según el tipo del campo
+function editorCampo(cfg, val, onChange) {
+  if (cfg.tipo === 'select') {
+    const opts = cfg.k === 'tipo' ? TIPOS : REPERCUTIR_A;
+    return (
+      <select value={val ?? ''} onChange={(e) => onChange(e.target.value)} style={inp}>
+        <option value="">— elegir —</option>
+        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+  if (cfg.tipo === 'sino') {
+    return (
+      <select value={val ?? ''} onChange={(e) => onChange(e.target.value)} style={inp}>
+        <option value="">—</option><option value="NO">NO</option><option value="SI">SI</option>
+      </select>
+    );
+  }
+  if (cfg.tipo === 'mes') {
+    const opts = opcionesMes();
+    const actual = String(val ?? '').trim();
+    if (actual && !opts.includes(actual)) opts.unshift(actual);
+    return (
+      <select value={val ?? ''} onChange={(e) => onChange(e.target.value)} style={inp}>
+        <option value="">— elegir —</option>
+        {opts.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+    );
+  }
+  if (cfg.tipo === 'area') {
+    return <textarea value={val ?? ''} onChange={(e) => onChange(e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />;
+  }
+  if (cfg.tipo === 'numero') {
+    return <input type="text" inputMode="numeric" value={val ?? ''} onChange={(e) => onChange(e.target.value)} style={inp} />;
+  }
+  return <input value={val ?? ''} onChange={(e) => onChange(cfg.upper ? e.target.value.toUpperCase() : e.target.value)} style={inp} />;
 }
 
 // ---------- formulario de alta ----------
