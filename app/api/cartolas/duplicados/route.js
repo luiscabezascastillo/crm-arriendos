@@ -21,8 +21,9 @@ const supaAdmin = createClient(
   { auth: { persistSession: false } }
 )
 
-// Campos que definen un duplicado (A:I del Excel, sin folio ni justificante).
-const CAMPOS = ['fecha', 'idadmon', 'concepto', 'cargo', 'abono', 'saldo', 'comentarios']
+// Campos que definen un duplicado. Criterio (A): comparación estricta que incluye
+// el folio `calif` y `justificantes` (equivale a las columnas A:I completas del Excel).
+const CAMPOS = ['fecha', 'idadmon', 'concepto', 'cargo', 'abono', 'saldo', 'comentarios', 'calif', 'justificantes']
 
 function claveDe(r) {
   return CAMPOS.map(c => {
@@ -55,7 +56,7 @@ async function traerTodas(desdeInt, hastaInt) {
   for (;;) {
     const { data, error } = await supaAdmin
       .from('cuentas')
-      .select('id, fecha, idadmon, concepto, cargo, abono, saldo, comentarios, calif')
+      .select('id, fecha, idadmon, concepto, cargo, abono, saldo, comentarios, calif, justificantes')
       .order('id', { ascending: true })
       .range(desde, desde + paso - 1)
     if (error) throw new Error(error.message)
@@ -110,7 +111,47 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const { ids } = await req.json()
+    const body = await req.json()
+    const { ids, modo, desde, hasta } = body || {}
+
+    // ── MODO RANGO: borra TODOS los sobrantes cuyos duplicados caen en el rango ──
+    // No depende de ids marcados en pantalla (evita el cuelgue del navegador).
+    if (modo === 'rango') {
+      const desdeInt = isoInt(desde)
+      const hastaInt = isoInt(hasta)
+      // Se agrupa SOBRE TODA la tabla (grupo completo), pero solo se borran sobrantes
+      // cuyo grupo cae dentro del rango pedido (por la fecha, que es común al grupo).
+      const filas = await traerTodas(null, null)
+      const grupos = new Map()
+      for (const r of filas) {
+        const k = claveDe(r)
+        if (!grupos.has(k)) grupos.set(k, [])
+        grupos.get(k).push(r)
+      }
+      const permitidos = []
+      for (const arr of grupos.values()) {
+        if (arr.length < 2) continue
+        arr.sort((a, b) => a.id - b.id)
+        const fi = fechaInt(arr[0].fecha)
+        if (desdeInt != null && (fi == null || fi < desdeInt)) continue
+        if (hastaInt != null && (fi == null || fi > hastaInt)) continue
+        // conserva el primero (menor id); el resto son sobrantes
+        for (let i = 1; i < arr.length; i++) permitidos.push(arr[i].id)
+      }
+      if (permitidos.length === 0) {
+        return Response.json({ error: 'No hay sobrantes que borrar en ese rango.' }, { status: 400 })
+      }
+      let borrados = 0
+      for (let i = 0; i < permitidos.length; i += 500) {
+        const lote = permitidos.slice(i, i + 500)
+        const { error } = await supaAdmin.from('cuentas').delete().in('id', lote)
+        if (error) return Response.json({ error: error.message, borrados }, { status: 500 })
+        borrados += lote.length
+      }
+      return Response.json({ ok: true, borrados })
+    }
+
+    // ── MODO IDS: borra solo los ids indicados (casos sueltos marcados a mano) ──
     if (!Array.isArray(ids) || ids.length === 0) {
       return Response.json({ error: 'Sin ids para eliminar' }, { status: 400 })
     }

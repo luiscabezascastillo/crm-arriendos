@@ -233,6 +233,27 @@ function TablaVista() {
     } catch { setDupErr('Error de conexión'); setDupBorrando(false) }
   }
 
+  // Borrado MASIVO por rango: no manda ids (evita el cuelgue del navegador con miles
+  // de checkboxes). El servidor recalcula los sobrantes del rango y los borra en lotes.
+  const eliminarRango = async () => {
+    const total = dupResumen?.totalSobrantes || 0
+    if (!total) return
+    if (!window.confirm(`Se eliminarán TODOS los sobrantes del rango ${dupDesde || '(inicio)'} → ${dupHasta || '(fin)'}: ${total} fila(s). Se conserva siempre la primera (id más bajo) de cada grupo. Esta acción no se puede deshacer. ¿Continuar?`)) return
+    setDupBorrando(true); setDupErr(null)
+    try {
+      const res = await fetch('/api/cartolas/duplicados', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modo: 'rango', desde: dupDesde, hasta: dupHasta }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setDupErr(data.error || 'Error al eliminar'); setDupBorrando(false); return }
+      flash(`✓ ${data.borrados} fila(s) eliminada(s)`)
+      setDupBorrando(false)
+      await escanearDuplicados()   // re-escanea el rango (debería quedar limpio)
+      fetchInitial()
+    } catch { setDupErr('Error de conexión'); setDupBorrando(false) }
+  }
+
   if (status === 'loading' || loading)
     return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div>)
 
@@ -383,7 +404,7 @@ function TablaVista() {
             <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Duplicados en CUENTAS</div>
-                <div style={{ fontSize: 11, color: '#888780' }}>Idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios (NO se compara el folio). Se conserva la de menor id.</div>
+                <div style={{ fontSize: 11, color: '#888780' }}>Idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios · calif · justificantes (comparación estricta). Se conserva la de menor id.</div>
               </div>
               <button onClick={() => !dupBorrando && setDupOpen(false)}
                 style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
@@ -426,7 +447,12 @@ function TablaVista() {
               {!dupLoading && !dupErr && dupEscaneado && dupGrupos.length === 0 && (
                 <div style={{ padding: 30, textAlign: 'center', color: '#1D9E75', fontSize: 14, fontWeight: 600 }}>✓ No se encontraron duplicados en este rango.</div>
               )}
-              {!dupLoading && dupGrupos.map((g, gi) => (
+              {!dupLoading && dupGrupos.length > 150 && (
+                <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#EFF6FF', border: '0.5px solid #93C5FD', color: '#1447C3', fontSize: 12 }}>
+                  Mostrando los primeros 150 de {dupGrupos.length} grupos (para no saturar el navegador). El botón <b>“Eliminar TODOS los sobrantes del rango”</b> borra el total, no solo lo que ves aquí.
+                </div>
+              )}
+              {!dupLoading && dupGrupos.slice(0, 150).map((g, gi) => (
                 <div key={gi} style={{ border: '0.5px solid #E4E2DA', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
                   <div style={{ background: '#FBF7EC', padding: '6px 10px', fontSize: 11, color: '#8a6d1e', fontWeight: 600 }}>
                     Grupo {gi + 1} · {g.filas.length} filas idénticas · {g.filas[0].fecha} · {g.filas[0].idadmon || '—'}
@@ -442,6 +468,7 @@ function TablaVista() {
                     <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>Saldo</div>
                     <div style={{ width: 110, flexShrink: 0 }}>Comentarios</div>
                     <div style={{ width: 60, flexShrink: 0 }}>Calif</div>
+                    <div style={{ width: 100, flexShrink: 0 }}>Justif.</div>
                     <div style={{ width: 44, textAlign: 'right', flexShrink: 0 }}>id</div>
                   </div>
                   {g.filas.map((f, fi) => {
@@ -464,6 +491,7 @@ function TablaVista() {
                         <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>{fmt(f.saldo) || '—'}</div>
                         <div style={{ width: 110, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.comentarios || ''}>{f.comentarios || '—'}</div>
                         <div style={{ width: 60, flexShrink: 0, color: '#B8860B', fontWeight: 600 }}>{f.calif || '—'}</div>
+                        <div style={{ width: 100, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#888780' }} title={f.justificantes || ''}>{f.justificantes || '—'}</div>
                         <div style={{ width: 44, textAlign: 'right', fontSize: 10, color: '#B4B2A9', flexShrink: 0 }}>#{f.id}</div>
                       </div>
                     )
@@ -473,16 +501,24 @@ function TablaVista() {
             </div>
 
             {!dupLoading && dupGrupos.length > 0 && (
-              <div style={{ padding: '12px 18px', borderTop: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ padding: '12px 18px', borderTop: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: '#5F5E5A' }}>
-                  {dupGrupos.length} grupo(s) · {dupSel.size} fila(s) marcada(s) para borrar
+                  {dupResumen?.totalGrupos ?? dupGrupos.length} grupo(s) · {dupResumen?.totalSobrantes ?? 0} sobrante(s) en el rango
                   {!puedeEditar && <span style={{ color: '#9B1C1C' }}> · solo lectura (no puedes borrar)</span>}
                 </div>
                 {puedeEditar && (
-                  <button onClick={eliminarDuplicados} disabled={dupBorrando || dupSel.size === 0}
-                    style={{ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: dupSel.size === 0 ? '#D3D1C7' : '#C0392B', color: '#fff', cursor: dupSel.size === 0 ? 'default' : 'pointer' }}>
-                    {dupBorrando ? 'Eliminando…' : `Eliminar seleccionados (${dupSel.size})`}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={eliminarDuplicados} disabled={dupBorrando || dupSel.size === 0}
+                      title="Borra solo las filas marcadas con la casilla BORRAR en la muestra visible"
+                      style={{ fontSize: 12, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: dupSel.size === 0 ? '#B4B2A9' : '#C0392B', cursor: dupSel.size === 0 ? 'default' : 'pointer' }}>
+                      {dupBorrando ? '…' : `Borrar marcados (${dupSel.size})`}
+                    </button>
+                    <button onClick={eliminarRango} disabled={dupBorrando || !(dupResumen?.totalSobrantes)}
+                      title="Borra TODOS los sobrantes del rango (no solo lo visible). Conserva el id más bajo de cada grupo."
+                      style={{ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: !(dupResumen?.totalSobrantes) ? '#D3D1C7' : '#C0392B', color: '#fff', cursor: !(dupResumen?.totalSobrantes) ? 'default' : 'pointer' }}>
+                      {dupBorrando ? 'Eliminando…' : `🗑 Eliminar TODOS los sobrantes del rango (${dupResumen?.totalSobrantes ?? 0})`}
+                    </button>
+                  </div>
                 )}
               </div>
             )}
