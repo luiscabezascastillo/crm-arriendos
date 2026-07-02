@@ -331,6 +331,29 @@ const MCOLS = [
   { key: 'justificantes', h: 'Justificantes', w: 130, align: 'left' },
 ]
 
+// Proporcional del PRIMER mes, calculado desde datos_arriendos:
+//  - día de inicio inclusive
+//  - base = días reales del mes
+//  - renta = condición especial (cantidad) si existe; si no, cuota normal
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+function calcProporcional(f) {
+  if (!f || !f.fecha_inicio) return null
+  const s = String(f.fecha_inicio).slice(0, 10)          // 'YYYY-MM-DD'
+  const [Y, M, D] = s.split('-').map(Number)
+  if (!Y || !M || !D) return null
+  const diasMes = new Date(Y, M, 0).getDate()            // último día del mes M (1-based)
+  const diasCobrar = diasMes - D + 1                     // inclusive
+  const especial = num(f.cantidad) > 0
+  const renta = especial ? num(f.cantidad) : num(f.cuota)
+  if (renta <= 0) return null
+  const prop = Math.round(renta * diasCobrar / diasMes)
+  return {
+    prop, renta, diasCobrar, diasMes, especial,
+    mesNombre: MESES_ES[M - 1], anio: Y, dia: D,
+    inicioDia1: D === 1,
+  }
+}
+
 function CartolaIdadmonVista() {
   const { status } = useSession()
   const router = useRouter()
@@ -353,7 +376,7 @@ function CartolaIdadmonVista() {
     // 1) ficha en datos_arriendos (idadmon es único -> una fila)
     const { data: da, error: e1 } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia')
+      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia, fecha_inicio, cuota, meses, cantidad')
       .eq('idadmon', id)
       .limit(1)
     if (e1) { setError('Error leyendo ficha: ' + e1.message); setBuscando(false); return }
@@ -393,6 +416,12 @@ function CartolaIdadmonVista() {
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
   const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
+
+  // Proporcional del primer mes (desde datos_arriendos) y cotejo con la cartola
+  const propCalc = calcProporcional(ficha)
+  const filaPropCartola = movs.find(m => esInicio(m) && /PROPORCIONAL/i.test(String(m.concepto || '')))
+  const descuadre = propCalc && !propCalc.inicioDia1 && filaPropCartola
+    && Math.abs(num(filaPropCartola.cargo) - propCalc.prop) > 1
 
   const Dato = ({ label, value, strong }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
@@ -460,6 +489,36 @@ function CartolaIdadmonVista() {
               <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} />
             </div>
           </div>
+
+          {/* PROPORCIONAL PRIMER MES (calculado desde datos_arriendos) */}
+          {propCalc && (
+            <div style={{ border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
+              <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 6 }}>Proporcional del primer mes · calculado desde datos_arriendos</div>
+              {propCalc.inicioDia1 ? (
+                <div style={{ fontSize: 13, color: '#5F5E5A' }}>El contrato inicia el día 1 de {propCalc.mesNombre}: mes completo, sin proporcional.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: '#2C2C2A' }}>
+                    Renta base <b>{money(propCalc.renta)}</b> {propCalc.especial ? '(condición especial)' : '(cuota normal)'} · {propCalc.diasCobrar} de {propCalc.diasMes} días de {propCalc.mesNombre} {propCalc.anio}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0C447C', marginTop: 2 }}>
+                    Proporcional calculado: {money(propCalc.prop)}
+                  </div>
+                  {filaPropCartola ? (
+                    descuadre ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#92400E', fontWeight: 600 }}>
+                        ⚠ En la cartola figura {money(num(filaPropCartola.cargo))} ("{filaPropCartola.concepto}"). Debería ser {money(propCalc.prop)} según datos_arriendos. Si es un error, corrígelo en el origen (datos_arriendos → CUENTAS), no aquí.
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#085041', fontWeight: 600 }}>✓ Coincide con la línea de proporcional de la cartola.</div>
+                    )
+                  ) : (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#888780' }}>No hay línea de proporcional (INICIO) en la cartola para comparar.</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* MOVIMIENTOS */}
           <div style={{ overflow: 'auto', maxHeight: '60vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
