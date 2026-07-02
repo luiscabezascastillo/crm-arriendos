@@ -240,6 +240,15 @@ function fmtMiles(v) {
   return n.toLocaleString('es-CL')
 }
 
+// Tasa de IVA para comisiones de corretaje (siempre afecto a IVA).
+const IVA_TASA = 0.19
+// Extrae el porcentaje numérico de un texto de corretaje: "50%", "50% + IVA", "40" -> 50/50/40.
+// Sin número reconocible -> 0.
+function parsePct(txt) {
+  const m = String(txt ?? '').match(/(\d+(?:[.,]\d+)?)/)
+  return m ? Number(m[1].replace(',', '.')) : 0
+}
+
 // Celda económica. Soporta:
 //   money   -> muestra con separador de miles y sin flechas; guarda el número crudo.
 //   options -> render como <select> (p. ej. ['', 'BOLETA', 'FACTURA']).
@@ -349,6 +358,8 @@ function AdminContent() {
   const [prop2Abierto, setProp2Abierto] = useState(false)
   const [bloqueado, setBloqueado] = useState(false)
   const [isNew, setIsNew] = useState(true)
+  // valor_uf del día 1 del mes en curso (indices_mensuales). null = aún no cargado / no existe fila.
+  const [ufMes, setUfMes] = useState(null)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
   const [adicionalesAbierto, setAdicionalesAbierto] = useState(false)
@@ -446,6 +457,62 @@ function AdminContent() {
   const abrirExpandir = (bloque, campo) => setExpandir({ bloque, campo })
 
   useEffect(() => { cargarCapacidades() }, [])
+
+  // Carga el valor de la UF del día 1 del mes en curso desde indices_mensuales.
+  // Se usa para convertir la cuota UF -> pesos al calcular el corretaje.
+  useEffect(() => {
+    (async () => {
+      const hoy = new Date()
+      const mes1 = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+      const { data } = await supabase
+        .from('indices_mensuales').select('valor_uf').eq('mes', mes1).maybeSingle()
+      setUfMes(data?.valor_uf != null ? Number(data.valor_uf) : null)
+    })()
+  }, [])
+
+  // Valores por defecto al abrir un contrato EDITABLE (estado P / corrección):
+  // corretaje 50%/50% y administración 8,00%, solo si están vacíos (no pisa lo heredado).
+  useEffect(() => {
+    const editable = !(bloqueado || (form.estado !== 'P' && !isNew && !correccionAbierta))
+    if (!editable) return
+    setLogEcon(prev => ({
+      ...prev,
+      porcentD: String(prev.porcentD ?? '').trim() ? prev.porcentD : '50%',
+      porcentA: String(prev.porcentA ?? '').trim() ? prev.porcentA : '50%',
+    }))
+    setForm(prev => (String(prev.pct_adm ?? '').trim() ? prev : { ...prev, pct_adm: '8.00' }))
+  }, [bloqueado, form.estado, isNew, correccionAbierta])
+
+  // Auto-cálculo del corretaje (solo en contratos editables):
+  //   Cantidad = cuota (en pesos) × %   ·   Con IVA = 19% de Cantidad   ·   Total = Cantidad + IVA
+  // Si el contrato está en UF y no hay UF del mes en curso -> deja las 3 celdas vacías (se avisa en pantalla).
+  useEffect(() => {
+    const editable = !(bloqueado || (form.estado !== 'P' && !isNew && !correccionAbierta))
+    if (!editable) return
+    const cuotaNum = Number(String(form.cuota ?? '').replace(/\./g, '').replace(/[^\d.-]/g, '')) || 0
+    const esUF = form.unid === 'UF'
+    const cuotaPesos = esUF ? (ufMes ? Math.round(cuotaNum * ufMes) : null) : cuotaNum
+    const lado = (pctTxt) => {
+      if (!cuotaNum || cuotaPesos == null) return { base: '', iva: '', total: '' }
+      const base = Math.round(cuotaPesos * parsePct(pctTxt) / 100)
+      const iva = Math.round(base * IVA_TASA)
+      return { base: String(base), iva: String(iva), total: String(base + iva) }
+    }
+    const d = lado(logEcon.porcentD)
+    const a = lado(logEcon.porcentA)
+    setForm(prev => {
+      if (prev.comision_d_base === d.base && prev.iva_comision_d === d.iva && prev.comision_d_total === d.total &&
+          prev.comision_a_base === a.base && prev.iva_comision_a === a.iva && prev.comision_a_total === a.total) {
+        return prev // sin cambios: evita renders innecesarios
+      }
+      return {
+        ...prev,
+        comision_d_base: d.base, iva_comision_d: d.iva, comision_d_total: d.total,
+        comision_a_base: a.base, iva_comision_a: a.iva, comision_a_total: a.total,
+      }
+    })
+  }, [form.cuota, form.unid, form.estado, logEcon.porcentD, logEcon.porcentA, ufMes, bloqueado, isNew, correccionAbierta])
+
 
   // Al entrar (o si cambia el ?idadmon= de la URL), prioriza el IDADMON de la URL.
   // Solo si no viene ninguno se usa el último visto (localStorage) como respaldo.
@@ -1275,6 +1342,14 @@ function AdminContent() {
           }}>
             DATOS ECONÓMICOS
           </div>
+          {!roLog && form.unid === 'UF' && String(form.cuota ?? '').trim() && !ufMes && (
+            <div style={{
+              background: '#fffbeb', color: '#b45309', border: '1px solid #fcd34d', borderTop: 'none',
+              fontSize: 10.5, padding: '4px 10px', textAlign: 'center',
+            }}>
+              ⚠ Falta la UF del mes en curso en indices_mensuales: no se puede calcular la Cantidad del corretaje. Cárgala y vuelve a entrar.
+            </div>
+          )}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 0.55fr', gap: 0,
             border: `1px solid ${ECO.border}`, borderTop: 'none',
@@ -1284,9 +1359,9 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>PROPIETARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentD" value={logEcon.porcentD} onChange={e => setLogEconCampo('porcentD', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={handleChange} ro={roLog} money />
-                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={handleChange} ro={roLog} money />
-                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={handleChange} ro={roLog} money bold />
+                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={() => {}} ro money />
+                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={() => {}} ro money />
+                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={() => {}} ro money bold />
                 <EcoCell label="C. Esp." name="cEspProp" value={logEcon.cEspProp} onChange={e => setLogEconCampo('cEspProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentProp" value={logEcon.comentProp} onChange={e => setLogEconCampo('comentProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
@@ -1297,9 +1372,9 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ARRENDATARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentA" value={logEcon.porcentA} onChange={e => setLogEconCampo('porcentA', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={handleChange} ro={roLog} money />
-                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={handleChange} ro={roLog} money />
-                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={handleChange} ro={roLog} money bold />
+                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={() => {}} ro money />
+                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={() => {}} ro money />
+                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={() => {}} ro money bold />
                 <EcoCell label="C. Esp." name="cEspArr" value={logEcon.cEspArr} onChange={e => setLogEconCampo('cEspArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentArr" value={logEcon.comentArr} onChange={e => setLogEconCampo('comentArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
