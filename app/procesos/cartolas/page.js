@@ -88,6 +88,10 @@ function TablaVista() {
   const [dupGrupos, setDupGrupos] = useState([])
   const [dupSel, setDupSel] = useState(() => new Set())   // ids marcados para borrar
   const [dupBorrando, setDupBorrando] = useState(false)
+  const [dupDesde, setDupDesde] = useState('')            // YYYY-MM-DD (input date)
+  const [dupHasta, setDupHasta] = useState('')            // YYYY-MM-DD (input date)
+  const [dupEscaneado, setDupEscaneado] = useState(false) // ya se corrió al menos un escaneo
+  const [dupResumen, setDupResumen] = useState(null)      // { totalGrupos, totalSobrantes }
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -180,22 +184,30 @@ function TablaVista() {
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
 
   // ── Chequeo de duplicados ─────────────────────────────────────────────
-  // Abre el modal y pide al servidor los grupos de filas idénticas (mismos
-  // fecha/idadmon/concepto/cargo/abono/saldo/comentarios). Marca por defecto
-  // los "sobrantes" (todas menos la primera de cada grupo, que se conserva).
-  const abrirDuplicados = async () => {
-    setDupOpen(true); setDupLoading(true); setDupErr(null); setDupGrupos([]); setDupSel(new Set())
+  // Duplicado = fila idéntica a otra en fecha·idadmon·concepto·cargo·abono·saldo·comentarios
+  // (NO se compara el folio `calif` ni `justificantes`). Se conserva la de menor id.
+  // Se busca por RANGO de fechas para revisar y borrar por tramos (nunca todo de golpe).
+  const abrirDuplicados = () => {
+    setDupOpen(true); setDupErr(null); setDupGrupos([]); setDupSel(new Set())
+    setDupEscaneado(false); setDupResumen(null)
+  }
+
+  const escanearDuplicados = async () => {
+    setDupLoading(true); setDupErr(null); setDupGrupos([]); setDupSel(new Set()); setDupResumen(null)
     try {
-      const res = await fetch('/api/cartolas/duplicados')
+      const params = new URLSearchParams()
+      if (dupDesde) params.set('desde', dupDesde)
+      if (dupHasta) params.set('hasta', dupHasta)
+      const res = await fetch('/api/cartolas/duplicados?' + params.toString())
       const data = await res.json()
-      if (!res.ok) { setDupErr(data.error || 'Error al detectar'); setDupLoading(false); return }
+      if (!res.ok) { setDupErr(data.error || 'Error al detectar'); setDupLoading(false); setDupEscaneado(true); return }
       const grupos = data.grupos || []
-      // Preselección: todos los sobrantes (índice > 0 en cada grupo ya ordenado por id asc)
       const sel = new Set()
       for (const g of grupos) g.filas.slice(1).forEach(f => sel.add(f.id))
       setDupGrupos(grupos); setDupSel(sel)
+      setDupResumen({ totalGrupos: data.totalGrupos || grupos.length, totalSobrantes: data.totalSobrantes || sel.size })
     } catch { setDupErr('Error de conexión') }
-    setDupLoading(false)
+    setDupLoading(false); setDupEscaneado(true)
   }
 
   const toggleDup = (id) => setDupSel(prev => {
@@ -205,7 +217,7 @@ function TablaVista() {
   const eliminarDuplicados = async () => {
     const ids = [...dupSel]
     if (ids.length === 0) return
-    if (!window.confirm(`Se eliminarán ${ids.length} fila(s) duplicada(s) de CUENTAS. Se conserva siempre la primera de cada grupo. Esta acción no se puede deshacer. ¿Continuar?`)) return
+    if (!window.confirm(`Se eliminarán ${ids.length} fila(s) duplicada(s) de CUENTAS en el rango elegido. Se conserva siempre la primera (id más bajo) de cada grupo. Esta acción no se puede deshacer. ¿Continuar?`)) return
     setDupBorrando(true); setDupErr(null)
     try {
       const res = await fetch('/api/cartolas/duplicados', {
@@ -216,8 +228,8 @@ function TablaVista() {
       if (!res.ok) { setDupErr(data.error || 'Error al eliminar'); setDupBorrando(false); return }
       flash(`✓ ${data.borrados} fila(s) eliminada(s)`)
       setDupBorrando(false)
-      await abrirDuplicados()   // re-escanea para mostrar lo que quede
-      fetchInitial()            // refresca la tabla principal
+      await escanearDuplicados()   // re-escanea el mismo rango para ver lo que quede
+      fetchInitial()               // refresca la tabla principal
     } catch { setDupErr('Error de conexión'); setDupBorrando(false) }
   }
 
@@ -298,17 +310,17 @@ function TablaVista() {
   return (
     <>
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
-          <div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ textAlign: 'center' }}>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Cuentas (CARTOLAS)</h1>
             <div style={{ fontSize: 12, color: '#888780' }}>
               recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado' : ''}
               {!puedeEditar && ' · solo lectura'}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
             <button onClick={abrirDuplicados}
-              title="Buscar filas duplicadas en CUENTAS (misma fecha, IDADMON, concepto, cargo y abono)"
+              title="Buscar filas duplicadas en CUENTAS (por rango de fechas)"
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>
               🔍 Duplicados
             </button>
@@ -367,44 +379,91 @@ function TablaVista() {
       {dupOpen && (
         <>
           <div onClick={() => !dupBorrando && setDupOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(760px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71 }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(1040px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71 }}>
             <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Duplicados en CUENTAS</div>
-                <div style={{ fontSize: 11, color: '#888780' }}>Filas idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios. Se conserva la primera de cada grupo.</div>
+                <div style={{ fontSize: 11, color: '#888780' }}>Idénticas en fecha · IDADMON · concepto · cargo · abono · saldo · comentarios (NO se compara el folio). Se conserva la de menor id.</div>
               </div>
               <button onClick={() => !dupBorrando && setDupOpen(false)}
                 style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
             </div>
 
+            {/* Rango de fechas + Escanear */}
+            <div style={{ padding: '12px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 11, color: '#5F5E5A', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                Desde
+                <input type="date" value={dupDesde} onChange={e => setDupDesde(e.target.value)}
+                  style={{ fontSize: 12, padding: '5px 8px', border: '0.5px solid #D3D1C7', borderRadius: 6 }} />
+              </label>
+              <label style={{ fontSize: 11, color: '#5F5E5A', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                Hasta
+                <input type="date" value={dupHasta} onChange={e => setDupHasta(e.target.value)}
+                  style={{ fontSize: 12, padding: '5px 8px', border: '0.5px solid #D3D1C7', borderRadius: 6 }} />
+              </label>
+              <button onClick={escanearDuplicados} disabled={dupLoading}
+                style={{ fontSize: 12, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+                {dupLoading ? 'Escaneando…' : '🔍 Escanear'}
+              </button>
+              <div style={{ fontSize: 10.5, color: '#888780', flex: 1, minWidth: 180 }}>
+                Deja las fechas en blanco para escanear TODO (no recomendado: son ~29.000 sobrantes). Revisa y borra por tramos (año a año).
+              </div>
+            </div>
+
+            {/* Resumen */}
+            {dupResumen && !dupLoading && (
+              <div style={{ padding: '8px 18px', background: '#FBF7EC', borderBottom: '0.5px solid #E4E2DA', fontSize: 12, color: '#8a6d1e', fontWeight: 600 }}>
+                Rango {dupDesde || '(inicio)'} → {dupHasta || '(fin)'}: {dupResumen.totalGrupos} grupo(s) con duplicados · {dupResumen.totalSobrantes} fila(s) sobrante(s).
+              </div>
+            )}
+
             <div style={{ padding: '14px 18px', overflow: 'auto' }}>
-              {dupLoading && <div style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Escaneando la tabla…</div>}
+              {dupLoading && <div style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Escaneando el rango…</div>}
               {dupErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{dupErr}</div>}
-              {!dupLoading && !dupErr && dupGrupos.length === 0 && (
-                <div style={{ padding: 30, textAlign: 'center', color: '#1D9E75', fontSize: 14, fontWeight: 600 }}>✓ No se encontraron duplicados.</div>
+              {!dupLoading && !dupErr && !dupEscaneado && (
+                <div style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Elige un rango de fechas y pulsa <b>Escanear</b>.</div>
+              )}
+              {!dupLoading && !dupErr && dupEscaneado && dupGrupos.length === 0 && (
+                <div style={{ padding: 30, textAlign: 'center', color: '#1D9E75', fontSize: 14, fontWeight: 600 }}>✓ No se encontraron duplicados en este rango.</div>
               )}
               {!dupLoading && dupGrupos.map((g, gi) => (
                 <div key={gi} style={{ border: '0.5px solid #E4E2DA', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
                   <div style={{ background: '#FBF7EC', padding: '6px 10px', fontSize: 11, color: '#8a6d1e', fontWeight: 600 }}>
                     Grupo {gi + 1} · {g.filas.length} filas idénticas · {g.filas[0].fecha} · {g.filas[0].idadmon || '—'}
                   </div>
+                  {/* Cabecera de columnas (hasta CALIF) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 10px', background: '#F7F5EF', fontSize: 9.5, fontWeight: 700, color: '#888780', textTransform: 'uppercase' }}>
+                    <div style={{ width: 78, flexShrink: 0 }}>Acción</div>
+                    <div style={{ width: 74, flexShrink: 0 }}>Fecha</div>
+                    <div style={{ width: 64, flexShrink: 0 }}>IDADMON</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>Concepto</div>
+                    <div style={{ width: 78, textAlign: 'right', flexShrink: 0 }}>Cargo</div>
+                    <div style={{ width: 78, textAlign: 'right', flexShrink: 0 }}>Abono</div>
+                    <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>Saldo</div>
+                    <div style={{ width: 110, flexShrink: 0 }}>Comentarios</div>
+                    <div style={{ width: 60, flexShrink: 0 }}>Calif</div>
+                    <div style={{ width: 44, textAlign: 'right', flexShrink: 0 }}>id</div>
+                  </div>
                   {g.filas.map((f, fi) => {
                     const conservar = fi === 0
                     const marcado = dupSel.has(f.id)
                     return (
-                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderTop: fi ? '0.5px solid #EDEBE4' : 'none', background: conservar ? '#F3FAF0' : (marcado ? '#FDF3F3' : '#fff') }}>
-                        <div style={{ width: 90, flexShrink: 0 }}>
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderTop: '0.5px solid #EDEBE4', background: conservar ? '#F3FAF0' : (marcado ? '#FDF3F3' : '#fff'), fontSize: 11, color: '#2C2C2A' }}>
+                        <div style={{ width: 78, flexShrink: 0 }}>
                           {conservar
                             ? <span style={{ fontSize: 10, fontWeight: 700, color: '#1D9E75' }}>CONSERVAR</span>
                             : <label style={{ fontSize: 10, fontWeight: 700, color: '#9B1C1C', display: 'flex', alignItems: 'center', gap: 5, cursor: puedeEditar ? 'pointer' : 'default' }}>
                                 <input type="checkbox" checked={marcado} disabled={!puedeEditar} onChange={() => toggleDup(f.id)} /> BORRAR
                               </label>}
                         </div>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#2C2C2A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {f.concepto || '—'}
-                        </div>
-                        <div style={{ width: 90, textAlign: 'right', fontSize: 11, color: '#9B1C1C', flexShrink: 0 }}>{fmt(f.cargo) || '—'}</div>
-                        <div style={{ width: 90, textAlign: 'right', fontSize: 11, color: '#085041', flexShrink: 0 }}>{fmt(f.abono) || '—'}</div>
+                        <div style={{ width: 74, flexShrink: 0 }}>{f.fecha || '—'}</div>
+                        <div style={{ width: 64, flexShrink: 0 }}>{f.idadmon || '—'}</div>
+                        <div style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.concepto || ''}>{f.concepto || '—'}</div>
+                        <div style={{ width: 78, textAlign: 'right', color: '#9B1C1C', flexShrink: 0 }}>{fmt(f.cargo) || '—'}</div>
+                        <div style={{ width: 78, textAlign: 'right', color: '#085041', flexShrink: 0 }}>{fmt(f.abono) || '—'}</div>
+                        <div style={{ width: 84, textAlign: 'right', flexShrink: 0 }}>{fmt(f.saldo) || '—'}</div>
+                        <div style={{ width: 110, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.comentarios || ''}>{f.comentarios || '—'}</div>
+                        <div style={{ width: 60, flexShrink: 0, color: '#B8860B', fontWeight: 600 }}>{f.calif || '—'}</div>
                         <div style={{ width: 44, textAlign: 'right', fontSize: 10, color: '#B4B2A9', flexShrink: 0 }}>#{f.id}</div>
                       </div>
                     )
