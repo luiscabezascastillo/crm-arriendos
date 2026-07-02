@@ -155,6 +155,7 @@ export default function DescuentosPage() {
   const [verTodos, setVerTodos] = useState(false);  // mostrar todo el histórico o solo lo reciente
   const menuRef = useRef(null);
   const scrollRef = useRef(null);   // contenedor scrolleable de la tabla
+  const ancladoRef = useRef(false); // para anclar al fondo solo una vez por carga
 
   useEffect(() => {
     function onDoc(e) {
@@ -197,14 +198,15 @@ export default function DescuentosPage() {
     return filtradas.slice(-TOPE_DEFECTO);
   }, [filtradas, verTodos, hayFiltroActivo]);
 
-  // En la vista por defecto (sin filtro, sin "ver todos"), dejar el scroll al
-  // fondo para que el último subido quede a la vista sin mover nada.
+  // En la vista por defecto, tras cargar, dejar el scroll al fondo UNA vez
+  // (el último subido queda a la vista). Después el usuario scrollea libremente.
   useEffect(() => {
-    if (loading) return;
+    if (loading) { ancladoRef.current = false; return; }
     if (verTodos || hayFiltroActivo) return;
+    if (ancladoRef.current) return;
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [visibles, loading, verTodos, hayFiltroActivo]);
+    if (el) { el.scrollTop = el.scrollHeight; ancladoRef.current = true; }
+  }, [loading, verTodos, hayFiltroActivo, visibles]);
 
   function toggleValor(col, valor) {
     setFiltros((prev) => {
@@ -866,7 +868,7 @@ const inp = { padding: '6px 8px', border: '1px solid #c9d3e0', borderRadius: 4, 
 const linkMini = { color: '#1f4e79', cursor: 'pointer', fontSize: 11, marginLeft: 4, textDecoration: 'underline' };
 function btn(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 5, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }; }
 function btnMini(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }; }
-function th() { return { position: 'sticky', top: 0, zIndex: 10, background: '#1f4e79', color: '#fff', padding: '5px 6px', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', border: '1px solid #173a5c', fontSize: 11.5 }; }
+function th() { return { position: 'sticky', top: 0, zIndex: 10, background: '#1f4e79', color: '#fff', padding: '5px 6px', textAlign: 'left', whiteSpace: 'nowrap', border: '1px solid #173a5c', fontSize: 11.5 }; }
 function td() { return { padding: '3px 6px', borderBottom: '1px solid #eef1f5', borderRight: '1px solid #f3f5f8', verticalAlign: 'middle', overflow: 'hidden', fontSize: 11.5 }; }
 const thMini = { background: '#f0e6c8', padding: '3px 6px', textAlign: 'left', border: '1px solid #e0d4a8', fontSize: 11 };
 const tdMini = { padding: '3px 6px', borderBottom: '1px solid #f0ead8', fontSize: 11 };
