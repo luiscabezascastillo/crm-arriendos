@@ -48,6 +48,8 @@ function colorFila(m) {
   if (ca > 0) return '#FBECEC'
   return '#fff'
 }
+// IDADMON válido: A + 5 dígitos (ej. A00819).
+const esIdadmonValido = (uc) => /^A\d{5}$/.test(String(uc ?? '').trim().toUpperCase())
 function bgCelda(ci, r) {
   if (ci === I_REG) return '#C19A6B'
   if (ci >= I_UC) return colorFila(r)
@@ -338,17 +340,26 @@ export default function BiVista() {
           style={{ border: '0.5px solid ' + (resuelto ? '#C8C5BC' : '#9BD7C2'), background: abierto ? '#E1F5EE' : (resuelto ? '#fff' : '#F0FAF6'), color: resuelto ? '#8A8780' : '#085041', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 7px' }}>➕ RUT</button>
       )
     }
-    if (!c.ro) return (
-      <input value={r[c.key] ?? ''} title={r[c.key] ?? ''} onChange={e => onLocal(r.id, c.key, e.target.value)}
-        onFocus={e => { e.target.dataset.orig = (r[c.key] ?? ''); e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
-        onBlur={e => {
-          const orig = e.target.dataset.orig ?? ''
-          const actual = e.target.value ?? ''
-          e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent'
-          if (orig !== actual) guardarCelda(r.id, c.key, actual)
-        }}
-        style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, background: 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
-    )
+    if (!c.ro) {
+      const esUC = c.key === 'unique_concept'
+      const baseAm = esUC && num(r.abonos) > 0 && ['FALTA', 'REVISAR'].includes(String(r.check2_pasar_a_cartola ?? '').trim().toUpperCase())
+      const amarillo = baseAm && !esIdadmonValido(r[c.key])
+      return (
+        <input value={r[c.key] ?? ''} title={amarillo ? 'Falta teclear el IDADMON (A+5 dígitos)' : (r[c.key] ?? '')}
+          placeholder={amarillo ? 'IDADMON…' : ''}
+          onChange={e => onLocal(r.id, c.key, e.target.value)}
+          onFocus={e => { e.target.dataset.orig = (r[c.key] ?? ''); e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
+          onBlur={e => {
+            const orig = e.target.dataset.orig ?? ''
+            const actual = e.target.value ?? ''
+            const sigueAm = baseAm && !esIdadmonValido(actual)
+            e.target.style.border = '1px solid transparent'
+            e.target.style.background = sigueAm ? '#FFE84D' : 'transparent'
+            if (orig !== actual) guardarCelda(r.id, c.key, actual)
+          }}
+          style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
+      )
+    }
     if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
   }
