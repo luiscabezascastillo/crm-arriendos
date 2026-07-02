@@ -121,7 +121,7 @@ function opcionesMes() {
 }
 
 // Cuántas filas mostrar por defecto (las más recientes)
-const TOPE_DEFECTO = 30;
+const TOPE_DEFECTO = 100;
 
 const C = {
   azul: '#1f4e79', azulClaro: '#dbe5f1', borde: '#c9d3e0',
@@ -198,11 +198,15 @@ export default function DescuentosPage() {
     return filtradas.slice(-TOPE_DEFECTO);
   }, [filtradas, verTodos, hayFiltroActivo]);
 
-  // En la vista por defecto, tras cargar, dejar el scroll al fondo UNA vez
-  // (el último subido queda a la vista). Después el usuario scrollea libremente.
+  // Al cambiar entre "recientes" y "ver todos", permitir re-anclar al fondo una vez.
+  useEffect(() => { ancladoRef.current = false; }, [verTodos]);
+
+  // Sin filtro activo (vista por defecto o "ver todos"), tras cargar dejar el
+  // scroll al fondo UNA vez: así los descuentos recientes quedan a la vista y el
+  // scrolling hacia los antiguos es cómodo. Con filtro activo no se fuerza.
   useEffect(() => {
     if (loading) { ancladoRef.current = false; return; }
-    if (verTodos || hayFiltroActivo) return;
+    if (hayFiltroActivo) return;
     if (ancladoRef.current) return;
     const el = scrollRef.current;
     if (el) { el.scrollTop = el.scrollHeight; ancladoRef.current = true; }
