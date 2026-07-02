@@ -643,10 +643,18 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
                     {sec.campos.map((k) => {
                       const largo = ['texto_explicativo_para_carta_a_propietario', 'texto_para_contabilidad', 'aclaracion', 'comentarios_karina', 'visto_bueno_de_karina_y_mas_comentarios', 'comentario_interno2', 'inmueble', 'propietario'].includes(k);
+                      const esEnlace = (k === 'relacionado' || k === 'link_admon');
+                      const val = row[k];
+                      const urlValida = esEnlace && /^https?:\/\//i.test(String(val || '').trim());
                       return (
                         <div key={k} style={{ gridColumn: largo ? '1 / -1' : 'auto', minWidth: 0 }}>
                           <div style={{ fontSize: 11, color: C.gris }}>{LABELS[k] || k}</div>
-                          <div style={{ fontSize: 13, color: '#222', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{fmtValor(k, row[k])}</div>
+                          {urlValida
+                            ? <a href={String(val).trim()} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: 13, color: C.azul, fontWeight: 600, textDecoration: 'none', wordBreak: 'break-all' }}>
+                                🔗 Abrir enlace
+                              </a>
+                            : <div style={{ fontSize: 13, color: '#222', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{fmtValor(k, val)}</div>}
                         </div>
                       );
                     })}
