@@ -19,7 +19,7 @@ const COLS = [
   { key: 'saldos',                 h: 'Saldo',          ro: true, w: 92,  align: 'right', money: true, filt: true },
   { key: '_check1',                h: 'check1',         ro: true, w: 60,  align: 'right' },
   { key: 'check2_pasar_a_cartola', h: 'check2',         w: 78,  align: 'left',  filt: true },
-  { key: 'reg',                    h: 'Reg',            w: 62,  align: 'left',  filt: true },
+  { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
   { key: 'trim',                   h: 'TRIM',           w: 60,  align: 'left', filt: true },

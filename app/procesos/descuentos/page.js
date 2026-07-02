@@ -717,6 +717,9 @@ function editorCampo(cfg, val, onChange) {
 }
 
 // ---------- formulario de alta ----------
+// ¿el texto parece un enlace? (validación ligera, no bloqueante)
+const pareceURL = (s) => /^https?:\/\//i.test(String(s || '').trim());
+
 function FormAlta({ onCreado }) {
   const [f, setF] = useState({
     mes_a_imputar: '', idadmon: '', inmueble: '', propietario: '',
@@ -797,8 +800,19 @@ function FormAlta({ onCreado }) {
           </select>
         </Campo>
 
-        <Campo label="Enlace justificante"><input value={f.relacionado} onChange={(e) => set('relacionado', e.target.value)} style={inp} /></Campo>
-        <Campo label="Enlace Admon (link)"><input value={f.link_admon} onChange={(e) => set('link_admon', e.target.value)} style={inp} /></Campo>
+        <Campo label="Enlace justificante">
+          <input value={f.relacionado} onChange={(e) => set('relacionado', e.target.value)}
+            placeholder="https://drive.google.com/…  (comprobante)" style={inp} />
+          {f.relacionado.trim() !== '' && !pareceURL(f.relacionado)
+            ? <div style={{ fontSize: 11, color: C.ambar }}>¿Seguro que es un enlace? Suele empezar por http…</div>
+            : <div style={{ fontSize: 11, color: C.gris }}>Pega el enlace de Drive del comprobante (boleta/factura/recibo). En Drive: clic derecho → Compartir → Copiar vínculo.</div>}
+        </Campo>
+        <Campo label="Enlace Admon (link)">
+          <input value={f.link_admon} onChange={(e) => set('link_admon', e.target.value)}
+            placeholder="https://…  (opcional)" style={inp} />
+          {f.link_admon.trim() !== '' && !pareceURL(f.link_admon) &&
+            <div style={{ fontSize: 11, color: C.ambar }}>¿Seguro que es un enlace? Suele empezar por http…</div>}
+        </Campo>
         <Campo label="IDADMON relacionado (términos)"><input value={f.idadmon_relacionado} onChange={(e) => set('idadmon_relacionado', e.target.value.toUpperCase())} placeholder="A00654" style={inp} /></Campo>
       </div>
 
