@@ -319,7 +319,6 @@ export default function DescuentosPage() {
             <tbody>
               {visibles.map((r) => (
                 <tr key={r.id}
-                  onClick={() => setDescSel(r)}
                   onMouseEnter={() => setHoverId(r.id)}
                   onMouseLeave={() => setHoverId((h) => (h === r.id ? null : h))}
                   title="Pincha para ver / editar la ficha"
@@ -329,7 +328,9 @@ export default function DescuentosPage() {
                     boxShadow: hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
                   }}>
                   {COLS.map((c) => (
-                    <td key={c.key} style={{ ...td(), textAlign: c.align || 'left' }}>
+                    <td key={c.key}
+                      onClick={() => setDescSel(r)}
+                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer' }}>
                       {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
                     </td>
                   ))}
