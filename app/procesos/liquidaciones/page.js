@@ -175,6 +175,19 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          <div style={{ width: 1, height: 22, background: '#E5E7EB', margin: '0 2px' }} />
+          <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ⚠ FALTAN
+          </button>
+          <button disabled title="Próximamente: enviar liquidaciones por email a los propietarios (sobre la versión congelada)"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
+            ✉ Enviar liquidaciones
+          </button>
+          <button disabled title="Próximamente: vista de lo que se va a congelar (revisión de Alberto, día 5)"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
+            📄 Vista cartas
+          </button>
         </div>
 
         {/* Métricas */}
