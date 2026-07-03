@@ -918,7 +918,7 @@ function AdminContent() {
       a.href = url; a.download = `${form.idadmon} Borrador.docx`
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
       setBorradorOk(true)
-      setMsg({ type: 'ok', text: '✓ Borrador descargado. Revísalo; si está bien, confirma Cerrar y Facturar.' })
+      setMsg({ type: 'ok', text: '✓ Borrador descargado. Revísalo; si está bien, confirma la Facturación.' })
     } catch (e) {
       setMsg({ type: 'error', text: 'Error de conexión al generar el borrador.' })
     }
@@ -1048,7 +1048,7 @@ function AdminContent() {
               background: (bloqueado || cambiando) ? '#9ca3af' : C.red,
               color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: (bloqueado || cambiando) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            }}>{cambiando ? 'PROCESANDO…' : 'CERRAR Y FACTURAR'}</button>
+            }}>{cambiando ? 'PROCESANDO…' : 'Contrato y Facturación'}</button>
         )}
 
         {puedeEditarAhora && (
@@ -1764,7 +1764,7 @@ function AdminContent() {
           <div onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 10, width: 'min(620px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
             <div style={{ background: C.red, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Cerrar y Facturar {form.idadmon ? `· ${form.idadmon}` : ''}</span>
+              <span>Contrato y Facturación {form.idadmon ? `· ${form.idadmon}` : ''}</span>
               <button type="button" onClick={() => !cambiando && !generandoBorrador && setModalFacturarAbierto(false)}
                 style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
@@ -1790,7 +1790,7 @@ function AdminContent() {
               </button>
 
               <div style={{ borderTop: '1px solid #E8E6E0', margin: '16px 0 12px' }} />
-              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 2 · Cerrar y Facturar</div>
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 2 · Facturar</div>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
                 Pasa el contrato de <b>P → S</b> y envía la solicitud de facturación a Finanzas. {borradorOk ? '' : 'Genera el borrador primero.'}
               </div>
@@ -1802,7 +1802,7 @@ function AdminContent() {
                 <button type="button" onClick={async () => { await cerrarYFacturar(); setModalFacturarAbierto(false) }} disabled={cambiando || !borradorOk}
                   title={borradorOk ? '' : 'Genera y revisa el borrador antes de facturar'}
                   style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: (cambiando || !borradorOk) ? '#9ca3af' : C.red, color: '#fff', fontSize: 13, fontWeight: 700, cursor: (cambiando || !borradorOk) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-                  {cambiando ? 'PROCESANDO…' : 'CERRAR Y FACTURAR'}
+                  {cambiando ? 'PROCESANDO…' : 'Facturar'}
                 </button>
               </div>
             </div>
