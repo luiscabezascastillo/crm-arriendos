@@ -32,6 +32,8 @@ const PROCESOS = [
 ]
 
 const ROLES = ['observador', 'colaborador', 'supervisor', 'responsable']
+// Etiquetas visibles (la key interna NO cambia; la usa cc1Permisos.js y la BD).
+const ROL_LABEL = { observador: 'Observador', colaborador: 'Colaborador de Inicio', supervisor: 'Colaborador de Término', responsable: 'Responsable' }
 const ROL_COLOR = {
   responsable: { bg: '#DCFCE7', c: '#166534' },
   supervisor: { bg: '#FEF3C7', c: '#92400E' },
@@ -164,7 +166,7 @@ export default function ConfigPage() {
                         <select value={actual} onChange={e => cambiarRol(p.key, e.target.value)} disabled={guardando === p.key}
                           style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, background: col ? col.bg : '#fff', color: col ? col.c : '#374151', fontWeight: actual ? 600 : 400 }}>
                           <option value="">— sin acceso —</option>
-                          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                          {ROLES.map(r => <option key={r} value={r}>{ROL_LABEL[r] || r}</option>)}
                         </select>
                         {guardando === p.key && <span style={{ fontSize: 11, color: '#888' }}>guardando…</span>}
                       </div>
