@@ -184,8 +184,8 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
             ✉ Enviar liquidaciones
           </button>
-          <button disabled title="Próximamente: vista de lo que se va a congelar (revisión de Alberto, día 5)"
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
+          <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
             📄 Vista cartas
           </button>
         </div>
