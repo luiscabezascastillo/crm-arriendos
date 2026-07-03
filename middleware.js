@@ -4,7 +4,7 @@ const RUTAS = {
   '/canje':        ['direccion'],
   '/panel':        ['direccion', 'administracion', 'finanzas', 'legal', 'ventas', 'comercial', 'mantencion'],
   '/admin':        ['direccion', 'legal', 'ventas', 'administracion', 'finanzas'],
-  '/cc1':          ['direccion', 'finanzas', 'legal'],
+  '/cc1':          ['direccion', 'finanzas', 'legal', 'ventas'],
   '/publicaciones': ['direccion', 'administracion', 'comercial', 'ventas', 'legal'],
   '/procesos/cartolas': ['direccion', 'administracion', 'finanzas', 'legal'],
   '/procesos':     ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'],
