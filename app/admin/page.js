@@ -452,6 +452,7 @@ function AdminContent() {
   const [generandoBorrador, setGenerandoBorrador] = useState(false)
   const [borradorOk, setBorradorOk] = useState(false)
   const [soloBorrador, setSoloBorrador] = useState(false)  // modal en modo "solo generar contrato" (sin facturar)
+  const [recientes, setRecientes] = useState([])           // IDADMON recientes (ayuda para elegir base)
   const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
@@ -1044,24 +1045,14 @@ function AdminContent() {
         )}
 
         {form.estado === 'P' && puedeFacturarUsuario && (
-          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setSoloBorrador(false); setModalFacturarAbierto(true) }} disabled={bloqueado || cambiando}
-            title="Cierra la carga del contrato: pasa de P a S, bloquea la ficha y envía la solicitud de facturación a Finanzas."
+          <button onClick={cerrarYFacturar} disabled={bloqueado || cambiando}
+            title="Firma el contrato: pasa de P a S, y envía la notificación de cambio de estado y la de facturación a Finanzas."
             style={{
               padding: '5px 14px', borderRadius: 5, border: 'none',
               background: (bloqueado || cambiando) ? '#9ca3af' : C.red,
               color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: (bloqueado || cambiando) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            }}>{cambiando ? 'PROCESANDO…' : 'Contrato y Facturación'}</button>
-        )}
-
-        {(form.estado === 'P' || form.estado === 'S') && puedeFacturarUsuario && (
-          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setSoloBorrador(true); setModalFacturarAbierto(true) }}
-            title="Genera y descarga el borrador del contrato (no cambia el estado ni factura). Para pruebas y para preparar contratos."
-            style={{
-              padding: '5px 14px', borderRadius: 5, border: '1px solid #2563a8',
-              background: '#fff', color: '#2563a8', fontSize: 12, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>📄 Generar contrato</button>
+            }}>{cambiando ? 'PROCESANDO…' : 'TERMINAR (P → S)'}</button>
         )}
 
         {puedeEditarAhora && (
@@ -1081,6 +1072,25 @@ function AdminContent() {
               background: '#2563a8', color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit',
             }}>📩 Cargar datos email</button>
+        )}
+
+        {(form.estado === 'P' || form.estado === 'S') && puedeFacturarUsuario && (
+          <button onClick={async () => {
+              setPlantillaFile(null); setBorradorOk(false); setSoloBorrador(true); setModalFacturarAbierto(true)
+              try {
+                const { data } = await supabase.from('datos_arriendos')
+                  .select('idadmon, arrendatario, inmueble, estado')
+                  .in('estado', ['S', 'SQ', 'Q'])
+                  .order('idadmon', { ascending: false }).limit(12)
+                setRecientes(data || [])
+              } catch { setRecientes([]) }
+            }}
+            title="Genera y descarga el borrador del contrato (no cambia el estado ni factura). Para pruebas y para preparar contratos."
+            style={{
+              padding: '5px 14px', borderRadius: 5, border: '1px solid #2563a8',
+              background: '#fff', color: '#2563a8', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>📄 Generar contrato</button>
         )}
 
         {cap?.puedeAprobar && form.idadmon && !isNew && form.estado !== 'P' && !correccionAbierta && (
@@ -1132,7 +1142,7 @@ function AdminContent() {
         }}>{msg.text}</div>
       )}
 
-      {cap?.puedeCambiarEstado && form.idadmon && !isNew && (
+      {cap?.puedeCambiarEstado && form.idadmon && !isNew && form.estado !== 'P' && (
         <div style={{
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
           background: '#eef4fb', border: `1px solid ${C.headerBg}`,
@@ -1797,6 +1807,17 @@ function AdminContent() {
                   {plantillaFile ? `📄 ${plantillaFile.name}` : '📎 Arrastra aquí un contrato .docx (de cualquier IDADMON) o haz clic para elegirlo'}
                 </div>
               </label>
+
+              {soloBorrador && recientes.length > 0 && (
+                <div style={{ margin: '2px 0 10px', fontSize: 11, color: '#6B7280', lineHeight: 1.6 }}>
+                  <b>Contratos recientes</b> (te sirven de base — coge el .docx de uno de estos):<br />
+                  {recientes.map((r, i) => (
+                    <span key={r.idadmon} title={`${r.arrendatario || ''} · ${r.inmueble || ''}`}>
+                      {i > 0 ? ' · ' : ''}<span style={{ fontFamily: 'monospace', color: '#374151', fontWeight: 600 }}>{r.idadmon}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <button type="button" onClick={generarBorrador} disabled={!plantillaFile || generandoBorrador}
                 style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: (!plantillaFile || generandoBorrador) ? '#9ca3af' : C.subBg, color: '#fff', fontSize: 13, fontWeight: 700, cursor: (!plantillaFile || generandoBorrador) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                 {generandoBorrador ? 'Generando…' : '📄 Generar y descargar borrador'}
