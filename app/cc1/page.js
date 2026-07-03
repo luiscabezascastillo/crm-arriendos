@@ -420,8 +420,6 @@ export default function CC1Page() {
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => {}} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
         <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
-        <OperacionesBtn opciones={opEspecialesCC1} router={router} />
-        <ActionBtn label="Cierre"                     bg="#dc2626" icon={Ico.lock}  onClick={() => {}} />
       </div>
 
       <div style={{ padding: '20px 24px' }}>
