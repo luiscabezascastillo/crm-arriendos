@@ -51,6 +51,7 @@ export default function LiquidacionesPage() {
   const [expandido, setExpandido] = useState(null)        // idprop expandido
   const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
   const [busca, setBusca] = useState('')
+  const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
 
   // Acceso
   useEffect(() => {
@@ -63,10 +64,11 @@ export default function LiquidacionesPage() {
   useEffect(() => { if (accesoOk === true) cargarMes(mes) }, [accesoOk])
 
   async function cargarMes(m) {
-    setCargando(true); setError(null); setExpandido(null); setDetalles({})
+    setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
     const { data, error } = await supabase.rpc('calcular_liquidacion_propietario', { p_mes: m })
     if (error) { setError(error.message); setPropietarios([]); setCargando(false); return }
     setPropietarios(data || [])
+    setUltimaAct(new Date())
     setCargando(false)
   }
 
@@ -172,8 +174,13 @@ export default function LiquidacionesPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar propietario…"
             style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: 240 }} />
           <button onClick={() => cargarMes(mes)} disabled={cargando}
+            title="Vuelve a leer bi, descuentos y comentarios y recalcula todo"
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-            {cargando ? 'Calculando…' : '🔄 Recalcular'}
+            {cargando ? 'Calculando…' : '🔄 Recalcular (bi · descuentos · comentarios)'}
+          </button>
+          <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
+            📄 Vista cartas
           </button>
           <div style={{ width: 1, height: 22, background: '#E5E7EB', margin: '0 2px' }} />
           <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
@@ -184,10 +191,7 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
             ✉ Enviar liquidaciones
           </button>
-          <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
-            📄 Vista cartas
-          </button>
+          {ultimaAct && <span style={{ fontSize: 11, color: '#94A3B8' }}>Actualizado {ultimaAct.toLocaleTimeString('es-CL')}</span>}
         </div>
 
         {/* Métricas */}
