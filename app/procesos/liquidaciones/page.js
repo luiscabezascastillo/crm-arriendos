@@ -85,7 +85,7 @@ export default function LiquidacionesPage() {
     if (ids.length) {
       const [rDesc, rCom, rArr, rPag] = await Promise.all([
         supabase.from('descuentos')
-          .select('idadmon, monto_a_transferir, texto_explicativo_para_carta_a_propietario')
+          .select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
           .in('idadmon', ids).eq('mes_a_imputar', aammToTxt(mes)).eq('repercutir_a', 'PROPIETARIO'),
         supabase.from('comentarios_liquidacion')
           .select('idadmon, comentario').in('idadmon', ids).eq('mes', mes),
@@ -112,13 +112,13 @@ export default function LiquidacionesPage() {
     const pie = []
     ids.forEach(id => {
       descs.filter(d => d.idadmon === id).forEach(d =>
-        pie.push({ idadmon: id, cantidad: n0(d.monto_a_transferir), texto: d.texto_explicativo_para_carta_a_propietario || 'Descuento' }))
+        pie.push({ idadmon: id, cantidad: n0(d.monto_a_imputar), texto: d.texto_explicativo_para_carta_a_propietario || 'Descuento' }))
       if (ajustes[id]) pie.push({ idadmon: id, cantidad: ajustes[id], texto: 'Ajuste del mes' })
       coments.filter(c => c.idadmon === id && c.comentario).forEach(c =>
         pie.push({ idadmon: id, cantidad: null, texto: c.comentario }))
     })
     const sumaDesc = {}
-    descs.forEach(d => { sumaDesc[d.idadmon] = (sumaDesc[d.idadmon] || 0) + n0(d.monto_a_transferir) })
+    descs.forEach(d => { sumaDesc[d.idadmon] = (sumaDesc[d.idadmon] || 0) + n0(d.monto_a_imputar) })
     // pagos del BI agrupados por inmueble (para el desglose al pinchar Recibido)
     const pagosPorInm = {}
     pagos.forEach(pg => { (pagosPorInm[pg.idadmon2] = pagosPorInm[pg.idadmon2] || []).push(pg) })

@@ -71,7 +71,7 @@ export default function CartasPage() {
       const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps] = await Promise.all([
         supabase.from('datos_arriendos').select('*').in('idadmon', ids),
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
-        supabase.from('descuentos').select('idadmon, monto_a_transferir, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
+        supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
         supabase.from('comentarios').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
         supabase.from('bi').select('detalle_movimiento, cargos').eq('unique_concept', 'PROPIETARIOS').eq('liquidacion_mes2', m),
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
@@ -103,7 +103,7 @@ export default function CartasPage() {
       // DES (descuentos por idadmon)
       const des = {}
       for (const d of rDesc.data || []) {
-        (des[d.idadmon] = des[d.idadmon] || []).push({ monto: n0(d.monto_a_transferir), texto: d.texto_explicativo_para_carta_a_propietario || '' })
+        (des[d.idadmon] = des[d.idadmon] || []).push({ monto: n0(d.monto_a_imputar), texto: d.texto_explicativo_para_carta_a_propietario || '' })
       }
 
       // Nota (comentarios): coincidir mes en 'mes' o 'para_mes_txt'; si no, la más reciente
