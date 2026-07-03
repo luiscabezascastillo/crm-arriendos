@@ -806,6 +806,8 @@ function AdminContent() {
         const payload = { ...form }
         delete payload.id
         delete payload.idadmon
+        // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
+        for (const k in payload) { if (payload[k] === '') payload[k] = null }
         const res = await fetch('/api/cc1/alta', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ form: payload }),
@@ -827,6 +829,8 @@ function AdminContent() {
 
     const payload = { ...form, updated_at: new Date().toISOString() }
     delete payload.id
+    // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
+    for (const k in payload) { if (payload[k] === '') payload[k] = null }
     const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
     if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }); setSaving(false); return }
 
