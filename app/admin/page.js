@@ -337,6 +337,100 @@ const ESTADOS_ACTIVOS = new Set(['S', 'SQ'])
 // Estados de TÉRMINO / CERRADO: cualquier edición (incluso ajustes) dispara advertencia reforzada.
 const ESTADOS_CERRADOS = new Set(['Q', 'N', 'N-DICOM', 'N_DICOM'])
 
+// ── Parser del email de inicio (sin IA, por reglas sobre las etiquetas habituales) ──
+// Tolerante a acentos, mayúsculas y typos ("Incio"). Devuelve un objeto con lo que encuentre.
+function parseInicioEmail(texto) {
+  const t = String(texto || '').replace(/\r/g, '')
+  const out = { arr: {} }
+
+  // Fecha inicio: "Fecha Incio del contrato: 02-07-2026"
+  let m = t.match(/fecha\s+in\w*cio[^:]*:\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i)
+  if (m) out.fecha_inicio = normFecha(m[1])
+
+  // Vigencia: "tiempo de vigencia: 1 año renovable"
+  m = t.match(/vigencia[^:]*:\s*([^\n\-–]+)/i)
+  if (m) out.vigencia = m[1].trim()
+
+  // Bodega / estacionamiento: "Incluye Estacionamiento y Bodega: BODEGA 502"
+  m = t.match(/bodega[^:]*:\s*([^\n\-–]+)/i)
+  if (m) {
+    const b = m[1].trim()
+    const num = b.match(/(\d+)/)
+    out.bodega = num ? num[1] : b
+  }
+  // Estacionamiento explícito (si viniera "Estacionamiento: 12")
+  m = t.match(/estacionamiento\s*:\s*([^\n\-–]+)/i)
+  if (m) { const num = m[1].match(/(\d+)/); if (num) out.estac = num[1] }
+
+  // Arriendo mensual + moneda: "$25.000" o "UF 10"
+  m = t.match(/arriendo\s+mensual[^:]*:\s*(uf)?\s*\$?\s*([0-9][0-9.\,]*)/i)
+  if (m) {
+    out.unid = (m[1] ? 'UF' : '$')
+    out.cuota = String(m[2]).replace(/\./g, '').replace(/,/g, '.').replace(/\.00$/, '')
+    if (out.unid === '$') out.cuota = out.cuota.split('.')[0]  // pesos sin decimales
+  }
+
+  // Reajuste: "tipo de reajuste IPC cada 6 meses" (con o sin dos puntos) -> literal
+  m = t.match(/reajuste[:\s]+([^\n]+)/i)
+  if (m) out.revision = m[1].replace(/\.$/, '').trim()
+
+  // Sin garantía
+  if (/sin\s+garant[ií]a/i.test(t)) out.sinGarantia = true
+
+  // ── Bloque ARRENDATARIO: etiquetas en orden; el valor va hasta la siguiente etiqueta ──
+  const labels = [
+    ['nombre',   /nombre\s+completo\s*:/i],
+    ['rut',      /\brut\s*:/i],
+    ['estado',   /estado\s+civil\s*:/i],
+    ['profesion',/profesi[oó]n\s*:/i],
+    ['domLab',   /direcci[oó]n\s+laboral\s*:/i],
+    ['domHabit', /domicilio\s+actual\s*:/i],
+    ['telefono', /tel[eé]fono\s*:/i],
+    ['email',    /e-?\s*mail\s*:/i],
+  ]
+  // localizar cada etiqueta
+  const pos = []
+  for (const [key, re] of labels) {
+    const mm = t.match(re)
+    if (mm && mm.index != null) pos.push({ key, start: mm.index, end: mm.index + mm[0].length })
+  }
+  pos.sort((a, b) => a.start - b.start)
+  for (let i = 0; i < pos.length; i++) {
+    const desde = pos[i].end
+    const hasta = (i + 1 < pos.length) ? pos[i + 1].start : t.length
+    let val = t.slice(desde, hasta).trim()
+    val = val.replace(/\s*[\-–]\s*$/, '').replace(/\s*\[.*$/, '').trim() // quita colas tipo "[dnmv95@..."
+    if (pos[i].key === 'email') { const em = val.match(/[\w.\-+]+@[\w.\-]+/); if (em) val = em[0] }
+    if (val) out.arr[pos[i].key] = val
+  }
+
+  // Género a partir del estado civil (soltero/M -> H ; soltera/casada/F -> M)
+  const ec = (out.arr.estado || '').toLowerCase()
+  if (/\bsoltero\b/.test(ec) || ec === 'm ' || ec === 'masculino') out.arr.genero = 'H'
+  else if (/\bsoltera\b|\bcasada\b|\bfemenino\b/.test(ec) || ec === 'f') out.arr.genero = 'M'
+
+  // Finalización = inicio + 1 año - 1 día
+  if (out.fecha_inicio) out.termino_inicial = masUnAnoMenosUnDia(out.fecha_inicio)
+
+  return out
+}
+// dd-mm-aaaa (o dd/mm/aa) -> aaaa-mm-dd
+function normFecha(s) {
+  const p = String(s).split(/[-/]/)
+  if (p.length !== 3) return ''
+  let [d, mth, y] = p
+  if (y.length === 2) y = '20' + y
+  return `${y}-${String(mth).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+// aaaa-mm-dd + 1 año - 1 día
+function masUnAnoMenosUnDia(iso) {
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d)) return ''
+  d.setFullYear(d.getFullYear() + 1)
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function AdminContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -351,6 +445,8 @@ function AdminContent() {
   // Estado editable de ARRENDATARIOS y AVALES (1 y 2). 11 campos por persona.
   const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
   const [modalAbierto, setModalAbierto] = useState(false)   // modal de edición de personas
+  const [modalEmailAbierto, setModalEmailAbierto] = useState(false)  // modal "Cargar datos email"
+  const [textoEmail, setTextoEmail] = useState('')
   const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
@@ -652,6 +748,55 @@ function AdminContent() {
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
   }
 
+  // Aplica el email de inicio parseado al formulario. Solo si el contrato está en P.
+  function aplicarEmailInicio() {
+    if (!form.idadmon && !isNew) { setMsg({ type: 'warn', text: 'Carga primero un IDADMON.' }); return }
+    if (form.estado && String(form.estado).trim().toUpperCase() !== 'P') {
+      setMsg({ type: 'warn', text: `⚠ Este contrato está en estado "${form.estado}", no en P. Un inicio solo se carga sobre un IDADMON en captación (P). Revisa que el IDADMON sea el correcto.` })
+      return
+    }
+    const p = parseInicioEmail(textoEmail)
+    if (!p.fecha_inicio && !p.arr.nombre && !p.cuota) {
+      setMsg({ type: 'warn', text: 'No pude extraer datos del texto. Revisa que sea el email de inicio.' })
+      return
+    }
+    // Campos del contrato
+    setForm(prev => ({
+      ...prev,
+      ...(p.fecha_inicio    ? { fecha_inicio: p.fecha_inicio } : {}),
+      ...(p.termino_inicial ? { termino_inicial: p.termino_inicial } : {}),
+      ...(p.cuota           ? { cuota: p.cuota } : {}),
+      ...(p.unid            ? { unid: p.unid } : {}),
+      ...(p.bodega          ? { bodega: p.bodega } : {}),
+      ...(p.estac           ? { estac: p.estac } : {}),
+      ...(p.revision        ? { revision: p.revision } : {}),
+      ...(p.sinGarantia     ? { garantia_pedida: '' } : {}),
+      // Resumen de arrendatario en datos_arriendos
+      ...(p.arr.nombre      ? { arrendatario: p.arr.nombre } : {}),
+      ...(p.arr.rut         ? { rut: p.arr.rut } : {}),
+      ...(p.arr.email       ? { mail_arrendatario: p.arr.email } : {}),
+      ...(p.arr.telefono    ? { movil: p.arr.telefono } : {}),
+    }))
+    // Detalle del arrendatario 1 (personas.arr1)
+    setPersonas(prev => ({
+      ...prev,
+      arr1: {
+        ...prev.arr1,
+        ...(p.arr.nombre   ? { nombre: p.arr.nombre } : {}),
+        ...(p.arr.rut      ? { rut: p.arr.rut } : {}),
+        ...(p.arr.estado   ? { estado: p.arr.estado } : {}),
+        ...(p.arr.genero   ? { genero: p.arr.genero } : {}),
+        ...(p.arr.email    ? { email: p.arr.email } : {}),
+        ...(p.arr.telefono ? { telefono: p.arr.telefono } : {}),
+        ...(p.arr.domHabit ? { domHabit: p.arr.domHabit } : {}),
+        ...(p.arr.domLab   ? { domLab: p.arr.domLab } : {}),
+      },
+    }))
+    setBloqueado(false)   // desbloquea para que Neika revise y ajuste
+    setModalEmailAbierto(false)
+    setMsg({ type: 'ok', text: '✓ Datos precargados desde el email. Revisa, completa lo que falte y pulsa GUARDAR.' })
+  }
+
   async function guardar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     setSaving(true); setMsg(null)
@@ -881,11 +1026,15 @@ function AdminContent() {
         }}>{bloqueado ? '🔒 DESBLOQUEAR' : '🔓 DESBLOQUEADO'}</button>
         )}
 
-        <button disabled title="Pendiente de definir para la versión web" style={{
-          padding: '5px 14px', borderRadius: 5, border: '1px dashed #9ca3af',
-          background: 'transparent', color: '#9ca3af', fontSize: 12, fontWeight: 700,
-          cursor: 'not-allowed', fontFamily: 'inherit',
-        }}>EXPORT</button>
+        {puedeEditarAhora && (
+          <button onClick={() => { setTextoEmail(''); setModalEmailAbierto(true) }}
+            title="Pega el email de inicio de Neika y se rellenan los campos automáticamente"
+            style={{
+              padding: '5px 14px', borderRadius: 5, border: 'none',
+              background: '#2563a8', color: '#fff', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>📩 Cargar datos email</button>
+        )}
 
         {cap?.puedeAprobar && form.idadmon && !isNew && form.estado !== 'P' && !correccionAbierta && (
           <button onClick={() => { setMotivoCorr(''); setModalCorrAbierto(true) }} title="Corregir errores en un contrato activo (queda registrado)"
@@ -1538,6 +1687,40 @@ function AdminContent() {
           onCerrar={() => setModalAbierto(false)}
           idadmon={form.idadmon}
         />
+      )}
+
+      {/* ══ MODAL: Cargar datos del email de inicio ══ */}
+      {modalEmailAbierto && (
+        <div onClick={() => setModalEmailAbierto(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 16px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 10, width: 'min(680px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+            <div style={{ background: C.headerBg, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>📩 Cargar datos del email de inicio {form.idadmon ? `· ${form.idadmon}` : ''}</span>
+              <button type="button" onClick={() => setModalEmailAbierto(false)}
+                style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>
+                Pega el texto del email de inicio (el que envía Neika). Se rellenarán los campos del contrato y del arrendatario. Después revisa, completa lo que falte y pulsa <b>GUARDAR</b>. Solo funciona si el contrato está en <b>P</b>.
+              </div>
+              <textarea autoFocus value={textoEmail} onChange={e => setTextoEmail(e.target.value)}
+                placeholder="Pega aquí el email…"
+                style={{ width: '100%', minHeight: 220, boxSizing: 'border-box', padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none', resize: 'vertical', color: '#1f2937' }}
+              />
+              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => setModalEmailAbierto(false)}
+                  style={{ padding: '7px 16px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={aplicarEmailInicio} disabled={!textoEmail.trim()}
+                  style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: textoEmail.trim() ? C.green : '#9ca3af', color: '#fff', fontSize: 13, fontWeight: 700, cursor: textoEmail.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
+                  Extraer y precargar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══ POP-UP de expansión de campo largo (domicilios) ══ */}
