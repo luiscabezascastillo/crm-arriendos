@@ -126,7 +126,7 @@ export default function CartasPage() {
           idadmon: r.idadmon,
           propiedad: r.inmueble,
           comienzo: fmtFecha(campo(d, ['fecha_inicio'])),
-          final: fmtFecha(campo(d, ['fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
+          final: fmtFecha(campo(d, ['termino_actual', 'fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
           arrendatario: campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
           rut: campo(d, ['rut', 'rut_arrendatario', 'rut1']),
           por: campo(d, ['quien_cobra'], 'FCR'),
@@ -170,10 +170,11 @@ export default function CartasPage() {
   if (accesoOk === false) return null
 
   const estadoColor = { 'OK': { bg: '#DCFCE7', c: '#166534' }, 'OK DESC': { bg: '#FEF9C3', c: '#854D0E' }, 'TO SEE': { bg: '#FEE2E2', c: '#991B1B' }, 'CHECK': { bg: '#FFEDD5', c: '#9A3412' } }
-  const COLS = '70px 200px 78px 78px 150px 100px 90px 90px 44px 80px 70px 90px 95px 80px 80px 80px 160px 160px'
-  const th = { fontSize: 10.5, color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap' }
-  const td = { fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
-  const rt = { textAlign: 'right' }
+  const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace"
+  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 82px 68px 64px 60px 128px 140px'
+  const th = { fontSize: 10, color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+  const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+  const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
 
   return (
     <>
@@ -219,7 +220,7 @@ export default function CartasPage() {
 
               {/* Tabla de inmuebles (scroll horizontal) */}
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ minWidth: 1700 }}>
+                <div style={{ minWidth: 1550 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', background: '#334155' }}>
                     <div style={th}>IdAdmon</div><div style={th}>Propiedad</div><div style={th}>Comienzo</div><div style={th}>Final</div>
                     <div style={th}>Arrendatario</div><div style={th}>RUT</div><div style={{ ...th, ...rt }}>A Cobrar</div><div style={{ ...th, ...rt }}>Recibido</div>
@@ -229,12 +230,12 @@ export default function CartasPage() {
                   </div>
                   {b.inmuebles.map((x, i) => (
                     <div key={x.idadmon + i} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '6px 12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
-                      <div style={{ ...td, fontWeight: 600 }}>{x.idadmon}</div>
+                      <div style={{ ...td, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
                       <div style={td} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
-                      <div style={td}>{x.comienzo}</div>
-                      <div style={td}>{x.final}</div>
+                      <div style={{ ...td, fontFamily: MONO }}>{x.comienzo}</div>
+                      <div style={{ ...td, fontFamily: MONO }}>{x.final}</div>
                       <div style={td} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
-                      <div style={td}>{x.rut || '—'}</div>
+                      <div style={{ ...td, fontFamily: MONO }}>{x.rut || '—'}</div>
                       <div style={{ ...td, ...rt }}>{fmt(x.aCobrar)}</div>
                       <div style={{ ...td, ...rt }}>{fmt(x.recibido)}</div>
                       <div style={td}>{x.por || '—'}</div>
