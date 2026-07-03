@@ -241,18 +241,18 @@ export default function CartasPage() {
                     <div style={th}>Nota</div><div style={th}>DES</div>
                   </div>
                   {b.inmuebles.map((x, i) => {
-                    const bgP = x.esP ? { background: '#E8D3B3' } : {}   // fondo marrón claro, solo Admon→A transferir
+                    const bgP = x.esP ? { background: '#F5E6D3' } : {}   // fondo beige (como Excel): IdAdmon → A transferir
                     return (
                     <div key={x.idadmon + i} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '6px 12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
-                      <div style={{ ...td, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
-                      <div style={td} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
-                      <div style={{ ...td, fontFamily: MONO }}>{x.comienzo}</div>
-                      <div style={{ ...td, fontFamily: MONO }}>{x.final}</div>
-                      <div style={{ ...td, fontStyle: x.esP ? 'italic' : 'normal', color: x.esP ? '#9A3412' : '#2C2C2A' }} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
-                      <div style={{ ...td, fontFamily: MONO }}>{x.rut || ''}</div>
-                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.aCobrar)}</div>
-                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.recibido)}</div>
-                      <div style={td}>{x.esP ? '' : (x.por || '—')}</div>
+                      <div style={{ ...td, ...bgP, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
+                      <div style={{ ...td, ...bgP }} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
+                      <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.comienzo}</div>
+                      <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.final}</div>
+                      <div style={{ ...td, ...bgP }} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
+                      <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.rut || ''}</div>
+                      <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.aCobrar)}</div>
+                      <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.recibido)}</div>
+                      <div style={{ ...td, ...bgP }}>{x.esP ? '' : (x.por || '—')}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#B45309' : '#2C2C2A' }}>{x.descuentos ? fmt(x.descuentos) : ''}</div>
