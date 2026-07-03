@@ -451,6 +451,7 @@ function AdminContent() {
   const [plantillaFile, setPlantillaFile] = useState(null)
   const [generandoBorrador, setGenerandoBorrador] = useState(false)
   const [borradorOk, setBorradorOk] = useState(false)
+  const [soloBorrador, setSoloBorrador] = useState(false)  // modal en modo "solo generar contrato" (sin facturar)
   const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
@@ -936,6 +937,8 @@ function AdminContent() {
       //    (el endpoint de facturación lee desde la BD, no desde la pantalla).
       const payload = { ...form, updated_at: new Date().toISOString() }
       delete payload.id
+      // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
+      for (const k in payload) { if (payload[k] === '') payload[k] = null }
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
       if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de facturar: ' + eSave.message }); setCambiando(false); return }
 
@@ -1041,7 +1044,7 @@ function AdminContent() {
         )}
 
         {form.estado === 'P' && puedeFacturarUsuario && (
-          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setModalFacturarAbierto(true) }} disabled={bloqueado || cambiando}
+          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setSoloBorrador(false); setModalFacturarAbierto(true) }} disabled={bloqueado || cambiando}
             title="Cierra la carga del contrato: pasa de P a S, bloquea la ficha y envía la solicitud de facturación a Finanzas."
             style={{
               padding: '5px 14px', borderRadius: 5, border: 'none',
@@ -1049,6 +1052,16 @@ function AdminContent() {
               color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: (bloqueado || cambiando) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             }}>{cambiando ? 'PROCESANDO…' : 'Contrato y Facturación'}</button>
+        )}
+
+        {(form.estado === 'P' || form.estado === 'S') && puedeFacturarUsuario && (
+          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setSoloBorrador(true); setModalFacturarAbierto(true) }}
+            title="Genera y descarga el borrador del contrato (no cambia el estado ni factura). Para pruebas y para preparar contratos."
+            style={{
+              padding: '5px 14px', borderRadius: 5, border: '1px solid #2563a8',
+              background: '#fff', color: '#2563a8', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>📄 Generar contrato</button>
         )}
 
         {puedeEditarAhora && (
@@ -1764,7 +1777,7 @@ function AdminContent() {
           <div onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 10, width: 'min(620px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
             <div style={{ background: C.red, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Contrato y Facturación {form.idadmon ? `· ${form.idadmon}` : ''}</span>
+              <span>{soloBorrador ? 'Generar contrato' : 'Contrato y Facturación'} {form.idadmon ? `· ${form.idadmon}` : ''}</span>
               <button type="button" onClick={() => !cambiando && !generandoBorrador && setModalFacturarAbierto(false)}
                 style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
@@ -1789,6 +1802,14 @@ function AdminContent() {
                 {generandoBorrador ? 'Generando…' : '📄 Generar y descargar borrador'}
               </button>
 
+              {soloBorrador ? (
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setModalFacturarAbierto(false)}
+                    style={{ padding: '7px 16px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Cerrar
+                  </button>
+                </div>
+              ) : (<>
               <div style={{ borderTop: '1px solid #E8E6E0', margin: '16px 0 12px' }} />
               <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 2 · Facturar</div>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
@@ -1805,6 +1826,7 @@ function AdminContent() {
                   {cambiando ? 'PROCESANDO…' : 'Facturar'}
                 </button>
               </div>
+              </>)}
             </div>
           </div>
         </div>
