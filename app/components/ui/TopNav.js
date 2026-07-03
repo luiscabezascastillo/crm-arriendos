@@ -282,7 +282,7 @@ export default function TopNav() {
 
       {/* Config — solo Dirección */}
       {puede('/admin') && (
-        <Link href="/admin" style={s.link(isActive('/admin'))}>Config</Link>
+        <Link href="/config" style={s.link(isActive('/config'))}>Config</Link>
       )}
 
       <div style={s.spacer}/>

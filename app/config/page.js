@@ -1,132 +1,181 @@
-"use client"
-import { useState, useEffect } from "react"
-import { supabase } from '../../lib/supabaseClient'
-const ROLES = ["admin","operaciones","finanzas","legal","comercial","tecnico"]
-const MODULOS = {
-  admin:      ["Panel","Admin","CC1","Liquidaciones"],
-  operaciones:["Panel","Admin","Incidencias","Liquidaciones"],
-  finanzas:   ["Panel","Admin","CC1","Liquidaciones"],
-  legal:      ["Admin","Legal"],
-  comercial:  ["Publicaciones"],
-  tecnico:    ["Incidencias"],
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
+import TopNav from '@/app/components/ui/TopNav'
+
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+
+// Catálogo de procesos (mismas keys/títulos que /procesos). Fuente: app/procesos/page.js
+const PROCESOS = [
+  { key: 'publicacion', titulo: 'Publicación', depto: 'Ventas' },
+  { key: 'inicios', titulo: 'Inicios', depto: 'Ventas' },
+  { key: 'servicios', titulo: 'Servicios', depto: 'Administración' },
+  { key: 'descuentos', titulo: 'Descuentos', depto: 'Administración' },
+  { key: 'cobranza', titulo: 'Cobranza', depto: 'Administración' },
+  { key: 'notificaciones', titulo: 'Notificaciones', depto: 'Administración' },
+  { key: 'liquidacion_paola', titulo: 'Liquidación Paola', depto: 'Administración' },
+  { key: 'incidencia', titulo: 'Incidencia', depto: 'Mantención' },
+  { key: 'presupuestos', titulo: 'Presupuestos', depto: 'Mantención' },
+  { key: 'revision_log', titulo: 'Gestión LOG', depto: 'Legal' },
+  { key: 'contratos', titulo: 'Contratos', depto: 'Legal' },
+  { key: 'valoraciones', titulo: 'Valoraciones', depto: 'Legal' },
+  { key: 'dicom', titulo: 'DICOM', depto: 'Legal' },
+  { key: 'termino', titulo: 'Término', depto: 'Finanzas' },
+  { key: 'liquidacion', titulo: 'Liquidación/APPVISION', depto: 'Finanzas' },
+  { key: 'cartolas', titulo: 'Cartolas', depto: 'Finanzas' },
+  { key: 'mandato', titulo: 'Mandato', depto: 'Finanzas' },
+  { key: 'nubox', titulo: 'Financiero', depto: 'Finanzas' },
+  { key: 'bi_sa', titulo: 'BI', depto: 'Finanzas' },
+]
+
+const ROLES = ['observador', 'colaborador', 'supervisor', 'responsable']
+const ROL_COLOR = {
+  responsable: { bg: '#DCFCE7', c: '#166534' },
+  supervisor: { bg: '#FEF3C7', c: '#92400E' },
+  colaborador: { bg: '#DBEAFE', c: '#1E40AF' },
+  observador: { bg: '#F1F5F9', c: '#475569' },
 }
 
-export default function Config() {
-  const [usuarios, setUsuarios] = useState([])
-  const [editando, setEditando] = useState(null)
-  const [nuevo, setNuevo] = useState({ nombre:"", email:"", rol:"operaciones", auth_provider:"google", password:"" })
-  const [msg, setMsg] = useState("")
-  const [showForm, setShowForm] = useState(false)
+export default function ConfigPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const email = session?.user?.email
+  const rol = session?.user?.role
+  const esDireccion = ['admin', 'direccion'].includes(rol) || DIRECCION_EMAILS.includes(email)
 
-  useEffect(() => { cargar() }, [])
+  const [tab, setTab] = useState('permisos')
+  const [personas, setPersonas] = useState([])
+  const [sel, setSel] = useState('')          // email de la persona seleccionada
+  const [permisos, setPermisos] = useState({}) // proceso -> rol
+  const [cargando, setCargando] = useState(false)
+  const [guardando, setGuardando] = useState('') // proceso que se está guardando
+  const [msg, setMsg] = useState(null)
 
-  async function cargar() {
-    const { data } = await supabase.from("crm_users").select("*").order("nombre")
-    setUsuarios(data || [])
+  useEffect(() => {
+    if (status === 'authenticated' && !esDireccion) router.replace('/')
+  }, [status, esDireccion, router])
+
+  // Cargar personas (crm_users activos)
+  useEffect(() => {
+    if (!esDireccion) return
+    supabase.from('crm_users').select('email, nombre, rol, activo').order('nombre')
+      .then(({ data }) => setPersonas((data || []).filter(p => p.activo !== false)))
+  }, [esDireccion])
+
+  // Cargar permisos de la persona seleccionada
+  useEffect(() => {
+    if (!sel) { setPermisos({}); return }
+    setCargando(true)
+    supabase.from('proceso_permisos').select('proceso, rol, activo').eq('email', sel).eq('activo', true)
+      .then(({ data }) => {
+        const m = {}
+        for (const r of data || []) m[r.proceso] = r.rol
+        setPermisos(m); setCargando(false)
+      })
+  }, [sel])
+
+  async function cambiarRol(proceso, nuevoRol) {
+    setGuardando(proceso); setMsg(null)
+    try {
+      const res = await fetch('/api/config/permisos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: sel, proceso, rol: nuevoRol || null }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ tipo: 'error', txt: data.error || 'Error al guardar' }); setGuardando(''); return }
+      setPermisos(prev => {
+        const n = { ...prev }
+        if (nuevoRol) n[proceso] = nuevoRol; else delete n[proceso]
+        return n
+      })
+      setMsg({ tipo: 'ok', txt: 'Guardado' })
+    } catch (e) { setMsg({ tipo: 'error', txt: e.message }) }
+    setGuardando('')
   }
 
-  async function guardarEdicion(u) {
-    const { error } = await supabase.from("crm_users")
-      .update({ rol: u.rol, activo: u.activo })
-      .eq("id", u.id)
-    if (!error) { setMsg("Guardado"); setEditando(null); cargar() }
-  }
+  if (status === 'loading') return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
+  if (!esDireccion) return null
 
-  async function crearUsuario() {
-    const payload = { nombre: nuevo.nombre, email: nuevo.email, rol: nuevo.rol, auth_provider: nuevo.auth_provider, activo: true }
-    const { error } = await supabase.from("crm_users").insert([payload])
-    if (!error) { setMsg("Usuario creado"); setShowForm(false); setNuevo({ nombre:"", email:"", rol:"operaciones", auth_provider:"google", password:"" }); cargar() }
-    else setMsg("Error: " + error.message)
-  }
-
-  const badge = (rol) => {
-    const colores = { admin:"#1F4E79", operaciones:"#BF5700", finanzas:"#1E6B3C", legal:"#6B1E6B", comercial:"#444", tecnico:"#333" }
-    return <span style={{ fontSize:11, padding:"2px 8px", borderRadius:10, background: colores[rol]+"22", color: colores[rol], fontWeight:500 }}>{rol}</span>
-  }
+  const persona = personas.find(p => p.email === sel)
+  const TABS = [
+    { id: 'permisos', label: 'Permisos de procesos' },
+    { id: 'usuarios', label: 'Usuarios · pronto', soon: true },
+    { id: 'general', label: 'General · pronto', soon: true },
+  ]
 
   return (
-    <div style={{ padding:"2rem", maxWidth:900, margin:"0 auto", fontFamily:"sans-serif" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"1.5rem" }}>
-        <div>
-          <h1 style={{ fontSize:22, fontWeight:500, margin:0 }}>Usuarios y permisos</h1>
-          <p style={{ fontSize:13, color:"#666", margin:"4px 0 0" }}>Gestiona el acceso al CRM</p>
+    <>
+      <TopNav />
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 4px' }}>Configuración</h1>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>Panel de Dirección · ajustes del CRM.</div>
+
+        {/* Pestañas */}
+        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #E5E7EB', marginBottom: 20 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => !t.soon && setTab(t.id)} disabled={t.soon}
+              style={{
+                fontSize: 13, fontWeight: 600, padding: '9px 16px', border: 'none', cursor: t.soon ? 'default' : 'pointer',
+                background: 'transparent', color: t.soon ? '#C4C4BD' : (tab === t.id ? '#1D9E75' : '#6B7280'),
+                borderBottom: tab === t.id ? '2px solid #1D9E75' : '2px solid transparent', marginBottom: -1,
+              }}>{t.label}</button>
+          ))}
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={{ fontSize:13, padding:"8px 16px" }}>+ Nuevo usuario</button>
-      </div>
 
-      {msg && <div style={{ background:"#f0fdf4", border:"0.5px solid #86efac", borderRadius:8, padding:"8px 14px", fontSize:13, color:"#166534", marginBottom:"1rem" }}>{msg} <button onClick={()=>setMsg("")} style={{ border:"none", background:"none", cursor:"pointer", float:"right" }}>�</button></div>}
-
-      {showForm && (
-        <div style={{ background:"#fff", border:"0.5px solid #e5e7eb", borderRadius:12, padding:"1.25rem", marginBottom:"1.5rem" }}>
-          <h2 style={{ fontSize:16, fontWeight:500, margin:"0 0 1rem" }}>Nuevo usuario</h2>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            <div><label style={{ fontSize:12, color:"#666" }}>Nombre</label><br/><input value={nuevo.nombre} onChange={e=>setNuevo({...nuevo,nombre:e.target.value})} style={{ width:"100%" }}/></div>
-            <div><label style={{ fontSize:12, color:"#666" }}>Email</label><br/><input value={nuevo.email} onChange={e=>setNuevo({...nuevo,email:e.target.value})} style={{ width:"100%" }}/></div>
-            <div><label style={{ fontSize:12, color:"#666" }}>Rol</label><br/>
-              <select value={nuevo.rol} onChange={e=>setNuevo({...nuevo,rol:e.target.value})} style={{ width:"100%" }}>
-                {ROLES.map(r=><option key={r}>{r}</option>)}
-              </select>
+        {tab === 'permisos' && (
+          <div>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 14 }}>
+              Elige una persona y define su rol en cada proceso. <b>Observador</b> = solo ver; el resto participan/gestionan.
+              Quitar el acceso conserva el histórico (se desactiva).
             </div>
-            <div><label style={{ fontSize:12, color:"#666" }}>Tipo de acceso</label><br/>
-              <select value={nuevo.auth_provider} onChange={e=>setNuevo({...nuevo,auth_provider:e.target.value})} style={{ width:"100%" }}>
-                <option value="google">Google Workspace</option>
-                <option value="credentials">Usuario/contrase�a</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ marginTop:12, display:"flex", gap:8 }}>
-            <button onClick={crearUsuario}>Crear usuario</button>
-            <button onClick={()=>setShowForm(false)}>Cancelar</button>
-          </div>
-        </div>
-      )}
 
-      <div style={{ background:"#fff", border:"0.5px solid #e5e7eb", borderRadius:12, overflow:"hidden" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-          <thead>
-            <tr style={{ background:"#f9fafb" }}>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Usuario</th>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Rol</th>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>M�dulos</th>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Acceso</th>
-              <th style={{ padding:"10px 16px", textAlign:"left", fontWeight:500, color:"#666", borderBottom:"0.5px solid #e5e7eb" }}>Estado</th>
-              <th style={{ padding:"10px 16px", borderBottom:"0.5px solid #e5e7eb" }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map((u,i) => (
-              <tr key={u.id} style={{ borderBottom:"0.5px solid #f3f4f6", background: i%2===0?"#fff":"#fafafa" }}>
-                <td style={{ padding:"10px 16px" }}>
-                  <div style={{ fontWeight:500 }}>{u.nombre}</div>
-                  <div style={{ color:"#888", fontSize:12 }}>{u.email}</div>
-                </td>
-                <td style={{ padding:"10px 16px" }}>
-                  {editando===u.id
-                    ? <select value={u.rol} onChange={e=>setUsuarios(usuarios.map(x=>x.id===u.id?{...x,rol:e.target.value}:x))} style={{ fontSize:12 }}>
-                        {ROLES.map(r=><option key={r}>{r}</option>)}
-                      </select>
-                    : badge(u.rol)
-                  }
-                </td>
-                <td style={{ padding:"10px 16px", color:"#555", fontSize:12 }}>{(MODULOS[u.rol]||[]).join(", ")}</td>
-                <td style={{ padding:"10px 16px", fontSize:12, color:"#888" }}>{u.auth_provider==="google"?"Google":"Usuario/clave"}</td>
-                <td style={{ padding:"10px 16px" }}>
-                  {editando===u.id
-                    ? <input type="checkbox" checked={u.activo} onChange={e=>setUsuarios(usuarios.map(x=>x.id===u.id?{...x,activo:e.target.checked}:x))}/>
-                    : <span style={{ fontSize:11, padding:"2px 8px", borderRadius:10, background:u.activo?"#dcfce7":"#fee2e2", color:u.activo?"#166534":"#991b1b" }}>{u.activo?"Activo":"Inactivo"}</span>
-                  }
-                </td>
-                <td style={{ padding:"10px 16px", textAlign:"right" }}>
-                  {editando===u.id
-                    ? <><button onClick={()=>guardarEdicion(u)} style={{ fontSize:12, marginRight:6 }}>Guardar</button><button onClick={()=>setEditando(null)} style={{ fontSize:12 }}>Cancelar</button></>
-                    : <button onClick={()=>setEditando(u.id)} style={{ fontSize:12 }}>Editar</button>
-                  }
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            {/* Selector de persona */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: '#666' }}>Persona:</label>
+              <select value={sel} onChange={e => setSel(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 14, minWidth: 280 }}>
+                <option value="">— elige una persona —</option>
+                {personas.map(p => <option key={p.email} value={p.email}>{p.nombre || p.email} ({p.email})</option>)}
+              </select>
+              {persona && <span style={{ fontSize: 12, color: '#888' }}>Departamento (vista): <b>{persona.rol || '—'}</b></span>}
+              {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.tipo === 'ok' ? '#166534' : '#B91C1C' }}>{msg.txt}</span>}
+            </div>
+
+            {!sel && <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 13, background: '#FAFAF8', borderRadius: 10 }}>Selecciona una persona para ver y editar sus permisos.</div>}
+
+            {sel && cargando && <div style={{ color: '#888', padding: 16 }}>Cargando permisos…</div>}
+
+            {sel && !cargando && (
+              <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr', gap: 8, padding: '10px 16px', background: '#FAFAF8', borderBottom: '1px solid #E8E6E0', fontSize: 12, color: '#888', fontWeight: 700 }}>
+                  <div>Proceso</div><div>Departamento</div><div>Rol de esta persona</div>
+                </div>
+                {PROCESOS.map((p, i) => {
+                  const actual = permisos[p.key] || ''
+                  const col = ROL_COLOR[actual]
+                  return (
+                    <div key={p.key} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.2fr', gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 13 }}>
+                      <div style={{ fontWeight: 600, color: '#2C2C2A' }}>{p.titulo} <span style={{ color: '#B4B2A9', fontWeight: 400, fontSize: 11 }}>· {p.key}</span></div>
+                      <div style={{ color: '#6B7280', fontSize: 12 }}>{p.depto}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <select value={actual} onChange={e => cambiarRol(p.key, e.target.value)} disabled={guardando === p.key}
+                          style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, background: col ? col.bg : '#fff', color: col ? col.c : '#374151', fontWeight: actual ? 600 : 400 }}>
+                          <option value="">— sin acceso —</option>
+                          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        {guardando === p.key && <span style={{ fontSize: 11, color: '#888' }}>guardando…</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </>
   )
 }
