@@ -106,7 +106,23 @@ export default function CartasPage() {
         (des[d.idadmon] = des[d.idadmon] || []).push({ monto: n0(d.monto_a_imputar), texto: d.texto_explicativo_para_carta_a_propietario || '' })
       }
 
-      // Nota (comentarios): coincidir mes en 'mes' o 'para_mes_txt'; si no, la más reciente
+      // Ajuste del mes = cantidad_reajusteN cuya fecha_reajusteN cae en el mes AAMM liquidado.
+      // (mismo cálculo que en la pantalla principal de Liquidaciones; los campos
+      //  fecha_reajusteN/cantidad_reajusteN ya vienen en rArr porque se hace select('*'))
+      const ajustes = {}
+      for (const id of ids) {
+        const d = arr[id]
+        if (!d) continue
+        for (let i = 1; i <= 6; i++) {
+          const f = d['fecha_reajuste' + i], c = n0(d['cantidad_reajuste' + i])
+          if (f && c !== 0) {
+            const aamm = String(f).slice(2, 4) + String(f).slice(5, 7)  // YYYY-MM-DD -> AAMM
+            if (aamm === m) ajustes[id] = c
+          }
+        }
+      }
+
+      // Nota (comentarios): estricto al mes liquidado (como en la principal, que filtra por mes)
       const comPorId = {}
       for (const c of rCom.data || []) (comPorId[c.idadmon] = comPorId[c.idadmon] || []).push(c)
       const txtMes = aammToTxt(m)
@@ -114,7 +130,8 @@ export default function CartasPage() {
         const arrc = comPorId[id] || []
         if (!arrc.length) return ''
         const delMes = arrc.filter(c => String(c.mes || '') === m || String(c.para_mes_txt || '').toUpperCase() === txtMes)
-        const usar = (delMes.length ? delMes : arrc).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+        if (!delMes.length) return ''   // solo comentarios del mes liquidado (no arrastra meses anteriores)
+        const usar = delMes.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
         return (usar[0] && usar[0].comentario) || ''
       }
 
@@ -154,6 +171,7 @@ export default function CartasPage() {
           descuentos: desc, aTransferir: esP ? -desc : n0(r.neto_transferir),
           ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
           nota: notaDe(r.idadmon), des: des[r.idadmon] || [],
+          ajuste: esP ? 0 : n0(ajustes[r.idadmon] || 0),
         })
       }
 
@@ -325,17 +343,37 @@ export default function CartasPage() {
                       <div style={td}>—</div>
                     </div>
                     )
-                    // Sub-filas de desglose de descuentos (verde + texto), debajo del inmueble
-                    const desgloses = (!x.esP && x.des && x.des.length)
-                      ? x.des.map((dd, j) => (
+                    // Sub-filas bajo el inmueble (solo contratos activos, no P):
+                    //   descuento (verde) · ajuste del mes (ámbar) · comentario (gris)
+                    // Réplica del desglose de la pantalla principal de Liquidaciones.
+                    const subfilas = []
+                    if (!x.esP) {
+                      // 1) Descuentos
+                      ;(x.des || []).forEach((dd, j) => subfilas.push(
                         <div key={x.idadmon + i + 'd' + j} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
                           <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
                           <span style={{ fontFamily: MONO, color: '#16A34A', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(dd.monto)}</span>
-                          <span style={{ fontSize: 12, color: '#4B5563' }}>{dd.texto || ''}</span>
+                          <span style={{ fontSize: 12, color: '#4B5563' }}>{dd.texto || 'Descuento'}</span>
                         </div>
                       ))
-                      : []
-                    return [filaInmueble, ...desgloses]
+                      // 2) Ajuste del mes
+                      if (x.ajuste) subfilas.push(
+                        <div key={x.idadmon + i + 'aj'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
+                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                          <span style={{ fontFamily: MONO, color: '#B45309', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(x.ajuste)}</span>
+                          <span style={{ fontSize: 12, color: '#92400E' }}>Se ha realizado un ajuste de ${fmt(x.ajuste)} en la renta</span>
+                        </div>
+                      )
+                      // 3) Comentario del mes (comentarios_liquidacion)
+                      if (x.nota) subfilas.push(
+                        <div key={x.idadmon + i + 'co'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
+                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                          <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
+                          <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
+                        </div>
+                      )
+                    }
+                    return [filaInmueble, ...subfilas]
                   })}
                   {/* TOTALES */}
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', borderTop: '2px solid #CBD5E1', background: '#F1F5F9', fontWeight: 700, fontSize: 11.5 }}>
