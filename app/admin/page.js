@@ -1784,7 +1784,7 @@ function AdminContent() {
             <div style={{ padding: 16 }}>
               <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 1 · Borrador del contrato</div>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
-                Sube la plantilla del contrato (.docx con marcadores <code>{'{{...}}'}</code>). Se generará <b>{form.idadmon} Borrador.docx</b> con los datos de la ficha. Revísalo antes de facturar.
+                Sube un contrato ya hecho de <b>cualquier IDADMON</b> (.docx). El sistema lo copia y sustituye sus datos por los de <b>{form.idadmon}</b> (arrendatario, RUT, email, teléfono, dirección, renta…). Se generará <b>{form.idadmon} Borrador.docx</b>. Ojo: las <b>fechas</b> y algún dato quedan del contrato base — revísalo{soloBorrador ? '' : ' antes de facturar'}.
               </div>
               {/* zona de carga */}
               <label
@@ -1794,7 +1794,7 @@ function AdminContent() {
                 <input type="file" accept=".docx" style={{ display: 'none' }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) { setPlantillaFile(f); setBorradorOk(false) } }} />
                 <div style={{ fontSize: 13, color: plantillaFile ? '#166534' : '#6B7280' }}>
-                  {plantillaFile ? `📄 ${plantillaFile.name}` : '📎 Arrastra aquí la plantilla .docx o haz clic para elegirla'}
+                  {plantillaFile ? `📄 ${plantillaFile.name}` : '📎 Arrastra aquí un contrato .docx (de cualquier IDADMON) o haz clic para elegirlo'}
                 </div>
               </label>
               <button type="button" onClick={generarBorrador} disabled={!plantillaFile || generandoBorrador}
