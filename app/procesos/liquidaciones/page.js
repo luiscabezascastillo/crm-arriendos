@@ -159,6 +159,9 @@ export default function LiquidacionesPage() {
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>Liquidaciones</h1>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Transferencias a propietarios · los datos vienen de sus tablas de origen (datos_arriendos, bi, descuentos)</div>
 
+        {/* CABECERA FIJA (sticky): controles + KPIs + títulos */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F7F5', paddingTop: 6 }}>
+
         {/* Barra: mes + búsqueda */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <label style={{ fontSize: 13, color: '#666' }}>Mes:</label>
@@ -182,22 +185,28 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length}</div></div>
         </div>
 
-        {error && <div style={{ ...card, background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13 }}>Error: {error}</div>}
+        {/* Títulos de columnas (parte de la cabecera fija) */}
+        {!cargando && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
+            <div>Propietario</div>
+            <div style={{ textAlign: 'right' }}>A cobrar</div>
+            <div style={{ textAlign: 'right' }}>Recibido</div>
+            <div style={{ textAlign: 'right' }}>Comisión</div>
+            <div style={{ textAlign: 'right' }}>IVA</div>
+            <div style={{ textAlign: 'right' }}>Descuentos</div>
+            <div style={{ textAlign: 'right' }}>A transferir</div>
+            <div style={{ textAlign: 'center' }}>Estado</div>
+          </div>
+        )}
+
+        </div>{/* fin cabecera fija */}
+
+        {error && <div style={{ ...card, background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, marginTop: 12 }}>Error: {error}</div>}
 
         {cargando ? <div style={{ color: '#888', padding: 20 }}>Calculando liquidación de {aammToTxt(mes)}…</div> : (
-          <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
 
-            {/* Cabecera tabla */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', borderBottom: '1px solid #E8E6E0', fontSize: 12, color: '#888', fontWeight: 700 }}>
-              <div>Propietario</div>
-              <div style={{ textAlign: 'right' }}>A cobrar</div>
-              <div style={{ textAlign: 'right' }}>Recibido</div>
-              <div style={{ textAlign: 'right' }}>Comisión</div>
-              <div style={{ textAlign: 'right' }}>IVA</div>
-              <div style={{ textAlign: 'right' }}>Descuentos</div>
-              <div style={{ textAlign: 'right' }}>A transferir</div>
-              <div style={{ textAlign: 'center' }}>Estado</div>
-            </div>
+
 
             {lista.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay propietarios con contratos activos para {aammToTxt(mes)}.</div>}
 
