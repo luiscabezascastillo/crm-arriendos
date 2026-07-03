@@ -115,7 +115,7 @@ export default function FaltanPage() {
   }
 
   const th = { fontSize: 11, color: '#888', fontWeight: 700 }
-  const GRID = '0.7fr 1.5fr 1.6fr 0.9fr 0.85fr 0.8fr 0.8fr 0.8fr 0.9fr'
+  const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr'
 
   return (
     <>
@@ -157,12 +157,13 @@ export default function FaltanPage() {
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
 
         {cargando ? <div style={{ color: '#888', padding: 20 }}>Calculando…</div> : (
-          <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
-            {/* Cabecera de columnas (sticky) */}
-            <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', borderBottom: '1px solid #E8E6E0' }}>
+          <>
+            {/* Fila de títulos: sticky de verdad (fuera del contenedor con overflow) */}
+            <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0' }}>
               <div style={th}>IDADMON</div>
               <div style={th}>Propietario</div>
               <div style={th}>Inmueble</div>
+              <div style={{ ...th, textAlign: 'right' }}>A cobrar</div>
               <div style={{ ...th, textAlign: 'right' }}>Falta arriendo</div>
               <div style={{ ...th, textAlign: 'right' }}>GGCC</div>
               <div style={{ ...th, textAlign: 'right' }}>Luz</div>
@@ -171,22 +172,25 @@ export default function FaltanPage() {
               <div style={{ ...th, textAlign: 'right' }}>Serv. total</div>
             </div>
 
-            {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
+            <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+              {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
 
-            {filas.map((f, i) => (
-              <div key={f.idadmon} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: '#fff' }}>
-                <div style={{ fontWeight: 600 }}>{f.idadmon}</div>
-                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.propietario || ''}>{f.propietario || '—'}</div>
-                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
-                <div style={{ textAlign: 'right', fontWeight: 700, color: '#B91C1C' }}>{fmtPesos(f.falta)}</div>
-                {celdaServ(f.ggcc, UMBRAL.ggcc)}
-                {celdaServ(f.luz, UMBRAL.luz)}
-                {celdaServ(f.agua, UMBRAL.agua)}
-                {celdaServ(f.gas, UMBRAL.gas)}
-                <div style={{ textAlign: 'right', fontWeight: 600 }}>{f.servTotal > 0 ? '$' + f.servTotal.toLocaleString('es-CL') : '—'}</div>
-              </div>
-            ))}
-          </div>
+              {filas.map((f, i) => (
+                <div key={f.idadmon} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: '#fff' }}>
+                  <div style={{ fontWeight: 600 }}>{f.idadmon}</div>
+                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.propietario || ''}>{f.propietario || '—'}</div>
+                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
+                  <div style={{ textAlign: 'right' }}>{fmtPesos(f.base)}</div>
+                  <div style={{ textAlign: 'right', fontWeight: 700, color: '#B91C1C' }}>{fmtPesos(f.falta)}</div>
+                  {celdaServ(f.ggcc, UMBRAL.ggcc)}
+                  {celdaServ(f.luz, UMBRAL.luz)}
+                  {celdaServ(f.agua, UMBRAL.agua)}
+                  {celdaServ(f.gas, UMBRAL.gas)}
+                  <div style={{ textAlign: 'right', fontWeight: 600 }}>{f.servTotal > 0 ? '$' + f.servTotal.toLocaleString('es-CL') : '—'}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 10 }}>
