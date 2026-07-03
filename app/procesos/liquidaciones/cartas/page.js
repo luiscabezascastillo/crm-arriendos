@@ -301,7 +301,7 @@ export default function CartasPage() {
                   {b.inmuebles.map((x, i) => {
                     const bgP = x.esP ? { background: '#F5E6D3' } : {}   // fondo beige (como Excel): IdAdmon → A transferir
                     const vP = x.esP ? '\u00A0' : ''   // celda P vacía: espacio duro para que pinte el fondo
-                    return (
+                    const filaInmueble = (
                     <div key={x.idadmon + i} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '6px 12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
                       <div style={{ ...td, ...bgP, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
                       <div style={{ ...td, ...bgP }} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
@@ -314,15 +314,26 @@ export default function CartasPage() {
                       <div style={{ ...td, ...bgP }}>{x.esP ? vP : (x.por || '—')}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
-                      <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#B45309' : '#2C2C2A' }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
+                      <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
                       <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.agua)}</div>
                       <div style={td} title={x.nota || ''}>{x.nota || '—'}</div>
-                      <div style={td} title={x.des.map(dd => dd.texto).join(' · ')}>{x.des.length ? x.des.map(dd => `(${fmt(dd.monto)}) ${dd.texto}`).join(' · ') : '—'}</div>
+                      <div style={td}>—</div>
                     </div>
                     )
+                    // Sub-filas de desglose de descuentos (verde + texto), debajo del inmueble
+                    const desgloses = (!x.esP && x.des && x.des.length)
+                      ? x.des.map((dd, j) => (
+                        <div key={x.idadmon + i + 'd' + j} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
+                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                          <span style={{ fontFamily: MONO, color: '#16A34A', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(dd.monto)}</span>
+                          <span style={{ fontSize: 12, color: '#4B5563' }}>{dd.texto || ''}</span>
+                        </div>
+                      ))
+                      : []
+                    return [filaInmueble, ...desgloses]
                   })}
                   {/* TOTALES */}
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', borderTop: '2px solid #CBD5E1', background: '#F1F5F9', fontWeight: 700, fontSize: 11.5 }}>
