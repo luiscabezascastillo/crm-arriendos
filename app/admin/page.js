@@ -447,6 +447,10 @@ function AdminContent() {
   const [modalAbierto, setModalAbierto] = useState(false)   // modal de edición de personas
   const [modalEmailAbierto, setModalEmailAbierto] = useState(false)  // modal "Cargar datos email"
   const [textoEmail, setTextoEmail] = useState('')
+  const [modalFacturarAbierto, setModalFacturarAbierto] = useState(false)  // modal borrador + facturar
+  const [plantillaFile, setPlantillaFile] = useState(null)
+  const [generandoBorrador, setGenerandoBorrador] = useState(false)
+  const [borradorOk, setBorradorOk] = useState(false)
   const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
@@ -895,6 +899,32 @@ function AdminContent() {
     }
   }
 
+  async function generarBorrador() {
+    if (!plantillaFile) { setMsg({ type: 'warn', text: 'Sube primero la plantilla (.docx).' }); return }
+    setGenerandoBorrador(true)
+    try {
+      const fd = new FormData()
+      fd.append('idadmon', form.idadmon)
+      fd.append('file', plantillaFile)
+      const res = await fetch('/api/cc1/generar-borrador', { method: 'POST', body: fd })
+      if (!res.ok) {
+        let err = 'Error al generar el borrador'
+        try { const j = await res.json(); err = j.error || err } catch {}
+        setMsg({ type: 'error', text: err }); setGenerandoBorrador(false); return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `${form.idadmon} Borrador.docx`
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+      setBorradorOk(true)
+      setMsg({ type: 'ok', text: '✓ Borrador descargado. Revísalo; si está bien, confirma Cerrar y Facturar.' })
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Error de conexión al generar el borrador.' })
+    }
+    setGenerandoBorrador(false)
+  }
+
   async function cerrarYFacturar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
@@ -1011,7 +1041,7 @@ function AdminContent() {
         )}
 
         {form.estado === 'P' && puedeFacturarUsuario && (
-          <button onClick={cerrarYFacturar} disabled={bloqueado || cambiando}
+          <button onClick={() => { setPlantillaFile(null); setBorradorOk(false); setModalFacturarAbierto(true) }} disabled={bloqueado || cambiando}
             title="Cierra la carga del contrato: pasa de P a S, bloquea la ficha y envía la solicitud de facturación a Finanzas."
             style={{
               padding: '5px 14px', borderRadius: 5, border: 'none',
@@ -1720,6 +1750,59 @@ function AdminContent() {
                 <button type="button" onClick={aplicarEmailInicio} disabled={!textoEmail.trim()}
                   style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: textoEmail.trim() ? C.green : '#9ca3af', color: '#fff', fontSize: 13, fontWeight: 700, cursor: textoEmail.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
                   Extraer y precargar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: Generar borrador de contrato + Cerrar y Facturar ══ */}
+      {modalFacturarAbierto && (
+        <div onClick={() => !cambiando && !generandoBorrador && setModalFacturarAbierto(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 16px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 10, width: 'min(620px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+            <div style={{ background: C.red, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Cerrar y Facturar {form.idadmon ? `· ${form.idadmon}` : ''}</span>
+              <button type="button" onClick={() => !cambiando && !generandoBorrador && setModalFacturarAbierto(false)}
+                style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 1 · Borrador del contrato</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
+                Sube la plantilla del contrato (.docx con marcadores <code>{'{{...}}'}</code>). Se generará <b>{form.idadmon} Borrador.docx</b> con los datos de la ficha. Revísalo antes de facturar.
+              </div>
+              {/* zona de carga */}
+              <label
+                onDragOver={e => { e.preventDefault() }}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) { setPlantillaFile(f); setBorradorOk(false) } }}
+                style={{ display: 'block', border: `2px dashed ${plantillaFile ? C.green : C.border}`, borderRadius: 8, padding: '18px 14px', textAlign: 'center', cursor: 'pointer', background: '#FAFAF8', marginBottom: 10 }}>
+                <input type="file" accept=".docx" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) { setPlantillaFile(f); setBorradorOk(false) } }} />
+                <div style={{ fontSize: 13, color: plantillaFile ? '#166534' : '#6B7280' }}>
+                  {plantillaFile ? `📄 ${plantillaFile.name}` : '📎 Arrastra aquí la plantilla .docx o haz clic para elegirla'}
+                </div>
+              </label>
+              <button type="button" onClick={generarBorrador} disabled={!plantillaFile || generandoBorrador}
+                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: (!plantillaFile || generandoBorrador) ? '#9ca3af' : C.subBg, color: '#fff', fontSize: 13, fontWeight: 700, cursor: (!plantillaFile || generandoBorrador) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                {generandoBorrador ? 'Generando…' : '📄 Generar y descargar borrador'}
+              </button>
+
+              <div style={{ borderTop: '1px solid #E8E6E0', margin: '16px 0 12px' }} />
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 700 }}>Paso 2 · Cerrar y Facturar</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
+                Pasa el contrato de <b>P → S</b> y envía la solicitud de facturación a Finanzas. {borradorOk ? '' : 'Genera el borrador primero.'}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => setModalFacturarAbierto(false)} disabled={cambiando}
+                  style={{ padding: '7px 16px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={async () => { await cerrarYFacturar(); setModalFacturarAbierto(false) }} disabled={cambiando || !borradorOk}
+                  title={borradorOk ? '' : 'Genera y revisa el borrador antes de facturar'}
+                  style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: (cambiando || !borradorOk) ? '#9ca3af' : C.red, color: '#fff', fontSize: 13, fontWeight: 700, cursor: (cambiando || !borradorOk) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {cambiando ? 'PROCESANDO…' : 'CERRAR Y FACTURAR'}
                 </button>
               </div>
             </div>
