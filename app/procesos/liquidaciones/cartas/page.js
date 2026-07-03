@@ -122,17 +122,22 @@ export default function CartasPage() {
         if (!grupos[r.idprop]) grupos[r.idprop] = { idprop: r.idprop, propietario: r.propietario, inmuebles: [] }
         const d = arr[r.idadmon] || {}
         const s = serv[r.idadmon] || { ggcc: 0, luz: 0, agua: 0 }
+        const estado = String(d.estado || '').trim().toUpperCase()
+        const esP = estado === 'P'
+        const desc = n0(r.total_descuentos)
         grupos[r.idprop].inmuebles.push({
           idadmon: r.idadmon,
+          estado, esP,
           propiedad: r.inmueble,
-          comienzo: fmtFecha(campo(d, ['fecha_inicio'])),
-          final: fmtFecha(campo(d, ['termino_actual', 'fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
-          arrendatario: campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
-          rut: campo(d, ['rut', 'rut_arrendatario', 'rut1']),
-          por: campo(d, ['quien_cobra'], 'FCR'),
-          aCobrar: n0(r.base), recibido: n0(r.recibido_banco), admon: n0(r.comision), iva: n0(r.iva_comision),
-          descuentos: n0(r.total_descuentos), aTransferir: n0(r.neto_transferir),
-          ggcc: s.ggcc, luz: s.luz, agua: s.agua,
+          comienzo: esP ? '' : fmtFecha(campo(d, ['fecha_inicio'])),
+          final: esP ? '' : fmtFecha(campo(d, ['termino_actual', 'fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
+          arrendatario: esP ? 'EN CAPTACION ARRENDATARIO' : campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
+          rut: esP ? '' : campo(d, ['rut', 'rut_arrendatario', 'rut1']),
+          por: esP ? '' : campo(d, ['quien_cobra'], 'FCR'),
+          aCobrar: esP ? 0 : n0(r.base), recibido: esP ? 0 : n0(r.recibido_banco),
+          admon: esP ? 0 : n0(r.comision), iva: esP ? 0 : n0(r.iva_comision),
+          descuentos: desc, aTransferir: esP ? -desc : n0(r.neto_transferir),
+          ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
           nota: notaDe(r.idadmon), des: des[r.idadmon] || [],
         })
       }
@@ -235,28 +240,31 @@ export default function CartasPage() {
                     <div style={{ ...th, ...rt }}>A transferir</div><div style={{ ...th, ...rt }}>G.Comunes</div><div style={{ ...th, ...rt }}>Electric.</div><div style={{ ...th, ...rt }}>Agua</div>
                     <div style={th}>Nota</div><div style={th}>DES</div>
                   </div>
-                  {b.inmuebles.map((x, i) => (
+                  {b.inmuebles.map((x, i) => {
+                    const bgP = x.esP ? { background: '#E8D3B3' } : {}   // fondo marrón claro, solo Admon→A transferir
+                    return (
                     <div key={x.idadmon + i} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '6px 12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
                       <div style={{ ...td, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
                       <div style={td} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
                       <div style={{ ...td, fontFamily: MONO }}>{x.comienzo}</div>
                       <div style={{ ...td, fontFamily: MONO }}>{x.final}</div>
-                      <div style={td} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
-                      <div style={{ ...td, fontFamily: MONO }}>{x.rut || '—'}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.aCobrar)}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.recibido)}</div>
-                      <div style={td}>{x.por || '—'}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.admon)}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.iva)}</div>
-                      <div style={{ ...td, ...rt, color: x.descuentos ? '#B45309' : '#2C2C2A' }}>{fmt(x.descuentos)}</div>
-                      <div style={{ ...td, ...rt, fontWeight: 600 }}>{fmt(x.aTransferir)}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.ggcc)}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.luz)}</div>
-                      <div style={{ ...td, ...rt }}>{fmt(x.agua)}</div>
+                      <div style={{ ...td, fontStyle: x.esP ? 'italic' : 'normal', color: x.esP ? '#9A3412' : '#2C2C2A' }} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
+                      <div style={{ ...td, fontFamily: MONO }}>{x.rut || ''}</div>
+                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.aCobrar)}</div>
+                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.recibido)}</div>
+                      <div style={td}>{x.esP ? '' : (x.por || '—')}</div>
+                      <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.admon)}</div>
+                      <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? '' : fmt(x.iva)}</div>
+                      <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#B45309' : '#2C2C2A' }}>{x.descuentos ? fmt(x.descuentos) : ''}</div>
+                      <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : '') : fmt(x.aTransferir)}</div>
+                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
+                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
+                      <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.agua)}</div>
                       <div style={td} title={x.nota || ''}>{x.nota || '—'}</div>
-                      <div style={td} title={x.des.map(d => d.texto).join(' · ')}>{x.des.length ? x.des.map(d => `(${fmt(d.monto)}) ${d.texto}`).join(' · ') : '—'}</div>
+                      <div style={td} title={x.des.map(dd => dd.texto).join(' · ')}>{x.des.length ? x.des.map(dd => `(${fmt(dd.monto)}) ${dd.texto}`).join(' · ') : '—'}</div>
                     </div>
-                  ))}
+                    )
+                  })}
                   {/* TOTALES */}
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', borderTop: '2px solid #CBD5E1', background: '#F1F5F9', fontWeight: 700, fontSize: 11.5 }}>
                     <div>TOTALES</div><div /><div /><div /><div /><div />
