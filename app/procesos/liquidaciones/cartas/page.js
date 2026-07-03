@@ -158,10 +158,17 @@ export default function CartasPage() {
   }
 
   async function guardarObs(idprop) {
+    const texto = (obsTexto[idprop] || '').trim()
     setObsGuardando(g => ({ ...g, [idprop]: true }))
     try {
-      await supabase.from('liquidacion_observaciones')
-        .upsert({ idprop, mes, texto: obsTexto[idprop] || '', actualizado_por: email, actualizado_at: new Date().toISOString() }, { onConflict: 'idprop,mes' })
+      if (!texto) {
+        // vacío: no se crea fila en blanco; se borra la que hubiera
+        await supabase.from('liquidacion_observaciones').delete().eq('idprop', idprop).eq('mes', mes)
+      } else {
+        await supabase.from('liquidacion_observaciones')
+          .upsert({ idprop, mes, texto, actualizado_por: email, actualizado_at: new Date().toISOString() }, { onConflict: 'idprop,mes' })
+      }
+      setObsAbierta(o => ({ ...o, [idprop]: false }))   // cerrar tras guardar
     } catch (e) { setError(e.message) }
     setObsGuardando(g => ({ ...g, [idprop]: false }))
   }
@@ -269,8 +276,8 @@ export default function CartasPage() {
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>
                 </span>
                 <button onClick={() => setObsAbierta(o => ({ ...o, [b.idprop]: !o[b.idprop] }))}
-                  style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 7, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: 'pointer' }}>
-                  {abierta ? '▾ Observaciones' : '＋ Observaciones de Alberto'}
+                  style={{ order: -1, fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 7, border: '1px solid #D3D1C7', background: abierta ? '#EEF2FF' : '#fff', color: '#374151', cursor: 'pointer' }}>
+                  {abierta ? '▾ Cerrar observaciones' : '＋ Observaciones de Alberto'}
                 </button>
               </div>
 
