@@ -72,7 +72,7 @@ export default function CartasPage() {
         supabase.from('datos_arriendos').select('*').in('idadmon', ids),
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
         supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
-        supabase.from('comentarios').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
+        supabase.from('comentarios_liquidacion').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
         supabase.from('bi').select('detalle_movimiento, cargos').eq('unique_concept', 'PROPIETARIOS').eq('liquidacion_mes2', m),
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
         supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest').eq('mes', m),
