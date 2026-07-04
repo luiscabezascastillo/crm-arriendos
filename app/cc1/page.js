@@ -548,7 +548,7 @@ export default function CC1Page() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 52, zIndex: 23 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input value={recuperarId} onChange={e => setRecuperarId(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') recuperar() }}
@@ -564,7 +564,7 @@ export default function CC1Page() {
       </div>
 
       <div style={{ padding: '20px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 52, zIndex: 22, background: 'var(--surface)', height: 48, marginBottom: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 106, zIndex: 22, background: 'var(--surface)', height: 48, marginBottom: 0 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray-800)', margin: 0 }}>
             Listado de propiedades administradas
             <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400, marginLeft: 8 }}>
@@ -603,27 +603,27 @@ export default function CC1Page() {
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
                   <ColFilterExcel label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcIdadmon} value={filtroIdadmon} onApply={setFiltroIdadmon} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilterExcel label="Inmueble" col="inmueble" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcInmueble} value={filtroInmueble} onApply={setFiltroInmueble} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilterExcel label="Propietario" col="propietario" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcPropietario} value={filtroPropietario} onApply={setFiltroPropietario} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <EstadoFilter col="estado" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} value={filtroEstado} onChange={setFiltroEstado} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilter label="Cuota" col="cuota" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilter label="Término actual" col="termino_actual" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
-                <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 100, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
             </thead>
             <tbody>
