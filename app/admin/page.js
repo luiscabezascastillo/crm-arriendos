@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+
+// Botón "Forzar estado": EXCLUSIVAMENTE Luis y Alberto (no cap.esDireccion, que es más amplio).
+const EMAILS_FORZAR = ['luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com']
 
 /* ── Colores fieles al Excel ── */
 const C = {
@@ -433,6 +437,8 @@ function masUnAnoMenosUnDia(iso) {
 
 function AdminContent() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const emailUsuario = session?.user?.email || ''
   const searchParams = useSearchParams()
   const idParam = (searchParams.get('idadmon') || '').trim().toUpperCase()
   const [idadmonInput, setIdadmonInput] = useState('')
@@ -1283,7 +1289,7 @@ function AdminContent() {
               </div>
 
               {/* Forzar estado — SOLO Dirección (Luis y Alberto) */}
-              {cap?.esDireccion && form.idadmon && (
+              {EMAILS_FORZAR.includes(emailUsuario) && form.idadmon && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button onClick={() => setForzarAbierto(v => !v)}
                     title="Forzar el estado a cualquier otro valor (solo Dirección). No dispara efectos del circuito."
