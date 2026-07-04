@@ -165,6 +165,112 @@ function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, 
   )
 }
 
+function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left' }) {
+  const [open, setOpen] = useState(false)
+  const [buscar, setBuscar] = useState('')
+  const [pending, setPending] = useState(null)   // Set de valores marcados (null hasta abrir)
+  const ref = useRef(null)
+  useEffect(() => {
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+  // Al abrir, inicializa el marcado desde `value` ([] = todos marcados)
+  useEffect(() => {
+    if (open) {
+      setBuscar('')
+      setPending(new Set(value && value.length ? value : opciones))
+    }
+  }, [open]) // eslint-disable-line
+
+  const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const activo = (value && value.length > 0) || sortCol === col
+  const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
+  const p = pending || new Set()
+  const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
+
+  const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
+  const toggleTodas = () => {
+    const n = new Set(p)
+    if (todasVisiblesMarcadas) visibles.forEach(o => n.delete(o))
+    else visibles.forEach(o => n.add(o))
+    setPending(n)
+  }
+  const aplicar = () => {
+    const arr = [...p]
+    // Si están todas marcadas -> sin filtro ([])
+    onApply(arr.length === (opciones || []).length ? [] : arr)
+    setOpen(false)
+  }
+  const limpiar = () => { setPending(new Set(opciones)); onApply([]); setOpen(false) }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer',
+        padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
+        color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+        <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
+          {value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
+        </span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0,
+          marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, zIndex: 300, padding: 8 }}>
+          {/* Ordenar */}
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
+              <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{
+                flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer',
+                background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB',
+                borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB',
+                color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151'
+              }}>{lbl}</button>
+            ))}
+          </div>
+          {/* Filtro estilo Excel */}
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Filtrar</div>
+          <input placeholder={`Buscar ${label.toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)}
+            style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB',
+              fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px', borderRadius: 6,
+            cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
+            <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
+            (Seleccionar todo){buscar ? ' (lo visible)' : ''}
+          </label>
+          <div style={{ maxHeight: 230, overflowY: 'auto', margin: '2px 0 8px' }}>
+            {visibles.length === 0
+              ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
+              : visibles.map(o => (
+                <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px',
+                  borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
+                </label>
+              ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={limpiar}
+              style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid #E5E7EB',
+                background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>
+              Limpiar
+            </button>
+            <button onClick={aplicar}
+              style={{ flex: 1, padding: '5px', borderRadius: 6, border: 'none',
+                background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>
+              Aplicar ({[...p].length})
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -256,9 +362,14 @@ export default function CC1Page() {
   const [activeTab, setActiveTab] = useState('Datos base')
   const [search, setSearch] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
-  const [filtroIdadmon, setFiltroIdadmon] = useState('')
-  const [filtroInmueble, setFiltroInmueble] = useState('')
-  const [filtroPropietario, setFiltroPropietario] = useState('')
+  // Autofiltro estilo Excel: array de valores seleccionados. [] = sin filtro (todos).
+  const [filtroIdadmon, setFiltroIdadmon] = useState([])
+  const [filtroInmueble, setFiltroInmueble] = useState([])
+  const [filtroPropietario, setFiltroPropietario] = useState([])
+  // Listas de valores distintos para los desplegables (se cargan una vez)
+  const [opcIdadmon, setOpcIdadmon] = useState([])
+  const [opcInmueble, setOpcInmueble] = useState([])
+  const [opcPropietario, setOpcPropietario] = useState([])
   // 'default' = orden por defecto multi-columna: Estado ↓ · Propietario ↑ · Inmueble ↑.
   // En cuanto el usuario pincha una columna, se pasa a orden simple por esa columna.
   const [sortCol, setSortCol] = useState('default')
@@ -272,8 +383,24 @@ export default function CC1Page() {
   const [idpropMap, setIdpropMap] = useState({}) // idadmon -> idprop
 
   useEffect(() => { loadKpis() }, [])
+  useEffect(() => { loadOpciones() }, [])
   useEffect(() => { setPage(1) }, [search, filtroEstado, filtroIdadmon, filtroInmueble, filtroPropietario, sortCol, sortDir])
   useEffect(() => { loadData() }, [page, search, filtroEstado, filtroIdadmon, filtroInmueble, filtroPropietario, sortCol, sortDir])
+
+  async function loadOpciones() {
+    // Trae todas las filas (solo las 3 columnas) y saca los valores distintos, ordenados.
+    // Con ~828 registros es instantáneo y por debajo del tope de 1000 de Supabase.
+    const { data, error } = await supabase
+      .from('datos_arriendos')
+      .select('idadmon, inmueble, propietario')
+      .limit(2000)
+    if (error || !data) return
+    const uniq = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== '').map(String))]
+      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }))
+    setOpcIdadmon(uniq(data.map(d => d.idadmon)))
+    setOpcInmueble(uniq(data.map(d => d.inmueble)))
+    setOpcPropietario(uniq(data.map(d => d.propietario)))
+  }
 
   async function loadKpis() {
     const { count: total }   = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true })
@@ -306,9 +433,9 @@ export default function CC1Page() {
 
     if (search) query = query.or(`idadmon.ilike.%${search}%,inmueble.ilike.%${search}%,propietario.ilike.%${search}%,arrendatario.ilike.%${search}%`)
     if (filtroEstado) query = query.eq('estado', filtroEstado)
-    if (filtroIdadmon) query = query.ilike('idadmon', `%${filtroIdadmon}%`)
-    if (filtroInmueble) query = query.ilike('inmueble', `%${filtroInmueble}%`)
-    if (filtroPropietario) query = query.ilike('propietario', `%${filtroPropietario}%`)
+    if (filtroIdadmon.length) query = query.in('idadmon', filtroIdadmon)
+    if (filtroInmueble.length) query = query.in('inmueble', filtroInmueble)
+    if (filtroPropietario.length) query = query.in('propietario', filtroPropietario)
 
     const { data, count, error } = await query
     if (!error) {
@@ -351,12 +478,12 @@ export default function CC1Page() {
   function handleSort(col, dir) { setSortCol(col); setSortDir(dir) }
 
   function limpiarTodo() {
-    setSearch(''); setFiltroEstado(''); setFiltroIdadmon('')
-    setFiltroInmueble(''); setFiltroPropietario('')
+    setSearch(''); setFiltroEstado(''); setFiltroIdadmon([])
+    setFiltroInmueble([]); setFiltroPropietario([])
     setSortCol('default'); setSortDir('desc')
   }
 
-  const hayFiltros = search || filtroEstado || filtroIdadmon || filtroInmueble || filtroPropietario
+  const hayFiltros = search || filtroEstado || filtroIdadmon.length || filtroInmueble.length || filtroPropietario.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const irAFormulario = () => router.push('/admin')
 
@@ -463,13 +590,13 @@ export default function CC1Page() {
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
-                  <ColFilter label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal={filtroIdadmon} onSearch={setFiltroIdadmon} />
+                  <ColFilterExcel label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcIdadmon} value={filtroIdadmon} onApply={setFiltroIdadmon} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilter label="Inmueble" col="inmueble" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal={filtroInmueble} onSearch={setFiltroInmueble} />
+                  <ColFilterExcel label="Inmueble" col="inmueble" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcInmueble} value={filtroInmueble} onApply={setFiltroInmueble} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilter label="Propietario" col="propietario" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal={filtroPropietario} onSearch={setFiltroPropietario} />
+                  <ColFilterExcel label="Propietario" col="propietario" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcPropietario} value={filtroPropietario} onApply={setFiltroPropietario} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                   <EstadoFilter col="estado" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} value={filtroEstado} onChange={setFiltroEstado} />
