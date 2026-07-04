@@ -545,7 +545,7 @@ export default function CC1Page() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <ActionBtn label="Nuevo / Modificar arriendo" bg="#1a56db" icon={Ico.edit}  onClick={irAFormulario} />
-        <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => {}} />
+        <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
         <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
       </div>
