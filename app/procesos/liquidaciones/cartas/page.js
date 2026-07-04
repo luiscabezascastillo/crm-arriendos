@@ -45,12 +45,7 @@ export default function CartasPage() {
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
   const [envios, setEnvios] = useState({})           // idprop -> {estado_envio, fecha_envio, email_dest}
   const [emailProp, setEmailProp] = useState({})     // idprop -> email
-  const [seleccion, setSeleccion] = useState({})     // idprop -> bool (marcado para enviar)
-  const [previewAbierto, setPreviewAbierto] = useState(false)
   const [obsGuardando, setObsGuardando] = useState({})
-  const [despedida, setDespedida] = useState('Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentamente, Servicio de Información al Cliente.')
-  const [enviando, setEnviando] = useState(false)
-  const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -216,49 +211,6 @@ export default function CartasPage() {
     setObsGuardando(g => ({ ...g, [idprop]: false }))
   }
 
-  // ¿Se puede enviar esta carta? Solo si está OK/OK DESC y no se ha enviado ya.
-  function enviable(b) {
-    if (envios[b.idprop]?.fecha_envio) return false           // ya enviada (candado)
-    return b.estado === 'OK' || b.estado === 'OK DESC'         // solo cuadradas
-  }
-  const seleccionadas = bloques.filter(b => seleccion[b.idprop] && enviable(b))
-  function toggleSel(idprop) { setSeleccion(s => ({ ...s, [idprop]: !s[idprop] })) }
-  function seleccionarTodasEnviables() {
-    const s = {}; for (const b of bloques) if (enviable(b)) s[b.idprop] = true; setSeleccion(s)
-  }
-  function limpiarSeleccion() { setSeleccion({}) }
-
-  // FASE B — envío real de las cartas seleccionadas
-  async function enviarSeleccionadas() {
-    if (!seleccionadas.length || enviando) return
-    setEnviando(true); setResultadoEnvio(null)
-    try {
-      const envios = seleccionadas.map(b => ({
-        idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b,
-      }))
-      const res = await fetch('/api/liquidaciones/enviar-cartas', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) { setResultadoEnvio({ error: data.error || `Error ${res.status}` }); setEnviando(false); return }
-      setResultadoEnvio(data)
-      // Marcar en memoria las enviadas (candado) y quitarlas de la selección
-      const okIds = (data.results || []).filter(r => r.ok)
-      if (okIds.length) {
-        setEnvios(prev => {
-          const next = { ...prev }
-          for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest }
-          return next
-        })
-        setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
-      }
-    } catch (err) {
-      setResultadoEnvio({ error: err.message })
-    }
-    setEnviando(false)
-  }
-
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -304,25 +256,6 @@ export default function CartasPage() {
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}
 
-        {!cargando && bloques.length > 0 && (
-          <div style={{ position: 'sticky', top: 52, zIndex: 30, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Envío de cartas:</span>
-            <button onClick={seleccionarTodasEnviables} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-              Seleccionar todas las enviables ({bloques.filter(enviable).length})
-            </button>
-            <button onClick={limpiarSeleccion} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-              Quitar selección
-            </button>
-            <span style={{ fontSize: 12, color: '#64748B' }}>
-              Solo se pueden enviar las cartas en <b style={{ color: '#166534' }}>OK</b> / <b style={{ color: '#854D0E' }}>OK DESC</b> que no se hayan enviado ya.
-            </span>
-            <button onClick={() => setPreviewAbierto(true)} disabled={seleccionadas.length === 0}
-              style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: seleccionadas.length ? '#1D9E75' : '#9CA3AF', color: '#fff', cursor: seleccionadas.length ? 'pointer' : 'not-allowed' }}>
-              ✉ Enviar seleccionadas ({seleccionadas.length})
-            </button>
-          </div>
-        )}
-
         {!cargando && bloques.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
@@ -331,13 +264,6 @@ export default function CartasPage() {
               {/* Cabecera del bloque */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {enviable(b) ? (
-                    <input type="checkbox" checked={!!seleccion[b.idprop]} onChange={() => toggleSel(b.idprop)}
-                      title="Seleccionar para enviar" style={{ width: 16, height: 16, cursor: 'pointer' }} />
-                  ) : (
-                    <input type="checkbox" disabled checked={false}
-                      title={envios[b.idprop]?.fecha_envio ? 'Ya enviada' : 'No se puede enviar hasta que esté en OK'} style={{ width: 16, height: 16 }} />
-                  )}
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
                     ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
@@ -462,86 +388,6 @@ export default function CartasPage() {
           <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 14 }}>No hay propietarios con liquidación para {aammToTxt(mes)}.</div>
         )}
       </div>
-
-      {/* ══ MODAL: vista previa del envío (Fase A: solo previsualiza; el envío real llega en la Fase B) ══ */}
-      {previewAbierto && (
-        <div onClick={() => setPreviewAbierto(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 16px' }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 10, width: 'min(720px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-            <div style={{ background: '#1D9E75', color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Enviar liquidaciones · {aammToTxt(mes)} · {seleccionadas.length} carta(s)</span>
-              <button onClick={() => setPreviewAbierto(false)} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer' }}>✕</button>
-            </div>
-            <div style={{ padding: 16, overflowY: 'auto' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
-                Se enviará la carta de liquidación a estos propietarios. Revisa los destinatarios antes de confirmar.
-              </div>
-              <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '70px 1.4fr 1.6fr 100px', gap: 6, padding: '8px 12px', background: '#F8FAFC', fontSize: 11, fontWeight: 700, color: '#64748B' }}>
-                  <div>IdProp</div><div>Propietario</div><div>Email destino</div><div style={{ textAlign: 'right' }}>A transferir</div>
-                </div>
-                {seleccionadas.map((b, i) => {
-                  const em = emailProp[b.idprop] || ''
-                  return (
-                    <div key={b.idprop} style={{ display: 'grid', gridTemplateColumns: '70px 1.4fr 1.6fr 100px', gap: 6, padding: '7px 12px', borderTop: i ? '1px solid #F0EEE8' : 'none', fontSize: 12, alignItems: 'center' }}>
-                      <div style={{ fontFamily: MONO, fontWeight: 600 }}>{b.idprop}</div>
-                      <div title={b.propietario}>{b.propietario}</div>
-                      <div style={{ color: em ? '#1e3a8a' : '#B91C1C' }} title={em || 'SIN EMAIL'}>{em || '⚠ sin email'}</div>
-                      <div style={{ textAlign: 'right', fontFamily: MONO }}>{fmt(b.totales.aTransferir)}</div>
-                    </div>
-                  )
-                })}
-              </div>
-              {seleccionadas.some(b => !emailProp[b.idprop]) && (
-                <div style={{ marginTop: 10, fontSize: 12, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 12px' }}>
-                  ⚠ Hay propietarios sin email. Esas cartas no se podrán enviar hasta añadir el email en su ficha.
-                </div>
-              )}
-              {/* Despedida configurable (va en el email y en el PDF) */}
-              <div style={{ marginTop: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Frase de despedida (email + PDF)</label>
-                <textarea value={despedida} onChange={e => setDespedida(e.target.value)} rows={2}
-                  style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
-                  Asunto: <b>[NO RESPONDER] Liquidación mes de {aammToTxt(mes)}</b> · CC a administracion@fondocapital.com · Adjunto PDF. Al enviar se pone candado (fecha de envío) y no se reenvía.
-                </div>
-              </div>
-
-              {/* Resultado del envío */}
-              {resultadoEnvio && (
-                resultadoEnvio.error ? (
-                  <div style={{ marginTop: 12, fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px' }}>
-                    Error: {resultadoEnvio.error}
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 12, fontSize: 12, borderRadius: 8, padding: '10px 12px', background: resultadoEnvio.fallidas ? '#FFFBEB' : '#ECFDF5', border: '1px solid ' + (resultadoEnvio.fallidas ? '#FDE68A' : '#A7F3D0'), color: '#065F46' }}>
-                    <b>{resultadoEnvio.enviadas} enviada(s)</b>{resultadoEnvio.fallidas ? `, ${resultadoEnvio.fallidas} no enviada(s)` : ''}.
-                    {(resultadoEnvio.results || []).filter(r => !r.ok).length > 0 && (
-                      <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#92400E' }}>
-                        {(resultadoEnvio.results || []).filter(r => !r.ok).map(r => (
-                          <li key={r.idprop}>{r.idprop} {r.propietario} — {r.motivo}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-            <div style={{ padding: 14, borderTop: '1px solid #E8E6E0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => { setPreviewAbierto(false); setResultadoEnvio(null) }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                Cerrar
-              </button>
-              <button onClick={enviarSeleccionadas} disabled={enviando || seleccionadas.length === 0}
-                title="Genera el PDF, envía por email y pone candado"
-                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: (enviando || !seleccionadas.length) ? '#9CA3AF' : '#1D9E75', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (enviando || !seleccionadas.length) ? 'not-allowed' : 'pointer' }}>
-                {enviando ? 'Enviando…' : `✉ Confirmar envío (${seleccionadas.length})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
