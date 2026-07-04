@@ -362,6 +362,7 @@ export default function CC1Page() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('Datos base')
   const [search, setSearch] = useState('')
+  const [recuperarId, setRecuperarId] = useState('')   // caja IDADMON para RECUPERAR
   const [filtroEstado, setFiltroEstado] = useState('')
   // Autofiltro estilo Excel: array de valores seleccionados. [] = sin filtro (todos).
   const [filtroIdadmon, setFiltroIdadmon] = useState([])
@@ -487,6 +488,10 @@ export default function CC1Page() {
   const hayFiltros = search || filtroEstado || filtroIdadmon.length || filtroInmueble.length || filtroPropietario.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const irAFormulario = () => router.push('/admin')
+  const recuperar = () => {
+    const v = recuperarId.trim().toUpperCase()
+    router.push(v ? `/admin?idadmon=${encodeURIComponent(v)}` : '/admin')
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
@@ -544,7 +549,15 @@ export default function CC1Page() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-        <ActionBtn label="Nuevo / Modificar arriendo" bg="#1a56db" icon={Ico.edit}  onClick={irAFormulario} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input value={recuperarId} onChange={e => setRecuperarId(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') recuperar() }}
+            placeholder="IDADMON…"
+            style={{ width: 120, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--gray-50)', fontSize: 12, color: 'var(--gray-800)', fontFamily: 'inherit',
+              outline: 'none', textTransform: 'uppercase' }} />
+          <ActionBtn label="RECUPERAR" bg="#1a56db" icon={Ico.edit} onClick={recuperar} />
+        </div>
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
         <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
