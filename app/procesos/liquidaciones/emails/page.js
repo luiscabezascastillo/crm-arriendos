@@ -354,8 +354,8 @@ export default function CartasPage() {
           return (
             <div key={b.idprop} style={{ border: '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                   {enviable(b) ? (
                     <input type="checkbox" checked={!!seleccion[b.idprop]} onChange={() => toggleSel(b.idprop)}
                       title="Seleccionar para enviar" style={{ width: 16, height: 16, cursor: 'pointer' }} />
@@ -368,7 +368,7 @@ export default function CartasPage() {
                     ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button onClick={() => verBorrador(b)} disabled={borradorLoading === b.idprop}
                     title="Ver el PDF de esta carta como borrador (marca de agua, no se envía)"
                     style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
@@ -378,6 +378,7 @@ export default function CartasPage() {
                   </button>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
                 </div>
+                <div style={{ flex: 1 }} />
               </div>
 
               {/* Tabla de inmuebles (scroll horizontal) */}
