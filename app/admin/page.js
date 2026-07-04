@@ -453,6 +453,9 @@ function AdminContent() {
   const [borradorOk, setBorradorOk] = useState(false)
   const [soloBorrador, setSoloBorrador] = useState(false)  // modal en modo "solo generar contrato" (sin facturar)
   const [recientes, setRecientes] = useState([])           // IDADMON recientes (ayuda para elegir base)
+  const [forzarAbierto, setForzarAbierto] = useState(false)  // panel Forzar estado (solo Dirección)
+  const [forzarEstado, setForzarEstado] = useState('')
+  const [forzando, setForzando] = useState(false)
   const [expandir, setExpandir] = useState(null)            // pop-up de campo largo: {bloque, campo} | null
   const [guardandoModal, setGuardandoModal] = useState(false)
   const [arr2Abierto, setArr2Abierto] = useState(false)
@@ -970,6 +973,26 @@ function AdminContent() {
   }
 
   const ro = bloqueado
+  // ── Forzar cambio de estado (SOLO Dirección: Luis y Alberto). UPDATE en crudo, sin
+  //    efectos del circuito (ni siguiente P, ni emails, ni workflow). Queda en histórico. ──
+  async function forzarCambioEstado() {
+    if (!forzarEstado || forzando || !form.idadmon) return
+    if (!window.confirm('¿Estás seguro de querer hacer el cambio?')) return
+    setForzando(true)
+    try {
+      const res = await fetch('/api/cc1/forzar-estado', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, nuevoEstado: forzarEstado, estadoAnterior: form.estado || '' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ type: 'warn', text: 'No se pudo forzar el estado: ' + (data.error || res.status) }); setForzando(false); return }
+      setForm(f => ({ ...f, estado: forzarEstado }))
+      setMsg({ type: 'ok', text: `✓ Estado forzado a "${forzarEstado}" (sin efectos del circuito; registrado en histórico).` })
+      setForzarAbierto(false); setForzarEstado('')
+    } catch (e) { setMsg({ type: 'warn', text: e.message }) }
+    setForzando(false)
+  }
+
   // ── Permisos de este usuario sobre el formulario (cap viene de /api/cc1/pendientes) ──
   const esResp = !!(cap && (cap.esDireccion || cap.rol === 'responsable' || cap.rol === 'direccion'))
   // Puede editar/guardar AHORA: responsable/Dirección siempre; colaborador (Inicio) solo si estado P.
@@ -1007,8 +1030,8 @@ function AdminContent() {
         <Link href="/cc1" style={{
           fontSize: 11, color: '#1a3a6b', textDecoration: 'none',
           display: 'flex', alignItems: 'center', gap: 3, marginRight: 4,
-          fontWeight: 600,
-        }}>← CC1</Link>
+          fontWeight: 600, border: '1px solid #1a3a6b', borderRadius: 6, padding: '4px 10px',
+        }}>← LOG</Link>
 
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 
@@ -1238,7 +1261,7 @@ function AdminContent() {
               </span>
             </div>
             {/* Fila 2: tarjeta de identificación, centrada en su propio bloque (replica el recuadro del Excel) */}
-            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: 24 }}>
               <div style={{
                 display: 'flex', border: `1px solid ${C.headerBg}`,
                 borderRadius: 6, overflow: 'hidden', fontSize: 11,
@@ -1258,6 +1281,30 @@ function AdminContent() {
                   </div>
                 </div>
               </div>
+
+              {/* Forzar estado — SOLO Dirección (Luis y Alberto) */}
+              {cap?.esDireccion && form.idadmon && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button onClick={() => setForzarAbierto(v => !v)}
+                    title="Forzar el estado a cualquier otro valor (solo Dirección). No dispara efectos del circuito."
+                    style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid #b91c1c', background: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}>
+                    ⚠ Forzar estado
+                  </button>
+                  {forzarAbierto && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 8, border: '1px solid #fca5a5', borderRadius: 6, background: '#fff' }}>
+                      <select value={forzarEstado} onChange={e => setForzarEstado(e.target.value)}
+                        style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontFamily: 'inherit' }}>
+                        <option value="">Nuevo estado…</option>
+                        {['P', 'S', 'SQ', 'Q', 'N', 'N-DICOM', 'Inactiva'].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <button onClick={forzarCambioEstado} disabled={!forzarEstado || forzando}
+                        style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6, border: 'none', background: (!forzarEstado || forzando) ? '#9ca3af' : '#b91c1c', color: '#fff', cursor: (!forzarEstado || forzando) ? 'not-allowed' : 'pointer' }}>
+                        {forzando ? 'Forzando…' : 'Forzar'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}
