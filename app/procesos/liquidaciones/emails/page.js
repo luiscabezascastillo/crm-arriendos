@@ -182,7 +182,15 @@ export default function CartasPage() {
 
       const lista = Object.values(grupos).map(g => {
         // Inmuebles ordenados por nombre de propiedad (numérico para "dep 905" < "dep 1006")
-        g.inmuebles.sort((a, b) => String(a.propiedad || '').localeCompare(String(b.propiedad || ''), 'es', { numeric: true, sensitivity: 'base' }))
+        g.inmuebles.sort((a, b) => {
+          // Ordenar por dirección SIN el prefijo del proporcional, para que la línea
+          // "[proporcional mes anterior]" quede junto a su contrato normal (misma dirección);
+          // desempate: la normal antes que la proporcional.
+          const pa = String(a.propiedad || '').replace('[proporcional mes anterior] ', '')
+          const pb = String(b.propiedad || '').replace('[proporcional mes anterior] ', '')
+          const c = pa.localeCompare(pb, 'es', { numeric: true, sensitivity: 'base' })
+          return c !== 0 ? c : ((a.esProp ? 1 : 0) - (b.esProp ? 1 : 0))
+        })
         const T = g.inmuebles.reduce((a, x) => ({
           aCobrar: a.aCobrar + x.aCobrar, recibido: a.recibido + x.recibido, admon: a.admon + x.admon,
           iva: a.iva + x.iva, descuentos: a.descuentos + x.descuentos, aTransferir: a.aTransferir + x.aTransferir,
