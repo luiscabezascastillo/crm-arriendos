@@ -371,7 +371,7 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
                       <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
-                      <div style={{ ...td, ...rt, ...bgP, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? vP : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
+                      <div style={{ ...td, ...rt, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? '' : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.agua)}</div>
