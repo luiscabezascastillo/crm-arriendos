@@ -51,6 +51,7 @@ export default function CartasPage() {
   const [despedida, setDespedida] = useState('Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentamente, Servicio de Información al Cliente.')
   const [enviando, setEnviando] = useState(false)
   const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
+  const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -228,6 +229,30 @@ export default function CartasPage() {
   }
   function limpiarSeleccion() { setSeleccion({}) }
 
+  // Ver el PDF de un propietario como BORRADOR (marca de agua). No envía nada.
+  async function verBorrador(b) {
+    if (borradorLoading) return
+    setBorradorLoading(b.idprop)
+    try {
+      const res = await fetch('/api/liquidaciones/borrador-carta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bloque: b, mesTxt: aammToTxt(mes), despedida }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert('No se pudo generar el borrador: ' + (d.error || res.status))
+      } else {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        window.open(url, '_blank')
+        setTimeout(() => URL.revokeObjectURL(url), 60000)
+      }
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+    setBorradorLoading(null)
+  }
+
   // FASE B — envío real de las cartas seleccionadas
   async function enviarSeleccionadas() {
     if (!seleccionadas.length || enviando) return
@@ -343,7 +368,16 @@ export default function CartasPage() {
                     ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button onClick={() => verBorrador(b)} disabled={borradorLoading === b.idprop}
+                    title="Ver el PDF de esta carta como borrador (marca de agua, no se envía)"
+                    style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
+                      border: '1px solid #C7D2FE', background: '#fff', color: '#3730A3',
+                      cursor: borradorLoading === b.idprop ? 'wait' : 'pointer' }}>
+                    {borradorLoading === b.idprop ? 'Generando…' : '📄 Ver borrador'}
+                  </button>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
+                </div>
               </div>
 
               {/* Tabla de inmuebles (scroll horizontal) */}
