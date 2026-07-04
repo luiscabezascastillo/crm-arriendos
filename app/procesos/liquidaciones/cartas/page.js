@@ -277,9 +277,13 @@ export default function CartasPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
           <button onClick={() => router.push('/procesos/liquidaciones')}
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>
-            ← Volver a Liquidaciones
+            ← TRANSFER
           </button>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>Vista CARTAS · revisión de liquidación</h1>
+          <button onClick={() => router.push('/procesos/liquidaciones/emails')}
+            style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer' }}>
+            ✉ EMAILS
+          </button>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>CARTAS · revisión de liquidación</h1>
         </div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>
           Lo que se va a liquidar en <b>{aammToTxt(mes)}</b>, por propietario. Vista de revisión (Alberto). {actualizado && <>Actualizado el <b>{actualizado.toLocaleString('es-CL')}</b>.</>}

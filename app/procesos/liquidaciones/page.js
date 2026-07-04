@@ -158,7 +158,7 @@ export default function LiquidacionesPage() {
       <TopNav />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
 
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>Liquidaciones</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>TRANSFER</h1>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Transferencias a propietarios · los datos vienen de sus tablas de origen (datos_arriendos, bi, descuentos)</div>
 
         {/* CABECERA FIJA (sticky): controles + KPIs + títulos */}
@@ -180,16 +180,17 @@ export default function LiquidacionesPage() {
           </button>
           <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
-            📄 Vista cartas
+            📄 CARTAS
           </button>
           <div style={{ width: 1, height: 22, background: '#E5E7EB', margin: '0 2px' }} />
           <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontFamily: 'inherit' }}>
             ⚠ FALTAN
           </button>
-          <button disabled title="Próximamente: enviar liquidaciones por email a los propietarios (sobre la versión congelada)"
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F5F5F3', color: '#B4B2A9', cursor: 'not-allowed', fontFamily: 'inherit' }}>
-            ✉ Enviar liquidaciones
+          <button onClick={() => router.push('/procesos/liquidaciones/emails')}
+            title="EMAILS · envío de liquidaciones a propietarios (módulo en construcción)"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ✉ EMAILS
           </button>
           {ultimaAct && <span style={{ fontSize: 11, color: '#94A3B8' }}>Actualizado {ultimaAct.toLocaleTimeString('es-CL')}</span>}
         </div>
