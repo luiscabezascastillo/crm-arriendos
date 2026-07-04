@@ -10,6 +10,10 @@ import { createClient } from '@supabase/supabase-js'
 export const runtime = 'nodejs'
 
 const ROLES_EDIT = ['admin', 'legal', 'operaciones']
+const EMAILS_OK = [
+  'luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com',
+  'anthony.mendoza@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com',
+]
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 // Columnas editables (whitelist). idprop y los internos (recib, cob, iva, des, trm,
@@ -26,7 +30,8 @@ export async function POST(req) {
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
 
   const { data: u } = await admin.from('crm_users').select('rol').eq('email', email).maybeSingle()
-  if (!u || !ROLES_EDIT.includes(u.rol)) {
+  const autorizado = EMAILS_OK.includes(email) || (u && ROLES_EDIT.includes(u.rol))
+  if (!autorizado) {
     return Response.json({ error: 'No autorizado (solo Dirección, Legal o Administración)' }, { status: 403 })
   }
 

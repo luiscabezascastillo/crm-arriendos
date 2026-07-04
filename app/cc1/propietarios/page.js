@@ -7,6 +7,10 @@ import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
 const ROLES_EDIT = ['admin', 'legal', 'operaciones']
+const EMAILS_OK = [
+  'luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com',
+  'anthony.mendoza@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com',
+]
 
 // Campos visibles al principio
 const PRINCIPALES = [
@@ -39,6 +43,7 @@ export default function PropietariosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email
+  const rol = session?.user?.role
   const [puedeEditar, setPuedeEditar] = useState(null)
   const [rows, setRows] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -50,9 +55,8 @@ export default function PropietariosPage() {
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
-    supabase.from('crm_users').select('rol').eq('email', email).maybeSingle()
-      .then(({ data }) => setPuedeEditar(!!data && ROLES_EDIT.includes(data.rol)))
-  }, [status, email])
+    setPuedeEditar(ROLES_EDIT.includes(rol) || EMAILS_OK.includes(email))
+  }, [status, email, rol])
   useEffect(() => { if (puedeEditar === false) { const t = setTimeout(() => router.replace('/'), 2500); return () => clearTimeout(t) } }, [puedeEditar, router])
 
   useEffect(() => { cargar() }, [])
