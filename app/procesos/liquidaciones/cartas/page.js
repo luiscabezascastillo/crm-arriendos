@@ -48,6 +48,9 @@ export default function CartasPage() {
   const [seleccion, setSeleccion] = useState({})     // idprop -> bool (marcado para enviar)
   const [previewAbierto, setPreviewAbierto] = useState(false)
   const [obsGuardando, setObsGuardando] = useState({})
+  const [despedida, setDespedida] = useState('Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentamente, Servicio de Información al Cliente.')
+  const [enviando, setEnviando] = useState(false)
+  const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -225,12 +228,43 @@ export default function CartasPage() {
   }
   function limpiarSeleccion() { setSeleccion({}) }
 
+  // FASE B — envío real de las cartas seleccionadas
+  async function enviarSeleccionadas() {
+    if (!seleccionadas.length || enviando) return
+    setEnviando(true); setResultadoEnvio(null)
+    try {
+      const envios = seleccionadas.map(b => ({
+        idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b,
+      }))
+      const res = await fetch('/api/liquidaciones/enviar-cartas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setResultadoEnvio({ error: data.error || `Error ${res.status}` }); setEnviando(false); return }
+      setResultadoEnvio(data)
+      // Marcar en memoria las enviadas (candado) y quitarlas de la selección
+      const okIds = (data.results || []).filter(r => r.ok)
+      if (okIds.length) {
+        setEnvios(prev => {
+          const next = { ...prev }
+          for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest }
+          return next
+        })
+        setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
+      }
+    } catch (err) {
+      setResultadoEnvio({ error: err.message })
+    }
+    setEnviando(false)
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
   const estadoColor = { 'OK': { bg: '#DCFCE7', c: '#166534' }, 'OK DESC': { bg: '#FEF9C3', c: '#854D0E' }, 'TO SEE': { bg: '#FEE2E2', c: '#991B1B' }, 'CHECK': { bg: '#FFEDD5', c: '#9A3412' } }
   const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace"
-  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 82px 68px 64px 60px 128px 140px'
+  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 76px 82px 68px 64px 60px 128px 140px'
   const th = { fontSize: 10, color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
@@ -310,11 +344,12 @@ export default function CartasPage() {
 
               {/* Tabla de inmuebles (scroll horizontal) */}
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ minWidth: 1550 }}>
+                <div style={{ minWidth: 1632 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', background: '#334155' }}>
                     <div style={th}>IdAdmon</div><div style={th}>Propiedad</div><div style={th}>Comienzo</div><div style={th}>Final</div>
                     <div style={th}>Arrendatario</div><div style={th}>RUT</div><div style={{ ...th, ...rt }}>A Cobrar</div><div style={{ ...th, ...rt }}>Recibido</div>
                     <div style={th}>Por</div><div style={{ ...th, ...rt }}>Admon</div><div style={{ ...th, ...rt }}>IVA</div><div style={{ ...th, ...rt }}>Descuentos</div>
+                    <div style={{ ...th, ...rt }}>Ajuste</div>
                     <div style={{ ...th, ...rt }}>A transferir</div><div style={{ ...th, ...rt }}>G.Comunes</div><div style={{ ...th, ...rt }}>Electric.</div><div style={{ ...th, ...rt }}>Agua</div>
                     <div style={th}>Nota</div><div style={th}>DES</div>
                   </div>
@@ -335,6 +370,7 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
+                      <div style={{ ...td, ...rt, ...bgP, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? vP : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
@@ -380,6 +416,7 @@ export default function CartasPage() {
                     <div>TOTALES</div><div /><div /><div /><div /><div />
                     <div style={rt}>{fmt(b.totales.aCobrar)}</div><div style={rt}>{fmt(b.totales.recibido)}</div><div />
                     <div style={rt}>{fmt(b.totales.admon)}</div><div style={rt}>{fmt(b.totales.iva)}</div><div style={rt}>{fmt(b.totales.descuentos)}</div>
+                    <div style={rt}>{(() => { const s = (b.inmuebles || []).reduce((a, x) => a + n0(x.ajuste), 0); return s ? fmt(s) : '' })()}</div>
                     <div style={rt}>{fmt(b.totales.aTransferir)}</div><div /><div /><div /><div /><div />
                   </div>
                 </div>
@@ -457,18 +494,45 @@ export default function CartasPage() {
                   ⚠ Hay propietarios sin email. Esas cartas no se podrán enviar hasta añadir el email en su ficha.
                 </div>
               )}
-              <div style={{ marginTop: 14, fontSize: 12, color: '#92400E', background: '#FEF9C3', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 12px' }}>
-                <b>Fase A (en pruebas):</b> esto es la vista previa de los destinatarios. El <b>envío real</b> del email con el PDF y el archivado en Drive se activarán en el siguiente paso. De momento nada se envía.
+              {/* Despedida configurable (va en el email y en el PDF) */}
+              <div style={{ marginTop: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Frase de despedida (email + PDF)</label>
+                <textarea value={despedida} onChange={e => setDespedida(e.target.value)} rows={2}
+                  style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
+                  Asunto: <b>[NO RESPONDER] Liquidación mes de {aammToTxt(mes)}</b> · CC a administracion@fondocapital.com · Adjunto PDF. Al enviar se pone candado (fecha de envío) y no se reenvía.
+                </div>
               </div>
+
+              {/* Resultado del envío */}
+              {resultadoEnvio && (
+                resultadoEnvio.error ? (
+                  <div style={{ marginTop: 12, fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px' }}>
+                    Error: {resultadoEnvio.error}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12, fontSize: 12, borderRadius: 8, padding: '10px 12px', background: resultadoEnvio.fallidas ? '#FFFBEB' : '#ECFDF5', border: '1px solid ' + (resultadoEnvio.fallidas ? '#FDE68A' : '#A7F3D0'), color: '#065F46' }}>
+                    <b>{resultadoEnvio.enviadas} enviada(s)</b>{resultadoEnvio.fallidas ? `, ${resultadoEnvio.fallidas} no enviada(s)` : ''}.
+                    {(resultadoEnvio.results || []).filter(r => !r.ok).length > 0 && (
+                      <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#92400E' }}>
+                        {(resultadoEnvio.results || []).filter(r => !r.ok).map(r => (
+                          <li key={r.idprop}>{r.idprop} {r.propietario} — {r.motivo}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              )}
             </div>
             <div style={{ padding: 14, borderTop: '1px solid #E8E6E0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setPreviewAbierto(false)}
+              <button onClick={() => { setPreviewAbierto(false); setResultadoEnvio(null) }}
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 Cerrar
               </button>
-              <button disabled title="El envío real se activa en la Fase B"
-                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#9CA3AF', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'not-allowed' }}>
-                Confirmar envío (Fase B)
+              <button onClick={enviarSeleccionadas} disabled={enviando || seleccionadas.length === 0}
+                title="Genera el PDF, envía por email y pone candado"
+                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: (enviando || !seleccionadas.length) ? '#9CA3AF' : '#1D9E75', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (enviando || !seleccionadas.length) ? 'not-allowed' : 'pointer' }}>
+                {enviando ? 'Enviando…' : `✉ Confirmar envío (${seleccionadas.length})`}
               </button>
             </div>
           </div>
