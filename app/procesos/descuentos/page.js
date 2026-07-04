@@ -135,6 +135,12 @@ export default function DescuentosPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [puedeGestionar, setPuedeGestionar] = useState(false);   // Dirección + Karina
+  const [gestNum, setGestNum] = useState('');                    // Núm en la caja ANULAR/CAMBIAR
+
+  useEffect(() => {
+    fetch('/api/descuentos/anular').then(r => r.json()).then(j => setPuedeGestionar(!!j.puede)).catch(() => {});
+  }, []);
 
   async function cargar() {
     setLoading(true); setError('');
@@ -238,6 +244,29 @@ export default function DescuentosPage() {
   const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
   const [hoverId, setHoverId] = useState(null);   // fila resaltada bajo el ratón
 
+  // -------------------- ANULAR / CAMBIAR por Núm (Dirección + Karina) --------------------
+  async function anularNum() {
+    const n = gestNum.trim().replace(/\D/g, '');
+    if (!n) return;
+    if (!window.confirm(`¿Anular el descuento Núm ${n}? Se marcará mes a imputar = "ANULADO" y dejará de contar en las liquidaciones.`)) return;
+    try {
+      const res = await fetch('/api/descuentos/anular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ num: n }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { alert('No se pudo anular: ' + (j.error || res.status)); return; }
+      setGestNum('');
+      cargar();
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+  function cambiarNum() {
+    const n = gestNum.trim().replace(/\D/g, '');
+    if (!n) return;
+    const row = rows.find((r) => String(r.num) === n);
+    if (row) setDescSel(row);
+    else alert(`El Núm ${n} no está en la lista cargada. Pulsa "Ver todos (1000)" y reintenta.`);
+  }
+
   async function toggleVerificado(r) {
     try {
       const res = await fetch('/api/descuentos/verificar', {
@@ -256,6 +285,22 @@ export default function DescuentosPage() {
       <div style={{ padding: 20, background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <h1 style={{ color: C.azul, margin: 0, fontSize: 24 }}>Descuentos</h1>
+
+        {puedeGestionar && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={anularNum} style={btn(C.rojo)}>ANULAR</button>
+              <input value={gestNum} onChange={(e) => setGestNum(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') cambiarNum(); }}
+                placeholder="Núm" title="Número del descuento afectado"
+                style={{ width: 84, padding: '7px 10px', borderRadius: 6, border: `1px solid ${C.borde}`,
+                  fontSize: 13, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
+              <button onClick={cambiarNum} style={btn(C.azul)}>CAMBIAR</button>
+            </div>
+            <span style={{ fontSize: 10, color: C.gris }}>Solo Dirección y Karina</span>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           {caps.crear && (
             <button onClick={() => setShowForm((v) => !v)} style={btn(C.verde)}>
