@@ -264,7 +264,7 @@ export default function CartasPage() {
 
   const estadoColor = { 'OK': { bg: '#DCFCE7', c: '#166534' }, 'OK DESC': { bg: '#FEF9C3', c: '#854D0E' }, 'TO SEE': { bg: '#FEE2E2', c: '#991B1B' }, 'CHECK': { bg: '#FFEDD5', c: '#9A3412' } }
   const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace"
-  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 76px 82px 68px 64px 60px 128px 140px'
+  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 82px 76px 68px 64px 60px 128px 140px'
   const th = { fontSize: 10, color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
@@ -349,8 +349,8 @@ export default function CartasPage() {
                     <div style={th}>IdAdmon</div><div style={th}>Propiedad</div><div style={th}>Comienzo</div><div style={th}>Final</div>
                     <div style={th}>Arrendatario</div><div style={th}>RUT</div><div style={{ ...th, ...rt }}>A Cobrar</div><div style={{ ...th, ...rt }}>Recibido</div>
                     <div style={th}>Por</div><div style={{ ...th, ...rt }}>Admon</div><div style={{ ...th, ...rt }}>IVA</div><div style={{ ...th, ...rt }}>Descuentos</div>
-                    <div style={{ ...th, ...rt }}>Ajuste</div>
-                    <div style={{ ...th, ...rt }}>A transferir</div><div style={{ ...th, ...rt }}>G.Comunes</div><div style={{ ...th, ...rt }}>Electric.</div><div style={{ ...th, ...rt }}>Agua</div>
+                    <div style={{ ...th, ...rt }}>A transferir</div><div style={{ ...th, ...rt }}>Ajuste</div>
+                    <div style={{ ...th, ...rt }}>G.Comunes</div><div style={{ ...th, ...rt }}>Electric.</div><div style={{ ...th, ...rt }}>Agua</div>
                     <div style={th}>Nota</div><div style={th}>DES</div>
                   </div>
                   {b.inmuebles.map((x, i) => {
@@ -370,8 +370,8 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
-                      <div style={{ ...td, ...rt, ...bgP, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? vP : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
+                      <div style={{ ...td, ...rt, ...bgP, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? vP : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.agua)}</div>
@@ -416,8 +416,8 @@ export default function CartasPage() {
                     <div>TOTALES</div><div /><div /><div /><div /><div />
                     <div style={rt}>{fmt(b.totales.aCobrar)}</div><div style={rt}>{fmt(b.totales.recibido)}</div><div />
                     <div style={rt}>{fmt(b.totales.admon)}</div><div style={rt}>{fmt(b.totales.iva)}</div><div style={rt}>{fmt(b.totales.descuentos)}</div>
-                    <div style={rt}>{(() => { const s = (b.inmuebles || []).reduce((a, x) => a + n0(x.ajuste), 0); return s ? fmt(s) : '' })()}</div>
-                    <div style={rt}>{fmt(b.totales.aTransferir)}</div><div /><div /><div /><div /><div />
+                    <div style={rt}>{fmt(b.totales.aTransferir)}</div>
+                    <div style={rt}>{(() => { const s = (b.inmuebles || []).reduce((a, x) => a + n0(x.ajuste), 0); return s ? fmt(s) : '' })()}</div><div /><div /><div /><div /><div />
                   </div>
                 </div>
               </div>
