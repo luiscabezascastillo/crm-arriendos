@@ -3,6 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { supabase } from '../../../lib/supabaseClient';
+import { PROCESOS } from '../../../lib/procesos';
 
 const DIRECCION_EMAILS = [
   'alberto.cabezas@fondocapital.com',
@@ -71,6 +73,15 @@ export default function TopNav() {
   const ventasRef = useRef(null);
   const ayudaRef = useRef(null);
   const userRef = useRef(null);
+
+  // Permisos por proceso (mismo criterio que la página /procesos): un proceso está
+  // "con acceso" si el usuario tiene fila activa en proceso_permisos con esa key.
+  const [procKeys, setProcKeys] = useState(new Set());
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    supabase.from('proceso_permisos').select('proceso').eq('email', session.user.email).eq('activo', true)
+      .then(({ data }) => { if (data) setProcKeys(new Set(data.map(r => r.proceso))); });
+  }, [session?.user?.email]);
 
   useEffect(() => {
     function handleClick(e) {
@@ -242,9 +253,50 @@ export default function TopNav() {
       </div>
       )}
 
-      {/* Procesos — enlace directo a la pagina general. Acceso fino por proceso_permisos en la pagina. */}
+      {/* Procesos — botón partido: el texto va a /procesos; la ▾ abre el desplegable
+          de procesos EN PRODUCCIÓN, filtrado por perfil (candado 🔒 si no hay acceso). */}
       {puede('/procesos') && (
-        <Link href="/procesos" style={s.link(procesosActive)}>Procesos</Link>
+      <div ref={procesosRef} style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 6,
+          background: procesosActive ? '#E6F1FB' : 'transparent' }}>
+          <Link href="/procesos" onClick={() => setProcesosOpen(false)}
+            style={{ ...s.link(procesosActive), background: 'transparent', paddingRight: 4 }}>
+            Procesos
+          </Link>
+          <button aria-label="Ver procesos en producción"
+            onClick={() => { setProcesosOpen(v => !v); setPropiedadesOpen(false); setVentasOpen(false); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px 6px 2px',
+              color: procesosActive ? '#185FA5' : '#555', display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 9, opacity: 0.6, transition: 'transform 0.15s',
+              transform: procesosOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+          </button>
+        </div>
+        {procesosOpen && (
+          <div style={s.dropdown}>
+            <div style={s.dropLabel}>Procesos en producción</div>
+            {PROCESOS.filter(p => p.produccion).map(p => {
+              const tiene = procKeys.has(p.key) && !!p.href;
+              return tiene ? (
+                <Link key={p.key} href={p.href} style={s.dropItem} onClick={() => setProcesosOpen(false)}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {p.titulo}
+                </Link>
+              ) : (
+                <span key={p.key} title="Sin acceso"
+                  style={{ ...s.dropItem, color: '#bbb', cursor: 'default', display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ fontSize: 11 }}>🔒</span>{p.titulo}
+                </span>
+              );
+            })}
+            <div style={s.dropDivider} />
+            <Link href="/procesos" onClick={() => setProcesosOpen(false)}
+              style={{ ...s.dropItem, color: '#185FA5', fontWeight: 600 }}>
+              Ver todos los procesos →
+            </Link>
+          </div>
+        )}
+      </div>
       )}
 
       {/* Ventas (interno) — Inventario y Contactos */}
