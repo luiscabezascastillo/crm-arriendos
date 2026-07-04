@@ -57,11 +57,22 @@ export default function FaltanPage() {
       // 1) Liquidación del periodo -> quedarse con los que tienen falta de arriendo > 0
       const { data: liq, error: e1 } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
       if (e1) { setError(e1.message); setCargando(false); return }
-      const enFalta = (liq || []).filter(r => n0(r.falta) > 0)
-      if (enFalta.length === 0) { setFilas([]); setCargando(false); return }
+      // 1b) Fusionar por IDADMON: la línea normal y la [proporcional mes anterior]
+      //     se combinan en UNA fila -> a cobrar, recibido y falta = suma de ambas.
+      const porId = {}
+      for (const r of (liq || [])) {
+        const esProp = String(r.inmueble || '').startsWith('[proporcional')
+        if (!porId[r.idadmon]) porId[r.idadmon] = { idadmon: r.idadmon, propietario: r.propietario, inmueble: '', base: 0, recibido: 0, falta: 0 }
+        const g = porId[r.idadmon]
+        g.base += n0(r.base); g.recibido += n0(r.recibido_banco); g.falta += n0(r.falta)
+        if (!esProp) g.inmueble = r.inmueble
+        else if (!g.inmueble) g.inmueble = String(r.inmueble || '').replace('[proporcional mes anterior] ', '')
+      }
+      const conFalta = Object.values(porId).filter(g => g.falta > 0)
+      if (conFalta.length === 0) { setFilas([]); setCargando(false); return }
 
       // 2) Servicios (saldo vigente = fila del aamm más alto por IDADMON)
-      const ids = [...new Set(enFalta.map(r => r.idadmon))]
+      const ids = conFalta.map(g => g.idadmon)
       const { data: serv, error: e2 } = await supabase
         .from('ggcc_agua_luz')
         .select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas')
@@ -83,13 +94,12 @@ export default function FaltanPage() {
         }
       }
 
-      const out = enFalta.map(r => {
-        const esProp = String(r.inmueble || '').startsWith('[proporcional')
-        const s = (esProp ? null : vig[r.idadmon]) || { ggcc: 0, luz: 0, agua: 0, gas: 0, aamm: null }
+      const out = conFalta.map(g => {
+        const s = vig[g.idadmon] || { ggcc: 0, luz: 0, agua: 0, gas: 0, aamm: null }
         const servTotal = s.ggcc + s.luz + s.agua + s.gas
         return {
-          idadmon: r.idadmon, esProp, propietario: r.propietario, inmueble: r.inmueble,
-          falta: n0(r.falta), base: n0(r.base), recibido: n0(r.recibido_banco),
+          idadmon: g.idadmon, propietario: g.propietario, inmueble: g.inmueble,
+          falta: g.falta, base: g.base, recibido: g.recibido,
           ggcc: s.ggcc, luz: s.luz, agua: s.agua, gas: s.gas, servTotal, servAamm: s.aamm,
         }
       }).sort((a, b) => b.falta - a.falta)   // por deuda de arriendo desc
