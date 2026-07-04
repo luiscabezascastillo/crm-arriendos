@@ -175,11 +175,11 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
-  // Al abrir, inicializa el marcado desde `value` ([] = todos marcados)
+  // Al abrir: marca solo lo ya aplicado (vacío = nada marcado). Marcas lo que quieres VER.
   useEffect(() => {
     if (open) {
       setBuscar('')
-      setPending(new Set(value && value.length ? value : opciones))
+      setPending(new Set(value || []))
     }
   }, [open]) // eslint-disable-line
 
@@ -198,11 +198,11 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
   }
   const aplicar = () => {
     const arr = [...p]
-    // Si están todas marcadas -> sin filtro ([])
-    onApply(arr.length === (opciones || []).length ? [] : arr)
+    // Nada marcado o TODO marcado -> sin filtro (mostrar todo). Si no, mostrar solo lo marcado.
+    onApply((arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr)
     setOpen(false)
   }
-  const limpiar = () => { setPending(new Set(opciones)); onApply([]); setOpen(false) }
+  const limpiar = () => { setPending(new Set()); onApply([]); setOpen(false) }
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -231,7 +231,8 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
             ))}
           </div>
           {/* Filtro estilo Excel */}
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Filtrar</div>
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
+          <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
           <input placeholder={`Buscar ${label.toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)}
             style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB',
               fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
@@ -262,7 +263,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
             <button onClick={aplicar}
               style={{ flex: 1, padding: '5px', borderRadius: 6, border: 'none',
                 background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>
-              Aplicar ({[...p].length})
+              {[...p].length ? `Aplicar (${[...p].length})` : 'Ver todos'}
             </button>
           </div>
         </div>
