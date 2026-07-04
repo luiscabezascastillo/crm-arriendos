@@ -501,7 +501,7 @@ export default function CC1Page() {
           <div style={{ width: 30, height: 30, background: '#1a56db', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>CC1 Administración</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--gray-900)', margin: 0, letterSpacing: '-0.3px' }}>LOG</h1>
         </div>
       </div>
 
@@ -590,27 +590,27 @@ export default function CC1Page() {
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
                   <ColFilterExcel label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcIdadmon} value={filtroIdadmon} onApply={setFiltroIdadmon} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilterExcel label="Inmueble" col="inmueble" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcInmueble} value={filtroInmueble} onApply={setFiltroInmueble} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilterExcel label="Propietario" col="propietario" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcPropietario} value={filtroPropietario} onApply={setFiltroPropietario} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <EstadoFilter col="estado" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} value={filtroEstado} onChange={setFiltroEstado} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilter label="Cuota" col="cuota" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <ColFilter label="Término actual" col="termino_actual" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
-                <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
             </thead>
             <tbody>
