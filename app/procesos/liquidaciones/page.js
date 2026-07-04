@@ -90,7 +90,7 @@ export default function LiquidacionesPage() {
         supabase.from('comentarios_liquidacion')
           .select('idadmon, comentario').in('idadmon', ids).eq('mes', mes),
         supabase.from('datos_arriendos')
-          .select('idadmon, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
+          .select('idadmon, fecha_inicio, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
           .in('idadmon', ids),
         supabase.from('bi')
           .select('idadmon2, fecha, reg, arriendo').eq('liquidacion_mes2', mes).in('idadmon2', ids),
@@ -122,7 +122,10 @@ export default function LiquidacionesPage() {
     // pagos del BI agrupados por inmueble (para el desglose al pinchar Recibido)
     const pagosPorInm = {}
     pagos.forEach(pg => { (pagosPorInm[pg.idadmon2] = pagosPorInm[pg.idadmon2] || []).push(pg) })
-    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm } }))
+    // Inicio del contrato (fecha_inicio de datos_arriendos) por inmueble
+    const inicios = {}
+    arriendos.forEach(a => { inicios[a.idadmon] = a.fecha_inicio })
+    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm, inicios } }))
   }
 
   function cambiarMes(m) { setMes(m); cargarMes(m) }
@@ -162,7 +165,7 @@ export default function LiquidacionesPage() {
         <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Transferencias a propietarios · los datos vienen de sus tablas de origen (datos_arriendos, bi, descuentos)</div>
 
         {/* CABECERA FIJA (sticky): controles + KPIs + títulos */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F7F5', paddingTop: 6 }}>
+        <div style={{ position: 'sticky', top: 52, zIndex: 20, background: '#F7F7F5', paddingTop: 6 }}>
 
         {/* Barra: mes + búsqueda */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -235,7 +238,7 @@ export default function LiquidacionesPage() {
               const det = detObj ? detObj.inmuebles : []
               const pie = detObj ? detObj.pie : []
               const sumaDesc = detObj ? detObj.sumaDesc : {}
-              const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr'
+              const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr 0.75fr'
               return (
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
@@ -281,6 +284,7 @@ export default function LiquidacionesPage() {
                             <div style={{ textAlign: 'right' }}>Descuentos</div>
                             <div style={{ textAlign: 'right' }}>A transferir</div>
                             <div style={{ textAlign: 'center' }}>Aviso</div>
+                            <div style={{ textAlign: 'center' }}>Inicio</div>
                           </div>
                           {det.map(d => {
                             const sd = sumaDesc[d.idadmon]
@@ -310,6 +314,7 @@ export default function LiquidacionesPage() {
                               <div style={{ textAlign: 'center', fontSize: 10 }}>
                                 {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
                               </div>
+                              <div style={{ textAlign: 'center', fontSize: 11, color: '#666' }}>{fmtFecha(detObj.inicios && detObj.inicios[d.idadmon])}</div>
                             </div>
                             {/* Desglose de pagos del BI (al pinchar Recibido) */}
                             {verPagos && pagosInm.map((pg, i) => (
@@ -339,6 +344,7 @@ export default function LiquidacionesPage() {
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_iva)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_descuentos)}</div>
                             <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_transferir)}</div>
+                            <div></div>
                             <div></div>
                           </div>
                         </div>
