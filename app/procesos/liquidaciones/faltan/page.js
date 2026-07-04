@@ -84,10 +84,11 @@ export default function FaltanPage() {
       }
 
       const out = enFalta.map(r => {
-        const s = vig[r.idadmon] || { ggcc: 0, luz: 0, agua: 0, gas: 0, aamm: null }
+        const esProp = String(r.inmueble || '').startsWith('[proporcional')
+        const s = (esProp ? null : vig[r.idadmon]) || { ggcc: 0, luz: 0, agua: 0, gas: 0, aamm: null }
         const servTotal = s.ggcc + s.luz + s.agua + s.gas
         return {
-          idadmon: r.idadmon, propietario: r.propietario, inmueble: r.inmueble,
+          idadmon: r.idadmon, esProp, propietario: r.propietario, inmueble: r.inmueble,
           falta: n0(r.falta), base: n0(r.base), recibido: n0(r.recibido_banco),
           ggcc: s.ggcc, luz: s.luz, agua: s.agua, gas: s.gas, servTotal, servAamm: s.aamm,
         }
@@ -176,7 +177,7 @@ export default function FaltanPage() {
               {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
 
               {filas.map((f, i) => (
-                <div key={f.idadmon} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: '#fff' }}>
+                <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: '#fff' }}>
                   <div style={{ fontWeight: 600 }}>{f.idadmon}</div>
                   <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.propietario || ''}>{f.propietario || '—'}</div>
                   <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>

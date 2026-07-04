@@ -160,12 +160,13 @@ export default function CartasPage() {
         const s = serv[r.idadmon] || { ggcc: 0, luz: 0, agua: 0 }
         const estado = String(d.estado || '').trim().toUpperCase()
         const esP = estado === 'P'
+        const esProp = String(r.inmueble || '').startsWith('[proporcional')   // línea proporcional mes anterior
         const desc = n0(r.total_descuentos)
         grupos[r.idprop].inmuebles.push({
           idadmon: r.idadmon,
-          estado, esP,
+          estado, esP, esProp,
           propiedad: r.inmueble,
-          comienzo: esP ? '' : fmtFecha(campo(d, ['fecha_inicio'])),
+          comienzo: (esP || esProp) ? '' : fmtFecha(campo(d, ['fecha_inicio'])),
           final: esP ? '' : fmtFecha(campo(d, ['termino_actual', 'fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
           arrendatario: esP ? 'EN CAPTACION ARRENDATARIO' : campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
           rut: esP ? '' : campo(d, ['rut', 'rut_arrendatario', 'rut1']),
@@ -174,8 +175,8 @@ export default function CartasPage() {
           admon: esP ? 0 : n0(r.comision), iva: esP ? 0 : n0(r.iva_comision),
           descuentos: desc, aTransferir: esP ? -desc : n0(r.neto_transferir),
           ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
-          nota: notaDe(r.idadmon), des: des[r.idadmon] || [],
-          ajuste: esP ? 0 : n0(ajustes[r.idadmon] || 0),
+          nota: esProp ? '' : notaDe(r.idadmon), des: esProp ? [] : (des[r.idadmon] || []),
+          ajuste: (esP || esProp) ? 0 : n0(ajustes[r.idadmon] || 0),
         })
       }
 

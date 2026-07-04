@@ -287,14 +287,15 @@ export default function LiquidacionesPage() {
                             <div style={{ textAlign: 'center' }}>Inicio</div>
                           </div>
                           {det.map(d => {
-                            const sd = sumaDesc[d.idadmon]
-                            const notasInm = pie.filter(f => f.idadmon === d.idadmon)
-                            const pagosInm = (detObj.pagosPorInm && detObj.pagosPorInm[d.idadmon]) || []
+                            const esProp = (d.inmueble || '').startsWith('[proporcional')
+                            const sd = esProp ? 0 : sumaDesc[d.idadmon]
+                            const notasInm = esProp ? [] : pie.filter(f => f.idadmon === d.idadmon)
+                            const pagosInm = esProp ? [] : ((detObj.pagosPorInm && detObj.pagosPorInm[d.idadmon]) || [])
                             const verPagos = pagoAbierto === 'R' + d.idadmon
                             const verDescs = pagoAbierto === 'D' + d.idadmon
                             const clic = key => setPagoAbierto(prev => prev === key ? null : key)
                             return (
-                            <div key={d.idadmon}>
+                            <div key={d.idadmon + (esProp ? '·prop' : '')}>
                             <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
                               <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 24)}</span></div>
                               <div style={{ textAlign: 'right' }}>{fmtPesos(d.base)}</div>
@@ -314,7 +315,7 @@ export default function LiquidacionesPage() {
                               <div style={{ textAlign: 'center', fontSize: 10 }}>
                                 {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
                               </div>
-                              <div style={{ textAlign: 'center', fontSize: 11, color: '#666' }}>{fmtFecha(detObj.inicios && detObj.inicios[d.idadmon])}</div>
+                              <div style={{ textAlign: 'center', fontSize: 11, color: '#666' }}>{esProp ? '—' : fmtFecha(detObj.inicios && detObj.inicios[d.idadmon])}</div>
                             </div>
                             {/* Desglose de pagos del BI (al pinchar Recibido) */}
                             {verPagos && pagosInm.map((pg, i) => (
