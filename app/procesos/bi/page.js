@@ -205,7 +205,7 @@ export default function BancoInternacionalPage() {
             {/* tabla */}
             {r.nuevos > 0 && (
               <div style={{ overflowX: 'auto', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
                   <thead>
                     <tr style={{ background: '#F1EFE8', color: '#5F5E5A', textAlign: 'left' }}>
                       <th style={{ padding: '7px 9px' }}>Fecha</th>

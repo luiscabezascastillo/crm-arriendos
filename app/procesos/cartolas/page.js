@@ -361,7 +361,7 @@ function TablaVista() {
         {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
 
         <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '74vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, minWidth: 1700 }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, minWidth: 1700, fontVariantNumeric: 'tabular-nums' }}>
             <thead>
               <tr style={{ background: '#F1EFE8' }}>
                 {COLS.map((c, i) => (
@@ -484,8 +484,8 @@ function TablaVista() {
                         <div style={{ width: 74, flexShrink: 0 }}>{f.fecha || '—'}</div>
                         <div style={{ width: 64, flexShrink: 0 }}>{f.idadmon || '—'}</div>
                         <div style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.concepto || ''}>{f.concepto || '—'}</div>
-                        <div style={{ width: 78, textAlign: 'right', color: '#9B1C1C', flexShrink: 0 }}>{fmt(f.cargo) || '—'}</div>
-                        <div style={{ width: 78, textAlign: 'right', color: '#085041', flexShrink: 0 }}>{fmt(f.abono) || '—'}</div>
+                        <div style={{ width: 78, textAlign: 'right', color: '#9B1C1C', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{fmt(f.cargo) || '—'}</div>
+                        <div style={{ width: 78, textAlign: 'right', color: '#085041', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{fmt(f.abono) || '—'}</div>
                         <div style={{ width: 130, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.comentarios || ''}>{f.comentarios || '—'}</div>
                         <div style={{ width: 70, flexShrink: 0, color: '#B8860B', fontWeight: 600 }}>{f.calif || '—'}</div>
                         <div style={{ width: 44, textAlign: 'right', fontSize: 10, color: '#B4B2A9', flexShrink: 0 }}>#{f.id}</div>
@@ -769,7 +769,7 @@ function CartolaIdadmonVista() {
 
           {/* MOVIMIENTOS */}
           <div style={{ overflow: 'auto', maxHeight: '60vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%', fontVariantNumeric: 'tabular-nums' }}>
               <thead>
                 <tr style={{ background: '#F1EFE8' }}>
                   {MCOLS.map((c, i) => (

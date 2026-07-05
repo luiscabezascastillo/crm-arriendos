@@ -332,7 +332,7 @@ export default function DescuentosPage() {
         <div style={{ color: C.gris }}>Cargando…</div>
       ) : (
         <div ref={scrollRef} style={{ maxHeight: '62vh', overflow: 'auto', border: `1px solid ${C.borde}`, borderRadius: 6, background: '#fff' }}>
-          <table style={{ borderCollapse: 'collapse', width: TABLE_W, tableLayout: 'fixed', fontSize: 12 }}>
+          <table style={{ borderCollapse: 'collapse', width: TABLE_W, tableLayout: 'fixed', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
             <colgroup>
               {COLS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
             </colgroup>
@@ -559,7 +559,7 @@ function Bitacora({ rows, loading, creado }) {
       {rows.length === 0 ? (
         <span style={{ color: '#888' }}>Sin movimientos registrados.</span>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' }}>
           <thead><tr>
             {['Cuándo', 'Acción', 'Campo', 'Antes', 'Después', 'Quién'].map((h) => (
               <th key={h} style={{ ...thMini }}>{h}</th>
