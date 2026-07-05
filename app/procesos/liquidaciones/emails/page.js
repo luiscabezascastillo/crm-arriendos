@@ -45,6 +45,7 @@ export default function CartasPage() {
   const [obsAbierta, setObsAbierta] = useState({})   // idprop -> bool (expandido)
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
   const [envios, setEnvios] = useState({})           // idprop -> {estado_envio, fecha_envio, email_dest}
+  const [historialEnv, setHistorialEnv] = useState({})   // idprop -> [envios del log, más recientes primero]
   const [emailProp, setEmailProp] = useState({})     // idprop -> email
   const [seleccion, setSeleccion] = useState({})     // idprop -> bool (marcado para enviar)
   const [previewAbierto, setPreviewAbierto] = useState(false)
@@ -74,7 +75,7 @@ export default function CartasPage() {
       const ids = [...new Set(rows.map(r => r.idadmon))]
       const idprops = new Set(rows.map(r => r.idprop))
 
-      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps] = await Promise.all([
+      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps, rLog] = await Promise.all([
         supabase.from('datos_arriendos').select('*').in('idadmon', ids),
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
         supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
@@ -83,7 +84,13 @@ export default function CartasPage() {
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
         supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest, enviado_por').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
+        supabase.from('liquidacion_envios_log').select('idprop, fecha_envio, enviado_por, reducido').eq('mes', m).order('fecha_envio', { ascending: false }),
       ])
+
+      // Historial de envíos del mes (todos, incl. reenvíos), agrupado por idprop, más recientes primero
+      const hist = {}
+      for (const l of rLog.data || []) (hist[l.idprop] = hist[l.idprop] || []).push(l)
+      setHistorialEnv(hist)
 
       // Envíos ya realizados este mes (candado anti-reenvío)
       const env = {}
@@ -295,6 +302,11 @@ export default function CartasPage() {
           for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest, enviado_por: r.enviado_por }
           return next
         })
+        setHistorialEnv(prev => {
+          const next = { ...prev }
+          for (const r of okIds) next[r.idprop] = [{ idprop: r.idprop, fecha_envio: r.fecha_envio, enviado_por: r.enviado_por, reducido: !!reducir1p[r.idprop] }, ...(next[r.idprop] || [])]
+          return next
+        })
         setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
       }
     } catch (err) {
@@ -384,7 +396,7 @@ export default function CartasPage() {
                   )}
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
-                    ? <span title={`Enviada por ${envios[b.idprop].enviado_por || '—'}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleString('es-CL')}{envios[b.idprop].enviado_por ? ' · ' + String(envios[b.idprop].enviado_por).split('@')[0] : ''}</span>
+                    ? <span title={`Enviada por ${envios[b.idprop].enviado_por || '—'}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {(historialEnv[b.idprop]?.length || 1)}x · {new Date(envios[b.idprop].fecha_envio).toLocaleString('es-CL')}{envios[b.idprop].enviado_por ? ' · ' + String(envios[b.idprop].enviado_por).split('@')[0] : ''}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
                 <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -407,6 +419,18 @@ export default function CartasPage() {
                 </div>
                 <div style={{ flex: 1 }} />
               </div>
+
+              {(historialEnv[b.idprop]?.length > 0) && (
+                <div style={{ fontSize: 10.5, color: '#64748B', padding: '0 0 8px 26px', lineHeight: 1.6 }}>
+                  <span style={{ fontWeight: 600, color: '#475569' }}>Últimos envíos: </span>
+                  {historialEnv[b.idprop].slice(0, 3).map((l, i) => (
+                    <span key={i} style={{ marginRight: 12 }}>
+                      {new Date(l.fecha_envio).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })} · {String(l.enviado_por || '').split('@')[0]}{l.reducido ? ' · 1pág' : ''}
+                    </span>
+                  ))}
+                  {historialEnv[b.idprop].length > 3 && <span style={{ color: '#94A3B8' }}>… ({historialEnv[b.idprop].length} en total)</span>}
+                </div>
+              )}
 
               {/* Tabla de inmuebles (scroll horizontal) */}
               <div style={{ overflowX: 'auto' }}>
