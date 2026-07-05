@@ -53,6 +53,7 @@ export default function CartasPage() {
   const [enviando, setEnviando] = useState(false)
   const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
   const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
+  const [reducir1p, setReducir1p] = useState({})   // idprop -> true = forzar 1 página (borrador + envío)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -242,7 +243,7 @@ export default function CartasPage() {
     try {
       const res = await fetch('/api/liquidaciones/borrador-carta', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bloque: b, mesTxt: aammToTxt(mes), despedida }),
+        body: JSON.stringify({ bloque: b, mesTxt: aammToTxt(mes), despedida, reducir: !!reducir1p[b.idprop] }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -266,6 +267,7 @@ export default function CartasPage() {
     try {
       const envios = seleccionadas.map(b => ({
         idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b,
+        reducir: !!reducir1p[b.idprop],
       }))
       const res = await fetch('/api/liquidaciones/enviar-cartas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -375,6 +377,14 @@ export default function CartasPage() {
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
                 <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label title="Comprime la carta para que quepa en 1 página (borrador y envío). Reversible."
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600,
+                      color: reducir1p[b.idprop] ? '#065F46' : '#94A3B8', cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={!!reducir1p[b.idprop]}
+                      onChange={() => setReducir1p(m => ({ ...m, [b.idprop]: !m[b.idprop] }))}
+                      style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                    1 pág.
+                  </label>
                   <button onClick={() => verBorrador(b)} disabled={borradorLoading === b.idprop}
                     title="Ver el PDF de esta carta como borrador (marca de agua, no se envía)"
                     style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
