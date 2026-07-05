@@ -122,9 +122,9 @@ ${(despedida || 'Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentame
         mes, idprop, estado_envio: 'ENVIADA', fecha_envio: ahora,
         enviado_por: email, email_dest: dest, snapshot: bloque,
       }, { onConflict: 'mes,idprop' })
-      if (eUp) { results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, reenvio: esReenvio, aviso: 'registro parcial: ' + eUp.message }); continue }
+      if (eUp) { results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio, aviso: 'registro parcial: ' + eUp.message }); continue }
 
-      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, reenvio: esReenvio })
+      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio })
     } catch (err) {
       results.push({ ...marca, ok: false, motivo: (err?.message || 'error').slice(0, 200) })
     }

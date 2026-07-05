@@ -81,7 +81,7 @@ export default function CartasPage() {
         supabase.from('comentarios_liquidacion').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
         supabase.rpc('transferido_propietario', { p_mes: m }),
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
-        supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest').eq('mes', m),
+        supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest, enviado_por').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
       ])
 
@@ -226,7 +226,7 @@ export default function CartasPage() {
 
   // ¿Se puede enviar esta carta? Solo si está OK/OK DESC y no se ha enviado ya.
   function enviable(b) {
-    if (envios[b.idprop]?.fecha_envio) return false           // ya enviada (candado)
+    // Se permite reenviar: ya NO se bloquea por envío previo (al reenviar se pide confirmación).
     return b.estado === 'OK' || b.estado === 'OK DESC'         // solo cuadradas
   }
   const seleccionadas = bloques.filter(b => seleccion[b.idprop] && enviable(b))
@@ -263,6 +263,17 @@ export default function CartasPage() {
   // FASE B — envío real de las cartas seleccionadas
   async function enviarSeleccionadas() {
     if (!seleccionadas.length || enviando) return
+    // Advertir si alguna de las seleccionadas YA se había enviado (reenvío)
+    const yaEnviadas = seleccionadas.filter(b => envios[b.idprop]?.fecha_envio)
+    if (yaEnviadas.length > 0) {
+      const lista = yaEnviadas.slice(0, 8).map(b => `· ${b.idprop} ${b.propietario}`).join('\n')
+      const extra = yaEnviadas.length > 8 ? `\n… y ${yaEnviadas.length - 8} más` : ''
+      const ok = window.confirm(
+        `⚠ Vas a REENVIAR ${yaEnviadas.length} carta(s) que ya se habían enviado:\n\n${lista}${extra}\n\n` +
+        `El propietario recibirá el correo de nuevo y quedará registrado como reenvío. ¿Continuar?`
+      )
+      if (!ok) return
+    }
     setEnviando(true); setResultadoEnvio(null)
     try {
       const envios = seleccionadas.map(b => ({
@@ -281,7 +292,7 @@ export default function CartasPage() {
       if (okIds.length) {
         setEnvios(prev => {
           const next = { ...prev }
-          for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest }
+          for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest, enviado_por: r.enviado_por }
           return next
         })
         setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
@@ -373,7 +384,7 @@ export default function CartasPage() {
                   )}
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
-                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
+                    ? <span title={`Enviada por ${envios[b.idprop].enviado_por || '—'}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleString('es-CL')}{envios[b.idprop].enviado_por ? ' · ' + String(envios[b.idprop].enviado_por).split('@')[0] : ''}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
                 <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10 }}>
