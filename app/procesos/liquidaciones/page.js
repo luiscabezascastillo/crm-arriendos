@@ -159,9 +159,11 @@ export default function LiquidacionesPage() {
   // Totales del mes
   const totMes = lista.reduce((a, p) => ({
     transferir: a.transferir + n0(p.total_transferir),
+    transferido: a.transferido + n0(transf[p.idprop]),
     comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
     falta: a.falta + n0(p.total_falta),
-  }), { transferir: 0, comision: 0, falta: 0 })
+  }), { transferir: 0, transferido: 0, comision: 0, falta: 0 })
+  const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
 
   const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
   const metric = { flex: 1, minWidth: 130, background: '#FAFAF8', borderRadius: 8, padding: '10px 14px' }
@@ -213,6 +215,8 @@ export default function LiquidacionesPage() {
         {/* Métricas */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={metric}><div style={metricLbl}>A transferir</div><div style={metricVal}>{fmtPesos(totMes.transferir)}</div></div>
+          <div style={metric}><div style={metricLbl}>Transferido</div><div style={{ ...metricVal, color: '#0C447C' }}>{fmtPesos(totMes.transferido)}</div></div>
+          <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
           <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length}</div></div>
