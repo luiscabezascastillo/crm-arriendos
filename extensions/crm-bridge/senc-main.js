@@ -38,7 +38,15 @@
 
       let j
       try { j = await r.json() } catch (e) { reply({ ok: false, error: accRef + ': sin JSON' }); return }
-      if (j.errorMessage) { reply({ ok: false, error: accRef + ': ' + j.errorMessage }); return }
+      if (j.errorMessage) {
+        // Sencillito devuelve "Error while calling API using accRef" cuando la
+        // cuenta NO tiene deuda (esta al dia). No es un fallo real: es deuda 0.
+        var em = String(j.errorMessage)
+        if (/error while calling api/i.test(em) || /sin deuda/i.test(em) || /no.*deuda/i.test(em)) {
+          reply({ ok: true, deuda: 0, fecha: null, sinDeuda: true }); return
+        }
+        reply({ ok: false, error: accRef + ': ' + em }); return
+      }
 
       const invoices = Array.isArray(j.invoices) ? j.invoices : []
       if (invoices.length === 0) { reply({ ok: true, deuda: 0, fecha: null }); return }
