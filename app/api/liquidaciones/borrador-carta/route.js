@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 30
 
 // Factores de escala que se prueban (de mayor a menor) al reducir a 1 página.
-const FACTORES = [1, 0.92, 0.85, 0.78, 0.72, 0.66, 0.6, 0.55]
+const FACTORES = [1, 0.9, 0.82, 0.75, 0.68, 0.62, 0.56, 0.50]
 
 async function nPaginas(bytes) {
   try { const d = await PDFDocument.load(bytes); return d.getPageCount() } catch { return 1 }
