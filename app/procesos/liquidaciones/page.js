@@ -52,6 +52,7 @@ export default function LiquidacionesPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [propietarios, setPropietarios] = useState([])   // resumen por propietario
+  const [transf, setTransf] = useState({})   // transferido ya pagado por idprop (RPC)
   const [detalles, setDetalles] = useState({})            // idprop -> [inmuebles]
   const [expandido, setExpandido] = useState(null)        // idprop expandido
   const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
@@ -70,9 +71,15 @@ export default function LiquidacionesPage() {
 
   async function cargarMes(m) {
     setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
-    const { data, error } = await supabase.rpc('calcular_liquidacion_propietario', { p_mes: m })
-    if (error) { setError(error.message); setPropietarios([]); setCargando(false); return }
-    setPropietarios(data || [])
+    const [rLiq, rTransf] = await Promise.all([
+      supabase.rpc('calcular_liquidacion_propietario', { p_mes: m }),
+      supabase.rpc('transferido_propietario', { p_mes: m }),
+    ])
+    if (rLiq.error) { setError(rLiq.error.message); setPropietarios([]); setCargando(false); return }
+    setPropietarios(rLiq.data || [])
+    const tmap = {}
+    for (const t of rTransf.data || []) tmap[t.idprop] = n0(t.transferido)
+    setTransf(tmap)
     setUltimaAct(new Date())
     setCargando(false)
   }
@@ -213,7 +220,7 @@ export default function LiquidacionesPage() {
 
         {/* Títulos de columnas (parte de la cabecera fija) */}
         {!cargando && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
             <div>Propietario</div>
             <div style={{ textAlign: 'right' }}>A cobrar</div>
             <div style={{ textAlign: 'right' }}>Recibido</div>
@@ -221,6 +228,7 @@ export default function LiquidacionesPage() {
             <div style={{ textAlign: 'right' }}>IVA</div>
             <div style={{ textAlign: 'right' }}>Descuentos</div>
             <div style={{ textAlign: 'right' }}>A transferir</div>
+            <div style={{ textAlign: 'right' }}>Transferido</div>
             <div style={{ textAlign: 'center' }}>Estado</div>
           </div>
         )}
@@ -248,7 +256,7 @@ export default function LiquidacionesPage() {
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
                   <div onClick={() => toggle(p.idprop)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : '#fff', fontSize: 13 }}>
+                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : '#fff', fontSize: 13 }}>
                     <div style={{ fontWeight: 600, color: '#1a1a2e' }}>
                       <span style={{ color: '#9ca3af', marginRight: 6 }}>{abierto ? '▼' : '▶'}</span>
                       {p.propietario}
@@ -260,6 +268,7 @@ export default function LiquidacionesPage() {
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_iva) === 0 ? '—' : fmtPesos(p.total_iva)}</div>
                     <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
                     <div style={{ textAlign: 'right', fontWeight: 700 }}>{fmtPesos(p.total_transferir)}</div>
+                    <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
                     <div style={{ textAlign: 'center' }}>
                       {alertas.length > 0
                         ? <span title={alertas.map(a => a.txt).join(' · ')} style={{ color: '#dc2626' }}>⚠</span>
