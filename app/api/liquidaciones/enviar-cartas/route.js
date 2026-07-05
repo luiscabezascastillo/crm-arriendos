@@ -11,9 +11,16 @@ import { authOptions } from '../../auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
 import { generarPdfLiquidacion } from '../../../../lib/liquidacionPdf'
+import { PDFDocument } from 'pdf-lib'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+// Factores de escala para "1 página" en el envío (mismo criterio que el borrador).
+const FACTORES = [1, 0.9, 0.82, 0.75, 0.68, 0.62, 0.56, 0.50]
+async function nPaginas(bytes) {
+  try { const d = await PDFDocument.load(bytes); return d.getPageCount() } catch { return 1 }
+}
 
 // ── Quién puede enviar (cámbialo aquí si hace falta) ──
 const PUEDEN_ENVIAR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
@@ -56,6 +63,7 @@ export async function POST(req) {
     const bloque = e?.bloque
     const dest = (e?.email || '').trim()
     const nombre = e?.propietario || bloque?.propietario || ''
+    const reducir = !!e?.reducir
     const marca = { idprop, propietario: nombre }
     try {
       if (!idprop || !bloque) { results.push({ ...marca, ok: false, motivo: 'datos_incompletos' }); continue }
@@ -63,15 +71,23 @@ export async function POST(req) {
       // Solo cartas cuadradas
       if (!['OK', 'OK DESC'].includes(bloque.estado)) { results.push({ ...marca, ok: false, motivo: 'estado_no_enviable' }); continue }
 
-      // Candado: ¿ya enviada este mes?
-      const { data: prev } = await admin
-        .from('liquidacion_envios').select('fecha_envio').eq('mes', mes).eq('idprop', idprop).maybeSingle()
-      if (prev?.fecha_envio) { results.push({ ...marca, ok: false, motivo: 'ya_enviada' }); continue }
-
       if (!dest) { results.push({ ...marca, ok: false, motivo: 'sin_email' }); continue }
 
-      // PDF
-      const pdfBytes = await generarPdfLiquidacion({ bloque, mesTxt, fecha: fechaTxt, despedida, logoDataUrl })
+      // ¿ya se envió este mes? (informativo: NO bloquea; el reenvío se permite y queda en el log)
+      const { data: prev } = await admin
+        .from('liquidacion_envios').select('fecha_envio').eq('mes', mes).eq('idprop', idprop).maybeSingle()
+      const esReenvio = !!prev?.fecha_envio
+
+      // PDF (comprimido a 1 página si se pidió el toggle "1 pág.")
+      let pdfBytes
+      if (reducir) {
+        for (const f of FACTORES) {
+          pdfBytes = await generarPdfLiquidacion({ bloque, mesTxt, fecha: fechaTxt, despedida, logoDataUrl, factorEscala: f })
+          if ((await nPaginas(pdfBytes)) <= 1) break
+        }
+      } else {
+        pdfBytes = await generarPdfLiquidacion({ bloque, mesTxt, fecha: fechaTxt, despedida, logoDataUrl })
+      }
       const filename = `LIQUIDACION-${mes}-${idprop}-${safeName(nombre)}.pdf`
 
       // Email
@@ -91,15 +107,24 @@ ${(despedida || 'Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentame
         attachments: [{ filename, content: Buffer.from(pdfBytes), contentType: 'application/pdf' }],
       })
 
-      // Grabar envío (candado + snapshot)
       const ahora = new Date().toISOString()
+
+      // 1) CONSTANCIA: log de cada envío (historial completo, incl. reenvíos)
+      try {
+        await admin.from('liquidacion_envios_log').insert({
+          mes, idprop, propietario: nombre, email_dest: dest,
+          enviado_por: email, fecha_envio: ahora, reducido: reducir,
+        })
+      } catch { /* si el log falla, el correo ya salió; no bloquea */ }
+
+      // 2) Último envío (candado/última fecha + snapshot)
       const { error: eUp } = await admin.from('liquidacion_envios').upsert({
         mes, idprop, estado_envio: 'ENVIADA', fecha_envio: ahora,
         enviado_por: email, email_dest: dest, snapshot: bloque,
       }, { onConflict: 'mes,idprop' })
-      if (eUp) { results.push({ ...marca, ok: false, motivo: 'enviado_pero_no_registrado: ' + eUp.message }); continue }
+      if (eUp) { results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, reenvio: esReenvio, aviso: 'registro parcial: ' + eUp.message }); continue }
 
-      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora })
+      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, reenvio: esReenvio })
     } catch (err) {
       results.push({ ...marca, ok: false, motivo: (err?.message || 'error').slice(0, 200) })
     }
