@@ -376,7 +376,7 @@ export default function CartasPage() {
               Solo se pueden enviar las cartas en <b style={{ color: '#166534' }}>OK</b> / <b style={{ color: '#854D0E' }}>OK DESC</b> que no se hayan enviado ya.
             </span>
             <button onClick={() => setPreviewAbierto(true)} disabled={seleccionadas.length === 0}
-              style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: seleccionadas.length ? '#1D9E75' : '#9CA3AF', color: '#fff', cursor: seleccionadas.length ? 'pointer' : 'not-allowed' }}>
+              style={{ margin: '0 auto', fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: seleccionadas.length ? '#1D9E75' : '#9CA3AF', color: '#fff', cursor: seleccionadas.length ? 'pointer' : 'not-allowed' }}>
               ✉ Enviar seleccionadas ({seleccionadas.length})
             </button>
           </div>
