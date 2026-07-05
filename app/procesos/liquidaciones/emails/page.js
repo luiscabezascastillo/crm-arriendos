@@ -78,7 +78,7 @@ export default function CartasPage() {
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
         supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
         supabase.from('comentarios_liquidacion').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
-        supabase.from('bi').select('detalle_movimiento, cargos').eq('unique_concept', 'PROPIETARIOS').eq('liquidacion_mes2', m),
+        supabase.rpc('transferido_propietario', { p_mes: m }),
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
         supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
@@ -142,11 +142,7 @@ export default function CartasPage() {
 
       // Transferido a cada propietario (cargos BI 'PROPIETARIOS' del periodo, IDPROP en el detalle)
       const transf = {}
-      for (const c of rCargos.data || []) {
-        const monto = pnum(c.cargos)
-        if (!monto) continue
-        for (const ip of idpropsEnTexto(c.detalle_movimiento, idprops)) transf[ip] = (transf[ip] || 0) + monto
-      }
+      for (const t of rCargos.data || []) transf[t.idprop] = n0(t.transferido)
 
       // Observaciones guardadas
       const obs = {}
