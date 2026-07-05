@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
 import { generarPdfLiquidacion } from '../../../../lib/liquidacionPdf'
 import { PDFDocument } from 'pdf-lib'
+import { archivarCartaEnDrive } from '../../../../lib/driveArchivo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -109,11 +110,22 @@ ${(despedida || 'Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentame
 
       const ahora = new Date().toISOString()
 
+      // Archivar el PDF enviado en Google Drive: 3.AÑOS/<año>/<AAMM>/4-CartasAutomaticas
+      // (mismo nombre que el convenio; reenvíos -> -2, -3). No bloquea el envío si falla.
+      let driveInfo = { fileId: null, url: null }
+      try {
+        const nombreBase = `LIQUIDACION-${mes}-${idprop}-${nombre}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+        driveInfo = await archivarCartaEnDrive({ aamm: mes, nombreBase, pdfBytes })
+      } catch (eDrive) {
+        driveInfo = { fileId: null, url: null, error: (eDrive?.message || 'drive_error').slice(0, 200) }
+      }
+
       // 1) CONSTANCIA: log de cada envío (historial completo, incl. reenvíos)
       try {
         await admin.from('liquidacion_envios_log').insert({
           mes, idprop, propietario: nombre, email_dest: dest,
           enviado_por: email, fecha_envio: ahora, reducido: reducir,
+          drive_file_id: driveInfo.fileId, drive_url: driveInfo.url,
         })
       } catch { /* si el log falla, el correo ya salió; no bloquea */ }
 
@@ -122,9 +134,9 @@ ${(despedida || 'Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentame
         mes, idprop, estado_envio: 'ENVIADA', fecha_envio: ahora,
         enviado_por: email, email_dest: dest, snapshot: bloque,
       }, { onConflict: 'mes,idprop' })
-      if (eUp) { results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio, aviso: 'registro parcial: ' + eUp.message }); continue }
+      if (eUp) { results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio, drive_url: driveInfo.url, aviso: 'registro parcial: ' + eUp.message }); continue }
 
-      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio })
+      results.push({ ...marca, ok: true, email_dest: dest, fecha_envio: ahora, enviado_por: email, reenvio: esReenvio, drive_url: driveInfo.url, drive_error: driveInfo.error })
     } catch (err) {
       results.push({ ...marca, ok: false, motivo: (err?.message || 'error').slice(0, 200) })
     }
