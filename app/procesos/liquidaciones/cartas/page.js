@@ -11,7 +11,8 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 // parseo de texto de pesos: "550.020" -> 550020 · "25000" -> 25000
 const pnum = v => { const s = String(v ?? '').replace(/\./g, '').replace(/[^0-9-]/g, ''); const n = Number(s); return isNaN(n) ? 0 : n }
-const fmt = n => { const v = Math.round(n0(n)); return v ? v.toLocaleString('es-CL') : (n === 0 ? '0' : '—') }
+const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
+const fmt = n => { const v = Math.round(n0(n)); const s = v ? v.toLocaleString('es-CL') : (n === 0 ? '0' : '—'); return <span style={NUM_FONT}>{s}</span> }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 const aammToTxt = aamm => { if (!aamm || String(aamm).length !== 4) return aamm; const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }

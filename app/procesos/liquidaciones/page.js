@@ -9,7 +9,12 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
-const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + Math.round(v).toLocaleString('es-CL') }
+const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
+const fmtPesos = n => {
+  const v = Number(n)
+  const s = (isNaN(v) || n === null || n === '') ? '—' : '$' + Math.round(v).toLocaleString('es-CL')
+  return <span style={NUM_FONT}>{s}</span>
+}
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
 
 // Mes AAMM -> etiqueta legible y viceversa

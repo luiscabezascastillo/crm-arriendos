@@ -9,7 +9,12 @@ import TopNav from '@/app/components/ui/TopNav'
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
-const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + Math.round(v).toLocaleString('es-CL') }
+const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
+const fmtPesos = n => {
+  const v = Number(n)
+  const s = (isNaN(v) || n === null || n === '') ? '—' : '$' + Math.round(v).toLocaleString('es-CL')
+  return <span style={NUM_FONT}>{s}</span>
+}
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 const aammToTxt = aamm => { if (!aamm || String(aamm).length !== 4) return aamm; const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }
 function generarMeses() {
@@ -120,7 +125,7 @@ export default function FaltanPage() {
     const rojo = valor > umbral
     return (
       <div style={{ textAlign: 'right', color: rojo ? '#B91C1C' : (valor > 0 ? '#374151' : '#C7C7C2'), fontWeight: rojo ? 700 : 400 }}>
-        {valor > 0 ? '$' + valor.toLocaleString('es-CL') : '—'}
+        {valor > 0 ? <span style={NUM_FONT}>{'$' + valor.toLocaleString('es-CL')}</span> : '—'}
       </div>
     )
   }
@@ -205,7 +210,7 @@ export default function FaltanPage() {
                   {celdaServ(f.luz, UMBRAL.luz)}
                   {celdaServ(f.agua, UMBRAL.agua)}
                   {celdaServ(f.gas, UMBRAL.gas)}
-                  <div style={{ textAlign: 'right', fontWeight: 600 }}>{f.servTotal > 0 ? '$' + f.servTotal.toLocaleString('es-CL') : '—'}</div>
+                  <div style={{ textAlign: 'right', fontWeight: 600 }}>{f.servTotal > 0 ? <span style={NUM_FONT}>{'$' + f.servTotal.toLocaleString('es-CL')}</span> : '—'}</div>
                 </div>
               ))}
             </div>
