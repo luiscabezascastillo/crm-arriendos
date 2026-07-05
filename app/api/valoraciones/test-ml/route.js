@@ -1,6 +1,3 @@
-// app/api/valoraciones/test-ml/route.js
-// PRUEBA: ¿el buscador oficial de ML devuelve publicaciones de terceros?
-// Uso: /api/valoraciones/test-ml?q=departamento venta providencia
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -33,10 +30,10 @@ export async function GET(request) {
       status: res.status,
       con_token: !!token,
       total: json?.paging?.total ?? null,
+      ml_body: json ?? text.slice(0, 800),   // <-- ahora SIEMPRE mostramos lo que dijo ML
       muestra: (json?.results || []).slice(0, 5).map((r) => ({
         id: r.id, title: r.title, price: r.price, currency: r.currency_id, comuna: r.address?.city_name,
       })),
-      raw: json ? undefined : text.slice(0, 500),
     })
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 })
