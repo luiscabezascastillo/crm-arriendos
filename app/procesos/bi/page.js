@@ -51,7 +51,7 @@ function Chip({ label, valor, color }) {
 }
 
 export default function BancoInternacionalPage() {
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
   const [movs, setMovs] = useState([])
@@ -60,6 +60,16 @@ export default function BancoInternacionalPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [guardadoOk, setGuardadoOk] = useState(null)
+  const [cargas, setCargas] = useState([])   // historial de últimas cargas
+
+  const cargarHistorial = async () => {
+    try {
+      const r = await fetch('/api/bi/cargas')
+      const d = await r.json()
+      setCargas(d.cargas || [])
+    } catch {}
+  }
+  useEffect(() => { cargarHistorial() }, [])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -107,6 +117,14 @@ export default function BancoInternacionalPage() {
       const d = await llamar(movs, true)
       setPreview(d)
       setGuardadoOk(`${d.guardados} movimiento(s) guardado(s) en bi_movimientos.`)
+      // registrar la carga en el historial (no bloquea si falla)
+      try {
+        await fetch('/api/bi/cargas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guardados: d.guardados, total: movs.length, archivo: nombreArchivo }),
+        })
+        cargarHistorial()
+      } catch {}
     } catch (err) {
       setError(err.message)
     } finally { setCargando(false) }
@@ -153,6 +171,24 @@ export default function BancoInternacionalPage() {
           </label>
           {nombreArchivo && <div style={{ fontSize: 12, color: '#888780', marginTop: 8 }}>{nombreArchivo}</div>}
         </div>
+
+        {/* ÚLTIMAS CARGAS (historial) */}
+        {cargas.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#5F5E5A', marginBottom: 6 }}>Últimas cargas al BI</div>
+            <div style={{ border: '0.5px solid #E3E1DA', borderRadius: 8, overflow: 'hidden' }}>
+              {cargas.map((c, i) => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px', fontSize: 12, borderTop: i ? '0.5px solid #F0EEE8' : 'none', background: i % 2 ? '#FCFCFB' : '#fff' }}>
+                  <span style={{ color: '#5F5E5A', minWidth: 148, fontVariantNumeric: 'tabular-nums' }}>{new Date(c.creado).toLocaleString('es-CL')}</span>
+                  <span style={{ color: c.guardados > 0 ? '#085041' : '#888780', fontWeight: 600, minWidth: 78, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.guardados} nuevo(s)</span>
+                  <span style={{ color: '#888780' }}>de {c.total}</span>
+                  <span style={{ color: '#888780', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.archivo || ''}>{c.archivo || '—'}</span>
+                  <span style={{ color: '#888780', whiteSpace: 'nowrap' }}>{(c.usuario || '').split('@')[0]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {cargando && <div style={{ padding: 20, textAlign: 'center', color: '#888', fontSize: 13 }}>Procesando…</div>}
 
