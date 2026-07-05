@@ -23,7 +23,7 @@ async function nPaginas(bytes) {
 }
 
 // ── Quién puede enviar (cámbialo aquí si hace falta) ──
-const PUEDEN_ENVIAR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const PUEDEN_ENVIAR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CC_FIJO = 'administracion@fondocapital.com'
 // ──────────────────────────────────────────────────────
 

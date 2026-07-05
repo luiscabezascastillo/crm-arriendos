@@ -35,6 +35,9 @@ export default function CartasPage() {
   const router = useRouter()
   const email = session?.user?.email
   const rol = session?.user?.role
+  // Solo estas personas pueden enviar/reenviar; el resto ve todo pero sin botones de envío.
+  const PUEDEN_ENVIAR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+  const puedeEnviar = PUEDEN_ENVIAR.includes((email || '').toLowerCase())
 
   const [accesoOk, setAccesoOk] = useState(null)
   const [mes, setMes] = useState(mesEnCurso())
@@ -360,7 +363,7 @@ export default function CartasPage() {
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}
 
-        {!cargando && bloques.length > 0 && (
+        {!cargando && bloques.length > 0 && puedeEnviar && (
           <div style={{ position: 'sticky', top: 52, zIndex: 30, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Envío de cartas:</span>
             <button onClick={seleccionarTodasEnviables} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
@@ -387,19 +390,20 @@ export default function CartasPage() {
               {/* Cabecera del bloque */}
               <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {enviable(b) ? (
+                  {puedeEnviar && (enviable(b) ? (
                     <input type="checkbox" checked={!!seleccion[b.idprop]} onChange={() => toggleSel(b.idprop)}
                       title="Seleccionar para enviar" style={{ width: 16, height: 16, cursor: 'pointer' }} />
                   ) : (
                     <input type="checkbox" disabled checked={false}
                       title={envios[b.idprop]?.fecha_envio ? 'Ya enviada' : 'No se puede enviar hasta que esté en OK'} style={{ width: 16, height: 16 }} />
-                  )}
+                  ))}
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
                     ? <span title={`Enviada por ${envios[b.idprop].enviado_por || '—'}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {(historialEnv[b.idprop]?.length || 1)}x · {new Date(envios[b.idprop].fecha_envio).toLocaleString('es-CL')}{envios[b.idprop].enviado_por ? ' · ' + String(envios[b.idprop].enviado_por).split('@')[0] : ''}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
                 </div>
                 <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {puedeEnviar && (
                   <label title="Comprime la carta para que quepa en 1 página (borrador y envío). Reversible."
                     style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600,
                       color: reducir1p[b.idprop] ? '#065F46' : '#94A3B8', cursor: 'pointer', userSelect: 'none' }}>
@@ -408,6 +412,7 @@ export default function CartasPage() {
                       style={{ width: 14, height: 14, cursor: 'pointer' }} />
                     1 pág.
                   </label>
+                  )}
                   <button onClick={() => verBorrador(b)} disabled={borradorLoading === b.idprop}
                     title="Ver el PDF de esta carta como borrador (marca de agua, no se envía)"
                     style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
@@ -421,14 +426,14 @@ export default function CartasPage() {
               </div>
 
               {(historialEnv[b.idprop]?.length > 0) && (
-                <div style={{ fontSize: 10.5, color: '#64748B', padding: '0 0 8px 26px', lineHeight: 1.6 }}>
-                  <span style={{ fontWeight: 600, color: '#475569' }}>Últimos envíos: </span>
+                <div style={{ fontSize: 10.5, color: '#64748B', padding: '0 0 8px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 14px' }}>
+                  <span style={{ fontWeight: 600, color: '#475569' }}>Últimos envíos:</span>
                   {historialEnv[b.idprop].slice(0, 3).map((l, i) => (
-                    <span key={i} style={{ marginRight: 12 }}>
+                    <span key={i} style={{ whiteSpace: 'nowrap' }}>
                       {new Date(l.fecha_envio).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })} · {String(l.enviado_por || '').split('@')[0]}{l.reducido ? ' · 1pág' : ''}
                     </span>
                   ))}
-                  {historialEnv[b.idprop].length > 3 && <span style={{ color: '#94A3B8' }}>… ({historialEnv[b.idprop].length} en total)</span>}
+                  {historialEnv[b.idprop].length > 3 && <span style={{ color: '#94A3B8', whiteSpace: 'nowrap' }}>… ({historialEnv[b.idprop].length} en total)</span>}
                 </div>
               )}
 
