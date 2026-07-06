@@ -20,7 +20,7 @@ const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const { sujeto = {}, testigos = [], parametros = {}, guardar = false, creado_por = null } = body
+    const { sujeto = {}, testigos = [], parametros = {}, guardar = false, creado_por = null, id = null } = body
 
     if (!sujeto.comuna) {
       return NextResponse.json({ error: 'Falta la comuna del sujeto' }, { status: 400 })
@@ -131,7 +131,7 @@ export async function POST(request) {
 
     let valoracion_id = null
     if (guardar) {
-      const { data: val, error: e1 } = await supabase.from('valoraciones').insert({
+      const fila = {
         rol: sujeto.rol || null,
         direccion: sujeto.direccion || null,
         comuna: sujeto.comuna,
@@ -147,12 +147,21 @@ export async function POST(request) {
         n_comparables: conservados.length,
         n_descartados: todosDescartados.length,
         avaluo_fiscal_uf: (avaluoPesos && valorUf) ? Math.round(avaluoPesos / valorUf) : null,
-        metodologia_json: { parametros: P, limites_iqr: limites, stat_uf_m2, valorUf, sujeto, avaluo_pesos: avaluoPesos },
+        metodologia_json: { parametros: P, limites_iqr: limites, stat_uf_m2, valorUf, sujeto, avaluo_pesos: avaluoPesos, testigos_raw: testigos },
         creado_por: creado_por || null,
-      }).select('id').single()
+      }
 
-      if (e1) return NextResponse.json({ error: 'Error guardando: ' + e1.message, resultado }, { status: 500 })
-      valoracion_id = val.id
+      if (id) {
+        // EDITAR: actualiza la misma valoración y reemplaza sus comparables
+        const { error: eu } = await supabase.from('valoraciones').update(fila).eq('id', id)
+        if (eu) return NextResponse.json({ error: 'Error actualizando: ' + eu.message, resultado }, { status: 500 })
+        valoracion_id = Number(id)
+        await supabase.from('valoracion_comparables').delete().eq('valoracion_id', valoracion_id)
+      } else {
+        const { data: val, error: e1 } = await supabase.from('valoraciones').insert(fila).select('id').single()
+        if (e1) return NextResponse.json({ error: 'Error guardando: ' + e1.message, resultado }, { status: 500 })
+        valoracion_id = val.id
+      }
 
       const filas = [
         ...conservados.map((c) => ({ ...c, usado: true })),

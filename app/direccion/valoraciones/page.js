@@ -1,13 +1,12 @@
 // app/direccion/valoraciones/page.js
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
 const DIRECCION = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
-  'karina.morales@fondocapital.com',
 ];
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL', { maximumFractionDigits: 0 }));
@@ -17,6 +16,9 @@ const inputS = { padding: '7px 9px', border: '1px solid #cbd5e1', borderRadius: 
 const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16 };
 const lbl = { fontSize: 11, color: '#475569' };
 const kpi = { flex: 1, minWidth: 150, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 };
+
+const soloDigitos = (v) => String(v).replace(/[^\d]/g, '');
+const fmtPesosInput = (v) => { const n = soloDigitos(v); return n ? Number(n).toLocaleString('es-CL') : ''; };
 
 const testigoVacio = () => ({ link: '', titulo: '', precio: '', moneda: 'UF', m2_util: '', terraza: '', estac: '', bodega: '', dormitorios: '', revisar: false });
 
@@ -41,6 +43,36 @@ export default function ValoracionesPage() {
   const [siiMsg, setSiiMsg] = useState('');
   const [siiCargando, setSiiCargando] = useState(false);
   const [siiExtra, setSiiExtra] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
+
+  // Reabrir una valoración existente si la URL trae ?id=N
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const idUrl = new URLSearchParams(window.location.search).get('id');
+    if (!idUrl) return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/valoraciones/listar?id=${idUrl}`);
+        const d = await r.json();
+        if (!r.ok || !d.valoracion) return;
+        const mj = d.valoracion.metodologia_json || {};
+        if (mj.sujeto) setSuj((p) => ({ ...p, ...mj.sujeto }));
+        if (mj.parametros) {
+          setPar({
+            negociacion: Math.round((mj.parametros.negociacion ?? 0.12) * 100),
+            uf_estac: mj.parametros.uf_estac ?? 350,
+            uf_bodega: mj.parametros.uf_bodega ?? 80,
+            factor_terraza: mj.parametros.factor_terraza ?? 0.5,
+            tol_m2: Math.round((mj.parametros.tol_m2 ?? 0.4) * 100),
+          });
+        }
+        if (Array.isArray(mj.testigos_raw) && mj.testigos_raw.length) {
+          setTestigos(mj.testigos_raw.map((t) => ({ ...testigoVacio(), ...t })));
+        }
+        setEditandoId(Number(idUrl));
+      } catch (e) { /* nada */ }
+    })();
+  }, []);
 
   async function traerSII() {
     setSiiMsg(''); setSiiExtra(null);
@@ -152,7 +184,7 @@ export default function ValoracionesPage() {
       const r = await fetch('/api/valoraciones/calcular', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sujeto: suj, testigos: conDatos, guardar, creado_por: email,
+          sujeto: suj, testigos: conDatos, guardar, creado_por: email, id: editandoId,
           parametros: { negociacion: Number(par.negociacion) / 100, uf_estac: Number(par.uf_estac), uf_bodega: Number(par.uf_bodega), factor_terraza: Number(par.factor_terraza), tol_m2: Number(par.tol_m2) / 100 },
         }),
       });
@@ -165,10 +197,20 @@ export default function ValoracionesPage() {
 
   return (
     <div style={{ maxWidth: 1120, margin: '0 auto', padding: 24, fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Valoración de propiedades</h1>
-      <p style={{ color: '#64748b', marginTop: 0, fontSize: 13 }}>
-        Estimación referencial por comparables homologados. No reemplaza una tasación bancaria.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h1 style={{ fontSize: 22, marginBottom: 4 }}>Valoración de propiedades</h1>
+          <p style={{ color: '#64748b', marginTop: 0, fontSize: 13 }}>
+            Estimación referencial por comparables homologados. No reemplaza una tasación bancaria.
+          </p>
+        </div>
+        <a href="/direccion/valoraciones/historial" style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', textDecoration: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, whiteSpace: 'nowrap' }}>📋 Historial</a>
+      </div>
+      {editandoId && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>✏️ Editando la valoración <b>folio #{editandoId}</b>. Al guardar se reemplaza la existente. Para crear otra, <a href="/direccion/valoraciones" style={{ color: '#1d4ed8' }}>empieza una nueva</a>.</span>
+        </div>
+      )}
 
       {/* SUJETO */}
       <div style={card}>
@@ -185,7 +227,7 @@ export default function ValoracionesPage() {
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Estac.</div><input style={inputS} type="number" value={suj.estac} onChange={(e) => setS('estac', e.target.value)} placeholder="0" /></div>
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Bodegas</div><input style={inputS} type="number" value={suj.bodega} onChange={(e) => setS('bodega', e.target.value)} placeholder="0" /></div>
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Dorm.</div><input style={inputS} type="number" value={suj.dormitorios} onChange={(e) => setS('dormitorios', e.target.value)} /></div>
-          <div style={{ flex: 1, minWidth: 120 }}><div style={lbl}>Avalúo fiscal ($)</div><input style={inputS} type="number" value={suj.avaluo_fiscal_pesos} onChange={(e) => setS('avaluo_fiscal_pesos', e.target.value)} placeholder="opcional" /></div>
+          <div style={{ flex: 1, minWidth: 120 }}><div style={lbl}>Avalúo fiscal ($)</div><input style={inputS} type="text" inputMode="numeric" value={suj.avaluo_fiscal_pesos ? fmtPesosInput(suj.avaluo_fiscal_pesos) : ''} onChange={(e) => setS('avaluo_fiscal_pesos', soloDigitos(e.target.value))} placeholder="opcional" /></div>
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={lbl}>Foto de la propiedad (para el informe)</div>
