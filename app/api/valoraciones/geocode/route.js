@@ -1,9 +1,28 @@
-// app/api/valoraciones/geocode/route.js
-// 1) Geocodifica dirección+comuna con Nominatim (OSM, gratis, sin key).
-// 2) Trae el mapa estático de OSM ya en base64 (server-side, evita CORS).
-// Devuelve { lat, lng, mapa } o nulls si algo falla. Nunca rompe el informe.
-
 import { NextResponse } from 'next/server'
+
+function proveedoresMapa(lat, lng) {
+  const z = 15, w = 460, h = 300
+  return [
+    `https://maps.wikimedia.org/img/osm-intl,${z},${lat},${lng},${w}x${h}.png`,
+    `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=${z}&size=${w}x${h}&maptype=mapnik&markers=${lat},${lng},red-pushpin`,
+    `https://static-maps.yandex.ru/1.x/?ll=${lng},${lat}&z=${z}&size=${w},${h}&l=map&pt=${lng},${lat},pm2rdm`,
+  ]
+}
+
+async function traerMapa(lat, lng) {
+  for (const url of proveedoresMapa(lat, lng)) {
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0' }, signal: AbortSignal.timeout(6000) })
+      if (!r.ok) continue
+      const ct = r.headers.get('content-type') || ''
+      const buf = Buffer.from(await r.arrayBuffer())
+      if (buf.length < 800) continue
+      const mime = ct.includes('jpeg') ? 'image/jpeg' : 'image/png'
+      return { mapa: `data:${mime};base64,${buf.toString('base64')}`, fuente: url.split('/')[2] }
+    } catch (e) {}
+  }
+  return { mapa: null, fuente: null }
+}
 
 export async function GET(request) {
   try {
@@ -11,33 +30,16 @@ export async function GET(request) {
     const direccion = (searchParams.get('direccion') || '').trim()
     const comuna = (searchParams.get('comuna') || '').trim()
     if (!direccion && !comuna) return NextResponse.json({ lat: null, lng: null, mapa: null })
-
-    // --- 1) Geocode ---
     const q = [direccion, comuna, 'Chile'].filter(Boolean).join(', ')
     const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cl&q=${encodeURIComponent(q)}`
     let lat = null, lng = null, display = null
     try {
-      const gr = await fetch(geoUrl, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0 (valoraciones)', 'Accept-Language': 'es' } })
-      if (gr.ok) {
-        const gd = await gr.json()
-        if (Array.isArray(gd) && gd.length) { lat = Number(gd[0].lat); lng = Number(gd[0].lon); display = gd[0].display_name || null }
-      }
-    } catch (e) { /* sin geocode */ }
-
+      const gr = await fetch(geoUrl, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0', 'Accept-Language': 'es' }, signal: AbortSignal.timeout(6000) })
+      if (gr.ok) { const gd = await gr.json(); if (Array.isArray(gd) && gd.length) { lat = Number(gd[0].lat); lng = Number(gd[0].lon); display = gd[0].display_name || null } }
+    } catch (e) {}
     if (lat == null) return NextResponse.json({ lat: null, lng: null, mapa: null, sin_resultado: true })
-
-    // --- 2) Mapa estático OSM (comunidad, keyless) -> base64 ---
-    let mapa = null
-    try {
-      const mapUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=460x300&maptype=mapnik&markers=${lat},${lng},red-pushpin`
-      const mr = await fetch(mapUrl, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0 (valoraciones)' } })
-      if (mr.ok) {
-        const buf = Buffer.from(await mr.arrayBuffer())
-        if (buf.length > 500) mapa = `data:image/png;base64,${buf.toString('base64')}`
-      }
-    } catch (e) { /* sin mapa, el PDF sale igual */ }
-
-    return NextResponse.json({ lat, lng, display_name: display, mapa })
+    const { mapa, fuente } = await traerMapa(lat, lng)
+    return NextResponse.json({ lat, lng, display_name: display, mapa, fuente_mapa: fuente })
   } catch (e) {
     return NextResponse.json({ lat: null, lng: null, mapa: null, error: e.message })
   }
