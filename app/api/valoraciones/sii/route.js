@@ -71,7 +71,7 @@ async function consultar(url, body) {
     const txt = await r.text()
     let json = null
     try { json = JSON.parse(txt) } catch {}
-    if (!r.ok) return { error: `SimpleAPI ${r.status}`, detalle: (json || txt).toString().slice(0, 300) }
+    if (!r.ok) return { error: `SimpleAPI ${r.status}`, detalle: (json ? JSON.stringify(json) : txt).slice(0, 500) }
     const datos = normalizar(json?.Datos)
     if (datos && datos.avaluo_total) {
       const uf = await ufActual()
