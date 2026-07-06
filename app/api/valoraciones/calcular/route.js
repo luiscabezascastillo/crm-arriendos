@@ -1,4 +1,11 @@
 // app/api/valoraciones/calcular/route.js
+// Homologación estilo tasador (validada contra Excel de Recoleta):
+//   valor_homologado = (oferta_UF + box*estac_faltante + bod*bodega_faltante) * (1 - negociacion)
+//   sup_ponderada    = util + terraza * factor_terraza
+//   UF/m2            = valor_homologado / sup_ponderada
+//   estimacion       = mediana(UF/m2) * sup_ponderada_sujeto
+// Quita extremos por UF/m2 (IQR). Si guardar=true, persiste.
+
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { filtrarOutliersIQR, resumenEstadistico } from '../../../../lib/valoracionStats'
@@ -8,65 +15,98 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
+
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const { sujeto = {}, testigos = [], guardar = false, creado_por = null } = body
+    const { sujeto = {}, testigos = [], parametros = {}, guardar = false, creado_por = null } = body
 
     if (!sujeto.comuna) {
       return NextResponse.json({ error: 'Falta la comuna del sujeto' }, { status: 400 })
     }
 
+    // Parámetros de homologación (con defaults)
+    const P = {
+      negociacion: parametros.negociacion != null ? Number(parametros.negociacion) : 0.12, // 12%
+      uf_estac: parametros.uf_estac != null ? Number(parametros.uf_estac) : 350,
+      uf_bodega: parametros.uf_bodega != null ? Number(parametros.uf_bodega) : 80,
+      factor_terraza: parametros.factor_terraza != null ? Number(parametros.factor_terraza) : 0.5,
+    }
+
+    // UF más reciente (para convertir testigos en CLP -> UF)
     const { data: idx } = await supabase
       .from('indices_mensuales').select('valor_uf').order('mes', { ascending: false }).limit(1).maybeSingle()
     const valorUf = idx?.valor_uf ? Number(idx.valor_uf) : null
 
+    const sujEstac = num(sujeto.estac)
+    const sujBodega = num(sujeto.bodega)
+    const supSujeto = num(sujeto.m2_util) + num(sujeto.terraza) * P.factor_terraza
+
+    // Homologar cada testigo
     const norm = []
     for (const t of testigos) {
-      const m2 = Number(t.m2)
-      const precio = Number(t.precio)
-      if (!isFinite(m2) || m2 <= 0 || !isFinite(precio) || precio <= 0) continue
+      const util = num(t.m2_util)
+      const precio = num(t.precio)
+      if (util <= 0 || precio <= 0) continue
+
+      // precio de oferta a UF
       const moneda = (t.moneda || 'UF').toUpperCase()
-      let precio_uf = moneda === 'UF' ? precio : (valorUf ? precio / valorUf : null)
-      if (!precio_uf) continue
+      let ofertaUf = moneda === 'UF' ? precio : (valorUf ? precio / valorUf : null)
+      if (!ofertaUf) continue
+
+      // homologación de amenidades: llevar el testigo al nivel del sujeto
+      const faltaEstac = Math.max(0, sujEstac - num(t.estac))
+      const faltaBodega = Math.max(0, sujBodega - num(t.bodega))
+      const sobraEstac = Math.max(0, num(t.estac) - sujEstac)
+      const sobraBodega = Math.max(0, num(t.bodega) - sujBodega)
+      const ajusteAmen = (faltaEstac * P.uf_estac + faltaBodega * P.uf_bodega)
+                       - (sobraEstac * P.uf_estac + sobraBodega * P.uf_bodega)
+
+      const valorHomologado = (ofertaUf + ajusteAmen) * (1 - P.negociacion)
+      const sup = util + num(t.terraza) * P.factor_terraza
+      const uf_m2 = valorHomologado / sup
+
       norm.push({
-        link: t.link || null,
-        m2, precio, moneda,
-        precio_uf, uf_m2: precio_uf / m2,
-        dormitorios: (t.dormitorios != null && t.dormitorios !== '') ? Number(t.dormitorios) : null,
+        link: t.link || null, titulo: t.titulo || null,
+        oferta_uf: Math.round(ofertaUf), moneda,
+        m2_util: util, terraza: num(t.terraza), sup_ponderada: +sup.toFixed(1),
+        estac: num(t.estac), bodega: num(t.bodega),
+        ajuste_amenidades: Math.round(ajusteAmen),
+        valor_homologado: Math.round(valorHomologado),
+        uf_m2: +uf_m2.toFixed(2),
+        dormitorios: t.dormitorios != null && t.dormitorios !== '' ? Number(t.dormitorios) : null,
       })
     }
 
     if (norm.length < 1) {
-      return NextResponse.json({ error: 'Ingresa al menos un testigo con m2 y precio validos' }, { status: 400 })
+      return NextResponse.json({ error: 'Ingresa al menos un testigo con m2 util y precio validos' }, { status: 400 })
     }
 
     const { conservados, descartados, limites } = filtrarOutliersIQR(norm, (c) => c.uf_m2, 1.5)
     const stat_uf_m2 = resumenEstadistico(conservados.map((c) => c.uf_m2))
-    const stat_m2 = resumenEstadistico(conservados.map((c) => c.m2))
+    const stat_sup = resumenEstadistico(conservados.map((c) => c.sup_ponderada))
 
-    const m2obj = sujeto.m2 ? Number(sujeto.m2) : null
     let estimacion = null
-    if (m2obj && stat_uf_m2) {
-      const valUf = Math.round(stat_uf_m2.mediana * m2obj)
+    if (supSujeto > 0 && stat_uf_m2) {
+      const valUf = Math.round(stat_uf_m2.mediana * supSujeto)
       estimacion = {
         uf_m2_mediana: stat_uf_m2.mediana,
+        sup_ponderada_sujeto: +supSujeto.toFixed(1),
         valor_uf: valUf,
-        rango_uf: [Math.round(stat_uf_m2.p25 * m2obj), Math.round(stat_uf_m2.p75 * m2obj)],
+        rango_uf: [Math.round(stat_uf_m2.p25 * supSujeto), Math.round(stat_uf_m2.p75 * supSujeto)],
         valor_clp: valorUf ? Math.round(valUf * valorUf) : null,
       }
     }
 
     const avaluo = sujeto.avaluo_fiscal_uf ? Number(sujeto.avaluo_fiscal_uf) : null
-    const vs_avaluo = (avaluo && estimacion) ? { avaluo_uf: avaluo, ratio: estimacion.valor_uf / avaluo } : null
+    const vs_avaluo = (avaluo && estimacion) ? { avaluo_uf: avaluo, ratio: +(estimacion.valor_uf / avaluo).toFixed(2) } : null
 
     const resultado = {
-      valorUf,
+      parametros: P, valorUf,
       totales: { testigos: norm.length, usados: conservados.length, descartados: descartados.length },
-      limites_iqr: limites,
-      stat_uf_m2, stat_m2, estimacion, vs_avaluo,
-      comparables: conservados,
-      comparables_descartados: descartados,
+      limites_iqr: limites, stat_uf_m2, stat_sup, estimacion, vs_avaluo,
+      comparables: conservados, comparables_descartados: descartados,
     }
 
     let valoracion_id = null
@@ -77,7 +117,7 @@ export async function POST(request) {
         comuna: sujeto.comuna,
         tipo: sujeto.tipo || 'departamento',
         operacion: sujeto.operacion || 'venta',
-        m2_objetivo: m2obj,
+        m2_objetivo: supSujeto || null,
         dormitorios: sujeto.dormitorios ? Number(sujeto.dormitorios) : null,
         uf_m2_mediana: stat_uf_m2?.mediana ?? null,
         valor_uf: estimacion?.valor_uf ?? null,
@@ -87,7 +127,7 @@ export async function POST(request) {
         n_comparables: conservados.length,
         n_descartados: descartados.length,
         avaluo_fiscal_uf: avaluo,
-        metodologia_json: { limites_iqr: limites, stat_uf_m2, stat_m2, valorUf },
+        metodologia_json: { parametros: P, limites_iqr: limites, stat_uf_m2, valorUf, sujeto },
         creado_por: creado_por || null,
       }).select('id').single()
 
@@ -99,9 +139,9 @@ export async function POST(request) {
         ...descartados.map((c) => ({ ...c, usado: false })),
       ].map((c) => ({
         valoracion_id, fuente: 'manual', usado: c.usado,
-        titulo: null, permalink: c.link,
-        precio: c.precio, moneda: c.moneda, precio_uf: c.precio_uf,
-        m2: c.m2, uf_m2: c.uf_m2, dormitorios: c.dormitorios, comuna: sujeto.comuna,
+        titulo: c.titulo, permalink: c.link,
+        precio: c.oferta_uf, moneda: c.moneda, precio_uf: c.valor_homologado,
+        m2: c.sup_ponderada, uf_m2: c.uf_m2, dormitorios: c.dormitorios, comuna: sujeto.comuna,
       }))
       await supabase.from('valoracion_comparables').insert(filas)
     }
