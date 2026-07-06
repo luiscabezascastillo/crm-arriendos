@@ -35,6 +35,7 @@ export default function CartasPage() {
   const router = useRouter()
   const email = session?.user?.email
   const rol = session?.user?.role
+  const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)   // carga a Cuentas: solo Direccion
 
   const [accesoOk, setAccesoOk] = useState(null)
   const [mes, setMes] = useState(mesEnCurso())
@@ -47,6 +48,9 @@ export default function CartasPage() {
   const [envios, setEnvios] = useState({})           // idprop -> {estado_envio, fecha_envio, email_dest}
   const [emailProp, setEmailProp] = useState({})     // idprop -> email
   const [obsGuardando, setObsGuardando] = useState({})
+  // Carga de cargos del mes a la tabla `cuentas` (solo Direccion)
+  const [cargaModal, setCargaModal] = useState(null)   // {preview...} | {ok...} | {error...}
+  const [cargaLoading, setCargaLoading] = useState(false)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -219,6 +223,32 @@ export default function CartasPage() {
     setObsGuardando(g => ({ ...g, [idprop]: false }))
   }
 
+  // === Carga de cargos del mes a la tabla `cuentas` (solo Direccion) ===
+  async function abrirCargaCuentas() {
+    setCargaLoading(true); setCargaModal(null)
+    try {
+      const res = await fetch('/api/cartolas/cargar-mes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, confirmar: false }),
+      })
+      const j = await res.json()
+      setCargaModal(res.ok ? j : { error: j.error || 'Error al preparar la carga', ...j })
+    } catch (e) { setCargaModal({ error: e.message }) }
+    setCargaLoading(false)
+  }
+  async function confirmarCargaCuentas() {
+    setCargaLoading(true)
+    try {
+      const res = await fetch('/api/cartolas/cargar-mes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, confirmar: true }),
+      })
+      const j = await res.json()
+      setCargaModal(res.ok ? { ...j, done: true } : { error: j.error || 'Error al cargar', ...j })
+    } catch (e) { setCargaModal({ error: e.message }) }
+    setCargaLoading(false)
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -259,6 +289,12 @@ export default function CartasPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          {esDireccion && (
+            <button onClick={abrirCargaCuentas} disabled={cargaLoading}
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C4B5FD', background: '#F5F3FF', color: '#5B21B6', cursor: 'pointer' }}>
+              {cargaLoading ? 'Preparando…' : '📥 Cargar cargos del mes a Cuentas'}
+            </button>
+          )}
         </div>
 
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
@@ -395,6 +431,64 @@ export default function CartasPage() {
         {!cargando && bloques.length === 0 && !error && (
           <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 14 }}>No hay propietarios con liquidación para {aammToTxt(mes)}.</div>
         )}
+
+        {/* === Modal: Cargar cargos del mes a Cuentas === */}
+        {cargaModal && (
+          <div onClick={() => !cargaLoading && setCargaModal(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 12, padding: 24, width: 'min(520px, 92vw)', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>📥 Cargar cargos de {aammToTxt(mes)} a Cuentas</h3>
+
+              {cargaModal.error && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 12px', borderRadius: 8 }}>
+                  {cargaModal.error}
+                  {cargaModal.log && <div style={{ marginTop: 6, fontSize: 12 }}>Cargado el {new Date(cargaModal.log.fecha_carga).toLocaleString('es-CL')} por {cargaModal.log.usuario} · {cargaModal.log.n_filas} filas · ${Number(cargaModal.log.total).toLocaleString('es-CL')}</div>}
+                </div>
+              )}
+
+              {cargaModal.done && !cargaModal.error && (
+                <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', color: '#166534', fontSize: 14, padding: '12px 14px', borderRadius: 8 }}>
+                  ✓ Cargados <b>{cargaModal.n}</b> cargos por <b>${Number(cargaModal.total).toLocaleString('es-CL')}</b>.
+                  <div style={{ marginTop: 4, fontSize: 12 }}>Cuadre: {cargaModal.cuadra ? '✓ coincide' : '⚠ revisar'} (verificado ${Number(cargaModal.total_verificado).toLocaleString('es-CL')}).</div>
+                </div>
+              )}
+
+              {cargaModal.preview && !cargaModal.done && !cargaModal.error && (
+                <>
+                  {cargaModal.yaCargado ? (
+                    <div style={{ background: '#FEF9C3', border: '1px solid #FDE047', color: '#854D0E', fontSize: 13, padding: '10px 12px', borderRadius: 8, marginBottom: 12 }}>
+                      ⚠ {aammToTxt(mes)} ya fue cargado{cargaModal.log ? ` el ${new Date(cargaModal.log.fecha_carga).toLocaleString('es-CL')} por ${cargaModal.log.usuario}` : ''}. El candado bloquea una segunda carga.
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.7 }}>
+                      Se cargarán <b>{cargaModal.n}</b> cargos por un total de <b>${Number(cargaModal.total).toLocaleString('es-CL')}</b>.<br />
+                      Se omiten: {cargaModal.omitidas.P} en captación (P) · {cargaModal.omitidas.proporcional} proporcionales · {cargaModal.omitidas.cero} sin monto.
+                    </div>
+                  )}
+                  <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button onClick={() => setCargaModal(null)} disabled={cargaLoading}
+                      style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancelar</button>
+                    {!cargaModal.yaCargado && (
+                      <button onClick={confirmarCargaCuentas} disabled={cargaLoading}
+                        style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>
+                        {cargaLoading ? 'Cargando…' : 'Confirmar carga'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {(cargaModal.done || cargaModal.error) && (
+                <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setCargaModal(null)}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Cerrar</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   )
