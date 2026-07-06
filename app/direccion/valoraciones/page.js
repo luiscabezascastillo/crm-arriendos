@@ -25,7 +25,7 @@ export default function ValoracionesPage() {
   const email = session?.user?.email || '';
 
   const [suj, setSuj] = useState({ direccion: '', comuna: '', tipo: 'departamento', operacion: 'venta', m2_util: '', terraza: '', estac: '', bodega: '', dormitorios: '', avaluo_fiscal_uf: '', rol: '' });
-  const [par, setPar] = useState({ negociacion: 12, uf_estac: 350, uf_bodega: 80, factor_terraza: 0.5 });
+  const [par, setPar] = useState({ negociacion: 12, uf_estac: 350, uf_bodega: 80, factor_terraza: 0.5, tol_m2: 40 });
   const [testigos, setTestigos] = useState([testigoVacio()]);
   const [res, setRes] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -36,6 +36,8 @@ export default function ValoracionesPage() {
   const [pegado, setPegado] = useState('');
   const [parseando, setParseando] = useState(false);
   const [avisoP, setAvisoP] = useState('');
+  const [fotoSujeto, setFotoSujeto] = useState(null);
+  const [genPdf, setGenPdf] = useState(false);
 
   if (status === 'loading') return <div style={{ padding: 40 }}>Cargando…</div>;
   if (!DIRECCION.includes(email)) return <div style={{ padding: 40 }}>Acceso restringido a Dirección.</div>;
@@ -78,19 +80,35 @@ export default function ValoracionesPage() {
 
   async function generarPDF() {
     if (!guardadoId || !res) return;
+    setGenPdf(true);
     try {
-      // logo opcional: pon tu archivo en public/logo-fcr.png
+      // logo opcional: public/logo-fcr.png
       let logoDataUrl = null;
       try {
         const resp = await fetch('/logo-fcr.png');
-        if (resp.ok) {
-          const blob = await resp.blob();
-          logoDataUrl = await new Promise((ok) => { const r = new FileReader(); r.onloadend = () => ok(r.result); r.readAsDataURL(blob); });
-        }
-      } catch (e) { /* sin logo */ }
+        if (resp.ok) { const blob = await resp.blob(); logoDataUrl = await blobToDataUrl(blob); }
+      } catch (e) {}
+      // mapa: geocodifica la dirección y trae el mapa (server-side, base64)
+      let mapaDataUrl = null;
+      try {
+        const g = await fetch(`/api/valoraciones/geocode?direccion=${encodeURIComponent(suj.direccion || '')}&comuna=${encodeURIComponent(suj.comuna || '')}`);
+        const gd = await g.json();
+        if (gd.mapa) mapaDataUrl = gd.mapa;
+      } catch (e) {}
       const { generarPdfValoracion } = await import('../../../lib/valoracionPdf');
-      generarPdfValoracion({ folio: guardadoId, sujeto: suj, parametros: res.parametros, resultado: res, logoDataUrl });
+      generarPdfValoracion({ folio: guardadoId, sujeto: suj, parametros: res.parametros, resultado: res, logoDataUrl, fotoDataUrl: fotoSujeto, mapaDataUrl });
     } catch (e) { setError('Error generando PDF: ' + e.message); }
+    finally { setGenPdf(false); }
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((ok) => { const r = new FileReader(); r.onloadend = () => ok(r.result); r.readAsDataURL(blob); });
+  }
+
+  function onFoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) { setFotoSujeto(null); return; }
+    blobToDataUrl(file).then(setFotoSujeto);
   }
 
   async function calcular(guardar) {
@@ -104,7 +122,7 @@ export default function ValoracionesPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sujeto: suj, testigos: conDatos, guardar, creado_por: email,
-          parametros: { negociacion: Number(par.negociacion) / 100, uf_estac: Number(par.uf_estac), uf_bodega: Number(par.uf_bodega), factor_terraza: Number(par.factor_terraza) },
+          parametros: { negociacion: Number(par.negociacion) / 100, uf_estac: Number(par.uf_estac), uf_bodega: Number(par.uf_bodega), factor_terraza: Number(par.factor_terraza), tol_m2: Number(par.tol_m2) / 100 },
         }),
       });
       const data = await r.json();
@@ -138,6 +156,13 @@ export default function ValoracionesPage() {
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Dorm.</div><input style={inputS} type="number" value={suj.dormitorios} onChange={(e) => setS('dormitorios', e.target.value)} /></div>
           <div style={{ flex: 1, minWidth: 120 }}><div style={lbl}>Avalúo fiscal (UF)</div><input style={inputS} type="number" value={suj.avaluo_fiscal_uf} onChange={(e) => setS('avaluo_fiscal_uf', e.target.value)} placeholder="opcional" /></div>
         </div>
+        <div style={{ marginTop: 10 }}>
+          <div style={lbl}>Foto de la propiedad (para el informe)</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input type="file" accept="image/*" onChange={onFoto} style={{ fontSize: 13 }} />
+            {fotoSujeto && <span style={{ fontSize: 12, color: '#16a34a' }}>✓ foto cargada</span>}
+          </div>
+        </div>
       </div>
 
       {/* PARÁMETROS */}
@@ -148,7 +173,9 @@ export default function ValoracionesPage() {
           <div style={{ flex: 1, minWidth: 140 }}><div style={lbl}>UF por estacionamiento</div><input style={inputS} type="number" value={par.uf_estac} onChange={(e) => setP('uf_estac', e.target.value)} /></div>
           <div style={{ flex: 1, minWidth: 140 }}><div style={lbl}>UF por bodega</div><input style={inputS} type="number" value={par.uf_bodega} onChange={(e) => setP('uf_bodega', e.target.value)} /></div>
           <div style={{ flex: 1, minWidth: 140 }}><div style={lbl}>Factor terraza</div><input style={inputS} type="number" step="0.1" value={par.factor_terraza} onChange={(e) => setP('factor_terraza', e.target.value)} /></div>
+          <div style={{ flex: 1, minWidth: 140 }}><div style={lbl}>Tolerancia m² ±%</div><input style={inputS} type="number" value={par.tol_m2} onChange={(e) => setP('tol_m2', e.target.value)} /></div>
         </div>
+        <div style={{ fontSize: 11, color: '#92400e', marginTop: 6 }}>La tolerancia descarta testigos cuyo tamaño se aleje del sujeto (ej. ±40% de la sup. ponderada) — así no se cuela un dúplex entre deptos chicos.</div>
       </div>
 
       {/* TESTIGOS */}
@@ -212,8 +239,8 @@ export default function ValoracionesPage() {
             <button onClick={() => calcular(true)} disabled={guardando} style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer', opacity: guardando ? 0.6 : 1 }}>{guardando ? 'Guardando…' : 'Guardar valoración'}</button>
             {guardadoId && <span style={{ color: '#16a34a', fontSize: 13 }}>✓ Guardada (folio #{guardadoId})</span>}
             {guardadoId && (
-              <button onClick={generarPDF} style={{ padding: '10px 20px', background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}>
-                📄 Generar PDF
+              <button onClick={generarPDF} disabled={genPdf} style={{ padding: '10px 20px', background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer', opacity: genPdf ? 0.6 : 1 }}>
+                {genPdf ? 'Generando…' : '📄 Generar PDF'}
               </button>
             )}
           </div>
