@@ -1,5 +1,25 @@
 import { NextResponse } from 'next/server'
 
+// Limpia la dirección para Nominatim: quita depto/oficina/casa y nº de unidad.
+function limpiarDireccion(d) {
+  if (!d) return ''
+  let s = String(d)
+  s = s.replace(/\b(depto|dpto|dep|departamento|oficina|ofic|of|casa|local|piso|torre|block|blk)\b.*/i, '')
+  s = s.replace(/[,;].*$/, '')
+  return s.trim()
+}
+
+async function geocode(q) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cl&q=${encodeURIComponent(q)}`
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0', 'Accept-Language': 'es' }, signal: AbortSignal.timeout(6000) })
+    if (!r.ok) return null
+    const d = await r.json()
+    if (Array.isArray(d) && d.length) return { lat: Number(d[0].lat), lng: Number(d[0].lon), display: d[0].display_name || null }
+  } catch (e) {}
+  return null
+}
+
 function proveedoresMapa(lat, lng) {
   const z = 15, w = 460, h = 300
   return [
@@ -30,16 +50,17 @@ export async function GET(request) {
     const direccion = (searchParams.get('direccion') || '').trim()
     const comuna = (searchParams.get('comuna') || '').trim()
     if (!direccion && !comuna) return NextResponse.json({ lat: null, lng: null, mapa: null })
-    const q = [direccion, comuna, 'Chile'].filter(Boolean).join(', ')
-    const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cl&q=${encodeURIComponent(q)}`
-    let lat = null, lng = null, display = null
-    try {
-      const gr = await fetch(geoUrl, { headers: { 'User-Agent': 'FondoCapitalRent-CRM/1.0', 'Accept-Language': 'es' }, signal: AbortSignal.timeout(6000) })
-      if (gr.ok) { const gd = await gr.json(); if (Array.isArray(gd) && gd.length) { lat = Number(gd[0].lat); lng = Number(gd[0].lon); display = gd[0].display_name || null } }
-    } catch (e) {}
-    if (lat == null) return NextResponse.json({ lat: null, lng: null, mapa: null, sin_resultado: true })
-    const { mapa, fuente } = await traerMapa(lat, lng)
-    return NextResponse.json({ lat, lng, display_name: display, mapa, fuente_mapa: fuente })
+
+    const calle = limpiarDireccion(direccion)
+    // Intento 1: calle limpia + comuna. Intento 2: solo comuna.
+    let geo = await geocode([calle, comuna, 'Chile'].filter(Boolean).join(', '))
+    let aprox = false
+    if (!geo && comuna) { geo = await geocode([comuna, 'Chile'].join(', ')); aprox = true }
+
+    if (!geo) return NextResponse.json({ lat: null, lng: null, mapa: null, sin_resultado: true })
+
+    const { mapa, fuente } = await traerMapa(geo.lat, geo.lng)
+    return NextResponse.json({ lat: geo.lat, lng: geo.lng, display_name: geo.display, mapa, fuente_mapa: fuente, aproximado: aprox, consulta: calle })
   } catch (e) {
     return NextResponse.json({ lat: null, lng: null, mapa: null, error: e.message })
   }
