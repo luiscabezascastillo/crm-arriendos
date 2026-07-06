@@ -76,6 +76,23 @@ export default function ValoracionesPage() {
     } catch (e) { setAvisoP(e.message); } finally { setParseando(false); }
   }
 
+  async function generarPDF() {
+    if (!guardadoId || !res) return;
+    try {
+      // logo opcional: pon tu archivo en public/logo-fcr.png
+      let logoDataUrl = null;
+      try {
+        const resp = await fetch('/logo-fcr.png');
+        if (resp.ok) {
+          const blob = await resp.blob();
+          logoDataUrl = await new Promise((ok) => { const r = new FileReader(); r.onloadend = () => ok(r.result); r.readAsDataURL(blob); });
+        }
+      } catch (e) { /* sin logo */ }
+      const { generarPdfValoracion } = await import('../../../lib/valoracionPdf');
+      generarPdfValoracion({ folio: guardadoId, sujeto: suj, parametros: res.parametros, resultado: res, logoDataUrl });
+    } catch (e) { setError('Error generando PDF: ' + e.message); }
+  }
+
   async function calcular(guardar) {
     setError(''); if (!guardar) { setRes(null); setGuardadoId(null); }
     if (!suj.comuna.trim()) { setError('Ingresa la comuna del sujeto.'); return; }
@@ -193,7 +210,12 @@ export default function ValoracionesPage() {
           )}
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <button onClick={() => calcular(true)} disabled={guardando} style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer', opacity: guardando ? 0.6 : 1 }}>{guardando ? 'Guardando…' : 'Guardar valoración'}</button>
-            {guardadoId && <span style={{ color: '#16a34a', fontSize: 13 }}>✓ Guardada (#{guardadoId})</span>}
+            {guardadoId && <span style={{ color: '#16a34a', fontSize: 13 }}>✓ Guardada (folio #{guardadoId})</span>}
+            {guardadoId && (
+              <button onClick={generarPDF} style={{ padding: '10px 20px', background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}>
+                📄 Generar PDF
+              </button>
+            )}
           </div>
         </>
       )}

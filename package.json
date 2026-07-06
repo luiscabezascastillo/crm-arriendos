@@ -16,6 +16,7 @@
     "docxtemplater": "^3.69.0",
     "googleapis": "^171.4.0",
     "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "next": "16.2.4",
