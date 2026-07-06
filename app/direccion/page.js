@@ -172,6 +172,13 @@ export default function DireccionPage() {
               </div>
             </div>
           </Link>
+
+<Link href="/direccion/valoraciones" style={{ textDecoration: 'none' }}>
+  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ background: palette.green.header, color: '#fff', padding: '12px 16px', fontWeight: 700 }}>🏠 Valoración</div>
+    <div style={{ padding: 16, color: '#475569', fontSize: 14 }}>Tasación por comparables, informe PDF e historial.</div>
+  </div>
+</Link>
         </div>
 
         {/* TAREAS */}
