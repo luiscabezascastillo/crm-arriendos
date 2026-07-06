@@ -38,6 +38,37 @@ export default function ValoracionesPage() {
   const [avisoP, setAvisoP] = useState('');
   const [fotoSujeto, setFotoSujeto] = useState(null);
   const [genPdf, setGenPdf] = useState(false);
+  const [siiMsg, setSiiMsg] = useState('');
+  const [siiCargando, setSiiCargando] = useState(false);
+  const [siiExtra, setSiiExtra] = useState(null);
+
+  async function traerSII() {
+    setSiiMsg(''); setSiiExtra(null);
+    if (!suj.comuna.trim()) { setSiiMsg('Ingresa la comuna primero.'); return; }
+    if (!suj.rol.trim() && !suj.direccion.trim()) { setSiiMsg('Ingresa el rol (ej. 517-175) o la dirección.'); return; }
+    setSiiCargando(true);
+    try {
+      const params = new URLSearchParams({ comuna: suj.comuna });
+      if (suj.rol.trim()) params.set('rol', suj.rol.trim());
+      else params.set('direccion', suj.direccion.trim());
+      const r = await fetch(`/api/valoraciones/sii?${params.toString()}`);
+      const d = await r.json();
+      if (!r.ok || d.error) { setSiiMsg(d.error || 'No se pudo consultar el SII.'); return; }
+      const x = d.datos;
+      if (!x) { setSiiMsg('El SII no devolvió datos para esa consulta.'); return; }
+      setSuj((p) => ({
+        ...p,
+        rol: x.rol || p.rol,
+        direccion: p.direccion || x.direccion || '',
+        m2_util: p.m2_util || (x.superficie_construida ? String(x.superficie_construida) : ''),
+        avaluo_fiscal_uf: x.avaluo_uf ? String(x.avaluo_uf) : p.avaluo_fiscal_uf,
+      }));
+      setSiiExtra({ destino: x.destino, valor_m2_ah: x.valor_m2_ah, area: x.area_homogenea, rango: x.rango_superficie_ah, avaluo_pesos: x.avaluo_total });
+      setSiiMsg('✓ Datos SII traídos. Revisa y edita si algo no cuadra.');
+    } catch (e) { setSiiMsg(e.message); }
+    finally { setSiiCargando(false); }
+  }
+
 
   if (status === 'loading') return <div style={{ padding: 40 }}>Cargando…</div>;
   if (!DIRECCION.includes(email)) return <div style={{ padding: 40 }}>Acceso restringido a Dirección.</div>;
@@ -158,10 +189,19 @@ export default function ValoracionesPage() {
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={lbl}>Foto de la propiedad (para el informe)</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <input type="file" accept="image/*" onChange={onFoto} style={{ fontSize: 13 }} />
             {fotoSujeto && <span style={{ fontSize: 12, color: '#16a34a' }}>✓ foto cargada</span>}
+            <button onClick={traerSII} disabled={siiCargando} style={{ marginLeft: 'auto', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13, opacity: siiCargando ? 0.6 : 1 }}>
+              {siiCargando ? 'Consultando SII…' : '🏛️ Traer datos SII (rol/avalúo)'}
+            </button>
           </div>
+          {siiMsg && <div style={{ fontSize: 12, color: siiMsg.startsWith('✓') ? '#16a34a' : '#b91c1c', marginTop: 6 }}>{siiMsg}</div>}
+          {siiExtra && (
+            <div style={{ fontSize: 12, color: '#334155', marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: 8 }}>
+              <b>Extra SII:</b> destino {siiExtra.destino || '—'} · valor m² oficial del sector (AH {siiExtra.area}): ${Number(siiExtra.valor_m2_ah || 0).toLocaleString('es-CL')}/m² · rango sup. {siiExtra.rango || '—'} · avalúo ${Number(siiExtra.avaluo_pesos || 0).toLocaleString('es-CL')}
+            </div>
+          )}
         </div>
       </div>
 
