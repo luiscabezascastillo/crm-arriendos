@@ -24,7 +24,7 @@ export default function ValoracionesPage() {
   const { data: session, status } = useSession();
   const email = session?.user?.email || '';
 
-  const [suj, setSuj] = useState({ direccion: '', comuna: '', tipo: 'departamento', operacion: 'venta', m2_util: '', terraza: '', estac: '', bodega: '', dormitorios: '', avaluo_fiscal_uf: '', rol: '' });
+  const [suj, setSuj] = useState({ direccion: '', comuna: '', tipo: 'departamento', operacion: 'venta', m2_util: '', terraza: '', estac: '', bodega: '', dormitorios: '', avaluo_fiscal_pesos: '', rol: '' });
   const [par, setPar] = useState({ negociacion: 12, uf_estac: 350, uf_bodega: 80, factor_terraza: 0.5, tol_m2: 40 });
   const [testigos, setTestigos] = useState([testigoVacio()]);
   const [res, setRes] = useState(null);
@@ -61,7 +61,7 @@ export default function ValoracionesPage() {
         rol: x.rol || p.rol,
         direccion: p.direccion || x.direccion || '',
         m2_util: p.m2_util || (x.superficie_construida ? String(x.superficie_construida) : ''),
-        avaluo_fiscal_uf: x.avaluo_uf ? String(x.avaluo_uf) : p.avaluo_fiscal_uf,
+        avaluo_fiscal_pesos: x.avaluo_total ? String(x.avaluo_total) : p.avaluo_fiscal_pesos,
       }));
       setSiiExtra({ destino: x.destino, valor_m2_ah: x.valor_m2_ah, area: x.area_homogenea, rango: x.rango_superficie_ah, avaluo_pesos: x.avaluo_total });
       setSiiMsg('✓ Datos SII traídos. Revisa y edita si algo no cuadra.');
@@ -185,7 +185,7 @@ export default function ValoracionesPage() {
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Estac.</div><input style={inputS} type="number" value={suj.estac} onChange={(e) => setS('estac', e.target.value)} placeholder="0" /></div>
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Bodegas</div><input style={inputS} type="number" value={suj.bodega} onChange={(e) => setS('bodega', e.target.value)} placeholder="0" /></div>
           <div style={{ flex: 1, minWidth: 80 }}><div style={lbl}>Dorm.</div><input style={inputS} type="number" value={suj.dormitorios} onChange={(e) => setS('dormitorios', e.target.value)} /></div>
-          <div style={{ flex: 1, minWidth: 120 }}><div style={lbl}>Avalúo fiscal (UF)</div><input style={inputS} type="number" value={suj.avaluo_fiscal_uf} onChange={(e) => setS('avaluo_fiscal_uf', e.target.value)} placeholder="opcional" /></div>
+          <div style={{ flex: 1, minWidth: 120 }}><div style={lbl}>Avalúo fiscal ($)</div><input style={inputS} type="number" value={suj.avaluo_fiscal_pesos} onChange={(e) => setS('avaluo_fiscal_pesos', e.target.value)} placeholder="opcional" /></div>
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={lbl}>Foto de la propiedad (para el informe)</div>

@@ -32,6 +32,7 @@ export async function POST(request) {
       uf_estac: parametros.uf_estac != null ? Number(parametros.uf_estac) : 350,
       uf_bodega: parametros.uf_bodega != null ? Number(parametros.uf_bodega) : 80,
       factor_terraza: parametros.factor_terraza != null ? Number(parametros.factor_terraza) : 0.5,
+      tol_m2: parametros.tol_m2 != null ? Number(parametros.tol_m2) : 0.40, // ±40% metraje
     }
 
     // UF más reciente (para convertir testigos en CLP -> UF)
@@ -83,7 +84,22 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Ingresa al menos un testigo con m2 util y precio validos' }, { status: 400 })
     }
 
-    const { conservados, descartados, limites } = filtrarOutliersIQR(norm, (c) => c.uf_m2, 1.5)
+    // Filtro por METRAJE: descarta testigos cuya sup. ponderada se aleje mucho del sujeto
+    // (evita que un dúplex de 275 m² contamine deptos de 45 m², aunque su UF/m² parezca normal).
+    let fueraMetraje = []
+    let enRango = norm
+    if (supSujeto > 0 && P.tol_m2 > 0) {
+      const lo = supSujeto * (1 - P.tol_m2), hi = supSujeto * (1 + P.tol_m2)
+      enRango = []
+      for (const c of norm) {
+        if (c.sup_ponderada >= lo && c.sup_ponderada <= hi) enRango.push(c)
+        else fueraMetraje.push({ ...c, motivo: 'metraje' })
+      }
+      if (enRango.length < 1) { enRango = norm; fueraMetraje = [] } // si deja 0, no filtra
+    }
+
+    const { conservados, descartados, limites } = filtrarOutliersIQR(enRango, (c) => c.uf_m2, 1.5)
+    const todosDescartados = [...descartados, ...fueraMetraje]
     const stat_uf_m2 = resumenEstadistico(conservados.map((c) => c.uf_m2))
     const stat_sup = resumenEstadistico(conservados.map((c) => c.sup_ponderada))
 
@@ -99,14 +115,18 @@ export async function POST(request) {
       }
     }
 
-    const avaluo = sujeto.avaluo_fiscal_uf ? Number(sujeto.avaluo_fiscal_uf) : null
-    const vs_avaluo = (avaluo && estimacion) ? { avaluo_uf: avaluo, ratio: +(estimacion.valor_uf / avaluo).toFixed(2) } : null
+    // avalúo llega en PESOS. El valor estimado en pesos = valor_uf * valorUf. Ratio pesos/pesos.
+    const avaluoPesos = sujeto.avaluo_fiscal_pesos ? Number(sujeto.avaluo_fiscal_pesos) : null
+    let vs_avaluo = null
+    if (avaluoPesos && estimacion && estimacion.valor_clp) {
+      vs_avaluo = { avaluo_pesos: avaluoPesos, ratio: +(estimacion.valor_clp / avaluoPesos).toFixed(2) }
+    }
 
     const resultado = {
       parametros: P, valorUf,
-      totales: { testigos: norm.length, usados: conservados.length, descartados: descartados.length },
+      totales: { testigos: norm.length, usados: conservados.length, descartados: todosDescartados.length, fuera_metraje: fueraMetraje.length },
       limites_iqr: limites, stat_uf_m2, stat_sup, estimacion, vs_avaluo,
-      comparables: conservados, comparables_descartados: descartados,
+      comparables: conservados, comparables_descartados: todosDescartados,
     }
 
     let valoracion_id = null
@@ -125,9 +145,9 @@ export async function POST(request) {
         valor_max_uf: estimacion?.rango_uf?.[1] ?? null,
         valor_clp: estimacion?.valor_clp ?? null,
         n_comparables: conservados.length,
-        n_descartados: descartados.length,
-        avaluo_fiscal_uf: avaluo,
-        metodologia_json: { parametros: P, limites_iqr: limites, stat_uf_m2, valorUf, sujeto },
+        n_descartados: todosDescartados.length,
+        avaluo_fiscal_uf: (avaluoPesos && valorUf) ? Math.round(avaluoPesos / valorUf) : null,
+        metodologia_json: { parametros: P, limites_iqr: limites, stat_uf_m2, valorUf, sujeto, avaluo_pesos: avaluoPesos },
         creado_por: creado_por || null,
       }).select('id').single()
 
@@ -136,7 +156,7 @@ export async function POST(request) {
 
       const filas = [
         ...conservados.map((c) => ({ ...c, usado: true })),
-        ...descartados.map((c) => ({ ...c, usado: false })),
+        ...todosDescartados.map((c) => ({ ...c, usado: false })),
       ].map((c) => ({
         valoracion_id, fuente: 'manual', usado: c.usado,
         titulo: c.titulo, permalink: c.link,
