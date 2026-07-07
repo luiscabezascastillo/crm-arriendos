@@ -11,8 +11,8 @@ const COLS = [
   { key: 'fecha', label: 'Fecha', w: 66 },
   { key: 'mes_a_imputar', label: 'Mes imp.', w: 82 },
   { key: 'ingresado_por', label: 'Ingresó', w: 72, trunc: true },
-  { key: 'idadmon', label: 'IDADMON', w: 90 },
-  { key: 'inmueble', label: 'Inmueble', w: 240, trunc: true },
+  { key: 'idadmon', label: 'IDADMON', w: 62 },
+  { key: 'inmueble', label: 'Inmueble', w: 185, trunc: true },
   { key: 'propietario', label: 'Propietario', w: 116, trunc: true },
   { key: 'repercutir_a', label: 'Imputar a', w: 98, trunc: true },
   { key: 'idadmon_relacionado', label: 'ID rel.', w: 62 },
@@ -338,17 +338,18 @@ export default function DescuentosPage() {
             </colgroup>
             <thead>
               <tr>
-                {COLS.map((c) => (
+                {COLS.map((c, ci) => (
                   <th key={c.key} style={{ ...th(), textAlign: c.align || 'left' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'space-between' }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
                       <button
                         onClick={() => { setMenuCol(menuCol === c.key ? null : c.key); setBusca(''); }}
                         title="Filtrar"
                         style={{
-                          border: 'none', cursor: 'pointer', borderRadius: 3, padding: '1px 4px', flexShrink: 0,
-                          background: colFiltrada(c.key) ? C.ambar : 'rgba(255,255,255,.25)',
-                          color: '#fff', fontSize: 11,
+                          border: 'none', cursor: 'pointer', borderRadius: 3, padding: 0, flexShrink: 0,
+                          width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          background: colFiltrada(c.key) ? C.ambar : 'rgba(255,255,255,.30)',
+                          color: '#fff', fontSize: 9, lineHeight: 1,
                         }}
                       >▼</button>
                     </div>
@@ -356,6 +357,7 @@ export default function DescuentosPage() {
                       <FiltroMenu
                         ref={menuRef}
                         col={c.key}
+                        lado={ci < COLS.length / 2 ? 'left' : 'right'}
                         valores={valoresUnicos(c.key)}
                         seleccion={filtros[c.key]}
                         busca={busca} setBusca={setBusca}
@@ -515,12 +517,15 @@ function CeldaTextoContab({ texto }) {
 
 // ---------- menú de filtro estilo Excel ----------
 const FiltroMenu = forwardRef(function FiltroMenu(
-  { valores, seleccion, busca, setBusca, onToggle, onSolo, onTodos, onCerrar }, ref) {
+  { valores, seleccion, busca, setBusca, onToggle, onSolo, onTodos, onCerrar, lado = 'right' }, ref) {
   const sel = seleccion && seleccion.size > 0 ? seleccion : new Set(valores); // sin filtro = todos
   const visibles = valores.filter((v) => v.toLowerCase().includes(busca.toLowerCase()));
+  // Las columnas de la izquierda abren el menú hacia la derecha (left:0) y las de
+  // la derecha hacia la izquierda (right:0), para que nunca tape su propia columna.
+  const anchoLado = lado === 'left' ? { left: 0 } : { right: 0 };
   return (
     <div ref={ref} style={{
-      position: 'absolute', zIndex: 50, top: '100%', right: 0, marginTop: 4,
+      position: 'absolute', zIndex: 50, top: '100%', ...anchoLado, marginTop: 4,
       background: '#fff', color: '#222', border: '1px solid #b9c2d0', borderRadius: 6,
       boxShadow: '0 6px 18px rgba(0,0,0,.18)', width: 230, padding: 8, textAlign: 'left',
       fontWeight: 400, fontSize: 12,
