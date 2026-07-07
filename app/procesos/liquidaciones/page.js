@@ -86,7 +86,11 @@ export default function LiquidacionesPage() {
     const porProp = {}
     for (const r of qc || []) { const k = r.idprop; (porProp[k] = porProp[k] || []).push(String(r.quien_cobra || '').trim().toUpperCase()) }
     const cd = new Set()
-    for (const [k, arr] of Object.entries(porProp)) { if (arr.length && arr.every(v => v === 'DUEÑO')) cd.add(k) }
+    for (const [k, arr] of Object.entries(porProp)) {
+      const hayDueno = arr.some(v => v === 'DUEÑO')
+      const hayFCR = arr.some(v => v === 'FCR')
+      if (hayDueno && !hayFCR) cd.add(k)   // cobra el dueño si hay DUEÑO y ningún contrato FCR (ignora vacíos)
+    }
     setCobraDueno(cd)
     setUltimaAct(new Date())
     setCargando(false)
