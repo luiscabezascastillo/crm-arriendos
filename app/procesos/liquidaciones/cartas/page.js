@@ -11,6 +11,23 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 // parseo de texto de pesos: "550.020" -> 550020 · "25000" -> 25000
 const pnum = v => { const s = String(v ?? '').replace(/\./g, '').replace(/[^0-9-]/g, ''); const n = Number(s); return isNaN(n) ? 0 : n }
+// Override de transferencia: recalcula comision/IVA/neto a partir de un monto X,
+// replicando la formula del motor (calcular_liquidacion). X<=0 (abandono) -> todo 0.
+// comision = X*pct_adm (salvaguarda >1 -> /100) o fijo (si_fijo_admon).
+// IVA = 19% si adicionar_iva='SI'. neto = X - comision - IVA - descuentos.
+// especial_a='TOTALIDAD' -> neto = X.
+function calcOverrideVals(X, d, descuentos) {
+  const x = Math.round(n0(X))
+  if (x <= 0) return { aCobrar: 0, admon: 0, iva: 0, aTransferir: 0 }
+  let pct = n0(d && d.pct_adm)
+  if (pct > 1) pct = pct / 100
+  const fijoTxt = d && d.si_fijo_admon != null ? String(d.si_fijo_admon).trim() : ''
+  const com = fijoTxt !== '' ? Math.round(pnum(fijoTxt)) : Math.round(x * pct)
+  const iva = String((d && d.adicionar_iva) || '').trim().toUpperCase() === 'SI' ? Math.round(com * 0.19) : 0
+  const totalidad = String((d && d.especial_a) || '').trim().toUpperCase() === 'TOTALIDAD'
+  const aTransferir = totalidad ? x : Math.round(x - com - iva - n0(descuentos))
+  return { aCobrar: x, admon: com, iva, aTransferir }
+}
 const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
 const fmt = n => { const v = Math.round(n0(n)); const s = v ? v.toLocaleString('es-CL') : (n === 0 ? '0' : '—'); return <span style={NUM_FONT}>{s}</span> }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
@@ -36,6 +53,8 @@ export default function CartasPage() {
   const email = session?.user?.email
   const rol = session?.user?.role
   const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)   // carga a Cuentas: solo Direccion
+  const OVERRIDE_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+  const puedeOverride = rol === 'admin' || OVERRIDE_EMAILS.includes(email)  // ajuste manual de transferencia: solo Direccion
 
   const [accesoOk, setAccesoOk] = useState(null)
   const [mes, setMes] = useState(mesEnCurso())
@@ -51,6 +70,12 @@ export default function CartasPage() {
   // Carga de cargos del mes a la tabla `cuentas` (solo Direccion)
   const [cargaModal, setCargaModal] = useState(null)   // {preview...} | {ok...} | {error...}
   const [cargaLoading, setCargaLoading] = useState(false)
+  // Override de transferencia (solo Direccion): idadmon -> { monto_x, motivo, creado_por, creado_at }
+  const [overrides, setOverrides] = useState({})
+  const [ovrModal, setOvrModal] = useState(null)   // idadmon en edicion, o null
+  const [ovrX, setOvrX] = useState('')
+  const [ovrMotivo, setOvrMotivo] = useState('')
+  const [ovrSaving, setOvrSaving] = useState(false)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -71,7 +96,7 @@ export default function CartasPage() {
       const ids = [...new Set(rows.map(r => r.idadmon))]
       const idprops = new Set(rows.map(r => r.idprop))
 
-      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps] = await Promise.all([
+      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps, rOvr] = await Promise.all([
         supabase.from('datos_arriendos').select('*').in('idadmon', ids),
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
         supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
@@ -80,7 +105,13 @@ export default function CartasPage() {
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
         supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
+        supabase.from('transferencia_override').select('idadmon, monto_x, motivo, creado_por, creado_at').eq('mes', m),
       ])
+
+      // Overrides de transferencia del mes (por idadmon)
+      const ovrMap = {}
+      for (const o of rOvr.data || []) ovrMap[o.idadmon] = o
+      setOverrides(ovrMap)
 
       // Envíos ya realizados este mes (candado anti-reenvío)
       const env = {}
@@ -159,6 +190,9 @@ export default function CartasPage() {
         const esP = estado === 'P'
         const esProp = String(r.inmueble || '').startsWith('[proporcional')   // línea proporcional mes anterior
         const desc = n0(r.total_descuentos)
+        // Override manual de transferencia (solo en la línea normal, no en la proporcional ni en P)
+        const ovr = (!esP && !esProp) ? ovrMap[r.idadmon] : null
+        const ov = ovr ? calcOverrideVals(ovr.monto_x, d, desc) : null
         grupos[r.idprop].inmuebles.push({
           idadmon: r.idadmon,
           estado, esP, esProp,
@@ -168,9 +202,10 @@ export default function CartasPage() {
           arrendatario: esP ? 'EN CAPTACION ARRENDATARIO' : campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
           rut: esP ? '' : campo(d, ['rut', 'rut_arrendatario', 'rut1']),
           por: esP ? '' : campo(d, ['quien_cobra'], 'FCR'),
-          aCobrar: esP ? 0 : n0(r.base), recibido: esP ? 0 : n0(r.recibido_banco),
-          admon: esP ? 0 : n0(r.comision), iva: esP ? 0 : n0(r.iva_comision),
-          descuentos: desc, aTransferir: esP ? -desc : n0(r.neto_transferir),
+          aCobrar: ov ? ov.aCobrar : (esP ? 0 : n0(r.base)), recibido: esP ? 0 : n0(r.recibido_banco),
+          admon: ov ? ov.admon : (esP ? 0 : n0(r.comision)), iva: ov ? ov.iva : (esP ? 0 : n0(r.iva_comision)),
+          descuentos: desc, aTransferir: ov ? ov.aTransferir : (esP ? -desc : n0(r.neto_transferir)),
+          override: ovr || null,
           ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
           nota: esProp ? '' : notaDe(r.idadmon), des: esProp ? [] : (des[r.idadmon] || []),
           ajuste: (esP || esProp) ? 0 : n0(ajustes[r.idadmon] || 0),
@@ -247,6 +282,48 @@ export default function CartasPage() {
       setCargaModal(res.ok ? { ...j, done: true } : { error: j.error || 'Error al cargar', ...j })
     } catch (e) { setCargaModal({ error: e.message }) }
     setCargaLoading(false)
+  }
+
+  // === Override manual de transferencia (solo Direccion) ===
+  function abrirOverride(x) {
+    if (!puedeOverride || x.esProp || x.esP) return
+    setOvrModal(x.idadmon)
+    const o = overrides[x.idadmon]
+    setOvrX(o ? String(o.monto_x) : '')
+    setOvrMotivo(o ? (o.motivo || '') : '')
+  }
+  async function guardarOverride() {
+    if (ovrModal == null) return
+    if (String(ovrX).trim() === '') { alert('Escribe el monto X (pon 0 si abandonó).'); return }
+    if (!ovrMotivo.trim()) { alert('Escribe el motivo del ajuste.'); return }
+    setOvrSaving(true)
+    try {
+      const res = await fetch('/api/liquidaciones/override', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: ovrModal, mes, monto_x: pnum(ovrX), motivo: ovrMotivo.trim() }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error al guardar')
+      setOvrModal(null); setOvrX(''); setOvrMotivo('')
+      await cargar(mes)
+    } catch (e) { alert(e.message) }
+    setOvrSaving(false)
+  }
+  async function quitarOverride() {
+    if (ovrModal == null) return
+    if (!window.confirm('¿Quitar el ajuste manual y volver al cálculo automático?')) return
+    setOvrSaving(true)
+    try {
+      const res = await fetch('/api/liquidaciones/override', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: ovrModal, mes, borrar: true }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error al quitar')
+      setOvrModal(null); setOvrX(''); setOvrMotivo('')
+      await cargar(mes)
+    } catch (e) { alert(e.message) }
+    setOvrSaving(false)
   }
 
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
@@ -344,7 +421,11 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
-                      <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
+                      <div onClick={(e) => { if (puedeOverride && !x.esProp && !x.esP) { e.stopPropagation(); abrirOverride(x) } }}
+                        title={x.override ? `Ajuste manual: $${Math.round(n0(x.override.monto_x)).toLocaleString('es-CL')} — ${x.override.motivo || ''}` : ((puedeOverride && !x.esProp && !x.esP) ? 'Ajustar transferencia (override)' : '')}
+                        style={{ ...td, ...rt, ...bgP, fontWeight: 600, cursor: (puedeOverride && !x.esProp && !x.esP) ? 'pointer' : 'default', ...(x.override ? { background: '#FEF3C7', borderRadius: 4 } : {}) }}>
+                        {x.override ? '⚠ ' : ''}{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}
+                      </div>
                       <div style={{ ...td, ...rt, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? '' : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
@@ -372,6 +453,14 @@ export default function CartasPage() {
                           <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
                           <span style={{ fontFamily: MONO, color: '#B45309', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(x.ajuste)}</span>
                           <span style={{ fontSize: 12, color: '#92400E' }}>Se ha realizado un ajuste de ${fmt(x.ajuste)} en la renta</span>
+                        </div>
+                      )
+                      // Override manual de transferencia
+                      if (x.override) subfilas.push(
+                        <div key={x.idadmon + i + 'ov'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2', background: '#FFFBEB' }}>
+                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                          <span style={{ fontFamily: MONO, color: '#B45309', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(x.override.monto_x)}</span>
+                          <span style={{ fontSize: 12, color: '#92400E' }}>⚠ Ajuste manual de transferencia · {x.override.motivo || 'sin motivo'}{x.override.creado_por ? ` (${x.override.creado_por})` : ''}</span>
                         </div>
                       )
                       // 3) Comentario del mes (comentarios_liquidacion)
@@ -485,6 +574,45 @@ export default function CartasPage() {
                     style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Cerrar</button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* === Modal: Ajuste manual de transferencia (override) === */}
+        {ovrModal != null && (
+          <div onClick={() => !ovrSaving && setOvrModal(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 12, padding: 22, width: 'min(520px, 92vw)', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Ajuste manual de transferencia · {ovrModal}</h3>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>{aammToTxt(mes)} · solo Dirección. Se recalculan comisión, IVA y A transferir automáticamente.</div>
+
+              <label style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>Monto efectivamente cobrado (X)</label>
+              <input value={ovrX} onChange={e => setOvrX(e.target.value)} inputMode="numeric" autoFocus
+                placeholder="0 si abandonó · o el monto acordado"
+                style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 4, marginBottom: 12, fontFamily: MONO }} />
+
+              <label style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>Motivo</label>
+              <textarea value={ovrMotivo} onChange={e => setOvrMotivo(e.target.value)} rows={3}
+                placeholder="Ej: abandonó el depto · descuento especial acordado · acuerdo puntual…"
+                style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, marginTop: 4, fontFamily: 'inherit', resize: 'vertical' }} />
+
+              {overrides[ovrModal] && overrides[ovrModal].creado_por && (
+                <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 6 }}>
+                  Ajuste actual por {overrides[ovrModal].creado_por}{overrides[ovrModal].creado_at ? ' · ' + new Date(overrides[ovrModal].creado_at).toLocaleString('es-CL') : ''}
+                </div>
+              )}
+
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                <div>{overrides[ovrModal] && <button onClick={quitarOverride} disabled={ovrSaving}
+                  style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#991B1B', cursor: 'pointer' }}>Quitar ajuste</button>}</div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setOvrModal(null)} disabled={ovrSaving}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancelar</button>
+                  <button onClick={guardarOverride} disabled={ovrSaving}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>{ovrSaving ? 'Guardando…' : 'Guardar ajuste'}</button>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -259,14 +259,20 @@ export default function FaltanPage() {
                   {/* Comentario interno (Direccion + Admin) */}
                   <div style={{ minWidth: 0 }}>
                     {puedeComentar ? (
-                      <div onClick={() => abrirEditCom(f.idadmon)}
-                        title={(comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || 'Añadir comentario interno'}
-                        style={{ cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? '#1e3a8a' : '#C7C7C2' }}>
-                        {(comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '✎ comentar'}
-                      </div>
+                      (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? (
+                        <div onClick={() => abrirEditCom(f.idadmon)} title={comentarios[f.idadmon].comentario}
+                          style={{ cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: 600, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: 6 }}>
+                          {comentarios[f.idadmon].comentario}
+                        </div>
+                      ) : (
+                        <div onClick={() => abrirEditCom(f.idadmon)} title="Añadir comentario interno"
+                          style={{ cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: '#9CA3AF' }}>
+                          ✎ comentar
+                        </div>
+                      )
                     ) : (
                       <div title={(comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || ''}
-                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: '#666' }}>
+                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? 600 : 400, color: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? '#92400E' : '#666' }}>
                         {(comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '—'}
                       </div>
                     )}
