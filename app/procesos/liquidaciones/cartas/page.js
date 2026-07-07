@@ -28,6 +28,33 @@ function calcOverrideVals(X, d, descuentos) {
   const aTransferir = totalidad ? x : Math.round(x - com - iva - n0(descuentos))
   return { aCobrar: x, admon: com, iva, aTransferir }
 }
+
+// Recalcula UN bloque (propietario) aplicando/quitando el override de un idadmon,
+// SIN recargar la página (mantiene el scroll). Usa _ov (parametros del contrato)
+// y _raw (valores originales del motor) que se guardan en cada inmueble.
+function recomputarBloque(b, idadmon, ovr) {
+  const inmuebles = b.inmuebles.map(x => {
+    if (x.idadmon !== idadmon || x.esProp || x.esP) return x
+    if (ovr) {
+      const o = calcOverrideVals(ovr.monto_x, x._ov, x.descuentos)
+      return { ...x, aCobrar: o.aCobrar, admon: o.admon, iva: o.iva, aTransferir: o.aTransferir, override: ovr }
+    }
+    const r = x._raw || {}
+    return { ...x, aCobrar: n0(r.aCobrar), admon: n0(r.admon), iva: n0(r.iva), aTransferir: n0(r.aTransferir), override: null }
+  })
+  const T = inmuebles.reduce((a, x) => ({
+    aCobrar: a.aCobrar + x.aCobrar, recibido: a.recibido + x.recibido, admon: a.admon + x.admon,
+    iva: a.iva + x.iva, descuentos: a.descuentos + x.descuentos, aTransferir: a.aTransferir + x.aTransferir,
+  }), { aCobrar: 0, recibido: 0, admon: 0, iva: 0, descuentos: 0, aTransferir: 0 })
+  const transferido = b.transferido || 0
+  const diff = Math.round(T.aTransferir - transferido)
+  const hayDesc = T.descuentos > 0
+  let estado
+  if (transferido === 0) estado = 'TO SEE'
+  else if (Math.abs(diff) <= 2000) estado = hayDesc ? 'OK DESC' : 'OK'
+  else estado = 'CHECK'
+  return { ...b, inmuebles, totales: T, diff, estado }
+}
 const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
 const fmt = n => { const v = Math.round(n0(n)); const s = v ? v.toLocaleString('es-CL') : (n === 0 ? '0' : '—'); return <span style={NUM_FONT}>{s}</span> }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
@@ -206,6 +233,8 @@ export default function CartasPage() {
           admon: ov ? ov.admon : (esP ? 0 : n0(r.comision)), iva: ov ? ov.iva : (esP ? 0 : n0(r.iva_comision)),
           descuentos: desc, aTransferir: ov ? ov.aTransferir : (esP ? -desc : n0(r.neto_transferir)),
           override: ovr || null,
+          _ov: { pct_adm: d.pct_adm, si_fijo_admon: d.si_fijo_admon, adicionar_iva: d.adicionar_iva, especial_a: d.especial_a },
+          _raw: { aCobrar: esP ? 0 : n0(r.base), admon: esP ? 0 : n0(r.comision), iva: esP ? 0 : n0(r.iva_comision), aTransferir: esP ? -desc : n0(r.neto_transferir) },
           ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
           nota: esProp ? '' : notaDe(r.idadmon), des: esProp ? [] : (des[r.idadmon] || []),
           ajuste: (esP || esProp) ? 0 : n0(ajustes[r.idadmon] || 0),
@@ -304,8 +333,11 @@ export default function CartasPage() {
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Error al guardar')
+      const ovr = { monto_x: j.monto_x, motivo: j.motivo, creado_por: j.creado_por, creado_at: j.creado_at }
+      const idadmon = ovrModal
+      setOverrides(prev => ({ ...prev, [idadmon]: ovr }))
+      setBloques(prev => prev.map(b => recomputarBloque(b, idadmon, ovr)))
       setOvrModal(null); setOvrX(''); setOvrMotivo('')
-      await cargar(mes)
     } catch (e) { alert(e.message) }
     setOvrSaving(false)
   }
@@ -320,8 +352,10 @@ export default function CartasPage() {
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Error al quitar')
+      const idadmon = ovrModal
+      setOverrides(prev => { const n = { ...prev }; delete n[idadmon]; return n })
+      setBloques(prev => prev.map(b => recomputarBloque(b, idadmon, null)))
       setOvrModal(null); setOvrX(''); setOvrMotivo('')
-      await cargar(mes)
     } catch (e) { alert(e.message) }
     setOvrSaving(false)
   }
