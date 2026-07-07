@@ -21,7 +21,7 @@ function svc() {
 function puedeComentar(session) {
   const email = session?.user?.email
   const rol = session?.user?.role
-  return rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  return rol === 'administracion' || rol === 'direccion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
 }
 
 // --- GET: leer comentarios del mes ---

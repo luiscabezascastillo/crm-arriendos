@@ -41,7 +41,7 @@ export default function FaltanPage() {
   const router = useRouter()
   const email = session?.user?.email
   const rol = session?.user?.role
-  const puedeComentar = rol === 'admin' || COMENTAR_EMAILS.includes(email)   // Direccion + Admin
+  const puedeComentar = rol === 'administracion' || rol === 'direccion' || rol === 'admin' || COMENTAR_EMAILS.includes(email)   // Direccion + Administracion (Adalis, Fabiola)
 
   const [accesoOk, setAccesoOk] = useState(null)
   const [mes, setMes] = useState(mesEnCurso())
