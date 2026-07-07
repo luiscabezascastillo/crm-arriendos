@@ -263,7 +263,7 @@ export default function LiquidacionesPage() {
                     style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : '#fff', fontSize: 13 }}>
                     <div style={{ fontWeight: 600, color: '#1a1a2e' }}>
                       <span style={{ color: '#9ca3af', marginRight: 6 }}>{abierto ? '▼' : '▶'}</span>
-                      {p.propietario}
+                      {p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario}
                       <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}> · {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
                     </div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
