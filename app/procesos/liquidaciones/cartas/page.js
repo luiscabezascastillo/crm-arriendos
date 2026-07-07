@@ -114,6 +114,14 @@ export default function CartasPage() {
   const [comLoading, setComLoading] = useState(false)
   const [comSaving, setComSaving] = useState(false)
   const [comMsg, setComMsg] = useState('')
+  // Re-sincronización de cargo a Cuentas por IDADMON (Direccion + Karina)
+  const [rsOpen, setRsOpen] = useState(false)
+  const [rsIdadmon, setRsIdadmon] = useState('')
+  const [rsData, setRsData] = useState(null)     // preview
+  const [rsForzar, setRsForzar] = useState(false)
+  const [rsLoading, setRsLoading] = useState(false)
+  const [rsSaving, setRsSaving] = useState(false)
+  const [rsMsg, setRsMsg] = useState('')
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -416,6 +424,41 @@ export default function CartasPage() {
     setComSaving(false)
   }
 
+  // === Re-sincronización de cargo a Cuentas (Direccion + Karina) ===
+  function abrirResync() {
+    setRsOpen(true); setRsIdadmon(''); setRsData(null); setRsForzar(false); setRsMsg('')
+  }
+  async function previewResync(idadmonArg) {
+    const id = String(idadmonArg ?? rsIdadmon).trim().toUpperCase()
+    if (!id) { setRsMsg('Escribe un IDADMON.'); return }
+    setRsIdadmon(id); setRsLoading(true); setRsMsg(''); setRsData(null); setRsForzar(false)
+    try {
+      const res = await fetch('/api/cartolas/resincronizar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: id, mes, confirmar: false }),
+      })
+      const j = await res.json()
+      if (!res.ok) { setRsMsg(j.error || 'Error'); setRsData(null) }
+      else setRsData(j)
+    } catch (e) { setRsMsg(e.message) }
+    setRsLoading(false)
+  }
+  async function confirmarResync() {
+    if (!rsData) return
+    setRsSaving(true); setRsMsg('')
+    try {
+      const res = await fetch('/api/cartolas/resincronizar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: rsData.idadmon, mes, confirmar: true, forzar: rsForzar }),
+      })
+      const j = await res.json()
+      if (!res.ok) { setRsMsg(j.error || 'Error'); setRsSaving(false); return }
+      setRsData({ ...rsData, done: true, resultado: j })
+      setRsMsg(`✓ ${j.accion === 'crea' ? 'Creado' : 'Actualizado'} en Cuentas: $${Number(j.cargoNuevo).toLocaleString('es-CL')}${j.forzado ? ' (forzado fuera de ventana)' : ''}.`)
+    } catch (e) { setRsMsg(e.message) }
+    setRsSaving(false)
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -444,6 +487,12 @@ export default function CartasPage() {
             <button onClick={abrirComentarios}
               style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#075985', cursor: 'pointer' }}>
               💬 Comentarios
+            </button>
+          )}
+          {puedeComentarLiq && (
+            <button onClick={abrirResync}
+              style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #FBCFE8', background: '#FDF2F8', color: '#9D174D', cursor: 'pointer' }}>
+              🔄 Resincronizar
             </button>
           )}
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>CARTAS · revisión de liquidación</h1>
@@ -784,6 +833,64 @@ export default function CartasPage() {
                   <button onClick={guardarComentario} disabled={comSaving}
                     style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#0EA5E9', color: '#fff', cursor: 'pointer' }}>
                     {comSaving ? 'Guardando…' : (comEditId != null ? 'Guardar cambios' : 'Guardar nuevo')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* === Modal: Re-sincronizar cargo a Cuentas === */}
+        {rsOpen && (
+          <div onClick={() => !rsSaving && setRsOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 12, padding: 22, width: 'min(560px, 94vw)', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>🔄 Resincronizar cargo a Cuentas · {aammToTxt(mes)}</h3>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Actualiza (o crea) el cargo de un IDADMON en Cuentas desde el origen, tras corregir el LOG. Dirección y Karina.</div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <input value={rsIdadmon}
+                  onChange={e => setRsIdadmon(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter') previewResync() }}
+                  placeholder="IDADMON (p. ej. A00552)" autoFocus disabled={rsData?.done}
+                  style={{ flex: 1, fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: MONO }} />
+                <button onClick={() => previewResync()} disabled={rsLoading || rsData?.done}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#DB2777', color: '#fff', cursor: 'pointer' }}>
+                  {rsLoading ? 'Calculando…' : 'Ver'}
+                </button>
+              </div>
+
+              {rsData && !rsData.done && (
+                <div style={{ fontSize: 13, color: '#374151', background: '#FDF2F8', border: '1px solid #FBCFE8', borderRadius: 8, padding: '12px 14px', lineHeight: 1.7 }}>
+                  <div><b>{rsData.idadmon}</b> · {rsData.propietario || '—'} · {rsData.inmueble || '—'} · estado {rsData.estado || '—'}</div>
+                  <div style={{ marginTop: 6 }}>
+                    {rsData.accion === 'crea'
+                      ? <>No tenía cargo este mes en Cuentas → se <b>creará</b> con <b>${Number(rsData.cargoNuevo).toLocaleString('es-CL')}</b>.</>
+                      : <>Cargo actual en Cuentas: <b>${Number(rsData.cargoAnterior).toLocaleString('es-CL')}</b> → se <b>actualizará</b> a <b>${Number(rsData.cargoNuevo).toLocaleString('es-CL')}</b>.</>}
+                  </div>
+                  {rsData.sinCambio && <div style={{ marginTop: 4, color: '#B45309' }}>⚠ El valor no cambia (ya está sincronizado).</div>}
+                  {!rsData.enVentana && (
+                    <div style={{ marginTop: 8, background: '#FEF9C3', border: '1px solid #FDE047', color: '#854D0E', borderRadius: 6, padding: '8px 10px' }}>
+                      ⚠ Hoy es día {rsData.dia}: fuera de la ventana (6-8).
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={rsForzar} onChange={e => setRsForzar(e.target.checked)} />
+                        <span>Forzar de todos modos (queda registrado como forzado)</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {rsMsg && <div style={{ fontSize: 12.5, color: rsMsg.startsWith('✓') ? '#166534' : '#B91C1C', marginTop: 8 }}>{rsMsg}</div>}
+
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button onClick={() => setRsOpen(false)} disabled={rsSaving}
+                  style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cerrar</button>
+                {rsData && !rsData.done && (
+                  <button onClick={confirmarResync} disabled={rsSaving || rsData.sinCambio || (!rsData.enVentana && !rsForzar)}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: (rsData.sinCambio || (!rsData.enVentana && !rsForzar)) ? '#F9A8D4' : '#DB2777', color: '#fff', cursor: 'pointer' }}>
+                    {rsSaving ? 'Aplicando…' : (rsData.accion === 'crea' ? 'Crear cargo' : 'Actualizar cargo')}
                   </button>
                 )}
               </div>
