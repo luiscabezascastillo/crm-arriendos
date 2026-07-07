@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, forwardRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { supabase } from '../../../lib/supabaseClient'
@@ -39,6 +39,17 @@ const OPCIONALES = [
 ]
 const TODOS = [...PRINCIPALES, ...OPCIONALES].map(f => f.k)
 
+// Columnas de la tabla (orden + filtro tipo Excel). tipo: 'nat' = orden natural (numérico-aware)
+const COLT = [
+  { k: 'idprop',      label: 'IdProp',      tipo: 'nat' },
+  { k: 'propietario', label: 'Propietario', tipo: 'txt' },
+  { k: 'rut',         label: 'RUT',         tipo: 'nat' },
+  { k: 'mail1',       label: 'Email',       tipo: 'txt' },
+  { k: 'comuna',      label: 'Comuna',      tipo: 'txt' },
+  { k: 'activo',      label: 'Activo',      tipo: 'txt' },
+]
+const GRID = '70px 1.6fr 110px 1.4fr 1fr 70px 90px'
+
 export default function PropietariosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -52,6 +63,19 @@ export default function PropietariosPage() {
   const [opcAbierto, setOpcAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  // Orden y filtro tipo Excel
+  const [sortCol, setSortCol] = useState('propietario')
+  const [sortDir, setSortDir] = useState('asc')
+  const [filtros, setFiltros] = useState({})     // col -> Set(valores seleccionados)
+  const [menuCol, setMenuCol] = useState(null)   // col con menú de filtro abierto
+  const [busca, setBusca] = useState('')
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function onDoc(e) { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuCol(null) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -105,8 +129,31 @@ export default function PropietariosPage() {
   const setCampo = (k, v) => setEdit(e => ({ ...e, campos: { ...e.campos, [k]: v } }))
 
   const filtro = q.trim().toLowerCase()
-  const visibles = !filtro ? rows : rows.filter(r =>
-    ['idprop', 'propietario', 'rut', 'mail1', 'comuna'].some(k => String(r[k] || '').toLowerCase().includes(filtro)))
+  const norm = v => String(v ?? '')
+  const cmp = (a, b) => norm(a).localeCompare(norm(b), 'es', { numeric: true, sensitivity: 'base' })
+  const cellVal = (r, k) => norm(r[k])
+  const etiqueta = (r, k) => { const v = cellVal(r, k); return v === '' ? '(vacío)' : v }
+  function valoresUnicos(k) {
+    const s = new Set(); rows.forEach(r => s.add(etiqueta(r, k)))
+    return Array.from(s).sort(cmp)
+  }
+  function toggleSort(k) {
+    if (sortCol === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortCol(k); setSortDir('asc') }
+  }
+  function toggleValor(col, val) {
+    setFiltros(prev => { const a = new Set(prev[col] || valoresUnicos(col)); a.has(val) ? a.delete(val) : a.add(val); return { ...prev, [col]: a } })
+  }
+  function soloEste(col, val) { setFiltros(prev => ({ ...prev, [col]: new Set([val]) })); setMenuCol(null) }
+  function limpiarFiltro(col) { setFiltros(prev => { const n = { ...prev }; delete n[col]; return n }); setMenuCol(null) }
+  const colFiltrada = (col) => filtros[col] && filtros[col].size > 0 && filtros[col].size < valoresUnicos(col).length
+
+  let visibles = rows
+  if (filtro) visibles = visibles.filter(r => ['idprop', 'propietario', 'rut', 'mail1', 'comuna'].some(k => norm(r[k]).toLowerCase().includes(filtro)))
+  for (const [col, set] of Object.entries(filtros)) {
+    if (set && set.size > 0) visibles = visibles.filter(r => set.has(etiqueta(r, col)))
+  }
+  visibles = [...visibles].sort((a, b) => { const d = cmp(cellVal(a, sortCol), cellVal(b, sortCol)); return sortDir === 'asc' ? d : -d })
 
   if (status === 'loading' || puedeEditar === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (puedeEditar === false) return (<><TopNav /><div style={{ padding: 40, color: '#991B1B' }}>Sin acceso. Esta sección es solo para Dirección, Legal y Administración. Redirigiendo…</div></>)
@@ -158,8 +205,24 @@ export default function PropietariosPage() {
 
         {cargando ? <div style={{ color: '#888', padding: 20 }}>Cargando…</div> : (
           <div style={{ border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '70px 1.6fr 110px 1.4fr 1fr 70px 90px', gap: 0, background: '#334155', color: '#fff', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {['IdProp', 'Propietario', 'RUT', 'Email', 'Comuna', 'Activo', ''].map((h, i) => <div key={i} style={{ padding: '10px 12px' }}>{h}</div>)}
+            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 0, background: '#334155', color: '#fff', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {COLT.map((c, ci) => (
+                <div key={c.k} style={{ padding: '10px 12px', position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'space-between' }}>
+                    <span onClick={() => toggleSort(c.k)} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer', userSelect: 'none' }} title="Ordenar">
+                      {c.label}{sortCol === c.k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </span>
+                    <button onClick={() => { setMenuCol(menuCol === c.k ? null : c.k); setBusca('') }} title="Filtrar"
+                      style={{ border: 'none', cursor: 'pointer', borderRadius: 3, padding: 0, flexShrink: 0, width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: colFiltrada(c.k) ? '#BF8F00' : 'rgba(255,255,255,.30)', color: '#fff', fontSize: 9, lineHeight: 1 }}>▼</button>
+                  </div>
+                  {menuCol === c.k && (
+                    <FiltroMenu ref={menuRef} lado={ci < COLT.length / 2 ? 'left' : 'right'}
+                      valores={valoresUnicos(c.k)} seleccion={filtros[c.k]} busca={busca} setBusca={setBusca}
+                      onToggle={v => toggleValor(c.k, v)} onSolo={v => soloEste(c.k, v)} onTodos={() => limpiarFiltro(c.k)} onCerrar={() => setMenuCol(null)} />
+                  )}
+                </div>
+              ))}
+              <div style={{ padding: '10px 12px' }}></div>
             </div>
             <div style={{ maxHeight: '62vh', overflowY: 'auto' }}>
               {visibles.map((r, i) => (
@@ -240,3 +303,28 @@ export default function PropietariosPage() {
     </>
   )
 }
+
+// ---- Menú de filtro tipo Excel (mismo patrón que Descuentos) ----
+function btnMini(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 11 } }
+const FiltroMenu = forwardRef(function FiltroMenu({ valores, seleccion, busca, setBusca, onToggle, onSolo, onTodos, onCerrar, lado = 'right' }, ref) {
+  const sel = seleccion && seleccion.size > 0 ? seleccion : new Set(valores)
+  const vis = valores.filter(v => v.toLowerCase().includes((busca || '').toLowerCase()))
+  const anchor = lado === 'left' ? { left: 0 } : { right: 0 }
+  return (
+    <div ref={ref} style={{ position: 'absolute', zIndex: 50, top: '100%', ...anchor, marginTop: 4, background: '#fff', color: '#222', border: '1px solid #b9c2d0', borderRadius: 6, boxShadow: '0 6px 18px rgba(0,0,0,.18)', width: 230, padding: 8, textAlign: 'left', fontWeight: 400, fontSize: 12, textTransform: 'none', letterSpacing: 0 }}>
+      <input autoFocus placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', marginBottom: 6, fontSize: 12 }} />
+      <div style={{ marginBottom: 6 }}><button onClick={onTodos} style={btnMini('#1f4e79')}>Mostrar todos</button></div>
+      <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4, padding: 4 }}>
+        {vis.map(v => (
+          <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0', cursor: 'pointer' }}>
+            <input type="checkbox" checked={sel.has(v)} onChange={() => onToggle(v)} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+            <a onClick={() => onSolo(v)} style={{ color: '#1f4e79', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>solo</a>
+          </label>
+        ))}
+        {vis.length === 0 && <div style={{ color: '#999', padding: 4 }}>Sin coincidencias</div>}
+      </div>
+      <div style={{ textAlign: 'right', marginTop: 6 }}><button onClick={onCerrar} style={btnMini('#6b7280')}>Cerrar</button></div>
+    </div>
+  )
+})
