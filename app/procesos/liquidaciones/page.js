@@ -58,6 +58,7 @@ export default function LiquidacionesPage() {
   const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
   const [busca, setBusca] = useState('')
   const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
+  const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
 
   // Acceso
   useEffect(() => {
@@ -80,6 +81,13 @@ export default function LiquidacionesPage() {
     const tmap = {}
     for (const t of rTransf.data || []) tmap[t.idprop] = n0(t.transferido)
     setTransf(tmap)
+    // "Cobra dueño": propietario cuyos contratos activos son TODOS quien_cobra='DUEÑO' (no se le transfiere)
+    const { data: qc } = await supabase.from('datos_arriendos').select('idprop, quien_cobra').in('estado', ['S', 'SQ', 'P'])
+    const porProp = {}
+    for (const r of qc || []) { const k = r.idprop; (porProp[k] = porProp[k] || []).push(String(r.quien_cobra || '').trim().toUpperCase()) }
+    const cd = new Set()
+    for (const [k, arr] of Object.entries(porProp)) { if (arr.length && arr.every(v => v === 'DUEÑO')) cd.add(k) }
+    setCobraDueno(cd)
     setUltimaAct(new Date())
     setCargando(false)
   }
@@ -156,13 +164,17 @@ export default function LiquidacionesPage() {
   const q = norm(busca)
   const lista = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
 
-  // Totales del mes
-  const totMes = lista.reduce((a, p) => ({
-    transferir: a.transferir + n0(p.total_transferir),
-    transferido: a.transferido + n0(transf[p.idprop]),
-    comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
-    falta: a.falta + n0(p.total_falta),
-  }), { transferir: 0, transferido: 0, comision: 0, falta: 0 })
+  // Totales del mes (los "cobra dueño" NO cuentan: no se les transfiere)
+  const totMes = lista.reduce((a, p) => {
+    if (cobraDueno.has(p.idprop)) return a
+    return {
+      transferir: a.transferir + n0(p.total_transferir),
+      transferido: a.transferido + n0(transf[p.idprop]),
+      comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
+      falta: a.falta + n0(p.total_falta),
+    }
+  }, { transferir: 0, transferido: 0, comision: 0, falta: 0 })
+  const nCobraDueno = lista.filter(p => cobraDueno.has(p.idprop)).length
   const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
 
   const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
@@ -219,7 +231,7 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
-          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length}</div></div>
+          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
         </div>
 
         {/* Títulos de columnas (parte de la cabecera fija) */}
@@ -255,26 +267,31 @@ export default function LiquidacionesPage() {
               const det = detObj ? detObj.inmuebles : []
               const pie = detObj ? detObj.pie : []
               const sumaDesc = detObj ? detObj.sumaDesc : {}
+              const cd = cobraDueno.has(p.idprop)
+              const pagadoOk = !cd && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
               const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr 0.75fr'
               return (
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
                   <div onClick={() => toggle(p.idprop)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : '#fff', fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, color: '#1a1a2e' }}>
-                      <span style={{ color: '#9ca3af', marginRight: 6 }}>{abierto ? '▼' : '▶'}</span>
-                      {p.propietario}
-                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}> · {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
+                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
+                    <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <span style={{ color: '#9ca3af' }}>{abierto ? '▼' : '▶'}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.propietario}</span>
+                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12, flexShrink: 0 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
+                      {cd && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280' }}>cobra dueño</span>}
+                      {pagadoOk && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534' }}>✓ transferido</span>}
                     </div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_recibido)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_comision) === 0 ? '—' : fmtPesos(p.total_comision)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_iva) === 0 ? '—' : fmtPesos(p.total_iva)}</div>
                     <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontWeight: 700 }}>{fmtPesos(p.total_transferir)}</div>
+                    <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(p.total_transferir)}</div>
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
                     <div style={{ textAlign: 'center' }}>
-                      {alertas.length > 0
+                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : alertas.length > 0
                         ? <span title={alertas.map(a => a.txt).join(' · ')} style={{ color: '#dc2626' }}>⚠</span>
                         : <span style={{ color: '#1D9E75' }}>✓</span>}
                     </div>
