@@ -375,7 +375,7 @@ export default function CartasPage() {
       <TopNav />
       <div style={{ maxWidth: 1900, margin: '0 auto', padding: 20, fontFamily: '"DM Sans", sans-serif', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' }}>
 
-        <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6, padding: '10px 0', borderBottom: '1px solid #ECEAE3', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ position: 'sticky', top: 52, zIndex: 20, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6, padding: '10px 0', borderBottom: '1px solid #ECEAE3', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <button onClick={() => router.push('/procesos/liquidaciones')}
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>
             ← TRANSFER
