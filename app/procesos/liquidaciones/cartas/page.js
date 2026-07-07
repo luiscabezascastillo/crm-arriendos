@@ -440,6 +440,12 @@ export default function CartasPage() {
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer' }}>
             ✉ EMAILS
           </button>
+          {puedeComentarLiq && (
+            <button onClick={abrirComentarios}
+              style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#075985', cursor: 'pointer' }}>
+              💬 Comentarios
+            </button>
+          )}
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>CARTAS · revisión de liquidación</h1>
         </div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>
@@ -460,12 +466,6 @@ export default function CartasPage() {
             <button onClick={abrirCargaCuentas} disabled={cargaLoading}
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C4B5FD', background: '#F5F3FF', color: '#5B21B6', cursor: 'pointer' }}>
               {cargaLoading ? 'Preparando…' : '📥 Cargar cargos del mes a Cuentas'}
-            </button>
-          )}
-          {puedeComentarLiq && (
-            <button onClick={abrirComentarios}
-              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#075985', cursor: 'pointer' }}>
-              💬 Comentarios
             </button>
           )}
         </div>
@@ -561,15 +561,15 @@ export default function CartasPage() {
                           <span style={{ fontSize: 12, color: '#92400E' }}>⚠ Ajuste manual de transferencia · {x.override.motivo || 'sin motivo'}{x.override.creado_por ? ` (${x.override.creado_por})` : ''}</span>
                         </div>
                       )
-                      // 3) Comentario del mes (comentarios_liquidacion)
-                      if (x.nota) subfilas.push(
-                        <div key={x.idadmon + i + 'co'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
-                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
-                          <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
-                          <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
-                        </div>
-                      )
                     }
+                    // 3) Comentario del mes (comentarios_liquidacion) — se muestra también en líneas P (deptos vacíos)
+                    if (x.nota) subfilas.push(
+                      <div key={x.idadmon + i + 'co'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
+                        <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                        <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
+                        <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
+                      </div>
+                    )
                     return [filaInmueble, ...subfilas]
                   })}
                   {/* TOTALES */}
