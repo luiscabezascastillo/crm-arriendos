@@ -59,6 +59,10 @@ export default function LiquidacionesPage() {
   const [busca, setBusca] = useState('')
   const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
   const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
+  const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
+  const [valSaving, setValSaving] = useState(null)          // idprop guardándose
+  const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const nombreCorto = (mail) => { const p = String(mail || '').split('@')[0].split('.')[0]; return p ? p.charAt(0).toUpperCase() + p.slice(1) : '' }
 
   // Acceso
   useEffect(() => {
@@ -92,6 +96,14 @@ export default function LiquidacionesPage() {
       if (hayDueno && !hayFCR) cd.add(k)   // cobra el dueño si hay DUEÑO y ningún contrato FCR (ignora vacíos)
     }
     setCobraDueno(cd)
+    // Validaciones de transferencia del mes (por idprop)
+    try {
+      const rv = await fetch(`/api/transfer/validar?mes=${m}`, { cache: 'no-store' })
+      const jv = await rv.json()
+      const vmap = {}
+      for (const r of (jv.rows || [])) vmap[r.idprop] = r
+      setValidaciones(vmap)
+    } catch { setValidaciones({}) }
     setUltimaAct(new Date())
     setCargando(false)
   }
@@ -153,6 +165,24 @@ export default function LiquidacionesPage() {
   }
 
   function cambiarMes(m) { setMes(m); cargarMes(m) }
+
+  async function toggleValidar(idprop, ev) {
+    if (ev) ev.stopPropagation()
+    if (!puedeValidar) return
+    const actual = validaciones[idprop]
+    const nuevo = !(actual && actual.validado)
+    setValSaving(idprop)
+    try {
+      const res = await fetch('/api/transfer/validar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idprop, mes, validado: nuevo }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error')
+      setValidaciones(prev => ({ ...prev, [idprop]: { idprop, validado: j.validado, validado_por: j.validado_por, validado_at: j.validado_at } }))
+    } catch (err) { alert(err.message) }
+    setValSaving(null)
+  }
 
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
@@ -240,7 +270,7 @@ export default function LiquidacionesPage() {
 
         {/* Títulos de columnas (parte de la cabecera fija) */}
         {!cargando && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
             <div>Propietario</div>
             <div style={{ textAlign: 'right' }}>A cobrar</div>
             <div style={{ textAlign: 'right' }}>Recibido</div>
@@ -249,6 +279,7 @@ export default function LiquidacionesPage() {
             <div style={{ textAlign: 'right' }}>Descuentos</div>
             <div style={{ textAlign: 'right' }}>A transferir</div>
             <div style={{ textAlign: 'right' }}>Transferido</div>
+            <div style={{ textAlign: 'center' }}>Validado</div>
             <div style={{ textAlign: 'center' }}>Estado</div>
           </div>
         )}
@@ -278,7 +309,7 @@ export default function LiquidacionesPage() {
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
                   <div onClick={() => toggle(p.idprop)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
+                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
                     <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                       <span style={{ color: '#9ca3af' }}>{abierto ? '▼' : '▶'}</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.propietario}</span>
@@ -293,6 +324,21 @@ export default function LiquidacionesPage() {
                     <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
                     <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(p.total_transferir)}</div>
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
+                    <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : (validaciones[p.idprop] && validaciones[p.idprop].validado)
+                          ? <span onClick={puedeValidar ? (e => toggleValidar(p.idprop, e)) : undefined}
+                              title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}${puedeValidar ? ' (clic para quitar)' : ''}`}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', cursor: puedeValidar ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+                              ✓ {nombreCorto(validaciones[p.idprop].validado_por)}
+                            </span>
+                          : puedeValidar
+                            ? <button onClick={e => toggleValidar(p.idprop, e)} disabled={valSaving === p.idprop}
+                                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                {valSaving === p.idprop ? '…' : 'Validar'}
+                              </button>
+                            : <span style={{ fontSize: 11, color: '#9CA3AF' }}>Pendiente</span>}
+                    </div>
                     <div style={{ textAlign: 'center' }}>
                       {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
                         : alertas.length > 0
