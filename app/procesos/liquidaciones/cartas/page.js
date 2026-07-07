@@ -82,6 +82,7 @@ export default function CartasPage() {
   const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)   // carga a Cuentas: solo Direccion
   const OVERRIDE_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
   const puedeOverride = rol === 'admin' || OVERRIDE_EMAILS.includes(email)  // ajuste manual de transferencia: solo Direccion
+  const puedeComentarLiq = rol === 'admin' || DIRECCION_EMAILS.includes(email)  // comentarios de liquidacion: Direccion + Karina
 
   const [accesoOk, setAccesoOk] = useState(null)
   const [mes, setMes] = useState(mesEnCurso())
@@ -103,6 +104,16 @@ export default function CartasPage() {
   const [ovrX, setOvrX] = useState('')
   const [ovrMotivo, setOvrMotivo] = useState('')
   const [ovrSaving, setOvrSaving] = useState(false)
+  // Gestor de comentarios_liquidacion (Direccion + Karina)
+  const [comOpen, setComOpen] = useState(false)
+  const [comIdadmon, setComIdadmon] = useState('')
+  const [comRows, setComRows] = useState([])       // comentarios existentes del idadmon+mes
+  const [comInfo, setComInfo] = useState(null)     // datos del contrato (propietario/inmueble/estado)
+  const [comTxt, setComTxt] = useState('')         // texto en edicion/nuevo
+  const [comEditId, setComEditId] = useState(null) // id que se edita, o null = nuevo
+  const [comLoading, setComLoading] = useState(false)
+  const [comSaving, setComSaving] = useState(false)
+  const [comMsg, setComMsg] = useState('')
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -360,6 +371,51 @@ export default function CartasPage() {
     setOvrSaving(false)
   }
 
+  // === Gestor de comentarios_liquidacion (Direccion + Karina) ===
+  function abrirComentarios() {
+    setComOpen(true); setComIdadmon(''); setComRows([]); setComInfo(null)
+    setComTxt(''); setComEditId(null); setComMsg('')
+  }
+  async function cargarComentarios(idadmonArg) {
+    const id = String(idadmonArg ?? comIdadmon).trim().toUpperCase()
+    if (!id) { setComMsg('Escribe un IDADMON.'); return }
+    setComIdadmon(id); setComLoading(true); setComMsg(''); setComTxt(''); setComEditId(null)
+    try {
+      const res = await fetch(`/api/liquidaciones/comentario?idadmon=${encodeURIComponent(id)}&mes=${mes}`, { cache: 'no-store' })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error al cargar')
+      setComRows(j.rows || []); setComInfo(j.info || null)
+      if (!j.info) setComMsg(`No encontré el contrato ${id} (revisa el IDADMON).`)
+    } catch (e) { setComMsg(e.message); setComRows([]); setComInfo(null) }
+    setComLoading(false)
+  }
+  function editarComentario(row) {
+    setComEditId(row.id); setComTxt(row.comentario || ''); setComMsg('')
+  }
+  function nuevoComentario() {
+    setComEditId(null); setComTxt(''); setComMsg('')
+  }
+  async function guardarComentario() {
+    const texto = String(comTxt || '').trim()
+    if (!comInfo) { setComMsg('Primero carga un IDADMON válido.'); return }
+    if (!texto) { setComMsg('El comentario no puede estar vacío.'); return }
+    setComSaving(true); setComMsg('')
+    try {
+      const body = comEditId != null
+        ? { editar: true, id: comEditId, comentario: texto }
+        : { idadmon: comIdadmon, mes, comentario: texto }
+      const res = await fetch('/api/liquidaciones/comentario', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error al guardar')
+      setComTxt(''); setComEditId(null)
+      await cargarComentarios(comIdadmon)   // refresca la lista
+      setComMsg('Guardado. Recuerda recargar CARTAS para verlo en la liquidación.')
+    } catch (e) { setComMsg(e.message) }
+    setComSaving(false)
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -404,6 +460,12 @@ export default function CartasPage() {
             <button onClick={abrirCargaCuentas} disabled={cargaLoading}
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C4B5FD', background: '#F5F3FF', color: '#5B21B6', cursor: 'pointer' }}>
               {cargaLoading ? 'Preparando…' : '📥 Cargar cargos del mes a Cuentas'}
+            </button>
+          )}
+          {puedeComentarLiq && (
+            <button onClick={abrirComentarios}
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#075985', cursor: 'pointer' }}>
+              💬 Comentarios
             </button>
           )}
         </div>
@@ -648,6 +710,82 @@ export default function CartasPage() {
                   <button onClick={guardarOverride} disabled={ovrSaving}
                     style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>{ovrSaving ? 'Guardando…' : 'Guardar ajuste'}</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* === Modal: Gestor de comentarios de liquidación === */}
+        {comOpen && (
+          <div onClick={() => !comSaving && setComOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 12, padding: 22, width: 'min(620px, 94vw)', maxHeight: '88vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>💬 Comentarios de liquidación · {aammToTxt(mes)}</h3>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Salen en la carta al propietario. Dirección y Karina.</div>
+
+              {/* Buscar IDADMON */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <input value={comIdadmon}
+                  onChange={e => setComIdadmon(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter') cargarComentarios() }}
+                  placeholder="IDADMON (p. ej. A00886)" autoFocus
+                  style={{ flex: 1, fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: MONO }} />
+                <button onClick={() => cargarComentarios()} disabled={comLoading}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0EA5E9', color: '#fff', cursor: 'pointer' }}>
+                  {comLoading ? 'Cargando…' : 'Cargar'}
+                </button>
+              </div>
+
+              {comInfo && (
+                <div style={{ fontSize: 12.5, color: '#374151', background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+                  <b>{comIdadmon}</b> · {comInfo.propietario || '—'} · {comInfo.inmueble || '—'} · estado {comInfo.estado || '—'}
+                </div>
+              )}
+
+              {/* Comentarios existentes */}
+              {comInfo && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>Comentarios existentes de {aammToTxt(mes)}:</div>
+                  {comRows.length === 0
+                    ? <div style={{ fontSize: 12.5, color: '#9CA3AF' }}>Ninguno todavía para este IDADMON y mes.</div>
+                    : comRows.map(r => (
+                      <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', border: '1px solid #EEF2F7', borderRadius: 8, marginBottom: 6, background: comEditId === r.id ? '#EFF6FF' : '#fff' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{r.comentario}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>{r.persona || '—'}{r.fecha ? ' · ' + r.fecha : ''}</div>
+                        </div>
+                        <button onClick={() => editarComentario(r)}
+                          style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', color: '#374151', cursor: 'pointer' }}>✎ editar</button>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Editor (nuevo o edición) */}
+              {comInfo && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    {comEditId != null ? 'Editando comentario existente' : 'Nuevo comentario'}
+                    {comEditId != null && <a onClick={nuevoComentario} style={{ marginLeft: 10, fontSize: 12, color: '#0EA5E9', cursor: 'pointer', textDecoration: 'underline' }}>+ escribir uno nuevo</a>}
+                  </div>
+                  <textarea value={comTxt} onChange={e => setComTxt(e.target.value)} rows={3}
+                    placeholder="Escribe el comentario que verá el propietario en su carta…"
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
+                </div>
+              )}
+
+              {comMsg && <div style={{ fontSize: 12.5, color: comMsg.startsWith('Guardado') ? '#166534' : '#B91C1C', marginTop: 8 }}>{comMsg}</div>}
+
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button onClick={() => setComOpen(false)} disabled={comSaving}
+                  style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', color: '#374151', cursor: 'pointer' }}>Cerrar</button>
+                {comInfo && (
+                  <button onClick={guardarComentario} disabled={comSaving}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#0EA5E9', color: '#fff', cursor: 'pointer' }}>
+                    {comSaving ? 'Guardando…' : (comEditId != null ? 'Guardar cambios' : 'Guardar nuevo')}
+                  </button>
+                )}
               </div>
             </div>
           </div>
