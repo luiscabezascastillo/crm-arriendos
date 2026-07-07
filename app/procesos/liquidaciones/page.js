@@ -58,6 +58,11 @@ export default function LiquidacionesPage() {
   const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
   const [busca, setBusca] = useState('')
   const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
+  const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
+  const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
+  const [valSaving, setValSaving] = useState(null)          // idprop guardándose
+  const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const nombreCorto = (mail) => { const p = String(mail || '').split('@')[0].split('.')[0]; return p ? p.charAt(0).toUpperCase() + p.slice(1) : '' }
 
   // Acceso
   useEffect(() => {
@@ -80,6 +85,25 @@ export default function LiquidacionesPage() {
     const tmap = {}
     for (const t of rTransf.data || []) tmap[t.idprop] = n0(t.transferido)
     setTransf(tmap)
+    // "Cobra dueño": propietario cuyos contratos activos son TODOS quien_cobra='DUEÑO' (no se le transfiere)
+    const { data: qc } = await supabase.from('datos_arriendos').select('idprop, quien_cobra').in('estado', ['S', 'SQ', 'P'])
+    const porProp = {}
+    for (const r of qc || []) { const k = r.idprop; (porProp[k] = porProp[k] || []).push(String(r.quien_cobra || '').trim().toUpperCase()) }
+    const cd = new Set()
+    for (const [k, arr] of Object.entries(porProp)) {
+      const hayDueno = arr.some(v => v === 'DUEÑO')
+      const hayFCR = arr.some(v => v === 'FCR')
+      if (hayDueno && !hayFCR) cd.add(k)   // cobra el dueño si hay DUEÑO y ningún contrato FCR (ignora vacíos)
+    }
+    setCobraDueno(cd)
+    // Validaciones de transferencia del mes (por idprop)
+    try {
+      const rv = await fetch(`/api/transfer/validar?mes=${m}`, { cache: 'no-store' })
+      const jv = await rv.json()
+      const vmap = {}
+      for (const r of (jv.rows || [])) vmap[r.idprop] = r
+      setValidaciones(vmap)
+    } catch { setValidaciones({}) }
     setUltimaAct(new Date())
     setCargando(false)
   }
@@ -142,6 +166,24 @@ export default function LiquidacionesPage() {
 
   function cambiarMes(m) { setMes(m); cargarMes(m) }
 
+  async function toggleValidar(idprop, ev) {
+    if (ev) ev.stopPropagation()
+    if (!puedeValidar) return
+    const actual = validaciones[idprop]
+    const nuevo = !(actual && actual.validado)
+    setValSaving(idprop)
+    try {
+      const res = await fetch('/api/transfer/validar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idprop, mes, validado: nuevo }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error')
+      setValidaciones(prev => ({ ...prev, [idprop]: { idprop, validado: j.validado, validado_por: j.validado_por, validado_at: j.validado_at } }))
+    } catch (err) { alert(err.message) }
+    setValSaving(null)
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -156,13 +198,17 @@ export default function LiquidacionesPage() {
   const q = norm(busca)
   const lista = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
 
-  // Totales del mes
-  const totMes = lista.reduce((a, p) => ({
-    transferir: a.transferir + n0(p.total_transferir),
-    transferido: a.transferido + n0(transf[p.idprop]),
-    comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
-    falta: a.falta + n0(p.total_falta),
-  }), { transferir: 0, transferido: 0, comision: 0, falta: 0 })
+  // Totales del mes (los "cobra dueño" NO cuentan: no se les transfiere)
+  const totMes = lista.reduce((a, p) => {
+    if (cobraDueno.has(p.idprop)) return a
+    return {
+      transferir: a.transferir + n0(p.total_transferir),
+      transferido: a.transferido + n0(transf[p.idprop]),
+      comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
+      falta: a.falta + n0(p.total_falta),
+    }
+  }, { transferir: 0, transferido: 0, comision: 0, falta: 0 })
+  const nCobraDueno = lista.filter(p => cobraDueno.has(p.idprop)).length
   const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
 
   const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
@@ -219,12 +265,12 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
-          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length}</div></div>
+          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
         </div>
 
         {/* Títulos de columnas (parte de la cabecera fija) */}
         {!cargando && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
             <div>Propietario</div>
             <div style={{ textAlign: 'right' }}>A cobrar</div>
             <div style={{ textAlign: 'right' }}>Recibido</div>
@@ -233,6 +279,7 @@ export default function LiquidacionesPage() {
             <div style={{ textAlign: 'right' }}>Descuentos</div>
             <div style={{ textAlign: 'right' }}>A transferir</div>
             <div style={{ textAlign: 'right' }}>Transferido</div>
+            <div style={{ textAlign: 'center' }}>Validado</div>
             <div style={{ textAlign: 'center' }}>Estado</div>
           </div>
         )}
@@ -255,26 +302,46 @@ export default function LiquidacionesPage() {
               const det = detObj ? detObj.inmuebles : []
               const pie = detObj ? detObj.pie : []
               const sumaDesc = detObj ? detObj.sumaDesc : {}
+              const cd = cobraDueno.has(p.idprop)
+              const pagadoOk = !cd && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
               const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr 0.75fr'
               return (
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
                   {/* Fila propietario */}
                   <div onClick={() => toggle(p.idprop)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : '#fff', fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, color: '#1a1a2e' }}>
-                      <span style={{ color: '#9ca3af', marginRight: 6 }}>{abierto ? '▼' : '▶'}</span>
-                      {p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario}
-                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}> · {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
+                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
+                    <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#9ca3af' }}>{abierto ? '▼' : '▶'}</span>
+                      <span>{p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario}</span>
+                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
+                      {cd && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280', whiteSpace: 'nowrap' }}>cobra dueño</span>}
+                      {pagadoOk && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>✓ transferido</span>}
                     </div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_recibido)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_comision) === 0 ? '—' : fmtPesos(p.total_comision)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_iva) === 0 ? '—' : fmtPesos(p.total_iva)}</div>
                     <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontWeight: 700 }}>{fmtPesos(p.total_transferir)}</div>
+                    <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(p.total_transferir)}</div>
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
+                    <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : (validaciones[p.idprop] && validaciones[p.idprop].validado)
+                          ? <span onClick={puedeValidar ? (e => toggleValidar(p.idprop, e)) : undefined}
+                              title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}${puedeValidar ? ' (clic para quitar)' : ''}`}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', cursor: puedeValidar ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+                              ✓ {nombreCorto(validaciones[p.idprop].validado_por)}
+                            </span>
+                          : puedeValidar
+                            ? <button onClick={e => toggleValidar(p.idprop, e)} disabled={valSaving === p.idprop}
+                                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                {valSaving === p.idprop ? '…' : 'Validar'}
+                              </button>
+                            : <span style={{ fontSize: 11, color: '#9CA3AF' }}>Pendiente</span>}
+                    </div>
                     <div style={{ textAlign: 'center' }}>
-                      {alertas.length > 0
+                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : alertas.length > 0
                         ? <span title={alertas.map(a => a.txt).join(' · ')} style={{ color: '#dc2626' }}>⚠</span>
                         : <span style={{ color: '#1D9E75' }}>✓</span>}
                     </div>
