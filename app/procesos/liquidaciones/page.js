@@ -310,12 +310,12 @@ export default function LiquidacionesPage() {
                   {/* Fila propietario */}
                   <div onClick={() => toggle(p.idprop)}
                     style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
                       <span style={{ color: '#9ca3af' }}>{abierto ? '▼' : '▶'}</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.propietario}</span>
-                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12, flexShrink: 0 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
-                      {cd && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280' }}>cobra dueño</span>}
-                      {pagadoOk && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534' }}>✓ transferido</span>}
+                      <span>{p.propietario}</span>
+                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
+                      {cd && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280', whiteSpace: 'nowrap' }}>cobra dueño</span>}
+                      {pagadoOk && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>✓ transferido</span>}
                     </div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_recibido)}</div>
