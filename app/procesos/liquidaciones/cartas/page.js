@@ -414,15 +414,17 @@ export default function CartasPage() {
         {!cargando && bloques.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
+          const tieneOvr = (b.inmuebles || []).some(x => x.override)
           return (
-            <div key={b.idprop} style={{ border: '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
+            <div key={b.idprop} style={{ border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: tieneOvr ? '#FEE2E2' : '#E0E7FF', borderBottom: tieneOvr ? '1px solid #FCA5A5' : '1px solid #C7D2FE' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
                     ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
+                  {tieneOvr && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>⚠ AJUSTADA</span>}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
               </div>
