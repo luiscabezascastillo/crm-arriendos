@@ -92,6 +92,11 @@ export default function FaltanPage() {
         .in('idadmon', ids)
       if (e2) { setError(e2.message); setCargando(false); return }
 
+      // quien_cobra por IDADMON: los que cobra el DUEÑO no se cuentan como deuda de FCR
+      const { data: arr } = await supabase.from('datos_arriendos').select('idadmon, quien_cobra').in('idadmon', ids)
+      const cobraMap = {}
+      for (const a of arr || []) cobraMap[a.idadmon] = String(a.quien_cobra || '').trim().toUpperCase()
+
       // Por IDADMON, quedarse con la fila del aamm más reciente (saldo vigente)
       const vig = {}
       for (const s of serv || []) {
@@ -114,8 +119,9 @@ export default function FaltanPage() {
           idadmon: g.idadmon, propietario: g.propietario, inmueble: g.inmueble,
           falta: g.falta, base: g.base, recibido: g.recibido,
           ggcc: s.ggcc, luz: s.luz, agua: s.agua, gas: s.gas, servTotal, servAamm: s.aamm,
+          cobraDueno: cobraMap[g.idadmon] === 'DUEÑO',   // paga directo al dueño (no lo controla FCR)
         }
-      }).sort((a, b) => b.falta - a.falta)   // por deuda de arriendo desc
+      }).sort((a, b) => (Number(a.cobraDueno) - Number(b.cobraDueno)) || (b.falta - a.falta))   // FCR primero (por deuda desc), dueño al final
 
       setFilas(out)
 
@@ -161,8 +167,10 @@ export default function FaltanPage() {
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
-  const totFalta = filas.reduce((s, f) => s + f.falta, 0)
-  const totServ = filas.reduce((s, f) => s + f.servTotal, 0)
+  const filasFcr = filas.filter(f => !f.cobraDueno)
+  const filasDueno = filas.filter(f => f.cobraDueno)
+  const totFalta = filasFcr.reduce((s, f) => s + f.falta, 0)
+  const totServ = filasFcr.reduce((s, f) => s + f.servTotal, 0)
 
   // celda de servicio con color de riesgo si supera el umbral
   const celdaServ = (valor, umbral) => {
@@ -217,7 +225,7 @@ export default function FaltanPage() {
 
         {/* KPIs */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={metric}><div style={metricLbl}>En falta</div><div style={metricVal}>{filas.length}</div></div>
+          <div style={metric}><div style={metricLbl}>En falta</div><div style={metricVal}>{filasFcr.length}{filasDueno.length > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{filasDueno.length} cobra dueño)</span>}</div></div>
           <div style={metric}><div style={metricLbl}>Falta de arriendo</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totFalta)}</div></div>
           <div style={metric}><div style={metricLbl}>Deuda servicios (vigente)</div><div style={metricVal}>{fmtPesos(totServ)}</div></div>
         </div>
@@ -245,12 +253,15 @@ export default function FaltanPage() {
               {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
 
               {filas.map((f, i) => (
-                <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: '#fff' }}>
-                  <div style={{ fontWeight: 600 }}>{f.idadmon}</div>
-                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.propietario || ''}>{f.propietario || '—'}</div>
-                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
-                  <div style={{ textAlign: 'right' }}>{fmtPesos(f.base)}</div>
-                  <div style={{ textAlign: 'right', fontWeight: 700, color: '#B91C1C' }}>{fmtPesos(f.falta)}</div>
+                <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: f.cobraDueno ? '#F9FAFB' : '#fff' }}>
+                  <div style={{ fontWeight: 600, color: f.cobraDueno ? '#9CA3AF' : undefined }}>{f.idadmon}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, color: f.cobraDueno ? '#9CA3AF' : undefined }} title={f.propietario || ''}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.propietario || '—'}</span>
+                    {f.cobraDueno && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280' }}>cobra dueño</span>}
+                  </div>
+                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: f.cobraDueno ? '#9CA3AF' : '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
+                  <div style={{ textAlign: 'right', color: f.cobraDueno ? '#9CA3AF' : undefined }}>{fmtPesos(f.base)}</div>
+                  <div style={{ textAlign: 'right', fontWeight: 700, color: f.cobraDueno ? '#9CA3AF' : '#B91C1C' }}>{fmtPesos(f.falta)}</div>
                   {celdaServ(f.ggcc, UMBRAL.ggcc)}
                   {celdaServ(f.luz, UMBRAL.luz)}
                   {celdaServ(f.agua, UMBRAL.agua)}
