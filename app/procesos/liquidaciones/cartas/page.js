@@ -483,6 +483,10 @@ export default function CartasPage() {
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer' }}>
             ✉ EMAILS
           </button>
+          <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
+            style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
+            ⚠ FALTAN
+          </button>
           {puedeComentarLiq && (
             <button onClick={abrirComentarios}
               style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#075985', cursor: 'pointer' }}>
