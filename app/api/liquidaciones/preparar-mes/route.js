@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// VERSION: v7  ·  2026-07-08  ·  fix comuna definitivo (NO se congela; se cruza en la DJ). ROL sí se congela
-// Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v7"
+// VERSION: v8  ·  2026-07-08  ·  facturar por defecto NO (seguridad: hay que activar SI a mano)
+// Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v8"
 // ═══════════════════════════════════════════════════════════════
 // app/api/liquidaciones/preparar-mes/route.js
 // Prepara/regenera el congelado de un mes en liquidacion_idadmon (lineas) y
@@ -287,7 +287,7 @@ export async function POST(req) {
     if (est && est.existe) {
       cabUpdate.push({ idprop, patch: campos })
     } else {
-      cabInsert.push({ mes, idprop, ...campos })
+      cabInsert.push({ mes, idprop, ...campos, facturar: 'NO' })
     }
   }
 

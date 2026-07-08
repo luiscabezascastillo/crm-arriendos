@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v4 · 2026-07-08 · + sticky (controles+cabecera) + autofiltro Excel en IdAdmon/Propietario/Inmueble
+// VERSION: v5 · 2026-07-08 · facturar por defecto NO + sticky + autofiltro Excel
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
 import { useState, useEffect } from 'react'
@@ -299,7 +299,7 @@ export default function FacturasPage() {
               const nuevoProp = !prev || prev.idprop !== f.idprop
               const p = propMap[f.idprop] || {}
               const tc = tipoColor(p.tipo_factura)
-              const fact = p.facturar || 'SI'
+              const fact = p.facturar || 'NO'
               const fc = factColor(fact)
               const cerrado = !!p.cerrado
               return (
