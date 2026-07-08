@@ -1,5 +1,4 @@
 'use client'
-// VERSION: v2 · 2026-07-08 · sticky fila titulos top:52 (debajo del TopNav, antes chocaba en top:0)
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -238,8 +237,9 @@ export default function FaltanPage() {
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
 
         {cargando ? <div style={{ color: '#888', padding: 20 }}>Calculando…</div> : (
-          <>
-            {/* Fila de títulos: sticky de verdad (fuera del contenedor con overflow) */}
+          <div>
+            {/* Fila de títulos: sticky top:52 (bajo el TopNav). Debe compartir
+                contenedor con las filas de datos para que el sticky funcione. */}
             <div style={{ position: 'sticky', top: 52, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0' }}>
               <div style={th}>IDADMON</div>
               <div style={th}>Propietario</div>
@@ -254,7 +254,7 @@ export default function FaltanPage() {
               <div style={th}>Coment. interno</div>
             </div>
 
-            <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+            <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px' }}>
               {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
 
               {filas.map((f, i) => (
@@ -296,7 +296,7 @@ export default function FaltanPage() {
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
 
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 10 }}>
