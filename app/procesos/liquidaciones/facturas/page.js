@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v8 · 2026-07-08 · fix doble descarga (retardo + botones de descarga manual del resumen)
+// VERSION: v9 · 2026-07-08 · nombre "Pxxx — Nombre" + bloque resumen por propietario (validado/enviada/transferir/dif/observaciones)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
 import { useState, useEffect } from 'react'
@@ -141,10 +141,10 @@ export default function FacturasPage() {
       // Lee de las tablas CONGELADAS (no en vivo). Requiere haber "Preparado mes" antes.
       const [rLin, rProp] = await Promise.all([
         supabase.from('liquidacion_idadmon')
-          .select('idadmon, idprop, propietario, inmueble, a_cobrar, comision, iva, estado')
+          .select('idadmon, idprop, propietario, inmueble, a_cobrar, comision, iva, estado, observaciones')
           .eq('mes', m),
         supabase.from('liquidacion_idprop')
-          .select('idprop, tipo_factura, facturar, fecha_emision, comentario, cerrado, total_comision')
+          .select('idprop, nombre, tipo_factura, facturar, fecha_emision, comentario, cerrado, total_comision, total_a_transferir, transferido, transfer_validado, enviada_at')
           .eq('mes', m),
       ])
       if (rLin.error) { setError('lineas: ' + rLin.error.message); setCargando(false); return }
@@ -152,6 +152,14 @@ export default function FacturasPage() {
 
       const pm = {}
       for (const p of rProp.data || []) pm[p.idprop] = p
+
+      // Observaciones de Alberto: vienen por línea en liquidacion_idadmon.
+      // Se recopilan por propietario (la primera no vacía de cada idprop).
+      for (const l of rLin.data || []) {
+        if (l.observaciones && pm[l.idprop] && !pm[l.idprop]._obs) {
+          pm[l.idprop] = { ...pm[l.idprop], _obs: l.observaciones }
+        }
+      }
 
       // Filtrar: fuera Paola (P001) y fuera estado P (desocupados no se facturan)
       const lin = (rLin.data || [])
@@ -308,16 +316,25 @@ export default function FacturasPage() {
             )}
             {visibles.map((f, i) => {
               const prev = visibles[i - 1]
+              const sig = visibles[i + 1]
               const nuevoProp = !prev || prev.idprop !== f.idprop
+              const ultimaDelProp = !sig || sig.idprop !== f.idprop
               const p = propMap[f.idprop] || {}
               const tc = tipoColor(p.tipo_factura)
               const fact = p.facturar || 'NO'
               const fc = factColor(fact)
               const cerrado = !!p.cerrado
-              return (
+              // datos del bloque de resumen (informativo, para conocer la historia antes de facturar)
+              const aTransf = Number(p.total_a_transferir) || 0
+              const transf = Number(p.transferido) || 0
+              const dif = aTransf - transf
+              const validado = p.transfer_validado || ''
+              const enviada = p.enviada_at
+              const obs = p._obs || ''
+              return ([
                 <tr key={f.idadmon + '_' + i} style={{ borderTop: nuevoProp ? '2px solid #DDD6FE' : '1px solid #F0EEE8', background: nuevoProp ? '#FBFAFF' : '#fff' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1a1a2e' }}>{f.idadmon}</td>
-                  <td style={{ padding: '8px 10px', fontWeight: nuevoProp ? 600 : 400, color: '#1a1a2e', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${f.idprop} — ${f.propietario}`}>{nuevoProp ? f.propietario : ''}</td>
+                  <td style={{ padding: '8px 10px', fontWeight: nuevoProp ? 600 : 400, color: '#1a1a2e', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${f.idprop} — ${f.propietario}`}>{nuevoProp ? `${f.idprop} — ${f.propietario}` : ''}</td>
                   <td style={{ padding: '8px 10px', color: '#444', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.inmueble}>{f.inmueble}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{fmtPesos(f.comision)}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', color: '#666' }}>{fmtPesos(f.iva)}</td>
@@ -355,8 +372,25 @@ export default function FacturasPage() {
                       )
                     ) : ''}
                   </td>
-                </tr>
-              )
+                </tr>,
+                /* Bloque de resumen informativo (solo en la última fila del propietario):
+                   estado validación + enviada + A transferir / Transferido / Diferencia + Observaciones de Alberto.
+                   Es solo para conocer la historia antes de decidir facturar. */
+                ultimaDelProp ? (
+                  <tr key={f.idadmon + '_' + i + '_resumen'} style={{ background: '#FBFAFF' }}>
+                    <td colSpan={9} style={{ padding: '6px 14px 12px', borderBottom: '2px solid #DDD6FE' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+                        {validado && <span style={{ fontWeight: 700, color: '#166534' }}>✓ {validado}</span>}
+                        {enviada && <span style={{ fontWeight: 600, color: '#065F46', background: '#ECFDF5', padding: '2px 8px', borderRadius: 10 }}>✉ Enviada · {new Date(enviada).toLocaleString('es-CL')}</span>}
+                        <span style={{ color: '#6B7280' }}>A transferir: <b style={{ color: '#1a1a2e' }}>{fmtPesos(aTransf)}</b></span>
+                        <span style={{ color: '#6B7280' }}>Transferido: <b style={{ color: '#1a1a2e' }}>{fmtPesos(transf)}</b></span>
+                        <span style={{ color: '#6B7280' }}>Diferencia: <b style={{ color: dif === 0 ? '#166534' : '#B91C1C' }}>{fmtPesos(dif)}</b></span>
+                        {obs && <span style={{ color: '#6D28D9', fontStyle: 'italic' }}>📝 {obs}</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null
+              ])
             })}
           </tbody>
         </table>
