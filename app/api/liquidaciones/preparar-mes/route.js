@@ -133,9 +133,14 @@ export async function POST(req) {
   const dia1 = primerDiaMes(mes)   // primer dia del mes procesado, para el ajuste
 
   // ── 3) LINEAS: separar INSERT / UPDATE / OMITIR ───────────────────────────
+  // OJO copropiedad: la RPC devuelve 2 filas para un idadmon compartido (una por
+  // idprop). En liquidacion_idadmon el contrato es UNA sola linea (la casa entera):
+  // deduplicamos por idadmon sumando las mitades. El reparto por propietario va a
+  // la cabecera (liquidacion_idprop), que sí lleva 2 filas.
   const lineasInsert = []
   const lineasUpdate = []
   const totalesPorProp = {}
+  const lineaPorIdadmon = {}   // idadmon -> objeto de linea (acumulado)
   let omitidasLineas = 0
 
   for (const r of rows) {
@@ -151,6 +156,7 @@ export async function POST(req) {
     const neto = numOf(r.neto_transferir)
     const recibido = numOf(r.recibido_banco)
 
+    // totales por PROPIETARIO (cada mitad va a su idprop) -> cabecera
     const t = totalesPorProp[r.idprop] || { a_cobrar: 0, recibido: 0, comision: 0, iva: 0, descuentos: 0, neto: 0 }
     t.a_cobrar += a_cobrar; t.recibido += recibido; t.comision += comision
     t.iva += iva; t.descuentos += descuentos; t.neto += neto
@@ -158,6 +164,14 @@ export async function POST(req) {
 
     const est = estadoLineaA[r.idadmon]
     if (est && est.cerrado) { omitidasLineas++; continue }
+
+    // ¿ya vi este idadmon? (copropiedad) -> acumulo los montos en la misma linea
+    if (lineaPorIdadmon[r.idadmon]) {
+      const L = lineaPorIdadmon[r.idadmon]
+      L.a_cobrar += a_cobrar; L.recibido += recibido; L.comision += comision
+      L.iva += iva; L.descuentos += descuentos; L.neto_transferir += neto
+      continue
+    }
 
     const aj = ajusteDelMes(a, dia1)   // {monto, tipo} del ajuste que entra este mes
 
@@ -196,9 +210,13 @@ export async function POST(req) {
     }
 
     if (est && est.existe) {
-      lineasUpdate.push({ idadmon: r.idadmon, patch: campos })
+      const obj = { idadmon: r.idadmon, patch: campos }
+      lineasUpdate.push(obj)
+      lineaPorIdadmon[r.idadmon] = campos           // acumular mitades sobre el patch
     } else {
-      lineasInsert.push({ mes, idadmon: r.idadmon, ...campos, cantidad: null })
+      const obj = { mes, idadmon: r.idadmon, ...campos, cantidad: null }
+      lineasInsert.push(obj)
+      lineaPorIdadmon[r.idadmon] = obj              // acumular mitades sobre el insert
     }
   }
 
