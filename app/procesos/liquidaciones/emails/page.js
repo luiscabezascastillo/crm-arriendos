@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v3 · 2026-07-08 · quitada columna Final de vista + FIX nota no aparecia en estado P (ahora igual que el PDF)
+// VERSION: v5 · 2026-07-08 · sticky top:52 (debajo del TopNav de 52px, antes chocaba en top:0)
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -334,6 +334,9 @@ export default function CartasPage() {
       <TopNav />
       <div style={{ maxWidth: 1900, margin: '0 auto', padding: 20, fontFamily: '"DM Sans", sans-serif', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' }}>
 
+        {/* Zona superior FIJA al hacer scroll: navegación + mes + envío */}
+        <div style={{ position: 'sticky', top: 52, zIndex: 30, background: '#fff', paddingTop: 8, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20, borderBottom: '1px solid #EAE8E1' }}>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
           <button onClick={() => router.push('/procesos/liquidaciones')}
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>
@@ -373,7 +376,7 @@ export default function CartasPage() {
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}
 
         {!cargando && bloques.length > 0 && puedeEnviar && (
-          <div style={{ position: 'sticky', top: 52, zIndex: 30, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Envío de cartas:</span>
             <button onClick={seleccionarTodasEnviables} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
               Seleccionar todas las enviables ({bloques.filter(enviable).length})
@@ -390,6 +393,7 @@ export default function CartasPage() {
             </button>
           </div>
         )}
+        </div>{/* fin zona sticky */}
 
         {!cargando && bloques.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
