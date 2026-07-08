@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v6 · 2026-07-08 · fix solapamiento sticky (thead se pega debajo de la barra, top=barraH medida)
+// VERSION: v7 · 2026-07-08 · solo barra de controles sticky (cabecera tabla NO sticky; evita solapamiento)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
@@ -88,14 +88,6 @@ export default function FacturasPage() {
   const [resumenGen, setResumenGen] = useState(null)
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
-  const barraRef = useRef(null)
-  const [barraH, setBarraH] = useState(0)   // altura de la barra sticky, para desplazar el thead debajo
-  useEffect(() => {
-    function medir() { if (barraRef.current) setBarraH(barraRef.current.offsetHeight) }
-    medir()
-    window.addEventListener('resize', medir)
-    return () => window.removeEventListener('resize', medir)
-  })
 
   // Descargar un CSV como archivo
   function descargarCSV(contenido, nombre) {
@@ -222,7 +214,7 @@ export default function FacturasPage() {
       onClick={() => setFiltroAbierto(null)}>
 
       {/* Zona superior FIJA al hacer scroll: navegación + controles */}
-      <div ref={barraRef} style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F6F2', paddingTop: 8, paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #E8E6DF' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F6F2', paddingTop: 8, paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #E8E6DF' }}>
       {/* Barra navegación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
         <button onClick={() => router.push('/procesos/liquidaciones')} style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>← TRANSFER</button>
@@ -281,21 +273,21 @@ export default function FacturasPage() {
         <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 980 }}>
           <thead>
             <tr style={{ background: '#1a1a2e', color: '#fff', textAlign: 'left' }}>
-              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>
+              <th style={{ padding: '10px 10px', fontWeight: 600 }}>
                 IdAdmon<FiltroExcel col="idadmon" valores={valIdadmon} sel={fCol.idadmon} onChange={s => setFCol(p => ({ ...p, idadmon: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
               </th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>
+              <th style={{ padding: '10px 10px', fontWeight: 600 }}>
                 Propietario<FiltroExcel col="propietario" valores={valProp} sel={fCol.propietario} onChange={s => setFCol(p => ({ ...p, propietario: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
               </th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>
+              <th style={{ padding: '10px 10px', fontWeight: 600 }}>
                 Inmueble<FiltroExcel col="inmueble" valores={valInmueble} sel={fCol.inmueble} onChange={s => setFCol(p => ({ ...p, inmueble: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
               </th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right', position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>Admon</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right', position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>IVA</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>Tipo</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>Facturar</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>Fecha emisión</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: barraH, background: '#1a1a2e', zIndex: 10 }}>Comentario</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right' }}>Admon</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right' }}>IVA</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Tipo</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Facturar</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Fecha emisión</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600 }}>Comentario</th>
             </tr>
           </thead>
           <tbody>
