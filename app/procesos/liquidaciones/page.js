@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-08 · boton renombrado a 'Recalcular fuentes'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -239,7 +240,7 @@ export default function LiquidacionesPage() {
           <button onClick={() => cargarMes(mes)} disabled={cargando}
             title="Vuelve a leer bi, descuentos y comentarios y recalcula todo"
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-            {cargando ? 'Calculando…' : '🔄 Recalcular (bi · descuentos · comentarios)'}
+            {cargando ? 'Calculando…' : '🔄 Recalcular fuentes'}
           </button>
           <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
