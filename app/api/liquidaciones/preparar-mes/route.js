@@ -1,3 +1,7 @@
+// ═══════════════════════════════════════════════════════════════
+// VERSION: v5  ·  2026-07-08  ·  fixes: sin .in truncado + ROL multiple + fecha ajuste + diagnostico
+// Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v5"
+// ═══════════════════════════════════════════════════════════════
 // app/api/liquidaciones/preparar-mes/route.js
 // Prepara/regenera el congelado de un mes en liquidacion_idadmon (lineas) y
 // liquidacion_idprop (cabecera por propietario), desde la RPC calcular_liquidacion.
@@ -58,7 +62,10 @@ function primerDiaMes(mes) {
 function ajusteDelMes(a, dia1) {
   for (let i = 1; i <= 6; i++) {
     const f = a['fecha_reajuste' + i]
-    if (f && String(f).slice(0, 10) === dia1) {
+    if (!f) continue
+    // normalizar a 'YYYY-MM-DD' venga como Date, ISO o 'YYYY-MM-DD...'
+    const fs = String(f).slice(0, 10)
+    if (fs === dia1) {
       const monto = Number(a['cantidad_reajuste' + i]) || 0
       return { monto, tipo: monto > 0 ? (a.revision || '') : '' }
     }
@@ -92,28 +99,52 @@ export async function POST(req) {
   const idprops = [...new Set(rows.map(r => r.idprop))]
 
   // ── 2) Auxiliares + estado actual de las tablas destino ────────────────────
+  // NOTA: datos_arriendos, propietarios e inmuebles se traen COMPLETOS (sin .in
+  // con cientos de IDs, que puede truncar la query por longitud de URL). Son
+  // tablas pequeñas; se filtran en memoria. Se sube el limit por si acaso.
   const [rArr, rProps, rInm, rServ, rExistA, rExistP] = await Promise.all([
     sb.from('datos_arriendos')
       .select('idadmon, estado, idprop, propietario, inmueble, idlinmue, comuna, fecha_inicio, termino_actual, arrendatario, rut, unid, cuota, uf_peso_factor, quien_cobra, especial_a, revision, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
-      .in('idadmon', idadmons),
+      .limit(5000),
     sb.from('propietarios')
       .select('idprop, propietario, nombre, tipo_factura')
-      .in('idprop', idprops),
-    sb.from('inmuebles').select('idinmue_combinado, raw_data'),
+      .limit(5000),
+    sb.from('inmuebles').select('idinmue_combinado, raw_data').limit(10000),
     sb.from('ggcc_agua_luz')
       .select('idadmon, aamm, deuda_gastos_comunes, fecha_hecho_ggcc, deuda_vigente_electricidad, fecha_hecho_luz, deuda_vigente_agua, fecha_hecho_agua, deuda_vigente_gas, fecha_hecho_gas')
-      .in('idadmon', idadmons),
+      .limit(20000),
     sb.from('liquidacion_idadmon').select('idadmon, cerrado').eq('mes', mes),
     sb.from('liquidacion_idprop').select('idprop, cerrado').eq('mes', mes),
   ])
 
+  // DIAGNOSTICO: si alguna consulta auxiliar fallo, devolver el error (no seguir en silencio)
+  const errAux = []
+  if (rArr.error) errAux.push('datos_arriendos: ' + rArr.error.message)
+  if (rProps.error) errAux.push('propietarios: ' + rProps.error.message)
+  if (rInm.error) errAux.push('inmuebles: ' + rInm.error.message)
+  if (rServ.error) errAux.push('ggcc_agua_luz: ' + rServ.error.message)
+  if (errAux.length) return Response.json({ error: 'consultas auxiliares', detalle: errAux }, { status: 500 })
+
   const arrDe = {}; for (const d of rArr.data || []) arrDe[d.idadmon] = d
   const propDe = {}; for (const p of rProps.data || []) propDe[p.idprop] = p
 
+  // DIAGNOSTICO temporal: cuantas filas trajo cada tabla auxiliar
+  const _diag = {
+    datos_arriendos: (rArr.data || []).length,
+    propietarios: (rProps.data || []).length,
+    inmuebles: (rInm.data || []).length,
+    ggcc: (rServ.data || []).length,
+    tiene_A00826: !!arrDe['A00826'],
+  }
+
   const rolDe = {}
   for (const im of rInm.data || []) {
-    const r = im.raw_data && (im.raw_data.ROL || im.raw_data.rol)
-    if (r) rolDe[im.idinmue_combinado] = r
+    let r = im.raw_data && (im.raw_data.ROL || im.raw_data.rol)
+    if (r) {
+      // el ROL puede traer varios separados por espacio -> tomar el primero (principal)
+      r = String(r).trim().split(/\s+/)[0]
+      if (r) rolDe[im.idinmue_combinado] = r
+    }
   }
 
   const servDe = {}
@@ -273,6 +304,7 @@ export async function POST(req) {
   return Response.json({
     ok: true,
     mes,
+    _diag,
     lineas: { insert: lineasInsert.length, update: lineasUpdate.length },
     propietarios: { insert: cabInsert.length, update: cabUpdate.length },
     cerradas_omitidas: { lineas: omitidasLineas, propietarios: omitidasProps },
