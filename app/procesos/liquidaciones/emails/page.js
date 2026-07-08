@@ -342,6 +342,10 @@ export default function CartasPage() {
             style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer' }}>
             📄 CARTAS
           </button>
+          <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
+            style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
+            ⚠ FALTAN
+          </button>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>EMAILS · envío de liquidaciones</h1>
         </div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>
