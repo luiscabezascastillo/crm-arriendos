@@ -499,6 +499,10 @@ export default function CartasPage() {
               🔄 Resincronizar
             </button>
           )}
+          <button onClick={() => router.push('/procesos/liquidaciones/facturas')}
+            style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #DDD6FE', background: '#F5F3FF', color: '#6D28D9', cursor: 'pointer' }}>
+            🧾 FACTURAS
+          </button>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>CARTAS · revisión de liquidación</h1>
         </div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>

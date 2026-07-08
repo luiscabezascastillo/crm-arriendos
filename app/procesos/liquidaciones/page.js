@@ -255,6 +255,11 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer', fontFamily: 'inherit' }}>
             ✉ EMAILS
           </button>
+          <button onClick={() => router.push('/procesos/liquidaciones/facturas')}
+            title="FACTURAS · preparación de facturación SimpleFactura"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #DDD6FE', background: '#F5F3FF', color: '#6D28D9', cursor: 'pointer', fontFamily: 'inherit' }}>
+            🧾 FACTURAS
+          </button>
           {ultimaAct && <span style={{ fontSize: 11, color: '#94A3B8' }}>Actualizado {ultimaAct.toLocaleTimeString('es-CL')}</span>}
         </div>
 
