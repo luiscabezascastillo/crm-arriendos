@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v3 · 2026-07-08 · + boton Generar CSV SimpleFactura (2 archivos, marca HECHO)
+// VERSION: v4 · 2026-07-08 · + sticky (controles+cabecera) + autofiltro Excel en IdAdmon/Propietario/Inmueble
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
 import { useState, useEffect } from 'react'
@@ -23,6 +23,49 @@ const tipoColor = t => t === '33' ? { bg: '#EEF2FF', fg: '#3730A3' } : (t === '3
 const FACT_OPCIONES = ['SI', 'NO', 'DESPUES', 'HECHO']
 const factColor = f => f === 'SI' ? { bg: '#DCFCE7', fg: '#166534' } : f === 'HECHO' ? { bg: '#E0E7FF', fg: '#3730A3' } : f === 'DESPUES' ? { bg: '#FEF9C3', fg: '#854D0E' } : { bg: '#FEE2E2', fg: '#991B1B' }
 
+// ── Autofiltro tipo Excel: flechita ▼ que abre desplegable con checkboxes ──
+function FiltroExcel({ col, valores, sel, onChange, abierto, setAbierto }) {
+  const [q, setQ] = useState('')
+  const activo = sel && sel.size > 0 && sel.size < valores.length
+  const vis = q ? valores.filter(v => String(v).toLowerCase().includes(q.toLowerCase())) : valores
+  const todos = !sel || sel.size === 0 || sel.size === valores.length
+  function toggle(v) {
+    const s = new Set(sel && sel.size ? sel : valores)   // si vacío = todos marcados
+    if (s.has(v)) s.delete(v); else s.add(v)
+    onChange(s.size === valores.length ? new Set() : s)  // todos marcados = sin filtro
+  }
+  function marcarTodos(on) { onChange(on ? new Set() : new Set(['__none__'])) }
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <span onClick={e => { e.stopPropagation(); setAbierto(abierto === col ? null : col) }}
+        style={{ cursor: 'pointer', marginLeft: 4, color: activo ? '#A5F3FC' : '#9CA3AF', fontSize: 11, userSelect: 'none' }}
+        title="Filtrar">{activo ? '▼●' : '▼'}</span>
+      {abierto === col && (
+        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 20, left: 0, zIndex: 50, background: '#fff', border: '1px solid #CBD5E1', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', width: 240, color: '#1a1a2e', fontWeight: 400 }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #EEE' }}>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar…" style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB' }} />
+          </div>
+          <div style={{ padding: '4px 8px', borderBottom: '1px solid #EEE', display: 'flex', gap: 10, fontSize: 11 }}>
+            <span onClick={() => marcarTodos(true)} style={{ cursor: 'pointer', color: '#2563EB' }}>Todos</span>
+            <span onClick={() => marcarTodos(false)} style={{ cursor: 'pointer', color: '#2563EB' }}>Ninguno</span>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: 4 }}>
+            {vis.map(v => {
+              const marcado = todos || (sel && sel.has(v))
+              return (
+                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', fontSize: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!marcado} onChange={() => toggle(v)} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v) || '(vacío)'}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </span>
+  )
+}
+
 export default function FacturasPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -43,6 +86,8 @@ export default function FacturasPage() {
   const [limite, setLimite] = useState(10)         // >= limite inmuebles -> parte factura en 2
   const [generando, setGenerando] = useState(false)
   const [resumenGen, setResumenGen] = useState(null)
+  const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
+  const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
 
   // Descargar un CSV como archivo
   function descargarCSV(contenido, nombre) {
@@ -145,7 +190,17 @@ export default function FacturasPage() {
   if (accesoOk === false) return null
 
   const q = buscar.trim().toLowerCase()
-  const visibles = q ? lineas.filter(f => (f.propietario + ' ' + f.inmueble + ' ' + f.idadmon + ' ' + f.idprop).toLowerCase().includes(q)) : lineas
+  const pasaCol = (f) => {
+    if (fCol.idadmon.size && !fCol.idadmon.has(f.idadmon)) return false
+    if (fCol.propietario.size && !fCol.propietario.has(f.propietario || '')) return false
+    if (fCol.inmueble.size && !fCol.inmueble.has(f.inmueble || '')) return false
+    return true
+  }
+  const visibles = (q ? lineas.filter(f => (f.propietario + ' ' + f.inmueble + ' ' + f.idadmon + ' ' + f.idprop).toLowerCase().includes(q)) : lineas).filter(pasaCol)
+
+  // valores únicos para cada filtro (de todas las líneas, ordenados)
+  const uniq = (key) => [...new Set(lineas.map(l => l[key] || ''))].sort((a, b) => String(a).localeCompare(String(b), 'es'))
+  const valIdadmon = uniq('idadmon'), valProp = uniq('propietario'), valInmueble = uniq('inmueble')
 
   // Totales
   const totComision = visibles.reduce((s, f) => s + (Number(f.comision) || 0), 0)
@@ -155,8 +210,11 @@ export default function FacturasPage() {
   const nBoleta = idpropsVis.filter(ip => ['39', '41'].includes(propMap[ip]?.tipo_factura)).length
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+      onClick={() => setFiltroAbierto(null)}>
 
+      {/* Zona superior FIJA al hacer scroll: navegación + controles */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F6F2', paddingTop: 8, paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #E8E6DF' }}>
       {/* Barra navegación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
         <button onClick={() => router.push('/procesos/liquidaciones')} style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>← TRANSFER</button>
@@ -187,6 +245,7 @@ export default function FacturasPage() {
           {generando ? '⏳ Generando…' : '⬇ Generar CSV SimpleFactura'}
         </button>
       </div>
+      </div>{/* fin zona sticky */}
 
       {resumenGen && (
         <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#5B21B6' }}>
@@ -214,15 +273,21 @@ export default function FacturasPage() {
         <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 980 }}>
           <thead>
             <tr style={{ background: '#1a1a2e', color: '#fff', textAlign: 'left' }}>
-              <th style={{ padding: '10px 10px', fontWeight: 600 }}>IdAdmon</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600 }}>Propietario</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600 }}>Inmueble</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right' }}>Admon</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right' }}>IVA</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Tipo</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Facturar</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center' }}>Fecha emisión</th>
-              <th style={{ padding: '10px 10px', fontWeight: 600 }}>Comentario</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>
+                IdAdmon<FiltroExcel col="idadmon" valores={valIdadmon} sel={fCol.idadmon} onChange={s => setFCol(p => ({ ...p, idadmon: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
+              </th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>
+                Propietario<FiltroExcel col="propietario" valores={valProp} sel={fCol.propietario} onChange={s => setFCol(p => ({ ...p, propietario: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
+              </th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>
+                Inmueble<FiltroExcel col="inmueble" valores={valInmueble} sel={fCol.inmueble} onChange={s => setFCol(p => ({ ...p, inmueble: s }))} abierto={filtroAbierto} setAbierto={setFiltroAbierto} />
+              </th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right', position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>Admon</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'right', position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>IVA</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>Tipo</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>Facturar</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>Fecha emisión</th>
+              <th style={{ padding: '10px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1a1a2e', zIndex: 10 }}>Comentario</th>
             </tr>
           </thead>
           <tbody>
