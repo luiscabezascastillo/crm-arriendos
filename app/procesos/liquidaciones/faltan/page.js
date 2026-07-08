@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-08 · sticky fila titulos top:52 (debajo del TopNav, antes chocaba en top:0)
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -239,7 +240,7 @@ export default function FaltanPage() {
         {cargando ? <div style={{ color: '#888', padding: 20 }}>Calculando…</div> : (
           <>
             {/* Fila de títulos: sticky de verdad (fuera del contenedor con overflow) */}
-            <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0' }}>
+            <div style={{ position: 'sticky', top: 52, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0' }}>
               <div style={th}>IDADMON</div>
               <div style={th}>Propietario</div>
               <div style={th}>Inmueble</div>
