@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v7 · 2026-07-08 · solo barra de controles sticky (cabecera tabla NO sticky; evita solapamiento)
+// VERSION: v8 · 2026-07-08 · fix doble descarga (retardo + botones de descarga manual del resumen)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
 import { useState, useEffect } from 'react'
@@ -86,6 +86,7 @@ export default function FacturasPage() {
   const [limite, setLimite] = useState(10)         // >= limite inmuebles -> parte factura en 2
   const [generando, setGenerando] = useState(false)
   const [resumenGen, setResumenGen] = useState(null)
+  const [csvGen, setCsvGen] = useState({ facturas: '', boletas: '' })  // CSV generados, para redescargar
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
 
@@ -109,9 +110,13 @@ export default function FacturasPage() {
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
-      // descargar los dos archivos
+      // guardar los CSV para poder redescargar con botones si el navegador bloquea alguno
+      setCsvGen({ facturas: d.facturas_csv || '', boletas: d.boletas_csv || '' })
+      // descargar los dos, con un pequeño retardo entre ambos (Chrome bloquea descargas dobles simultáneas)
       if (d.facturas_csv) descargarCSV(d.facturas_csv, `facturas_33_${mes}.csv`)
-      if (d.boletas_csv) descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`)
+      if (d.boletas_csv) {
+        setTimeout(() => descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`), 800)
+      }
       setResumenGen(d.resumen)
       // recargar para ver los HECHO actualizados
       cargar(mes)
@@ -254,6 +259,13 @@ export default function FacturasPage() {
           Boletas (39): {resumenGen.boletas?.propietarios || 0} propietarios · {resumenGen.boletas?.docs || 0} docs · {resumenGen.boletas?.lineas || 0} líneas.
           {resumenGen.partidos?.length > 0 && <div style={{ marginTop: 4 }}>Partidos en 2: {resumenGen.partidos.map(x => `${x.propietario} (${x.inmuebles})`).join(', ')}.</div>}
           {resumenGen.aviso && <div>{resumenGen.aviso}</div>}
+          {(csvGen.facturas || csvGen.boletas) && (
+            <div style={{ marginTop: 8, display: 'flex', gap: 10 }}>
+              <span style={{ color: '#6B7280', fontSize: 12 }}>¿No se descargó algún archivo? Descárgalo aquí:</span>
+              {csvGen.facturas && <span onClick={() => descargarCSV(csvGen.facturas, `facturas_33_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ facturas_33</span>}
+              {csvGen.boletas && <span onClick={() => descargarCSV(csvGen.boletas, `boletas_39_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ boletas_39</span>}
+            </div>
+          )}
         </div>
       )}
 
