@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// VERSION: v5  ·  2026-07-08  ·  fixes: sin .in truncado + ROL multiple + fecha ajuste + diagnostico
-// Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v5"
+// VERSION: v7  ·  2026-07-08  ·  fix comuna definitivo (NO se congela; se cruza en la DJ). ROL sí se congela
+// Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v7"
 // ═══════════════════════════════════════════════════════════════
 // app/api/liquidaciones/preparar-mes/route.js
 // Prepara/regenera el congelado de un mes en liquidacion_idadmon (lineas) y
@@ -104,7 +104,7 @@ export async function POST(req) {
   // tablas pequeñas; se filtran en memoria. Se sube el limit por si acaso.
   const [rArr, rProps, rInm, rServ, rExistA, rExistP] = await Promise.all([
     sb.from('datos_arriendos')
-      .select('idadmon, estado, idprop, propietario, inmueble, idlinmue, comuna, fecha_inicio, termino_actual, arrendatario, rut, unid, cuota, uf_peso_factor, quien_cobra, especial_a, revision, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
+      .select('idadmon, estado, idprop, propietario, inmueble, idlinmue, fecha_inicio, termino_actual, arrendatario, rut, unid, cuota, uf_peso_factor, quien_cobra, especial_a, revision, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
       .limit(5000),
     sb.from('propietarios')
       .select('idprop, propietario, nombre, tipo_factura')
@@ -141,8 +141,7 @@ export async function POST(req) {
   for (const im of rInm.data || []) {
     let r = im.raw_data && (im.raw_data.ROL || im.raw_data.rol)
     if (r) {
-      // el ROL puede traer varios separados por espacio -> tomar el primero (principal)
-      r = String(r).trim().split(/\s+/)[0]
+      r = String(r).trim().split(/\s+/)[0]   // ROL puede traer varios; tomar el primero
       if (r) rolDe[im.idinmue_combinado] = r
     }
   }
@@ -213,7 +212,7 @@ export async function POST(req) {
       inmueble: r.inmueble || a.inmueble || '',
       idlinmue: a.idlinmue || '',
       rol: rolInmue,
-      comuna: a.comuna || '',
+      comuna: '',   // no se congela: para la DJ 1835 se cruza el codigo SII (3 digitos) desde tabla comunas_sii aparte
       fecha_inicio: a.fecha_inicio || null,
       fecha_fin: a.termino_actual || null,
       arrendatario: a.arrendatario || '',
