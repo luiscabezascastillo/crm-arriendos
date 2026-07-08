@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-07-08 · quitada columna Final de vista + FIX nota no aparecia en estado P (ahora igual que el PDF)
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -323,7 +324,7 @@ export default function CartasPage() {
 
   const estadoColor = { 'OK': { bg: '#DCFCE7', c: '#166534' }, 'OK DESC': { bg: '#FEF9C3', c: '#854D0E' }, 'TO SEE': { bg: '#FEE2E2', c: '#991B1B' }, 'CHECK': { bg: '#FFEDD5', c: '#9A3412' } }
   const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace"
-  const COLS = '58px 168px 72px 72px 128px 82px 76px 76px 34px 66px 58px 76px 82px 76px 68px 64px 60px 128px 140px'
+  const COLS = '58px 168px 72px 128px 82px 76px 76px 34px 66px 58px 76px 82px 76px 68px 64px 60px 128px 140px'
   const th = { fontSize: 10, color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
@@ -447,9 +448,9 @@ export default function CartasPage() {
 
               {/* Tabla de inmuebles (scroll horizontal) */}
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ minWidth: 1632 }}>
+                <div style={{ minWidth: 1554 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', background: '#334155' }}>
-                    <div style={th}>IdAdmon</div><div style={th}>Propiedad</div><div style={th}>Comienzo</div><div style={th}>Final</div>
+                    <div style={th}>IdAdmon</div><div style={th}>Propiedad</div><div style={th}>Comienzo</div>
                     <div style={th}>Arrendatario</div><div style={th}>RUT</div><div style={{ ...th, ...rt }}>A Cobrar</div><div style={{ ...th, ...rt }}>Recibido</div>
                     <div style={th}>Por</div><div style={{ ...th, ...rt }}>Admon</div><div style={{ ...th, ...rt }}>IVA</div><div style={{ ...th, ...rt }}>Descuentos</div>
                     <div style={{ ...th, ...rt }}>A transferir</div><div style={{ ...th, ...rt }}>Ajuste</div>
@@ -464,7 +465,6 @@ export default function CartasPage() {
                       <div style={{ ...td, ...bgP, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
                       <div style={{ ...td, ...bgP }} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
                       <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.comienzo || vP}</div>
-                      <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.final || vP}</div>
                       <div style={{ ...td, ...bgP }} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
                       <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.rut || vP}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.aCobrar)}</div>
@@ -503,15 +503,16 @@ export default function CartasPage() {
                           <span style={{ fontSize: 12, color: '#92400E' }}>Se ha realizado un ajuste de ${fmt(x.ajuste)} en la renta</span>
                         </div>
                       )
-                      // 3) Comentario del mes (comentarios_liquidacion)
-                      if (x.nota) subfilas.push(
-                        <div key={x.idadmon + i + 'co'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
-                          <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
-                          <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
-                          <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
-                        </div>
-                      )
                     }
+                    // 3) Comentario del mes (comentarios_liquidacion) — TAMBIÉN en líneas P
+                    //    (deptos vacíos / en captación), igual que en el PDF de la carta.
+                    if (x.nota) subfilas.push(
+                      <div key={x.idadmon + i + 'co'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
+                        <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                        <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
+                        <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
+                      </div>
+                    )
                     return [filaInmueble, ...subfilas]
                   })}
                   {/* TOTALES */}
