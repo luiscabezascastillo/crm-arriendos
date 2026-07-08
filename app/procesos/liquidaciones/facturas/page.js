@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v2 · 2026-07-08 · lee de liquidacion_idadmon/idprop, 3 columnas editables
+// VERSION: v3 · 2026-07-08 · + boton Generar CSV SimpleFactura (2 archivos, marca HECHO)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
 import { useState, useEffect } from 'react'
@@ -40,6 +40,41 @@ export default function FacturasPage() {
   const [guardando, setGuardando] = useState('')  // idprop en curso de guardado
   const [editCom, setEditCom] = useState(null)    // idprop cuyo comentario se edita
   const [comTexto, setComTexto] = useState('')
+  const [limite, setLimite] = useState(10)         // >= limite inmuebles -> parte factura en 2
+  const [generando, setGenerando] = useState(false)
+  const [resumenGen, setResumenGen] = useState(null)
+
+  // Descargar un CSV como archivo
+  function descargarCSV(contenido, nombre) {
+    if (!contenido) return
+    const blob = new Blob(['\ufeff' + contenido], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = nombre; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function generarCSV() {
+    if (generando) return
+    setGenerando(true); setError(null); setResumenGen(null)
+    try {
+      const res = await fetch('/api/liquidaciones/generar-csv', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, limite }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
+      // descargar los dos archivos
+      if (d.facturas_csv) descargarCSV(d.facturas_csv, `facturas_33_${mes}.csv`)
+      if (d.boletas_csv) descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`)
+      setResumenGen(d.resumen)
+      // recargar para ver los HECHO actualizados
+      cargar(mes)
+    } catch (err) {
+      setError(String(err?.message || err))
+    }
+    setGenerando(false)
+  }
 
   // Acceso: SOLO los tres emails (o rol admin). Nadie más.
   useEffect(() => {
@@ -142,8 +177,26 @@ export default function FacturasPage() {
           {listaMeses().map(m => <option key={m} value={m}>{aammToTxt(m)}</option>)}
         </select>
         <button onClick={() => cargar(mes)} disabled={cargando} style={{ fontSize: 14, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', cursor: cargando ? 'default' : 'pointer', opacity: cargando ? 0.6 : 1 }}>{cargando ? '⏳ Cargando…' : '🔄 Recargar'}</button>
-        <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar propietario, inmueble, IDADMON…" style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #D3D1C7', minWidth: 260, flex: '0 1 320px' }} />
+        <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar propietario, inmueble, IDADMON…" style={{ fontSize: 14, padding: '8px 12px', borderRadius: 8, border: '1px solid #D3D1C7', minWidth: 200, flex: '0 1 240px' }} />
+        <div style={{ flex: 1 }} />
+        <label style={{ fontSize: 13, color: '#666' }} title="Si un propietario tiene este nº de inmuebles o más, su factura se parte en dos">Máx líneas/doc:</label>
+        <input type="number" value={limite} min={2} onChange={e => setLimite(Number(e.target.value) || 10)}
+          style={{ fontSize: 14, padding: '7px 8px', borderRadius: 8, border: '1px solid #D3D1C7', width: 60 }} />
+        <button onClick={generarCSV} disabled={generando}
+          style={{ fontSize: 14, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', cursor: generando ? 'default' : 'pointer', opacity: generando ? 0.6 : 1 }}>
+          {generando ? '⏳ Generando…' : '⬇ Generar CSV SimpleFactura'}
+        </button>
       </div>
+
+      {resumenGen && (
+        <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#5B21B6' }}>
+          <b>CSV generados.</b>{' '}
+          Facturas (33): {resumenGen.facturas?.propietarios || 0} propietarios · {resumenGen.facturas?.docs || 0} docs · {resumenGen.facturas?.lineas || 0} líneas.{' '}
+          Boletas (39): {resumenGen.boletas?.propietarios || 0} propietarios · {resumenGen.boletas?.docs || 0} docs · {resumenGen.boletas?.lineas || 0} líneas.
+          {resumenGen.partidos?.length > 0 && <div style={{ marginTop: 4 }}>Partidos en 2: {resumenGen.partidos.map(x => `${x.propietario} (${x.inmuebles})`).join(', ')}.</div>}
+          {resumenGen.aviso && <div>{resumenGen.aviso}</div>}
+        </div>
+      )}
 
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>{error}</div>}
 
