@@ -1,10 +1,21 @@
+// VERSION: v2 · 2026-07-09 · "Calcular ajustes" oculto para quien no edita CC1 (solo Dirección/Legal/Administración)
 'use client'
 
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
+
+// Mismo criterio de edición que /cc1/propietarios: Dirección, Legal y Administración.
+// "Calcular ajustes" solo se muestra a quien puede editar; el resto (p. ej. Karina,
+// Finanzas, que entra a ver) no lo ve.
+const ROLES_EDIT = ['admin', 'legal', 'operaciones']
+const EMAILS_OK = [
+  'luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com',
+  'anthony.mendoza@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com',
+]
 
 const PORTAL_URL = 'https://portal-propietarios-rose.vercel.app'
 const PAGE_SIZE = 15
@@ -360,6 +371,10 @@ function alertaTermino(fecha) {
 
 export default function CC1Page() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const email = session?.user?.email
+  const rol = session?.user?.role
+  const puedeEditar = ROLES_EDIT.includes(rol) || EMAILS_OK.includes(email)
   const [activeTab, setActiveTab] = useState('Datos base')
   const [search, setSearch] = useState('')
   const [recuperarId, setRecuperarId] = useState('')   // caja IDADMON para RECUPERAR
@@ -560,7 +575,9 @@ export default function CC1Page() {
         </div>
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
-        <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
+        {puedeEditar && (
+          <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
+        )}
       </div>
 
       <div style={{ padding: '20px 24px' }}>

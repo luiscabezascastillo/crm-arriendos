@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-07-09 · desacople ver/editar: Karina (Finanzas) entra en modo solo lectura
 'use client'
 
 import { useState, useEffect, useRef, forwardRef } from 'react'
@@ -6,10 +7,16 @@ import { useSession } from 'next-auth/react'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
+// EDITAR: Dirección, Legal y Administración (por rol/departamento o email).
 const ROLES_EDIT = ['admin', 'legal', 'operaciones']
 const EMAILS_OK = [
   'luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com',
   'anthony.mendoza@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com',
+]
+// VER en solo lectura (además de quien edita): Karina (Finanzas). Navega y consulta,
+// pero no crea ni edita (sin botones de alta/editar, panel en modo lectura).
+const EMAILS_VER = [
+  'karina.morales@fondocapital.com',
 ]
 
 // Campos visibles al principio
@@ -56,6 +63,7 @@ export default function PropietariosPage() {
   const email = session?.user?.email
   const rol = session?.user?.role
   const [puedeEditar, setPuedeEditar] = useState(null)
+  const [puedeVer, setPuedeVer] = useState(null)
   const [rows, setRows] = useState([])
   const [cargando, setCargando] = useState(true)
   const [q, setQ] = useState('')
@@ -79,9 +87,13 @@ export default function PropietariosPage() {
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
-    setPuedeEditar(ROLES_EDIT.includes(rol) || EMAILS_OK.includes(email))
+    const editar = ROLES_EDIT.includes(rol) || EMAILS_OK.includes(email)
+    setPuedeEditar(editar)
+    // Puede ver: quien edita, o quien está en la lista de solo-lectura (Karina).
+    setPuedeVer(editar || EMAILS_VER.includes(email))
   }, [status, email, rol])
-  useEffect(() => { if (puedeEditar === false) { const t = setTimeout(() => router.replace('/'), 2500); return () => clearTimeout(t) } }, [puedeEditar, router])
+  // Solo se redirige a quien NO puede ni ver. Quien puede ver (aunque no edite) se queda.
+  useEffect(() => { if (puedeVer === false) { const t = setTimeout(() => router.replace('/'), 2500); return () => clearTimeout(t) } }, [puedeVer, router])
 
   useEffect(() => { cargar() }, [])
   async function cargar() {
@@ -99,6 +111,7 @@ export default function PropietariosPage() {
   }
 
   function abrirNuevo() {
+    if (!puedeEditar) return
     setMsg(null); setOpcAbierto(false)
     const campos = {}; TODOS.forEach(k => campos[k] = '')
     campos.activo = 'SI'
@@ -107,10 +120,11 @@ export default function PropietariosPage() {
   function abrirEditar(r) {
     setMsg(null); setOpcAbierto(false)
     const campos = {}; TODOS.forEach(k => campos[k] = r[k] ?? '')
-    setEdit({ modo: 'editar', idprop: r.idprop, campos })
+    setEdit({ modo: puedeEditar ? 'editar' : 'ver', idprop: r.idprop, campos })
   }
 
   async function guardar() {
+    if (!puedeEditar) { setMsg({ err: 'Tu perfil es de solo lectura.' }); return }
     if (guardando || !edit) return
     setGuardando(true); setMsg(null)
     try {
@@ -155,24 +169,25 @@ export default function PropietariosPage() {
   }
   visibles = [...visibles].sort((a, b) => { const d = cmp(cellVal(a, sortCol), cellVal(b, sortCol)); return sortDir === 'asc' ? d : -d })
 
-  if (status === 'loading' || puedeEditar === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
-  if (puedeEditar === false) return (<><TopNav /><div style={{ padding: 40, color: '#991B1B' }}>Sin acceso. Esta sección es solo para Dirección, Legal y Administración. Redirigiendo…</div></>)
+  if (status === 'loading' || puedeVer === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
+  if (puedeVer === false) return (<><TopNav /><div style={{ padding: 40, color: '#991B1B' }}>Sin acceso. Esta sección no está disponible para tu perfil. Redirigiendo…</div></>)
 
   const inp = { width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '7px 9px', border: '1px solid #D1D5DB', borderRadius: 7, fontFamily: 'inherit' }
   const lbl = { fontSize: 11, fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 3 }
 
   const renderCampo = (f) => {
     const val = edit.campos[f.k] ?? ''
+    const ro = !puedeEditar
     let control
     if (f.sel) {
       const opts = f.sel.includes(val) ? f.sel : [...f.sel, val]
-      control = <select value={val} onChange={e => setCampo(f.k, e.target.value)} style={inp}>
+      control = <select value={val} disabled={ro} onChange={e => setCampo(f.k, e.target.value)} style={{ ...inp, background: ro ? '#F3F4F6' : '#fff', color: ro ? '#6B7280' : 'inherit' }}>
         {opts.map(o => <option key={o} value={o}>{o === '' ? '—' : o}</option>)}
       </select>
     } else if (f.ta) {
-      control = <textarea value={val} onChange={e => setCampo(f.k, e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
+      control = <textarea value={val} disabled={ro} onChange={e => setCampo(f.k, e.target.value)} rows={2} style={{ ...inp, resize: 'vertical', background: ro ? '#F3F4F6' : '#fff', color: ro ? '#6B7280' : 'inherit' }} />
     } else {
-      control = <input value={val} onChange={e => setCampo(f.k, e.target.value)} style={inp} />
+      control = <input value={val} disabled={ro} onChange={e => setCampo(f.k, e.target.value)} style={{ ...inp, background: ro ? '#F3F4F6' : '#fff', color: ro ? '#6B7280' : 'inherit' }} />
     }
     return (
       <div key={f.k} style={{ gridColumn: f.w === 2 ? '1 / -1' : 'auto' }}>
@@ -193,12 +208,14 @@ export default function PropietariosPage() {
             ← CC1
           </button>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>Propietarios</h1>
-          <button onClick={abrirNuevo}
-            style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer' }}>
-            + Nuevo propietario
-          </button>
+          {puedeEditar && (
+            <button onClick={abrirNuevo}
+              style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer' }}>
+              + Nuevo propietario
+            </button>
+          )}
         </div>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>{rows.length} propietarios · edición: Dirección, Legal y Administración.</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>{rows.length} propietarios · {puedeEditar ? 'edición: Dirección, Legal y Administración.' : 'modo solo lectura.'}</div>
 
         <input placeholder="Buscar por idprop, nombre, RUT, email o comuna…" value={q} onChange={e => setQ(e.target.value)}
           style={{ width: '100%', maxWidth: 460, boxSizing: 'border-box', fontSize: 13, padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 9, marginBottom: 14 }} />
@@ -236,7 +253,7 @@ export default function PropietariosPage() {
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: r.activo === 'SI' ? '#DCFCE7' : '#FEE2E2', color: r.activo === 'SI' ? '#166534' : '#991B1B' }}>{r.activo || '—'}</span>
                   </div>
                   <div style={{ padding: '9px 12px' }}>
-                    <button onClick={() => abrirEditar(r)} style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer' }}>Editar</button>
+                    <button onClick={() => abrirEditar(r)} style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer' }}>{puedeEditar ? 'Editar' : 'Ver'}</button>
                   </div>
                 </div>
               ))}
@@ -252,7 +269,7 @@ export default function PropietariosPage() {
           <div onClick={() => !guardando && setEdit(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 400 }} />
           <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 94vw)', background: '#fff', zIndex: 401, boxShadow: '-8px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8E6E0', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>{edit.modo === 'crear' ? 'Nuevo propietario' : 'Editar propietario'}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>{edit.modo === 'crear' ? 'Nuevo propietario' : edit.modo === 'ver' ? 'Ficha del propietario' : 'Editar propietario'}</div>
               <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#EEF2FF', color: '#3730A3' }}>
                 {edit.idprop}{edit.modo === 'crear' ? ' (se asigna al guardar)' : ''}
               </span>
@@ -292,10 +309,12 @@ export default function PropietariosPage() {
             </div>
 
             <div style={{ padding: 16, borderTop: '1px solid #E8E6E0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => !guardando && setEdit(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={guardar} disabled={guardando} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: guardando ? '#9CA3AF' : '#16a34a', color: '#fff', fontSize: 13, fontWeight: 700, cursor: guardando ? 'wait' : 'pointer' }}>
-                {guardando ? 'Guardando…' : (edit.modo === 'crear' ? 'Crear propietario' : 'Guardar cambios')}
-              </button>
+              <button onClick={() => !guardando && setEdit(null)} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{puedeEditar ? 'Cancelar' : 'Cerrar'}</button>
+              {puedeEditar && (
+                <button onClick={guardar} disabled={guardando} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: guardando ? '#9CA3AF' : '#16a34a', color: '#fff', fontSize: 13, fontWeight: 700, cursor: guardando ? 'wait' : 'pointer' }}>
+                  {guardando ? 'Guardando…' : (edit.modo === 'crear' ? 'Crear propietario' : 'Guardar cambios')}
+                </button>
+              )}
             </div>
           </div>
         </>
