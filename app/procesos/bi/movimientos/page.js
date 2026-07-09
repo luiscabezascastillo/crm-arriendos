@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-07-09 · gate de escritura (solo Dirección y Karina) + columna LIQ. MES2 editable con validación AAMM
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -5,6 +6,22 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+
+// ── Permisos de ESCRITURA del BI ──────────────────────────────────────────
+// Ver la tabla bi lo puede hacer cualquiera con acceso al proceso (proceso_permisos).
+// EDITAR (celdas, asociar RUT, copiar a CUENTAS, reasignar LIQ. MES2) queda
+// reservado a Dirección y Karina, la MISMA lista que preparar-mes y EMAILS.
+// El match es case-insensitive y sin espacios (evita el caso de correos con
+// variantes que ya rompió permisos antes). Nota: este gate es de INTERFAZ;
+// el blindaje server-side de los endpoints (cartola, asociar-rut, copiar-cuentas)
+// es una segunda entrega pendiente.
+const EDIT_EMAILS = [
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+  'karina.morales@fondocapital.com',
+]
+// AAMM de 4 dígitos, meses 01–12 (para validar la reasignación de LIQ. MES2).
+const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
@@ -29,7 +46,7 @@ const COLS = [
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
-  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      ro: true, w: 80,  align: 'left', filt: true },
+  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
   { key: 'idadmon2',               h: 'IDADMON',        w: 84,  align: 'left', filt: true },
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
@@ -67,8 +84,11 @@ function bgCelda(ci, r) {
 }
 
 export default function BiVista() {
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
+  // ¿El usuario logueado puede EDITAR el BI? (Dirección y Karina). Normalizado.
+  const emailSesion = (session?.user?.email || '').trim().toLowerCase()
+  const puedeEditar = EDIT_EMAILS.includes(emailSesion)
   const [rows, setRows] = useState([])               // ascendente por id: antiguos arriba, recientes abajo
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -129,6 +149,7 @@ export default function BiVista() {
   // El ref evita reintentos infinitos si alguna escritura fallara.
   const liqDoneRef = useRef(new Set())
   useEffect(() => {
+    if (!puedeEditar) return   // solo Dirección/Karina autollenan; un observador no escribe al mirar
     const actual = liqMes2Actual()
     const pend = rows.filter(r => !String(r.liquidacion_mes2 ?? '').trim() && !liqDoneRef.current.has(r.id))
     if (pend.length === 0) return
@@ -139,7 +160,7 @@ export default function BiVista() {
       if (error) return   // si falla, no rompemos la vista; el ref impide reintentos en bucle
       setRows(rs => rs.map(r => ids.includes(r.id) ? { ...r, liquidacion_mes2: actual } : r))
     })()
-  }, [rows])
+  }, [rows, puedeEditar])
 
   // Guarda primero lo que se esté editando (celda con foco) y LUEGO refresca.
   // Sin esto, si el usuario escribe en una celda y pulsa el botón sin salir
@@ -199,6 +220,7 @@ export default function BiVista() {
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const guardarCelda = async (id, k, valor) => {
+    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     const v = valor === '' ? null : valor
     setSavingId(id)
     const { error } = await supabase.from('bi').update({ [k]: v }).eq('id', id)
@@ -210,6 +232,7 @@ export default function BiVista() {
 
   // ── Asociar RUT a IDADMON en bi_admon (origen: cuentas) ──────────────────
   const abrirAsociar = async (r) => {
+    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     const rut = extraerRut(r.detalle_movimiento)
     if (!rut) { flash('No se encontró un RUT en el detalle'); return }
     setAsocOpen({ row: r, rut }); setAsocCands([]); setAsocErr(null); setAsocId(''); setAsocLoading(true)
@@ -242,6 +265,7 @@ export default function BiVista() {
   }
 
   const copiarFaltan = async () => {
+    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     if (copiando) return
     if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA con IDADMON válido?')) return
     setCopiando(true); setError(null)
@@ -346,6 +370,7 @@ export default function BiVista() {
       const tieneId = String(r.idadmon2 || '').trim() !== ''
       const esEgreso = num(r.cargos) > 0
       if (!tieneId && !esEgreso) return <span style={{ color: '#B4B2A9' }}>—</span>
+      if (!puedeEditar) return <span style={{ color: '#B4B2A9' }}>—</span>
       const abierto = descOpen && descOpen.row?.id === r.id
       return (
         <button onClick={(e) => abrirDescuentos(r, e)}
@@ -359,6 +384,7 @@ export default function BiVista() {
       const esAbono = num(r.abonos) > 0
       const rut = extraerRut(r.detalle_movimiento)
       if (!esAbono || !rut) return <span style={{ color: '#B4B2A9' }}>—</span>
+      if (!puedeEditar) return <span style={{ color: '#B4B2A9' }}>—</span>
       const resuelto = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
       const abierto = asocOpen && asocOpen.row?.id === r.id
       return (
@@ -367,7 +393,45 @@ export default function BiVista() {
           style={{ border: '0.5px solid ' + (resuelto ? '#C8C5BC' : '#9BD7C2'), background: abierto ? '#E1F5EE' : (resuelto ? '#fff' : '#F0FAF6'), color: resuelto ? '#8A8780' : '#085041', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 7px' }}>➕ RUT</button>
       )
     }
+    // LIQ. MES2: mes de liquidación al que se imputa el pago. Editable SOLO por
+    // Dirección/Karina (reasignar excepciones del corte del día 23). Valida AAMM.
+    // Si la celda está vacía, muestra en gris el valor que le tocaría por la regla
+    // del día (liqMes2Actual), sin escribirlo aquí (de eso se ocupa el autollenado).
+    if (c.key === 'liquidacion_mes2') {
+      const actual = String(r.liquidacion_mes2 ?? '').trim()
+      if (!puedeEditar) {
+        const v = actual || liqMes2Actual()
+        return <span title={v} style={{ color: '#5F5E5A' }}>{v}</span>
+      }
+      const vacio = actual === ''
+      return (
+        <input value={actual} title={vacio ? `Sin asignar (por regla: ${liqMes2Actual()})` : actual}
+          placeholder={liqMes2Actual()} inputMode="numeric" maxLength={4}
+          onChange={e => onLocal(r.id, c.key, e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+          onFocus={e => { e.target.dataset.orig = actual; e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
+          onBlur={e => {
+            const orig = e.target.dataset.orig ?? ''
+            const val = (e.target.value ?? '').trim()
+            e.target.style.border = '1px solid transparent'
+            e.target.style.background = 'transparent'
+            if (val === orig) return                                  // sin cambios
+            if (val !== '' && !esAAMM(val)) {                          // formato inválido -> revertir
+              onLocal(r.id, c.key, orig)
+              flash('LIQ. MES2 debe ser AAMM (p. ej. 2607)')
+              return
+            }
+            guardarCelda(r.id, c.key, val)                            // válido o vaciado
+          }}
+          style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, background: 'transparent', textAlign: c.align, color: vacio ? '#B4B2A9' : '#2C2C2A', boxSizing: 'border-box' }} />
+      )
+    }
     if (!c.ro) {
+      // Columnas editables (unique_concept, idadmon2, discriminador, check2):
+      // en modo lectura (observador) se muestran como texto, sin input.
+      if (!puedeEditar) {
+        const s = String(r[c.key] ?? '').trim()
+        return <span title={s}>{s || '—'}</span>
+      }
       const esUC = c.key === 'unique_concept'
       const baseAm = esUC && num(r.abonos) > 0 && ['FALTA', 'REVISAR'].includes(String(r.check2_pasar_a_cartola ?? '').trim().toUpperCase())
       const amarillo = baseAm && !esIdadmonValido(r[c.key])
@@ -386,10 +450,6 @@ export default function BiVista() {
           }}
           style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
       )
-    }
-    if (c.key === 'liquidacion_mes2') {
-      const v = String(r.liquidacion_mes2 ?? '').trim() || liqMes2Actual()
-      return <span title={v} style={{ color: '#5F5E5A' }}>{v}</span>
     }
     if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
@@ -506,11 +566,17 @@ export default function BiVista() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado (check1 oculto)' : ''} · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)</div>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
           <button onClick={() => router.push('/procesos/bi')}
             style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
         </div>
+
+        {!puedeEditar && (
+          <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FBF7EC', border: '0.5px solid #E6D58A', color: '#8a6d1e', fontSize: 12 }}>
+            Modo solo lectura — la edición del BI (asociar RUT, IDADMON, mes de liquidación, copiar a CUENTAS) está reservada a Dirección y Karina.
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 10, fontSize: 11, color: '#5F5E5A', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#EAF2FB', border: '0.5px solid #B9D4EE', borderRadius: 2 }} /> Abono ({abonos})</span>
@@ -534,7 +600,7 @@ export default function BiVista() {
             ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido)', copiarFaltan],
             ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR', null],
           ].map(([label, hint, accion], i) => {
-            const habilitado = !!accion && !copiando
+            const habilitado = !!accion && !copiando && puedeEditar
             return (
               <button key={i} title={hint} disabled={!habilitado}
                 onClick={() => { if (accion) accion() }}
