@@ -682,14 +682,26 @@ function AsignadoSection({ inc, usuario, onCambio }) {
   );
 }
 
-// ---------- Orden de trabajo en PDF (genera vía API, guarda en evidencia) ----------
+// ---------- Orden de trabajo en PDF (genera vía API, lista las generadas) ----------
 function OrdenTrabajoBtn({ inc }) {
   const [gen, setGen] = useState(false);
-  const [url, setUrl] = useState('');
+  const [ordenes, setOrdenes] = useState([]);
   const [msg, setMsg] = useState('');
 
+  const cargar = useCallback(async () => {
+    const { data } = await supabase.from('incidencia_adjuntos')
+      .select('id, storage_path, creado_en')
+      .eq('incidencia_id', inc.id).eq('tipo', 'documento')
+      .order('creado_en', { ascending: false });
+    const conUrl = (data || []).map((r) => ({
+      ...r, url: supabase.storage.from('incidencias').getPublicUrl(r.storage_path).data.publicUrl,
+    }));
+    setOrdenes(conUrl);
+  }, [inc.id]);
+  useEffect(() => { cargar(); }, [cargar]);
+
   async function generar() {
-    setMsg(''); setUrl(''); setGen(true);
+    setMsg(''); setGen(true);
     try {
       const res = await fetch('/api/incidencias/orden', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -697,7 +709,8 @@ function OrdenTrabajoBtn({ inc }) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
-      setUrl(j.url);
+      await cargar();
+      if (j.url) window.open(j.url, '_blank');
     } catch (err) { console.error(err); setMsg('No se pudo generar: ' + (err.message || err)); }
     finally { setGen(false); }
   }
@@ -707,10 +720,17 @@ function OrdenTrabajoBtn({ inc }) {
       <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Orden de trabajo</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={generar} disabled={gen} style={btnSecondary}>{gen ? 'Generando…' : 'Generar orden (PDF)'}</button>
-        {url && <a href={url} target="_blank" rel="noreferrer" style={miniBtn}>Abrir PDF</a>}
         {!inc.proveedor_id && <span style={{ fontSize: 12, color: '#9ca3af' }}>tip: asigna un proveedor para que salga en la orden</span>}
       </div>
-      {url && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 6 }}>Orden generada y guardada en la evidencia (etapa resolución).</div>}
+      {ordenes.length > 0 && (
+        <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+          {ordenes.map((o, i) => (
+            <a key={o.id} href={o.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: '#2563eb' }}>
+              📄 Orden {ordenes.length - i}{o.creado_en ? ` · ${new Date(o.creado_en).toLocaleString('es-CL')}` : ''}
+            </a>
+          ))}
+        </div>
+      )}
       {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
     </div>
   );

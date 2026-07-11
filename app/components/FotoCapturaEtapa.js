@@ -23,6 +23,7 @@ export default function FotoCapturaEtapa({ incidenciaId, etapa, subidoPor, titul
       .select('*')
       .eq('incidencia_id', incidenciaId)
       .eq('etapa', etapa)
+      .eq('tipo', 'foto')          // solo fotos; los documentos (órdenes PDF) se listan aparte
       .order('creado_en', { ascending: true });
     if (e) { console.error(e); return; }
     const conUrl = (data || []).map((row) => ({
