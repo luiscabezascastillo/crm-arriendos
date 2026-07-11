@@ -386,6 +386,8 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
 // ---------- Detalle ----------
 function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
   const [trabajando, setTrabajando] = useState(false);
+  const [cierre, setCierre] = useState(false);
+  const [solucionTxt, setSolucionTxt] = useState(inc.solucion_aplicada || '');
 
   async function registrarHistorial(campo, antes, despues) {
     await supabase.from('incidencia_historial').insert({
@@ -394,14 +396,15 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
     });
   }
 
-  async function cambiarEstado(nuevo) {
+  async function cambiarEstado(nuevo, extra = {}) {
     setTrabajando(true);
     try {
-      const patch = { estado: nuevo };
+      const patch = { estado: nuevo, ...extra };
       if (nuevo === 'cerrada') patch.fecha_cierre = new Date().toISOString();
       const { error } = await supabase.from('incidencias').update(patch).eq('id', inc.id);
       if (error) throw error;
       await registrarHistorial('estado', inc.estado, nuevo);
+      setCierre(false);
       await onCambio();
     } catch (err) {
       console.error(err);
@@ -452,9 +455,15 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
       </Bloque>
 
       <Bloque titulo="Reparación">
-        <ProveedorSection inc={inc} usuario={usuario} onCambio={onCambio} />
+        <AsignadoSection inc={inc} usuario={usuario} onCambio={onCambio} />
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+          <ProveedorSection inc={inc} usuario={usuario} onCambio={onCambio} />
+        </div>
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
           <PresupuestoSection inc={inc} usuario={usuario} onCambio={onCambio} />
+        </div>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+          <OrdenTrabajoBtn inc={inc} />
         </div>
       </Bloque>
 
@@ -464,17 +473,148 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
         borderTop: isMobile ? '1px solid #e5e7eb' : 'none', padding: isMobile ? '10px 0' : '4px 0',
         display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8,
       }}>
-        {siguiente && (
+        {siguiente && siguiente !== 'cerrada' && !cierre && (
           <button disabled={trabajando} onClick={() => cambiarEstado(siguiente)} style={btnPrimary}>
             Avanzar a: {label(ESTADOS, siguiente)}
           </button>
         )}
-        {inc.estado !== 'cerrada' && inc.estado !== 'descartada' && (
+        {['en_resolucion', 'esperando_aprobacion'].includes(inc.estado) && !cierre && (
+          <button disabled={trabajando} onClick={() => setCierre(true)} style={btnPrimary}>
+            Cerrar incidencia
+          </button>
+        )}
+        {inc.estado !== 'cerrada' && inc.estado !== 'descartada' && !cierre && (
           <button disabled={trabajando} onClick={() => cambiarEstado('descartada')} style={btnSecondary}>
             Descartar
           </button>
         )}
       </div>
+
+      {cierre && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginTop: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Solución aplicada (al cerrar)</div>
+          <textarea value={solucionTxt} onChange={(e) => setSolucionTxt(e.target.value)}
+            placeholder="Describe qué se hizo para resolver la incidencia…"
+            style={{ ...input, minHeight: 90, resize: 'vertical', marginBottom: 8 }} />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button disabled={trabajando} style={btnPrimary}
+              onClick={() => cambiarEstado('cerrada', { solucion_aplicada: solucionTxt.trim() || null })}>
+              {trabajando ? 'Cerrando…' : 'Confirmar cierre'}
+            </button>
+            <button disabled={trabajando} style={btnSecondary} onClick={() => setCierre(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Asignar técnico interno (crm_users) — caso "lo resolvemos nosotros" ----------
+function AsignadoSection({ inc, usuario, onCambio }) {
+  const [users, setUsers] = useState([]);
+  const [abierto, setAbierto] = useState(false);
+  const [q, setQ] = useState('');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('crm_users').select('email, nombre, rol, activo').eq('activo', true).order('nombre');
+      if (!vivo) return;
+      if (error) { console.error(error); setMsg('No se pudieron cargar usuarios: ' + error.message); }
+      setUsers(data || []);
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  const actual = users.find((u) => u.email === inc.asignado_a);
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const base = t ? users.filter((u) => [u.nombre, u.email, u.rol].filter(Boolean).some((x) => x.toLowerCase().includes(t))) : users;
+    return base.slice(0, 40);
+  }, [q, users]);
+
+  async function asignar(email) {
+    setMsg('');
+    const { error } = await supabase.from('incidencias').update({ asignado_a: email }).eq('id', inc.id);
+    if (error) { setMsg('No se pudo asignar: ' + error.message); return; }
+    await supabase.from('incidencia_historial').insert({
+      incidencia_id: inc.id, campo: 'asignado_a',
+      valor_antes: String(inc.asignado_a ?? ''), valor_despues: String(email ?? ''), usuario,
+    });
+    setAbierto(false); setQ('');
+    await onCambio();
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Técnico interno (resolución propia)</div>
+      {(actual || inc.asignado_a) ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <div style={{ marginRight: 'auto' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{actual?.nombre || inc.asignado_a}</div>
+            {actual && <div style={{ fontSize: 12, color: '#6b7280' }}>{actual.email}{actual.rol ? ` · ${actual.rol}` : ''}</div>}
+          </div>
+          <button onClick={() => setAbierto((b) => !b)} style={miniBtn}>{abierto ? 'Cerrar' : 'Cambiar'}</button>
+          <button onClick={() => asignar(null)} style={miniBtn}>Quitar</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>Sin técnico asignado.</span>
+          <button onClick={() => setAbierto(true)} style={btnSecondary}>Asignar técnico</button>
+        </div>
+      )}
+      {abierto && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, marginTop: 4 }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} style={{ ...input, marginBottom: 8 }} placeholder="Buscar por nombre o email…" />
+          <div style={{ maxHeight: 200, overflowY: 'auto', display: 'grid', gap: 4 }}>
+            {filtrados.map((u) => (
+              <button key={u.email} onClick={() => asignar(u.email)}
+                style={{ textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: '1px solid #eee', background: '#fff', cursor: 'pointer', minHeight: 40 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{u.nombre || u.email}</span>
+                {u.rol && <span style={{ color: '#9ca3af', fontSize: 12 }}> · {u.rol}</span>}
+              </button>
+            ))}
+            {filtrados.length === 0 && <div style={{ fontSize: 13, color: '#6b7280', padding: 6 }}>Sin coincidencias.</div>}
+          </div>
+        </div>
+      )}
+      {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+// ---------- Orden de trabajo en PDF (genera vía API, guarda en evidencia) ----------
+function OrdenTrabajoBtn({ inc }) {
+  const [gen, setGen] = useState(false);
+  const [url, setUrl] = useState('');
+  const [msg, setMsg] = useState('');
+
+  async function generar() {
+    setMsg(''); setUrl(''); setGen(true);
+    try {
+      const res = await fetch('/api/incidencias/orden', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidencia_id: inc.id }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      setUrl(j.url);
+    } catch (err) { console.error(err); setMsg('No se pudo generar: ' + (err.message || err)); }
+    finally { setGen(false); }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Orden de trabajo</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={generar} disabled={gen} style={btnSecondary}>{gen ? 'Generando…' : 'Generar orden (PDF)'}</button>
+        {url && <a href={url} target="_blank" rel="noreferrer" style={miniBtn}>Abrir PDF</a>}
+        {!inc.proveedor_id && <span style={{ fontSize: 12, color: '#9ca3af' }}>tip: asigna un proveedor para que salga en la orden</span>}
+      </div>
+      {url && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 6 }}>Orden generada y guardada en la evidencia (etapa resolución).</div>}
+      {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
     </div>
   );
 }

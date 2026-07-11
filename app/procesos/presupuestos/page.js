@@ -86,7 +86,7 @@ export default function PresupuestosPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from('presupuestos')
-      .select('id, numero, fecha, id_admon_new, id_admon_old, ubicacion, propietario, descripcion, neto, iva, total')
+      .select('id, numero, fecha, id_admon_new, id_admon_old, ubicacion, propietario, descripcion, neto, iva, total, en_termino')
       .order('id', { ascending: false })
     const filas = error ? [] : (data || [])
     setLista(filas)
