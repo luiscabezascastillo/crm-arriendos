@@ -428,25 +428,7 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
         {v && chip(v.txt, v.color)}
       </div>
 
-      <Bloque titulo="Información">
-        <Dato k="Inmueble / IDADMON" v={`${inc.inmueble || '—'} · ${inc.idadmon}`} />
-        <Dato k="Categoría" v={label(CATEGORIAS, inc.categoria)} />
-        <Dato k="Reportado por" v={`${inc.reportado_por || '—'} (${label(CANALES, inc.canal)})`} />
-        <Dato k="Fecha reporte" v={inc.fecha_reporte ? new Date(inc.fecha_reporte).toLocaleString('es-CL') : '—'} />
-        <Dato k="Fecha límite" v={inc.fecha_limite ? new Date(inc.fecha_limite).toLocaleString('es-CL') : '—'} />
-        {inc.fecha_cierre && <Dato k="Cierre" v={new Date(inc.fecha_cierre).toLocaleString('es-CL')} />}
-        <Dato k="Asignado a" v={inc.asignado_a || '—'} />
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Descripción</div>
-          <div style={{ fontSize: 14 }}>{inc.descripcion}</div>
-        </div>
-        {inc.solucion_aplicada && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Solución aplicada</div>
-            <div style={{ fontSize: 14 }}>{inc.solucion_aplicada}</div>
-          </div>
-        )}
-      </Bloque>
+      <InfoEditable inc={inc} usuario={usuario} isMobile={isMobile} onCambio={onCambio} />
 
       <Bloque titulo="Evidencia por etapa">
         {ETAPAS_FOTO.map(([etapa, titulo]) => (
@@ -506,6 +488,121 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------- Información editable de la incidencia ----------
+function InfoEditable({ inc, usuario, isMobile, onCambio }) {
+  const [editando, setEditando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState('');
+  const vacio = () => ({
+    inmueble: inc.inmueble || '', categoria: inc.categoria || 'otros', urgencia: inc.urgencia || 'media',
+    reportado_por: inc.reportado_por || '', canal: inc.canal || 'email',
+    descripcion: inc.descripcion || '', notas_internas: inc.notas_internas || '',
+  });
+  const [f, setF] = useState(vacio());
+  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  function abrir() { setF(vacio()); setMsg(''); setEditando(true); }
+
+  async function guardar() {
+    setMsg('');
+    if (!f.descripcion.trim()) { setMsg('La descripción es obligatoria.'); return; }
+    setGuardando(true);
+    try {
+      const campos = ['inmueble', 'categoria', 'urgencia', 'reportado_por', 'canal', 'descripcion', 'notas_internas'];
+      const patch = {}; const cambios = [];
+      for (const k of campos) {
+        const nuevo = (f[k] ?? '').toString();
+        const antes = (inc[k] ?? '').toString();
+        if (nuevo !== antes) { patch[k] = f[k]; cambios.push([k, antes, nuevo]); }
+      }
+      if (cambios.length === 0) { setEditando(false); setGuardando(false); return; }
+      if (patch.urgencia !== undefined) patch.fecha_limite = null; // el trigger recompone el plazo
+      const { error } = await supabase.from('incidencias').update(patch).eq('id', inc.id);
+      if (error) throw error;
+      for (const [k, a, d] of cambios) {
+        await supabase.from('incidencia_historial').insert({
+          incidencia_id: inc.id, campo: k, valor_antes: a, valor_despues: d, usuario,
+        });
+      }
+      setEditando(false);
+      await onCambio();
+    } catch (err) { console.error(err); setMsg('No se pudo guardar: ' + (err.message || err)); }
+    finally { setGuardando(false); }
+  }
+
+  return (
+    <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Información</h2>
+        {!editando && inc.estado !== 'cerrada' && inc.estado !== 'descartada' && (
+          <button onClick={abrir} style={miniBtn}>Editar</button>
+        )}
+      </div>
+
+      {!editando ? (
+        <>
+          <Dato k="Inmueble / IDADMON" v={`${inc.inmueble || '—'} · ${inc.idadmon}`} />
+          <Dato k="Categoría" v={label(CATEGORIAS, inc.categoria)} />
+          <Dato k="Urgencia" v={infoUrgencia(inc.urgencia)[1]} />
+          <Dato k="Reportado por" v={`${inc.reportado_por || '—'} (${label(CANALES, inc.canal)})`} />
+          <Dato k="Fecha reporte" v={inc.fecha_reporte ? new Date(inc.fecha_reporte).toLocaleString('es-CL') : '—'} />
+          <Dato k="Fecha límite" v={inc.fecha_limite ? new Date(inc.fecha_limite).toLocaleString('es-CL') : '—'} />
+          {inc.fecha_cierre && <Dato k="Cierre" v={new Date(inc.fecha_cierre).toLocaleString('es-CL')} />}
+          <Dato k="Asignado a" v={inc.asignado_a || '—'} />
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Descripción</div>
+            <div style={{ fontSize: 14 }}>{inc.descripcion}</div>
+          </div>
+          {inc.notas_internas && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Notas internas</div>
+              <div style={{ fontSize: 14 }}>{inc.notas_internas}</div>
+            </div>
+          )}
+          {inc.solucion_aplicada && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Solución aplicada</div>
+              <div style={{ fontSize: 14 }}>{inc.solucion_aplicada}</div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
+          <Campo label="Inmueble / ubicación"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
+          <Campo label={`IDADMON (fijo)`}><input style={{ ...input, background: '#f3f4f6', color: '#9ca3af' }} value={inc.idadmon} disabled /></Campo>
+          <Campo label="Categoría">
+            <select style={input} value={f.categoria} onChange={set('categoria')}>
+              {CATEGORIAS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Urgencia">
+            <select style={input} value={f.urgencia} onChange={set('urgencia')}>
+              {URGENCIAS.map(([k, l, , plazo]) => <option key={k} value={k}>{l} · {plazo}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Reportado por"><input style={input} value={f.reportado_por} onChange={set('reportado_por')} /></Campo>
+          <Campo label="Canal">
+            <select style={input} value={f.canal} onChange={set('canal')}>
+              {CANALES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </Campo>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Campo label="Descripción *"><textarea style={{ ...input, minHeight: 80, resize: 'vertical' }} value={f.descripcion} onChange={set('descripcion')} /></Campo>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Campo label="Notas internas"><textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.notas_internas} onChange={set('notas_internas')} /></Campo>
+          </div>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={guardar} disabled={guardando} style={btnPrimary}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+            <button onClick={() => setEditando(false)} disabled={guardando} style={btnSecondary}>Cancelar</button>
+          </div>
+          {msg && <div style={{ gridColumn: '1 / -1', color: '#dc2626', fontSize: 13 }}>{msg}</div>}
+        </div>
+      )}
+    </section>
   );
 }
 
