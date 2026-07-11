@@ -1,56 +1,53 @@
+// VERSION: v2 · 2026-07-11 · P→S (CERRAR Y FACTURAR) ahora valida + escribe INICIOS en cuentas (dos fases)
+//
 // app/api/cc1/cerrar-facturar/route.js
 //
 // "CERRAR Y FACTURAR" — cierre de la carga de un contrato que está en P.
-// Recibe { idadmon }. Solo procede si el contrato está en estado P.
+// Recibe { idadmon, fase?, dicom?, proporcionalNota? }. Solo procede si el contrato está en P.
 //
 // Hace, en orden:
-//   1. Valida sesión + permiso (puedeCambiarEstado, igual que el circuito de estados).
-//   2. Verifica que el contrato exista y esté en P (si no, no hace nada).
-//   3. Cambia el estado P -> S en datos_arriendos (P->S NO crea ningún IDADMON nuevo).
-//   4. Registra el evento en historico_idadmon y envía el email de cambio de estado
-//      a cambiosdeestado@ (subject "11 inicio-contrato"), igual que /cambiar-estado.
-//   5. Lee la ficha del propietario (tabla propietarios, por idprop) y construye el
-//      email de facturación con los datos de comisiones (propietario + arrendatario).
-//   6. Envía ese email a Finanzas (Karina), con Legal en copia, indicando en el cuerpo
-//      quién operó el botón (autor).
+//   1. Valida sesión + permiso (puedeCambiarEstado).
+//   2. Verifica que el contrato exista y esté en P.
+//   NUEVO 2b. VALIDA los datos de inicio (garantía en pesos, sin descuadre, proporcional
+//      coherente, factor UF válido, sin duplicados). Si falla -> 422, NO cambia estado.
+//      Si fase != 'ejecutar' -> devuelve validación + previo + pide DICOM (no cambia estado).
+//   3. Cambia el estado P -> S en datos_arriendos.
+//   4. Registra el evento y envía el email de cambio de estado a cambiosdeestado@.
+//   NUEVO 4b. ESCRIBE los cargos de inicio en `cuentas` (garantía/proporcional/comisión/DICOM).
+//   5. Lee la ficha del propietario y construye el email de facturación.
+//   6. Envía ese email a Finanzas (Karina), con Legal en copia.
 //
-// Devuelve { ok, idadmon, estadoNuevo:'S', emailEstado, emailFacturacion }.
+// Devuelve { ok, idadmon, estadoNuevo:'S', emailEstado, emailFacturacion, inicios } o,
+// en fase 'validar', { ok, validado, necesitaDicom, previo, ... } / { bloqueado, errores }.
 
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin, getCapacidades } from '../../../../lib/cc1Permisos'
 import { buildSubject, enviarNotificacion } from '../../../../lib/cc1Email'
+import { validarInicios, construirCargosInicio } from '../../../../lib/cc1Inicios'
 
 // ─── Destinatarios del email de facturación ─────────────────────────────────
-// Si en el futuro cambian, editar aquí.
 const FACTURACION_TO = 'karina.morales@fondocapital.com'   // Finanzas
 const FACTURACION_CC = 'anthony.mendoza@fondocapital.com'  // Legal (copia)
 
-// Muestra un valor o '' si está vacío.
 function v(x) {
   if (x === null || x === undefined || x === '') return ''
   return String(x)
 }
-// Importe con separador de miles es-CL (10000 -> "10.000"). Vacío -> ''.
 function m(x) {
   if (x === null || x === undefined || x === '') return ''
   const n = Number(String(x).replace(/\./g, '').replace(/[^\d-]/g, ''))
   if (isNaN(n)) return String(x)
   return n.toLocaleString('es-CL')
 }
-// Escapa para HTML.
 function esc(x) {
   return v(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-
-// Concepto de la factura: "COMISION ARRENDAMIENTO {inmueble}[, Estacionamiento {estac}]"
 function conceptoFactura(dat) {
   let c = `COMISION ARRENDAMIENTO ${v(dat.inmueble)}`.trim()
   if (v(dat.estac)) c += `, Estacionamiento ${v(dat.estac)}`
   return c
 }
-
-// Bloque de texto plano para una de las partes (propietario / arrendatario).
 function bloqueTexto(titulo, p) {
   return [
     titulo,
@@ -65,15 +62,11 @@ function bloqueTexto(titulo, p) {
     `    CONCEPTO:  ${p.concepto}`,
   ].join('\n')
 }
-
-// Fila del cuadro económico (HTML).
 function filaEco(label, valor, bold) {
   const tdL = 'padding:2px 6px;font-size:11px;color:#1f5023;background:#bcdcbd;font-weight:600;white-space:nowrap;'
   const tdV = `padding:2px 6px;font-size:11px;background:#e8f4e8;${bold ? 'font-weight:700;' : ''}`
   return `<tr><td style="${tdL}">${esc(label)}</td><td style="${tdV}">${esc(valor)}</td></tr>`
 }
-
-// Cuadro DATOS ECONÓMICOS (HTML, verde) replicando el del Excel.
 function cuadroEconomicoHTML(dat, raw) {
   const rd = raw || {}
   const sub = 'padding:3px 6px;background:#2f6b33;color:#fff;font-size:11px;font-weight:700;text-align:center;'
@@ -104,6 +97,50 @@ function cuadroEconomicoHTML(dat, raw) {
   </table>`
 }
 
+function fechaDDMMYYYY(f) {
+  if (!f) return null
+  const s = String(f)
+  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (m1) return `${m1[1]}/${m1[2]}/${m1[3]}`
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m2) return `${m2[3]}/${m2[2]}/${m2[1]}`
+  return s
+}
+function mesAnio(f) {
+  if (!f) return null
+  const s = String(f)
+  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (m1) return `${m1[2]}/${m1[3]}`
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m2) return `${m2[2]}/${m2[1]}`
+  return null
+}
+async function leerInicios(idadmon) {
+  const { data } = await supabaseAdmin
+    .from('cuentas').select('id, concepto, calif')
+    .eq('idadmon', idadmon).eq('calif', 'INICIO')
+  return data || []
+}
+// Conservador: ante la duda devuelve TRUE (=> NO carga proporcional; mejor que falte a que duplique).
+async function hayRentaDelMesInicio(idadmon, fechaInicio) {
+  const mesIni = mesAnio(fechaInicio)
+  if (!mesIni) return true
+  const { data } = await supabaseAdmin
+    .from('cuentas').select('fecha, concepto, calif, cargo').eq('idadmon', idadmon)
+  if (!data) return false
+  const [mm, yyyy] = mesIni.split('/')
+  const nombresMes = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+  const nombreMes = nombresMes[parseInt(mm, 10) - 1] || ''
+  for (const r of data) {
+    if (r.calif === 'INICIO') continue
+    if (!(Number(r.cargo) > 0)) continue
+    if (mesAnio(r.fecha) === mesIni) return true
+    const con = String(r.concepto || '').toUpperCase()
+    if (nombreMes && con.includes(nombreMes) && (con.includes(yyyy) || con.includes(yyyy.slice(2)))) return true
+  }
+  return false
+}
+
 export async function POST(req) {
   // 1. Sesión + permiso
   const session = await getServerSession(authOptions)
@@ -117,7 +154,7 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { idadmon } = body || {}
+  const { idadmon, fase, dicom, proporcionalNota } = body || {}
   if (!idadmon) return Response.json({ error: 'Falta idadmon' }, { status: 400 })
 
   // 2. Cargar contrato y verificar que está en P
@@ -126,6 +163,37 @@ export async function POST(req) {
   if (e0 || !dat) return Response.json({ error: 'Contrato no encontrado: ' + idadmon }, { status: 404 })
   if (dat.estado !== 'P') {
     return Response.json({ error: `El contrato ${idadmon} no está en estado P (está en ${dat.estado}). Esta acción solo cierra contratos en P.` }, { status: 409 })
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 2b. NUEVO — VALIDACIÓN DE INICIOS (bloqueante, antes de cambiar estado)
+  // ─────────────────────────────────────────────────────────────
+  const iniciosExistentes = await leerInicios(idadmon)
+  const val = validarInicios(dat, iniciosExistentes)
+
+  if (!val.ok) {
+    // BLOQUEO: el estado NO cambia. Corregir en el LOG.
+    return Response.json({
+      ok: false, bloqueado: true, fase: 'validar', idadmon,
+      errores: val.errores,
+      mensaje: 'No se puede activar (P→S): corrige los datos de inicio en el LOG antes.',
+    }, { status: 422 })
+  }
+
+  if (fase !== 'ejecutar') {
+    // Validación OK pero aún NO ejecutamos: pedimos DICOM y mostramos el previo.
+    const yaRenta = await hayRentaDelMesInicio(idadmon, dat.fecha1)
+    const previo = construirCargosInicio(dat, {
+      fechaHoy: fechaDDMMYYYY(new Date().toISOString().slice(0, 10)),
+      dicom: { tiene: false, monto: 0 },
+      yaHayRentaDelMesInicio: yaRenta,
+    })
+    return Response.json({
+      ok: true, fase: 'validar', validado: true, necesitaDicom: true,
+      yaHayRentaDelMesInicio: yaRenta,
+      previo: previo.map(f => ({ fecha: f.fecha, concepto: f.concepto, cargo: f.cargo })),
+      mensaje: 'Datos de inicio válidos. Confirma el DICOM para completar la activación.',
+    })
   }
 
   const fechaEvento = new Date().toISOString().slice(0, 10)
@@ -149,11 +217,43 @@ export async function POST(req) {
     detalle: 'cierre de carga (CERRAR Y FACTURAR)',
   }])
   const rEstado = await enviarNotificacion({
-    subject: subjectCambio,
-    autor: email,
+    subject: subjectCambio, autor: email,
     idadmon, estadoAnterior: 'P', estadoNuevo: 'S',
     propietario: dat.propietario, inmueble: dat.inmueble, fecha: fechaEvento,
   })
+
+  // ─────────────────────────────────────────────────────────────
+  // 4b. NUEVO — ESCRIBIR CARGOS DE INICIO EN `cuentas`
+  // ─────────────────────────────────────────────────────────────
+  let iniciosGenerados = null
+  try {
+    const yaRenta = await hayRentaDelMesInicio(idadmon, dat.fecha1)
+    const filas = construirCargosInicio(dat, {
+      fechaHoy: fechaDDMMYYYY(new Date().toISOString().slice(0, 10)),
+      dicom: dicom || { tiene: false, monto: 0 },
+      proporcionalNota: proporcionalNota || null,
+      yaHayRentaDelMesInicio: yaRenta,
+    })
+    if (filas.length > 0) {
+      const { error: eIns } = await supabaseAdmin.from('cuentas').insert(filas)
+      if (eIns) {
+        // El estado YA cambió a S; reportamos que faltó escribir inicios (no abortamos la facturación).
+        iniciosGenerados = { error: eIns.message }
+      } else {
+        iniciosGenerados = filas.map(f => ({ fecha: f.fecha, concepto: f.concepto, cargo: f.cargo }))
+      }
+    } else {
+      iniciosGenerados = []
+    }
+    await supabaseAdmin.from('historico_idadmon').insert([{
+      idadmon, evento: 'inicios_generados',
+      estado_anterior: 'P', estado_nuevo: 'S',
+      fecha: fechaEvento, usuario: email,
+      detalle: `inicios auto: ${Array.isArray(iniciosGenerados) ? iniciosGenerados.length : 'ERROR'} lineas`,
+    }])
+  } catch (err) {
+    iniciosGenerados = { error: String(err?.message || err) }
+  }
 
   // 5. Ficha del propietario (tabla propietarios, por idprop)
   let prop = null
@@ -163,7 +263,7 @@ export async function POST(req) {
     prop = pRow || null
   }
 
-  // 5b. raw_data del LOG (porcentajes de corretaje, C.Especiales y Comentario por parte)
+  // 5b. raw_data del LOG
   let rawLog = {}
   try {
     const { data: lRow } = await supabaseAdmin
@@ -197,7 +297,6 @@ export async function POST(req) {
 
   // 6. Construir y enviar el email de facturación
   const subjectFact = `INFORMACION PARA FACTURACIÓN RELATIVA A IDADMON: ${idadmon}`
-
   const textoFact = [
     `Estimada Karina, te adjuntamos información para la facturación de las comisiones del IDADMON: ${idadmon}`,
     '',
@@ -211,8 +310,8 @@ export async function POST(req) {
     'CRM FCR (mensaje automático).',
   ].join('\n')
 
-  const filaHTML = (label, val) =>
-    `<tr><td style="padding:1px 8px 1px 24px;color:#444;white-space:nowrap;">${esc(label)}</td><td style="padding:1px 8px;">${esc(val)}</td></tr>`
+  const filaHTML = (label, val2) =>
+    `<tr><td style="padding:1px 8px 1px 24px;color:#444;white-space:nowrap;">${esc(label)}</td><td style="padding:1px 8px;">${esc(val2)}</td></tr>`
   const bloqueHTML = (titulo, p) => `
     <p style="margin:14px 0 4px;font-weight:700;">${esc(titulo)}</p>
     <table style="border-collapse:collapse;font-size:13px;">
@@ -238,12 +337,9 @@ export async function POST(req) {
   </div>`
 
   const rFact = await enviarNotificacion({
-    subject: subjectFact,
-    autor: email,
-    to: FACTURACION_TO,
-    cc: FACTURACION_CC,
-    cuerpo: textoFact,
-    html: htmlFact,
+    subject: subjectFact, autor: email,
+    to: FACTURACION_TO, cc: FACTURACION_CC,
+    cuerpo: textoFact, html: htmlFact,
   })
 
   return Response.json({
@@ -252,5 +348,6 @@ export async function POST(req) {
     estadoNuevo: 'S',
     emailEstado: rEstado.ok,
     emailFacturacion: rFact.ok,
+    inicios: iniciosGenerados,   // array de cargos, [], o {error}
   })
 }

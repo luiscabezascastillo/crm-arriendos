@@ -485,6 +485,13 @@ function AdminContent() {
   const [nuevoEstado, setNuevoEstado] = useState('')
   const [fechaEstado, setFechaEstado] = useState('')
   const [cambiando, setCambiando] = useState(false)
+  // ── Panel de inicios (P→S / TERMINAR): validación previa + DICOM ──
+  const [iniciosPanel, setIniciosPanel] = useState(null)   // null | {previo:[], yaHayRenta:bool}
+  const [iniciosErrores, setIniciosErrores] = useState([]) // errores que bloquean el P→S
+  const [dicomTiene, setDicomTiene] = useState(false)
+  const [dicomMonto, setDicomMonto] = useState('')
+  const [propNota, setPropNota] = useState('')
+  const [ejecutandoIni, setEjecutandoIni] = useState(false)
 
   // Helper: leer una clave del raw_data del log (Capa 1)
   const lp = (clave) => (logData && logData[clave] != null ? logData[clave] : '')
@@ -936,46 +943,86 @@ function AdminContent() {
     setGenerandoBorrador(false)
   }
 
+  // TERMINAR (P→S): fase 1 = validar inicios; si OK, abre panel DICOM. Fase 2 = ejecutar.
   async function cerrarYFacturar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (form.estado !== 'P') { setMsg({ type: 'warn', text: 'Esta acción solo aplica a contratos en estado P.' }); return }
-    if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nSe guardarán los datos actuales, el estado pasará de P a S, se bloqueará la ficha y se enviará la solicitud de facturación a Finanzas.`)) return
-    setCambiando(true)
+    if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nSe validarán los datos de inicio. Si están correctos, se pedirá el DICOM y luego el estado pasará de P a S, se generarán los cargos de inicio y se enviará la solicitud de facturación a Finanzas.`)) return
+    setCambiando(true); setMsg({ type: 'info', text: 'Validando datos de inicio…' })
+    setIniciosPanel(null); setIniciosErrores([]); setDicomTiene(false); setDicomMonto(''); setPropNota('')
     try {
-      // 1. Guardar la ficha ANTES de facturar, para que el email lleve los datos actuales
-      //    (el endpoint de facturación lee desde la BD, no desde la pantalla).
+      // Guardar la ficha ANTES de validar/facturar (el endpoint lee de la BD)
       const payload = { ...form, updated_at: new Date().toISOString() }
       delete payload.id
-      // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
       for (const k in payload) { if (payload[k] === '') payload[k] = null }
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
-      if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de facturar: ' + eSave.message }); setCambiando(false); return }
-
-      // Guardar también arrendatarios/avales (por si se editaron en línea y no se pulsó GUARDAR)
+      if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de validar: ' + eSave.message }); setCambiando(false); return }
       try {
         await fetch('/api/cc1/guardar-personas', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idadmon: form.idadmon, personas, econLog: logEcon }),
         })
-      } catch { /* no abortamos: el aviso de facturación seguirá con lo que haya en BD */ }
+      } catch { /* no abortamos */ }
 
-      // 2. Cerrar (P->S) + enviar avisos
+      // FASE 1: validar
       const res = await fetch('/api/cc1/cerrar-facturar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: form.idadmon }),
+        body: JSON.stringify({ idadmon: form.idadmon, fase: 'validar' }),
       })
       const data = await res.json()
-      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al cerrar y facturar' }); setCambiando(false); return }
+
+      if (res.status === 422 && data.bloqueado) {
+        setIniciosErrores(data.errores || [])
+        setMsg({ type: 'error', text: data.mensaje || 'Corrige los datos de inicio en el LOG antes de activar.' })
+        setCambiando(false); return
+      }
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al validar' }); setCambiando(false); return }
+      if (data.validado) {
+        setIniciosPanel({ previo: data.previo || [], yaHayRenta: !!data.yaHayRentaDelMesInicio })
+        setMsg({ type: 'info', text: data.mensaje || 'Datos válidos. Confirma el DICOM para activar.' })
+        setCambiando(false); return
+      }
+      setCambiando(false)
+    } catch { setMsg({ type: 'error', text: 'Error de conexión' }); setCambiando(false) }
+  }
+
+  // FASE 2 (TERMINAR): Anthony respondió el DICOM → ejecutar de verdad.
+  async function ejecutarTerminar() {
+    if (dicomTiene && !(Number(String(dicomMonto).replace(/\./g, '').replace(/,/g, '.')) > 0)) {
+      setMsg({ type: 'warn', text: 'Indica el monto del DICOM (o desmarca que no hay).' }); return
+    }
+    setEjecutandoIni(true); setMsg({ type: 'info', text: 'Activando contrato, generando inicios y facturación…' })
+    try {
+      const montoNum = Number(String(dicomMonto).replace(/\./g, '').replace(/,/g, '.')) || 0
+      const res = await fetch('/api/cc1/cerrar-facturar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idadmon: form.idadmon, fase: 'ejecutar',
+          dicom: { tiene: !!dicomTiene, monto: montoNum },
+          proporcionalNota: propNota || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al activar' }); setEjecutandoIni(false); return }
       setForm(p => ({ ...p, estado: 'S' })); setBloqueado(true)
-      let txt = `Contrato ${form.idadmon} cerrado (estado S).`
+      let txt = `✓ ${form.idadmon}: P → S. `
+      const ini = data.inicios
+      if (Array.isArray(ini)) txt += ini.length > 0 ? `Generadas ${ini.length} línea(s) de inicio. ` : 'Sin líneas de inicio. '
+      else if (ini && ini.error) txt += `⚠ Inicios NO escritos: ${ini.error}. `
       const fallo = (data.emailEstado === false) || (data.emailFacturacion === false)
-      if (data.emailEstado === false) txt += ' AVISO de cambio de estado: FALLÓ.'
-      if (data.emailFacturacion === false) txt += ' Email a Finanzas: FALLÓ.'
-      if (!fallo) txt += ' Avisos enviados (cambio de estado + facturación a Finanzas).'
-      setMsg({ type: fallo ? 'warn' : 'ok', text: txt })
+      if (data.emailEstado === false) txt += 'Aviso de estado: FALLÓ. '
+      if (data.emailFacturacion === false) txt += 'Email a Finanzas: FALLÓ. '
+      if (!fallo) txt += 'Avisos enviados.'
+      setMsg({ type: (fallo || (ini && ini.error)) ? 'warn' : 'ok', text: txt })
+      setIniciosPanel(null); setDicomTiene(false); setDicomMonto(''); setPropNota('')
     } catch { setMsg({ type: 'error', text: 'Error de conexión' }) }
-    setCambiando(false)
+    setEjecutandoIni(false)
+  }
+
+  function cancelarTerminar() {
+    setIniciosPanel(null); setIniciosErrores([]); setDicomTiene(false); setDicomMonto(''); setPropNota('')
+    setMsg({ type: 'info', text: 'Activación cancelada. El contrato sigue en P.' })
   }
 
   const ro = bloqueado
@@ -1082,6 +1129,46 @@ function AdminContent() {
               color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: (bloqueado || cambiando) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             }}>{cambiando ? 'PROCESANDO…' : 'TERMINAR (P → S)'}</button>
+        )}
+
+        {/* ── Errores de validación de inicios (bloquean el P→S) ── */}
+        {iniciosErrores.length > 0 && (
+          <div style={{ flexBasis: '100%', margin: '6px 0 0', padding: '10px 12px', borderRadius: 6, background: '#fef2f2', border: '1px solid #fca5a5' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>No se puede activar (P→S). Corrige en el LOG y reintenta:</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {iniciosErrores.map((e, i) => (<li key={i} style={{ fontSize: 12, color: '#7f1d1d', marginBottom: 2 }}>{e.mensaje}</li>))}
+            </ul>
+          </div>
+        )}
+        {/* ── Panel de confirmación de inicios (DICOM) — solo cuando validó OK ── */}
+        {iniciosPanel && (
+          <div style={{ flexBasis: '100%', margin: '6px 0 0', padding: '12px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #7dd3fc' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#075985', marginBottom: 8 }}>Activar {form.idadmon} (P → S) — confirmar inicios</div>
+            <div style={{ fontSize: 12, color: '#0c4a6e', marginBottom: 4, fontWeight: 600 }}>Se cargarán en cuentas:</div>
+            <table style={{ borderCollapse: 'collapse', marginBottom: 10, fontSize: 12 }}><tbody>
+              {iniciosPanel.previo.map((f, i) => (
+                <tr key={i}>
+                  <td style={{ padding: '2px 10px 2px 0', color: '#64748b' }}>{f.fecha}</td>
+                  <td style={{ padding: '2px 14px 2px 0' }}>{f.concepto}</td>
+                  <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 600 }}>{Number(f.cargo).toLocaleString('es-CL')}</td>
+                </tr>
+              ))}
+            </tbody></table>
+            {iniciosPanel.yaHayRenta && (<div style={{ fontSize: 11, color: '#92400e', marginBottom: 8 }}>Ya hay renta del mes de inicio: el proporcional NO se cargará (para no duplicar).</div>)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0c4a6e' }}>¿Tiene DICOM?</span>
+              <label style={{ fontSize: 12, cursor: 'pointer' }}><input type="checkbox" checked={dicomTiene} onChange={e => setDicomTiene(e.target.checked)} />{' '}Sí, cargar</label>
+              {dicomTiene && (<input type="text" inputMode="numeric" placeholder="monto DICOM" value={dicomMonto} onChange={e => setDicomMonto(e.target.value)} style={{ ...inputCell, width: 140, border: `1px solid ${C.border}` }} />)}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Nota proporcional (solo si Legal lo ajustó):</span>
+              <input type="text" placeholder="p. ej. retraso de entrega por…" value={propNota} onChange={e => setPropNota(e.target.value)} style={{ ...inputCell, width: 320, border: `1px solid ${C.border}` }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={ejecutarTerminar} disabled={ejecutandoIni} style={{ padding: '6px 16px', borderRadius: 5, border: 'none', background: ejecutandoIni ? '#9ca3af' : C.green, color: '#fff', fontSize: 12, fontWeight: 700, cursor: ejecutandoIni ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{ejecutandoIni ? 'Activando…' : 'Confirmar y activar (S)'}</button>
+              <button onClick={cancelarTerminar} disabled={ejecutandoIni} style={{ padding: '6px 16px', borderRadius: 5, border: `1px solid ${C.border}`, background: '#fff', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+            </div>
+          </div>
         )}
 
         {puedeEditarAhora && (
