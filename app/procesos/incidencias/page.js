@@ -453,9 +453,8 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
 
       <Bloque titulo="Reparación">
         <ProveedorSection inc={inc} usuario={usuario} onCambio={onCambio} />
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#6b7280' }}>
-          Presupuesto: {inc.presupuesto_id ? `#${inc.presupuesto_id}` : 'sin presupuesto (no toda incidencia genera uno)'}
-          {' · '}<span style={{ color: '#9ca3af' }}>crear/asociar presupuesto: próximo paso</span>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+          <PresupuestoSection inc={inc} usuario={usuario} onCambio={onCambio} />
         </div>
       </Bloque>
 
@@ -574,6 +573,146 @@ function ProveedorSection({ inc, usuario, onCambio }) {
         </div>
       )}
 
+      {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+// ---------- Crear / asociar presupuesto (reusa tabla presupuestos, en_termino=false) ----------
+function PresupuestoSection({ inc, usuario, onCambio }) {
+  const [presu, setPresu] = useState(null);
+  const [modo, setModo] = useState('');       // '' | 'asociar'
+  const [lista, setLista] = useState([]);
+  const [q, setQ] = useState('');
+  const [msg, setMsg] = useState('');
+  const [trabajando, setTrabajando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      if (!inc.presupuesto_id) { setPresu(null); return; }
+      const { data } = await supabase.from('presupuestos')
+        .select('id, numero, fecha, total, descripcion')
+        .eq('id', inc.presupuesto_id).maybeSingle();
+      if (vivo) setPresu(data || null);
+    })();
+    return () => { vivo = false; };
+  }, [inc.presupuesto_id]);
+
+  const fmtPesos = (n) => (n == null || isNaN(Number(n))) ? '—' : '$' + Number(n).toLocaleString('es-CL');
+
+  async function cargarLista() {
+    const { data } = await supabase.from('presupuestos')
+      .select('id, numero, fecha, total, id_admon_new, propietario, descripcion')
+      .order('id', { ascending: false }).limit(300);
+    setLista(data || []);
+  }
+
+  async function siguienteNumero() {
+    const { data } = await supabase.from('presupuestos').select('numero');
+    let max = 0;
+    (data || []).forEach((x) => { const m = /^[Cc](\d+)$/.exec((x.numero || '').trim()); if (m) max = Math.max(max, parseInt(m[1], 10)); });
+    return 'C' + String(max + 1).padStart(3, '0');
+  }
+
+  async function vincular(id, antes) {
+    const { error } = await supabase.from('incidencias').update({ presupuesto_id: id }).eq('id', inc.id);
+    if (error) throw error;
+    await supabase.from('incidencia_historial').insert({
+      incidencia_id: inc.id, campo: 'presupuesto_id',
+      valor_antes: String(antes ?? ''), valor_despues: String(id ?? ''), usuario,
+    });
+  }
+
+  async function crear() {
+    setMsg(''); setTrabajando(true);
+    try {
+      const numero = await siguienteNumero();
+      const hoy = new Date();
+      const cab = {
+        numero, fecha: hoy.toISOString().slice(0, 10),
+        aamm: (hoy.getFullYear() % 100) * 100 + (hoy.getMonth() + 1),
+        id_admon_new: (inc.idadmon || '').trim() || null,
+        ubicacion: inc.inmueble || inc.ubicacion || null,
+        propietario: inc.propietario || null,
+        descripcion: `Reparación · ${inc.numero_ticket}` + (inc.descripcion ? ` — ${inc.descripcion}` : ''),
+        neto: 0, iva: 0, total: 0, en_termino: false,       // en_termino=false => presupuesto de incidencia
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabase.from('presupuestos').insert(cab).select('id').single();
+      if (error) throw error;
+      await vincular(data.id, inc.presupuesto_id);
+      await onCambio();
+    } catch (err) { console.error(err); setMsg('No se pudo crear el presupuesto: ' + (err.message || err)); }
+    finally { setTrabajando(false); }
+  }
+
+  async function asociar(id) {
+    setMsg(''); setTrabajando(true);
+    try { await vincular(id, inc.presupuesto_id); setModo(''); setQ(''); await onCambio(); }
+    catch (err) { console.error(err); setMsg('No se pudo asociar: ' + (err.message || err)); }
+    finally { setTrabajando(false); }
+  }
+
+  async function desasociar() {
+    setTrabajando(true);
+    try { await vincular(null, inc.presupuesto_id); await onCambio(); }
+    catch (err) { console.error(err); setMsg('No se pudo desasociar: ' + (err.message || err)); }
+    finally { setTrabajando(false); }
+  }
+
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const base = t
+      ? lista.filter((p) => [p.numero, p.id_admon_new, p.propietario, p.descripcion].filter(Boolean).some((x) => String(x).toLowerCase().includes(t)))
+      : lista;
+    return base.slice(0, 30);
+  }, [q, lista]);
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Presupuesto de reparación</div>
+
+      {presu ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginRight: 'auto' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{presu.numero || `#${presu.id}`} · {fmtPesos(presu.total)}</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>{presu.descripcion || 'sin descripción'}</div>
+          </div>
+          <a href="/procesos/presupuestos" style={miniBtn}>Abrir en Presupuestos</a>
+          <button onClick={desasociar} disabled={trabajando} style={miniBtn}>Desasociar</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#6b7280', marginRight: 4 }}>Sin presupuesto (no toda incidencia genera uno).</span>
+          <button onClick={crear} disabled={trabajando} style={btnSecondary}>{trabajando ? 'Creando…' : 'Crear presupuesto'}</button>
+          <button onClick={() => { const nuevo = modo === 'asociar' ? '' : 'asociar'; setModo(nuevo); if (nuevo === 'asociar') cargarLista(); }} style={miniBtn}>Asociar existente</button>
+        </div>
+      )}
+
+      {modo === 'asociar' && !presu && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, marginTop: 8 }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} style={{ ...input, marginBottom: 8 }}
+                 placeholder="Buscar por número, IDADMON o propietario…" />
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
+            {filtrados.map((p) => (
+              <button key={p.id} onClick={() => asociar(p.id)}
+                style={{ textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: '1px solid #eee', background: '#fff', cursor: 'pointer', minHeight: 40 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{p.numero || `#${p.id}`}</span>
+                <span style={{ color: '#6b7280', fontSize: 13 }}> · {fmtPesos(p.total)}</span>
+                {p.id_admon_new && <span style={{ color: '#9ca3af', fontSize: 12 }}> · {p.id_admon_new}</span>}
+              </button>
+            ))}
+            {filtrados.length === 0 && <div style={{ fontSize: 13, color: '#6b7280', padding: 6 }}>Sin coincidencias.</div>}
+          </div>
+        </div>
+      )}
+
+      {presu && (
+        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
+          Las líneas y el PDF se editan en el módulo Presupuestos (búscalo por {presu.numero || `#${presu.id}`}).
+        </div>
+      )}
       {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
     </div>
   );
