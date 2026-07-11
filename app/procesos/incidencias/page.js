@@ -452,12 +452,11 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
       </Bloque>
 
       <Bloque titulo="Reparación">
-        <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>
+        <ProveedorSection inc={inc} usuario={usuario} onCambio={onCambio} />
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#6b7280' }}>
           Presupuesto: {inc.presupuesto_id ? `#${inc.presupuesto_id}` : 'sin presupuesto (no toda incidencia genera uno)'}
-          {' · '}Proveedor: {inc.proveedor_id ? `#${inc.proveedor_id}` : 'sin asignar'}
-        </p>
-        {/* TODO v2: enlazar a /procesos/presupuestos para crear/asociar presupuesto,
-            asignar proveedor desde contactos, y generar orden de trabajo (patrón lib/pdfOrden.js). */}
+          {' · '}<span style={{ color: '#9ca3af' }}>crear/asociar presupuesto: próximo paso</span>
+        </div>
       </Bloque>
 
       {/* Barra de acción de estado (sticky en móvil) */}
@@ -477,6 +476,105 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------- Asignar proveedor (contactos con rol 'proveedor') ----------
+function ProveedorSection({ inc, usuario, onCambio }) {
+  const [proveedores, setProveedores] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [abierto, setAbierto] = useState(false);
+  const [q, setQ] = useState('');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('contactos')
+        .select('id, nombre, empresa, telefono, whatsapp, email, roles')
+        .eq('activo', true)
+        .order('nombre');
+      if (!vivo) return;
+      if (error) { console.error(error); setMsg('No se pudieron cargar proveedores: ' + error.message); }
+      setProveedores((data || []).filter((c) => (c.roles || []).includes('proveedor')));
+      setCargando(false);
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  const actual = proveedores.find((p) => String(p.id) === String(inc.proveedor_id));
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const base = t
+      ? proveedores.filter((p) => [p.nombre, p.empresa].filter(Boolean).some((x) => x.toLowerCase().includes(t)))
+      : proveedores;
+    return base.slice(0, 30);
+  }, [q, proveedores]);
+
+  async function asignar(id) {
+    setMsg('');
+    const { error } = await supabase.from('incidencias').update({ proveedor_id: id }).eq('id', inc.id);
+    if (error) { setMsg('No se pudo asignar: ' + error.message); return; }
+    await supabase.from('incidencia_historial').insert({
+      incidencia_id: inc.id, campo: 'proveedor_id',
+      valor_antes: String(inc.proveedor_id ?? ''), valor_despues: String(id ?? ''), usuario,
+    });
+    setAbierto(false); setQ('');
+    await onCambio();
+  }
+
+  const soloDigitos = (t) => (t || '').replace(/\D/g, '');
+  const telHref = (t) => (t || '').replace(/[^\d+]/g, '');
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Proveedor asignado</div>
+
+      {actual ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ marginRight: 'auto' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{actual.nombre}{actual.empresa ? ` · ${actual.empresa}` : ''}</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>{actual.telefono || actual.whatsapp || actual.email || 'sin contacto'}</div>
+          </div>
+          {(actual.whatsapp || actual.telefono) &&
+            <a href={`https://wa.me/${soloDigitos(actual.whatsapp || actual.telefono)}`} target="_blank" rel="noreferrer" style={miniBtn}>WhatsApp</a>}
+          {actual.telefono && <a href={`tel:${telHref(actual.telefono)}`} style={miniBtn}>Llamar</a>}
+          <button onClick={() => setAbierto((b) => !b)} style={miniBtn}>{abierto ? 'Cerrar' : 'Cambiar'}</button>
+          <button onClick={() => asignar(null)} style={miniBtn}>Quitar</button>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>Sin proveedor asignado.</span>
+          <button onClick={() => setAbierto(true)} style={btnSecondary}>Asignar proveedor</button>
+        </div>
+      )}
+
+      {abierto && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} style={{ ...input, marginBottom: 8 }}
+                 placeholder={cargando ? 'Cargando proveedores…' : 'Buscar por nombre o empresa…'} />
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 4 }}>
+            {filtrados.map((p) => (
+              <button key={p.id} onClick={() => asignar(p.id)}
+                style={{ textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: '1px solid #eee',
+                         background: '#fff', cursor: 'pointer', minHeight: 40 }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{p.nombre}</span>
+                {p.empresa && <span style={{ color: '#6b7280', fontSize: 13 }}> · {p.empresa}</span>}
+                {(p.telefono || p.whatsapp) && <span style={{ color: '#9ca3af', fontSize: 12 }}> · {p.telefono || p.whatsapp}</span>}
+              </button>
+            ))}
+            {!cargando && filtrados.length === 0 && (
+              <div style={{ fontSize: 13, color: '#6b7280', padding: 6 }}>
+                Sin coincidencias. Los proveedores se marcan con el rol “proveedor” en Contactos.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
     </div>
   );
 }
@@ -525,4 +623,9 @@ const btnPrimary = {
 const btnSecondary = {
   padding: '11px 18px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff',
   color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', minHeight: 44,
+};
+const miniBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 36,
+  padding: '0 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff',
+  color: '#111827', fontSize: 13, fontWeight: 600, textDecoration: 'none', cursor: 'pointer',
 };
