@@ -251,12 +251,45 @@ function TablaEscritorio({ lista, onAbrir }) {
 // ---------- Formulario nueva incidencia ----------
 function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
   const [f, setF] = useState({
-    idadmon: '', inmueble: '', reportado_por: '', canal: 'email',
+    idadmon: '', inmueble: '', ubicacion: '', propietario: '', reportado_por: '', canal: 'email',
     categoria: 'sanitario', urgencia: 'media', descripcion: '',
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [lookup, setLookup] = useState({ estado: 'idle', msg: '', color: '#6b7280' });
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  // Al escribir el IDADMON y salir del campo (o Enter), trae la propiedad de datos_arriendos.
+  async function buscarIdadmon() {
+    const id = f.idadmon.trim();
+    if (!id) { setLookup({ estado: 'idle', msg: '', color: '#6b7280' }); return; }
+    setLookup({ estado: 'buscando', msg: 'Buscando propiedad…', color: '#6b7280' });
+    const { data, error: e } = await supabase
+      .from('datos_arriendos')
+      .select('idadmon, inmueble, propietario, estado')
+      .eq('idadmon', id)
+      .limit(1)
+      .maybeSingle();
+    if (e) {
+      setLookup({ estado: 'error', msg: 'No se pudo consultar la propiedad: ' + (e.message || e), color: '#d97706' });
+      return;
+    }
+    if (!data) {
+      setLookup({ estado: 'nada', msg: `IDADMON "${id}" no está en datos_arriendos — completa el inmueble a mano.`, color: '#d97706' });
+      return;
+    }
+    setF((s) => ({
+      ...s,
+      inmueble: data.inmueble || s.inmueble,
+      ubicacion: data.inmueble || s.ubicacion,
+      propietario: data.propietario || s.propietario,
+    }));
+    setLookup({
+      estado: 'ok',
+      msg: `✓ ${data.inmueble || 'Inmueble s/d'}${data.propietario ? ' · ' + data.propietario : ''}${data.estado ? ' · estado ' + data.estado : ''}`,
+      color: '#16a34a',
+    });
+  }
 
   async function generarTicket() {
     // INC-AAAAMMDD-NNN con secuencia diaria
@@ -287,7 +320,8 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
       await onCreada();
     } catch (err) {
       console.error(err);
-      setError('No se pudo crear la incidencia. Inténtalo de nuevo.');
+      setError('No se pudo crear la incidencia: ' + (err?.message || err?.error_description || 'error desconocido') +
+               (err?.hint ? ` (${err.hint})` : ''));
     } finally {
       setGuardando(false);
     }
@@ -299,8 +333,18 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
       <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, margin: '4px 0 16px' }}>Nueva incidencia</h1>
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-        <Campo label="IDADMON (contrato) *"><input style={input} value={f.idadmon} onChange={set('idadmon')} /></Campo>
+        <Campo label="IDADMON (contrato) *">
+          <input style={input} value={f.idadmon} placeholder="Ej. A00856"
+            onChange={(e) => { const v = e.target.value; setF((s) => ({ ...s, idadmon: v }));
+              setLookup((l) => (l.estado === 'idle' ? l : { estado: 'idle', msg: '', color: '#6b7280' })); }}
+            onBlur={buscarIdadmon}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarIdadmon(); } }} />
+        </Campo>
         <Campo label="Inmueble / ubicación"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
+        {lookup.msg && (
+          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: lookup.color, marginTop: -4 }}>{lookup.msg}</div>
+        )}
+        <Campo label="Propietario"><input style={input} value={f.propietario} onChange={set('propietario')} /></Campo>
         <Campo label="Reportado por"><input style={input} value={f.reportado_por} onChange={set('reportado_por')} /></Campo>
         <Campo label="Canal">
           <select style={input} value={f.canal} onChange={set('canal')}>
