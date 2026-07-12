@@ -1,4 +1,12 @@
-import { supabaseAdmin } from "@/src/lib/supabase";
+// VERSION: v2 · 2026-07-12 · app/procesos/terminos/[idadmon]/page.js
+//   FIX del enlace que "no abría" tras el cambio de workflow:
+//   1) Import del cliente Supabase consolidado a @/lib/supabaseAdmin (antes @/src/lib/supabase,
+//      la única ruta distinta del proyecto → si ese módulo se movió/renombró, supabaseAdmin quedaba
+//      undefined y la página reventaba al renderizar).
+//   2) Blindaje: data/edges/logs con guardas (nunca .length/.map sobre null).
+//   3) Estado vacío amable: si el término no tiene expediente de workflow (p. ej. backlog viejo
+//      pasado a Q antes del circuito automático), se avisa en vez de mostrar una página muerta.
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import CompletarButton from "./CompletarButton";
 import GrafoTermino from "./GrafoTermino";
 
@@ -29,7 +37,10 @@ export default async function TerminoPage({ params }) {
     .select("*")
     .eq("workflow_codigo", "TERMINO");
 
-  const workflowInstanceId = data?.[0]?.workflow_instance_id;
+  const tasks = Array.isArray(data) ? data : [];
+  const edgeList = Array.isArray(edges) ? edges : [];
+
+  const workflowInstanceId = tasks[0]?.workflow_instance_id;
 
   const { data: logs, error: logsError } = workflowInstanceId
     ? await supabaseAdmin
@@ -39,29 +50,63 @@ export default async function TerminoPage({ params }) {
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
+  // Error real de consulta (tabla/vista/columna) -> mensaje claro, no pantalla muerta.
   if (error || edgeError || logsError) {
     return (
       <main style={{ padding: 24 }}>
         <h1>Error cargando workflow</h1>
-        <pre>{error?.message || edgeError?.message || logsError?.message}</pre>
+        <p>IDADMON: {idadmon}</p>
+        <pre style={{ whiteSpace: "pre-wrap", background: "#f8d7da", color: "#842029", padding: 12, borderRadius: 8 }}>
+          {error?.message || edgeError?.message || logsError?.message}
+        </pre>
       </main>
     );
   }
 
-  const total = data.length;
-  const completadas = data.filter((t) => t.task_estado === "COMPLETADO").length;
-  const activas = data.filter((t) => t.task_estado === "ACTIVO").length;
-  const pendientes = data.filter((t) => t.task_estado === "PENDIENTE").length;
-  const retrasadas = data.filter((t) => t.esta_retrasado).length;
+  // Término sin expediente de workflow (no hay instancia de TERMINO para este IDADMON).
+  if (tasks.length === 0) {
+    return (
+      <main style={{ padding: 24 }}>
+        <h1>Workflow de término</h1>
+        <h2>IDADMON: {idadmon}</h2>
+        <p
+          style={{
+            marginTop: 16,
+            padding: 16,
+            background: "#fff3cd",
+            color: "#7a4f00",
+            borderRadius: 8,
+            lineHeight: 1.5,
+          }}
+        >
+          Este término todavía <b>no tiene expediente de workflow</b> (no existe una instancia de
+          TERMINO para {idadmon}). El expediente se crea automáticamente al pasar el contrato a{" "}
+          <b>Q</b>. Si este contrato ya está en Q y aún no aparece, es probable que sea un término
+          antiguo anterior al circuito automático — avísame y le generamos la instancia para que
+          entre al proceso de 45 días.
+        </p>
+      </main>
+    );
+  }
+
+  const logList = Array.isArray(logs) ? logs : [];
+
+  const total = tasks.length;
+  const completadas = tasks.filter((t) => t.task_estado === "COMPLETADO").length;
+  const activas = tasks.filter((t) => t.task_estado === "ACTIVO").length;
+  const pendientes = tasks.filter((t) => t.task_estado === "PENDIENTE").length;
+  const retrasadas = tasks.filter((t) => t.esta_retrasado).length;
   const avance = total > 0 ? Math.round((completadas / total) * 1000) / 10 : 0;
 
   const responsablesActivos = [
     ...new Set(
-      data
+      tasks
         .filter((t) => t.task_estado === "ACTIVO")
         .map((t) => t.responsable)
     ),
-  ].join(" / ");
+  ]
+    .filter(Boolean)
+    .join(" / ");
 
   return (
     <main style={{ padding: 24 }}>
@@ -157,7 +202,7 @@ export default async function TerminoPage({ params }) {
         </span>
       </div>
 
-      <GrafoTermino data={data} edges={edges} />
+      <GrafoTermino data={tasks} edges={edgeList} />
 
       <table cellPadding="8" style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
@@ -174,7 +219,7 @@ export default async function TerminoPage({ params }) {
         </thead>
 
         <tbody>
-          {data.map((t) => {
+          {tasks.map((t) => {
             const style = t.esta_retrasado
               ? estadoStyle.RETRASADO
               : estadoStyle[t.task_estado] || estadoStyle.PENDIENTE;
@@ -217,7 +262,7 @@ export default async function TerminoPage({ params }) {
       >
         <h3>Historial del expediente</h3>
 
-        {logs.length === 0 ? (
+        {logList.length === 0 ? (
           <p>No hay movimientos registrados todavía.</p>
         ) : (
           <table
@@ -238,7 +283,7 @@ export default async function TerminoPage({ params }) {
             </thead>
 
             <tbody>
-              {logs.map((log) => (
+              {logList.map((log) => (
                 <tr key={log.id}>
                   <td>{formatDateTime(log.created_at)}</td>
                   <td>{log.node_codigo}</td>
