@@ -1,5 +1,6 @@
-// VERSION: v3 · 2026-07-12 · app/procesos/terminos/[idadmon]/page.js
-//   Vista NUEVA del término por las 7 ETAPAS (0-6) del modelo desplegado en B2.2:
+// VERSION: v4 · 2026-07-12 · app/procesos/terminos/[idadmon]/page.js
+//   Se ELIMINA el "Grafo de dependencias" antiguo (GrafoTermino) — lo sustituyen las bandas.
+//   Vista del término por las 7 ETAPAS (0-6) del modelo desplegado en B2.2:
 //   - Bandas por etapa (workflow_etapas): ventana de días, responsable visible, 🔒 compuerta dura,
 //     ⏱ si cuenta al reloj; la etapa en curso se resalta.
 //   - Nodos agrupados en su etapa (workflow_nodes.etapa_numero), como tarjetas coloreadas por
@@ -9,7 +10,6 @@
 //   Import consolidado a @/lib/supabaseAdmin y guardas de null (heredado de v2).
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import CompletarButton from "./CompletarButton";
-import GrafoTermino from "./GrafoTermino";
 
 const nodeColor = {
   COMPLETADO: { bg: "#d8f3dc", bd: "#2f9e44", tx: "#1b5e20" },
@@ -36,11 +36,6 @@ export default async function TerminoPage({ params }) {
     .eq("idadmon", idadmon)
     .order("orden_visual", { ascending: true });
 
-  const { data: edges, error: edgeError } = await supabaseAdmin
-    .from("workflow_dependencies")
-    .select("*")
-    .eq("workflow_codigo", "TERMINO");
-
   const { data: etapasRaw } = await supabaseAdmin
     .from("workflow_etapas")
     .select("*")
@@ -53,7 +48,6 @@ export default async function TerminoPage({ params }) {
     .eq("workflow_codigo", "TERMINO");
 
   const tasks = Array.isArray(data) ? data : [];
-  const edgeList = Array.isArray(edges) ? edges : [];
   const etapas = Array.isArray(etapasRaw) ? etapasRaw : [];
   const nodos = Array.isArray(nodosRaw) ? nodosRaw : [];
 
@@ -73,13 +67,13 @@ export default async function TerminoPage({ params }) {
     .eq("idadmon", idadmon)
     .maybeSingle();
 
-  if (error || edgeError || logsError) {
+  if (error || logsError) {
     return (
       <main style={{ padding: 24 }}>
         <h1>Error cargando workflow</h1>
         <p>IDADMON: {idadmon}</p>
         <pre style={{ whiteSpace: "pre-wrap", background: "#f8d7da", color: "#842029", padding: 12, borderRadius: 8 }}>
-          {error?.message || edgeError?.message || logsError?.message}
+          {error?.message || logsError?.message}
         </pre>
       </main>
     );
@@ -241,9 +235,6 @@ export default async function TerminoPage({ params }) {
           </div>
         ) : null}
       </section>
-
-      {/* Grafo de dependencias (se conserva) */}
-      <GrafoTermino data={tasks} edges={edgeList} />
 
       {/* Historial */}
       <section style={{ marginTop: 24, background: "white", border: "1px solid #dee2e6", borderRadius: 12, padding: 16 }}>
