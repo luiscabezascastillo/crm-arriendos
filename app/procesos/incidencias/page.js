@@ -337,22 +337,16 @@ function TablaEscritorio({ lista, onAbrir }) {
   );
 }
 
-// ---------- Formulario nueva incidencia ----------
-function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
-  const [f, setF] = useState({
-    idadmon: '', inmueble: '', ubicacion: '', propietario: '', reportado_por: '', canal: 'email',
-    categoria: 'sanitario', urgencia: 'media', descripcion: '',
-  });
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState('');
-  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
-
-  // Propiedades activas para buscar por dirección (el técnico no sabe el IDADMON).
+// ---------- Selector de propiedad (por dirección o por IDADMON) ----------
+function PropiedadSelector({ initial, onPick }) {
   const [props, setProps] = useState([]);
-  const [cargandoProps, setCargandoProps] = useState(true);
-  const [qDir, setQDir] = useState('');
-  const [openDir, setOpenDir] = useState(false);
-  const [propSel, setPropSel] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [modo, setModo] = useState('dir');   // 'dir' | 'id'
+  const [q, setQ] = useState(initial?.inmueble || '');
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(initial?.idadmon ? { ...initial } : null);
+  const [idInput, setIdInput] = useState(initial?.idadmon || '');
+  const [msg, setMsg] = useState('');
 
   useEffect(() => {
     let vivo = true;
@@ -363,27 +357,100 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
       if (e) console.error(e);
       const activas = (data || [])
         .filter((r) => r.idadmon && !esHistoricoDA(r.estado))
-        .sort((a, b) => new Date(b.fecha_inicio || 0) - new Date(a.fecha_inicio || 0)); // el último activo primero
+        .sort((a, b) => new Date(b.fecha_inicio || 0) - new Date(a.fecha_inicio || 0)); // último activo primero
       setProps(activas);
-      setCargandoProps(false);
+      setCargando(false);
     })();
     return () => { vivo = false; };
   }, []);
 
-  const dirMatches = useMemo(() => {
-    const t = norm(qDir);
+  const matches = useMemo(() => {
+    const t = norm(q);
     if (!t) return [];
-    return props.filter((r) =>
-      [r.inmueble, r.propietario, r.idadmon].filter(Boolean).some((x) => norm(x).includes(t))
-    ).slice(0, 25);
-  }, [qDir, props]);
+    return props.filter((r) => [r.inmueble, r.propietario, r.idadmon].filter(Boolean).some((x) => norm(x).includes(t))).slice(0, 25);
+  }, [q, props]);
 
-  function elegirPropiedad(r) {
-    setPropSel(r);
-    setF((s) => ({ ...s, idadmon: r.idadmon, inmueble: r.inmueble || '', ubicacion: r.inmueble || '', propietario: r.propietario || '' }));
-    setQDir(r.inmueble || r.idadmon || '');
-    setOpenDir(false);
+  function elegir(r) {
+    const picked = { idadmon: r.idadmon, inmueble: r.inmueble || '', propietario: r.propietario || '', estado: r.estado };
+    setSel(picked); setQ(r.inmueble || r.idadmon || ''); setIdInput(r.idadmon || ''); setOpen(false); setMsg('');
+    onPick(picked);
   }
+
+  async function buscarPorId() {
+    const id = idInput.trim();
+    if (!id) return;
+    setMsg('Buscando…');
+    let r = props.find((p) => String(p.idadmon).toLowerCase() === id.toLowerCase());
+    if (!r) {
+      const { data } = await supabase.from('datos_arriendos')
+        .select('idadmon, inmueble, propietario, estado').eq('idadmon', id).maybeSingle();
+      r = data || null;
+    }
+    if (!r) { setMsg(`IDADMON "${id}" no encontrado.`); return; }
+    elegir(r);
+  }
+
+  const tab = (on) => ({
+    padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (on ? '#111827' : '#d1d5db'),
+    background: on ? '#111827' : '#fff', color: on ? '#fff' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 36,
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <button type="button" onClick={() => setModo('dir')} style={tab(modo === 'dir')}>Por dirección</button>
+        <button type="button" onClick={() => setModo('id')} style={tab(modo === 'id')}>Por IDADMON</button>
+      </div>
+
+      {modo === 'dir' ? (
+        <>
+          <input style={input} value={q}
+            placeholder={cargando ? 'Cargando propiedades…' : 'Escribe la dirección (ej. Pablo Urzúa 1481)'}
+            onChange={(e) => { setQ(e.target.value); setOpen(true); if (sel) setSel(null); }}
+            onFocus={() => setOpen(true)} autoComplete="off" />
+          {open && q.trim() && !sel && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, maxHeight: 260, overflowY: 'auto' }}>
+              {matches.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#6b7280', padding: 10 }}>{cargando ? 'Cargando…' : 'Sin coincidencias (busca sin importar tildes).'}</div>
+              ) : matches.map((r) => (
+                <button key={r.idadmon} type="button" onClick={() => elegir(r)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none',
+                           borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', minHeight: 40 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{r.inmueble || '(sin dirección)'}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>{r.propietario || 's/propietario'} · IDADMON {r.idadmon}{r.estado ? ` · ${r.estado}` : ''}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input style={{ ...input, flex: 1, minWidth: 140 }} value={idInput} placeholder="Ej. A00877"
+            onChange={(e) => { setIdInput(e.target.value); if (sel) setSel(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarPorId(); } }} autoComplete="off" />
+          <button type="button" onClick={buscarPorId} style={btnSecondary}>Buscar</button>
+        </div>
+      )}
+
+      {sel && (
+        <div style={{ fontSize: 12, color: '#16a34a', marginTop: 6 }}>
+          ✓ {sel.inmueble || 's/d'}{sel.propietario ? ` · ${sel.propietario}` : ''} · IDADMON {sel.idadmon}{sel.estado ? ` · estado ${sel.estado}` : ''}
+        </div>
+      )}
+      {msg && <div style={{ fontSize: 12, color: '#d97706', marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+// ---------- Formulario nueva incidencia ----------
+function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
+  const [f, setF] = useState({
+    idadmon: '', inmueble: '', ubicacion: '', propietario: '', reportado_por: '', canal: 'email',
+    categoria: 'sanitario', urgencia: 'media', descripcion: '',
+  });
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   async function generarTicket() {
     // Correlativo global corto: INC-003 (continúa desde el número más alto existente)
@@ -430,36 +497,9 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
         <div style={{ gridColumn: '1 / -1' }}>
-          <Campo label="Propiedad — busca por dirección *">
-            <input style={input} value={qDir}
-              placeholder={cargandoProps ? 'Cargando propiedades…' : 'Escribe la dirección (ej. Pablo Urzúa 1481)'}
-              onChange={(e) => {
-                setQDir(e.target.value); setOpenDir(true);
-                if (propSel) { setPropSel(null); setF((s) => ({ ...s, idadmon: '', propietario: '' })); }
-              }}
-              onFocus={() => setOpenDir(true)} autoComplete="off" />
-          </Campo>
-          {propSel && (
-            <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>
-              ✓ {propSel.inmueble || 's/d'}{propSel.propietario ? ` · ${propSel.propietario}` : ''} · IDADMON {propSel.idadmon}{propSel.estado ? ` · estado ${propSel.estado}` : ''}
-            </div>
-          )}
-          {openDir && qDir.trim() && !propSel && (
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, maxHeight: 260, overflowY: 'auto' }}>
-              {dirMatches.length === 0 ? (
-                <div style={{ fontSize: 13, color: '#6b7280', padding: 10 }}>
-                  {cargandoProps ? 'Cargando…' : 'Sin coincidencias. Revisa la dirección (busca sin importar tildes).'}
-                </div>
-              ) : dirMatches.map((r) => (
-                <button key={r.idadmon} type="button" onClick={() => elegirPropiedad(r)}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none',
-                           borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', minHeight: 40 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{r.inmueble || '(sin dirección)'}</div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>{r.propietario || 's/propietario'} · IDADMON {r.idadmon}{r.estado ? ` · ${r.estado}` : ''}</div>
-                </button>
-              ))}
-            </div>
-          )}
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Propiedad *</div>
+          <PropiedadSelector isMobile={isMobile}
+            onPick={(r) => setF((s) => ({ ...s, idadmon: r.idadmon, inmueble: r.inmueble || '', ubicacion: r.inmueble || '', propietario: r.propietario || '' }))} />
         </div>
         <Campo label="Inmueble / detalle (opcional)"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
         <Campo label="Reportado por"><input style={input} value={f.reportado_por} onChange={set('reportado_por')} /></Campo>
@@ -614,6 +654,7 @@ function InfoEditable({ inc, usuario, isMobile, onCambio }) {
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
   const vacio = () => ({
+    idadmon: inc.idadmon || '', propietario: inc.propietario || '',
     inmueble: inc.inmueble || '', categoria: inc.categoria || 'otros', urgencia: inc.urgencia || 'media',
     reportado_por: inc.reportado_por || '', canal: inc.canal || 'email',
     descripcion: inc.descripcion || '', notas_internas: inc.notas_internas || '',
@@ -628,7 +669,7 @@ function InfoEditable({ inc, usuario, isMobile, onCambio }) {
     if (!f.descripcion.trim()) { setMsg('La descripción es obligatoria.'); return; }
     setGuardando(true);
     try {
-      const campos = ['inmueble', 'categoria', 'urgencia', 'reportado_por', 'canal', 'descripcion', 'notas_internas'];
+      const campos = ['idadmon', 'propietario', 'inmueble', 'categoria', 'urgencia', 'reportado_por', 'canal', 'descripcion', 'notas_internas'];
       const patch = {}; const cambios = [];
       for (const k of campos) {
         const nuevo = (f[k] ?? '').toString();
@@ -689,8 +730,12 @@ function InfoEditable({ inc, usuario, isMobile, onCambio }) {
         </>
       ) : (
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-          <Campo label="Inmueble / ubicación"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
-          <Campo label={`IDADMON (fijo)`}><input style={{ ...input, background: '#f3f4f6', color: '#9ca3af' }} value={inc.idadmon} disabled /></Campo>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Propiedad · IDADMON (cámbialo si cambió el contrato)</div>
+            <PropiedadSelector initial={{ idadmon: inc.idadmon, inmueble: inc.inmueble, propietario: inc.propietario }}
+              onPick={(r) => setF((s) => ({ ...s, idadmon: r.idadmon, inmueble: r.inmueble || s.inmueble, propietario: r.propietario || '' }))} />
+          </div>
+          <Campo label="Inmueble / detalle"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
           <Campo label="Categoría">
             <select style={input} value={f.categoria} onChange={set('categoria')}>
               {CATEGORIAS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
