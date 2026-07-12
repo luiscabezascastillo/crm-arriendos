@@ -71,6 +71,11 @@ function antiguedadTxt(inc) {
   return d === 0 ? 'ingresada hoy' : `hace ${d} ${d === 1 ? 'día' : 'días'}`;
 }
 
+// Normaliza texto (sin tildes, minúsculas) para buscar direcciones parecidas.
+const norm = (s) => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+// Histórico en datos_arriendos = estado 'N' o 'N DICOM' (no activo).
+const esHistoricoDA = (e) => { const x = (e || '').toString().toUpperCase().replace(/\s+/g, ' ').trim(); return x === 'N' || x === 'N DICOM'; };
+
 export default function IncidenciasPage() {
   const isMobile = useIsMobile();
   const { data: session } = useSession();
@@ -340,39 +345,44 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
-  const [lookup, setLookup] = useState({ estado: 'idle', msg: '', color: '#6b7280' });
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
 
-  // Al escribir el IDADMON y salir del campo (o Enter), trae la propiedad de datos_arriendos.
-  async function buscarIdadmon() {
-    const id = f.idadmon.trim();
-    if (!id) { setLookup({ estado: 'idle', msg: '', color: '#6b7280' }); return; }
-    setLookup({ estado: 'buscando', msg: 'Buscando propiedad…', color: '#6b7280' });
-    const { data, error: e } = await supabase
-      .from('datos_arriendos')
-      .select('idadmon, inmueble, propietario, estado')
-      .eq('idadmon', id)
-      .limit(1)
-      .maybeSingle();
-    if (e) {
-      setLookup({ estado: 'error', msg: 'No se pudo consultar la propiedad: ' + (e.message || e), color: '#d97706' });
-      return;
-    }
-    if (!data) {
-      setLookup({ estado: 'nada', msg: `IDADMON "${id}" no está en datos_arriendos — completa el inmueble a mano.`, color: '#d97706' });
-      return;
-    }
-    setF((s) => ({
-      ...s,
-      inmueble: data.inmueble || s.inmueble,
-      ubicacion: data.inmueble || s.ubicacion,
-      propietario: data.propietario || s.propietario,
-    }));
-    setLookup({
-      estado: 'ok',
-      msg: `✓ ${data.inmueble || 'Inmueble s/d'}${data.propietario ? ' · ' + data.propietario : ''}${data.estado ? ' · estado ' + data.estado : ''}`,
-      color: '#16a34a',
-    });
+  // Propiedades activas para buscar por dirección (el técnico no sabe el IDADMON).
+  const [props, setProps] = useState([]);
+  const [cargandoProps, setCargandoProps] = useState(true);
+  const [qDir, setQDir] = useState('');
+  const [openDir, setOpenDir] = useState(false);
+  const [propSel, setPropSel] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { data, error: e } = await supabase
+        .from('datos_arriendos').select('idadmon, inmueble, propietario, estado, fecha_inicio');
+      if (!vivo) return;
+      if (e) console.error(e);
+      const activas = (data || [])
+        .filter((r) => r.idadmon && !esHistoricoDA(r.estado))
+        .sort((a, b) => new Date(b.fecha_inicio || 0) - new Date(a.fecha_inicio || 0)); // el último activo primero
+      setProps(activas);
+      setCargandoProps(false);
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  const dirMatches = useMemo(() => {
+    const t = norm(qDir);
+    if (!t) return [];
+    return props.filter((r) =>
+      [r.inmueble, r.propietario, r.idadmon].filter(Boolean).some((x) => norm(x).includes(t))
+    ).slice(0, 25);
+  }, [qDir, props]);
+
+  function elegirPropiedad(r) {
+    setPropSel(r);
+    setF((s) => ({ ...s, idadmon: r.idadmon, inmueble: r.inmueble || '', ubicacion: r.inmueble || '', propietario: r.propietario || '' }));
+    setQDir(r.inmueble || r.idadmon || '');
+    setOpenDir(false);
   }
 
   async function generarTicket() {
@@ -388,8 +398,12 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
 
   async function guardar(e) {
     e.preventDefault();
-    if (!f.idadmon.trim() || !f.descripcion.trim()) {
-      setError('IDADMON y descripción son obligatorios.');
+    if (!f.idadmon.trim()) {
+      setError('Busca y elige la propiedad por su dirección.');
+      return;
+    }
+    if (!f.descripcion.trim()) {
+      setError('La descripción es obligatoria.');
       return;
     }
     setError(''); setGuardando(true);
@@ -415,18 +429,39 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
       <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, margin: '4px 0 16px' }}>Nueva incidencia</h1>
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-        <Campo label="IDADMON (contrato) *">
-          <input style={input} value={f.idadmon} placeholder="Ej. A00856"
-            onChange={(e) => { const v = e.target.value; setF((s) => ({ ...s, idadmon: v }));
-              setLookup((l) => (l.estado === 'idle' ? l : { estado: 'idle', msg: '', color: '#6b7280' })); }}
-            onBlur={buscarIdadmon}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarIdadmon(); } }} />
-        </Campo>
-        <Campo label="Inmueble / ubicación"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
-        {lookup.msg && (
-          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: lookup.color, marginTop: -4 }}>{lookup.msg}</div>
-        )}
-        <Campo label="Propietario"><input style={input} value={f.propietario} onChange={set('propietario')} /></Campo>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Campo label="Propiedad — busca por dirección *">
+            <input style={input} value={qDir}
+              placeholder={cargandoProps ? 'Cargando propiedades…' : 'Escribe la dirección (ej. Pablo Urzúa 1481)'}
+              onChange={(e) => {
+                setQDir(e.target.value); setOpenDir(true);
+                if (propSel) { setPropSel(null); setF((s) => ({ ...s, idadmon: '', propietario: '' })); }
+              }}
+              onFocus={() => setOpenDir(true)} autoComplete="off" />
+          </Campo>
+          {propSel && (
+            <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>
+              ✓ {propSel.inmueble || 's/d'}{propSel.propietario ? ` · ${propSel.propietario}` : ''} · IDADMON {propSel.idadmon}{propSel.estado ? ` · estado ${propSel.estado}` : ''}
+            </div>
+          )}
+          {openDir && qDir.trim() && !propSel && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, maxHeight: 260, overflowY: 'auto' }}>
+              {dirMatches.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#6b7280', padding: 10 }}>
+                  {cargandoProps ? 'Cargando…' : 'Sin coincidencias. Revisa la dirección (busca sin importar tildes).'}
+                </div>
+              ) : dirMatches.map((r) => (
+                <button key={r.idadmon} type="button" onClick={() => elegirPropiedad(r)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none',
+                           borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', minHeight: 40 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{r.inmueble || '(sin dirección)'}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>{r.propietario || 's/propietario'} · IDADMON {r.idadmon}{r.estado ? ` · ${r.estado}` : ''}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <Campo label="Inmueble / detalle (opcional)"><input style={input} value={f.inmueble} onChange={set('inmueble')} /></Campo>
         <Campo label="Reportado por"><input style={input} value={f.reportado_por} onChange={set('reportado_por')} /></Campo>
         <Campo label="Canal">
           <select style={input} value={f.canal} onChange={set('canal')}>
