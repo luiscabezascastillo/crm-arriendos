@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v2 · 2026-07-12 · Bloque 3 Términos (parte código-segura): bug includes('FCR')→match
+//   exacto (2 sitios), aprobación bilateral del presupuesto (columnas aprob_*), compuerta de
+//   reversión de garantía (banner-guardia cuando la tiene el DUEÑO). Botones Email/PDF/Reclamación
+//   siguen pendientes de sus endpoints (ver traspaso). ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -12,6 +16,15 @@ const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + v.toLocaleString('es-CL') }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
+
+// Clasificación canónica de "quién tiene la garantía" (traspaso 2026-07-12):
+//   'FCR' EXACTO  = la tiene la empresa.
+//   cualquier otro valor no vacío = la tiene el dueño (canónico: 'DUEÑO').
+//   blanco / NO / NOHAY = sin garantía (se trata como "no FCR" a efectos del tipo).
+// BUG corregido: antes se usaba includes('FCR'), que clasificaba mal "FCR PARA EL DUEÑO"
+// (228 filas) como si la tuviera FCR. Los datos ya se normalizaron a 'DUEÑO'; esto blinda
+// el código para que no reincida si entran grafías nuevas.
+const esGarantiaFCR = quien => up(quien) === 'FCR'
 
 function familiaDe(tipo) {
   const t = up(tipo)
@@ -38,7 +51,9 @@ const PLANTILLA = {
   reparaciones: ['Arreglos presupuesto', 'Reparaciones extras', 'Limpieza General del dpto.', 'Mantención de TERMO', 'Limpieza de alfombras', 'Otros Reparaciones 1', 'Otros Reparaciones 2', 'Otros Reparaciones 3'],
 }
 const AUTO_CONCEPTO = 'Arreglos presupuesto'
-const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '' }
+const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '',
+  // Aprobación bilateral del presupuesto (Etapa 4). Columnas ya existentes en `terminos`.
+  aprob_arrendatario_fecha: '', aprob_arrendatario_via: '', aprob_propietario_fecha: '', aprob_propietario_via: '' }
 
 function calcResult(L, markup, garantia, repPresu, quien) {
   const sumB = b => (L[b] || []).reduce((a, l) => a + (l.auto ? repPresu : n0(l.monto)), 0)
@@ -46,7 +61,7 @@ function calcResult(L, markup, garantia, repPresu, quien) {
   const totalCargos = sg + ss + sr + n0(markup)
   const resultado = n0(garantia) - totalCargos
   const conSaldo = resultado >= 0
-  const esFCR = up(quien).includes('FCR')
+  const esFCR = esGarantiaFCR(quien)   // match EXACTO (antes includes → clasificaba mal "FCR PARA EL DUEÑO")
   const tipo = `T-${conSaldo ? 'CON' : 'SIN'} SALDO-${esFCR ? 'FCR' : 'DUENO'}`
   return { sg, ss, sr, markup: n0(markup), garantia: n0(garantia), totalCargos, resultado, conSaldo, esFCR, tipo }
 }
@@ -181,6 +196,10 @@ export default function TerminosPage() {
       lectura_agua: g('lectura_agua'), lectura_luz: g('lectura_luz'), markup_fcr: g('markup_fcr'),
       comentarios_arrendatario: g('comentarios_arrendatario'), comentarios_internos: g('comentarios_internos'),
       notas_finanzas_1: g('notas_finanzas_1'), notas_finanzas_2: g('notas_finanzas_2'), notas_finanzas_3: g('notas_finanzas_3'), notas_finanzas_4: g('notas_finanzas_4'),
+      aprob_arrendatario_fecha: t?.aprob_arrendatario_fecha ? String(t.aprob_arrendatario_fecha).slice(0, 10) : '',
+      aprob_arrendatario_via: g('aprob_arrendatario_via'),
+      aprob_propietario_fecha: t?.aprob_propietario_fecha ? String(t.aprob_propietario_fecha).slice(0, 10) : '',
+      aprob_propietario_via: g('aprob_propietario_via'),
     })
 
     const repPresu = presupuestos.reduce((a, p) => a + n0(p.total), 0)
@@ -301,6 +320,8 @@ export default function TerminosPage() {
       lectura_agua: txt('lectura_agua'), lectura_luz: txt('lectura_luz'), markup_fcr: num('markup_fcr'),
       comentarios_arrendatario: txt('comentarios_arrendatario'), comentarios_internos: txt('comentarios_internos'),
       notas_finanzas_1: txt('notas_finanzas_1'), notas_finanzas_2: txt('notas_finanzas_2'), notas_finanzas_3: txt('notas_finanzas_3'), notas_finanzas_4: txt('notas_finanzas_4'),
+      aprob_arrendatario_fecha: form.aprob_arrendatario_fecha || null, aprob_arrendatario_via: txt('aprob_arrendatario_via'),
+      aprob_propietario_fecha: form.aprob_propietario_fecha || null, aprob_propietario_via: txt('aprob_propietario_via'),
       resultado_calculado: R.resultado, tipo_resultado: R.tipo, updated_at: new Date().toISOString(),
     }
     const upR = await supabase.from('terminos').upsert(payload, { onConflict: 'idadmon' })
@@ -484,7 +505,7 @@ export default function TerminosPage() {
                   <div>
                     {/* Garantía (mismo formato que el resultado; rojo si no es FCR) */}
                     {(() => {
-                      const garFCR = up(quienGar).includes('FCR')
+                      const garFCR = esGarantiaFCR(quienGar)   // match EXACTO (mismo bug que en calcResult)
                       const garColor = garFCR ? '#185FA5' : '#dc2626'
                       const garBg = garFCR ? '#EAF2FB' : '#FDECEC'
                       return (
@@ -494,6 +515,20 @@ export default function TerminosPage() {
                             <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2, color: garColor }}>Quién la tiene: {quienGar}</div>
                           </div>
                           <div style={{ fontSize: 30, fontWeight: 800, color: garColor }}>{fmtPesos(garantiaVal)}</div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Compuerta de reversión: si la garantía la tiene el DUEÑO, no se libera la
+                        liquidación hasta comunicar la reversión a FCR. Guardia visible (Etapa 4). */}
+                    {(() => {
+                      const garFCR = esGarantiaFCR(quienGar)
+                      if (garFCR || garantiaVal <= 0) return null   // FCR la tiene, o no hay garantía → sin compuerta
+                      return (
+                        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#8a5a00' }}>
+                          <b>⚠ Compuerta de reversión de garantía.</b> La garantía la tiene el <b>propietario</b> ({quienGar}).
+                          No se libera la liquidación hasta comunicar la reversión a FCR (email al propietario) y/o cargarla
+                          al siguiente arriendo. El botón para proponer ese email queda pendiente de su endpoint.
                         </div>
                       )
                     })()}
@@ -620,6 +655,40 @@ export default function TerminosPage() {
                         })}
                     </div>
 
+                    {/* Aprobación bilateral del presupuesto (Etapa 4) */}
+                    <div style={card}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 4 }}>Aprobación del presupuesto (bilateral)</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>El presupuesto (con markup FCR) requiere el visto bueno del <b>ex-arrendatario</b> y del <b>propietario</b>, por separado. Registra cuándo y por qué vía se obtuvo cada uno.</div>
+                      {[
+                        { lbl: 'Ex-arrendatario', kf: 'aprob_arrendatario_fecha', kv: 'aprob_arrendatario_via' },
+                        { lbl: 'Propietario', kf: 'aprob_propietario_fecha', kv: 'aprob_propietario_via' },
+                      ].map(row => {
+                        const aprobado = !!form[row.kf]
+                        return (
+                          <div key={row.kf} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.3fr', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #F6F5F2' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ width: 9, height: 9, borderRadius: '50%', background: aprobado ? '#16a34a' : '#d1d5db', flexShrink: 0 }} />
+                              <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{row.lbl}</span>
+                            </div>
+                            {editando
+                              ? <input type="date" style={inEd} value={form[row.kf]} onChange={e => setF(row.kf, e.target.value)} />
+                              : <div style={{ fontSize: 12, color: aprobado ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{aprobado ? fmtFecha(form[row.kf]) : 'pendiente'}</div>}
+                            {editando
+                              ? <input style={inEd} placeholder="vía (email, WhatsApp, verbal…)" value={form[row.kv]} onChange={e => setF(row.kv, e.target.value)} />
+                              : <div style={{ fontSize: 12, color: '#6b7280' }}>{form[row.kv] || '—'}</div>}
+                          </div>
+                        )
+                      })}
+                      {(() => {
+                        const ambas = !!form.aprob_arrendatario_fecha && !!form.aprob_propietario_fecha
+                        return (
+                          <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: ambas ? '#16a34a' : '#b45309' }}>
+                            {ambas ? '✓ Presupuesto aprobado por ambas partes — se puede ejecutar la reparación.' : '⚠ Sin ambas aprobaciones no se ejecuta gasto (N09).'}
+                          </div>
+                        )
+                      })()}
+                    </div>
+
                     {/* Notas de Finanzas (4 cajas de texto libre) */}
                     <div style={card}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>Notas de Finanzas</div>
@@ -639,7 +708,7 @@ export default function TerminosPage() {
                 </div>
 
                 <div style={{ ...card, background: '#FEF9E7', border: '1px solid #F1C40F', color: '#8a6d00', fontSize: 12 }}>
-                  <b>Panel editable (líneas).</b> Conceptos fijos siempre visibles + líneas añadibles. “Arreglos presupuesto” es automático (= total del presupuesto). Servicios y reparaciones se siembran desde <i>descuentos</i> la primera vez (editables). Pendiente: conectar Servicios a la tabla de GGCC/agua/luz (último mes), botones Email/PDF/Reclamación y marcar pasos del workflow.
+                  <b>Panel editable (líneas).</b> Conceptos fijos siempre visibles + líneas añadibles. “Arreglos presupuesto” es automático (= total del presupuesto). Servicios y reparaciones se siembran desde <i>descuentos</i> la primera vez (editables). Pendiente: conectar Servicios a la tabla de GGCC/agua/luz (último mes) y cablear los botones Email/PDF/Reclamación (endpoints por crear). Ya activos: aprobación bilateral del presupuesto y compuerta de reversión de garantía.
                 </div>
               </>
             )}
