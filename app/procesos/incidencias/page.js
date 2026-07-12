@@ -113,11 +113,11 @@ export default function IncidenciasPage() {
 
       {vista === 'lista' && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
             <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, margin: 0 }}>Incidencias</h1>
-            {!isMobile && (
-              <button onClick={() => setVista('nueva')} style={btnPrimary}>+ Nueva incidencia</button>
-            )}
+            <button onClick={() => setVista('nueva')} style={{ ...btnPrimary, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              + Nueva{isMobile ? '' : ' incidencia'}
+            </button>
           </div>
 
           {!cargando && incidencias.length > 0 && <Dashboard incidencias={incidencias} isMobile={isMobile} />}
@@ -132,14 +132,6 @@ export default function IncidenciasPage() {
             <ListaTarjetas lista={lista} onAbrir={abrir} />
           ) : (
             <TablaEscritorio lista={lista} onAbrir={abrir} />
-          )}
-
-          {/* FAB solo en móvil */}
-          {isMobile && (
-            <button onClick={() => setVista('nueva')} aria-label="Nueva incidencia"
-              style={{ position: 'fixed', right: 18, bottom: 18, width: 56, height: 56, borderRadius: 28,
-                       border: 'none', background: '#111827', color: '#fff', fontSize: 28, lineHeight: '56px',
-                       boxShadow: '0 6px 16px rgba(0,0,0,.25)', cursor: 'pointer' }}>+</button>
           )}
         </>
       )}
