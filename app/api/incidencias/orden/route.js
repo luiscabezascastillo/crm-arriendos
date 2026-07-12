@@ -1,6 +1,7 @@
 // VERSION: v1 · 2026-07-10 · Genera la Orden de Trabajo (PDF) de una incidencia y la guarda en Storage
 // Patrón de app/api/ordenes/*: getToken + supabaseAdmin + pdf-lib.
 import { getToken } from 'next-auth/jwt';
+import { Resend } from 'resend';
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js';
 import { generarOrdenTrabajoPDF } from '../../../../lib/pdfOrdenTrabajo.js';
 
@@ -19,7 +20,7 @@ export async function POST(req) {
   if (!token) return Response.json({ error: 'No autorizado' }, { status: 401 });
 
   try {
-    const { incidencia_id } = await req.json();
+    const { incidencia_id, enviar } = await req.json();
     if (!incidencia_id) return Response.json({ error: 'Falta incidencia_id' }, { status: 400 });
 
     const { data: inc, error: eInc } = await supabaseAdmin
@@ -65,7 +66,57 @@ export async function POST(req) {
     });
 
     const url = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-    return Response.json({ ok: true, url, path });
+
+    // Envío opcional al proveedor por email (Resend), mismo patrón que /api/ordenes/email
+    let emailed = false, emailMsg = '';
+    if (enviar) {
+      const destinoReal = (proveedor?.email || '').trim();
+      const testTo = (process.env.RESEND_TEST_TO || '').trim();
+      const to = testTo || destinoReal;
+      if (!process.env.RESEND_API_KEY) {
+        emailMsg = 'La orden se generó, pero falta RESEND_API_KEY en el entorno para enviar.';
+      } else if (!to) {
+        emailMsg = 'La orden se generó, pero el proveedor no tiene email.';
+      } else {
+        try {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const from = process.env.RESEND_FROM || 'Fondo Capital Rent <onboarding@resend.dev>';
+          const esPrueba = !!testTo;
+          const notaPrueba = esPrueba
+            ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 12px;margin:0 0 16px;font-size:13px;color:#92400E"><b>MODO PRUEBA.</b> Este correo iba dirigido a <b>${destinoReal || '(proveedor sin email)'}</b>, pero se redirigió a tu correo de pruebas.</div>`
+            : '';
+          const html = `
+            <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e">
+              ${notaPrueba}
+              <h2 style="color:#1f2937;margin:0 0 4px">Orden de trabajo ${inc.numero_ticket}</h2>
+              <p style="color:#6b7280;margin:0 0 16px">Mantención · Fondo Capital Rent</p>
+              <p>Estimado/a ${proveedor?.nombre || 'proveedor'},</p>
+              <p>Adjuntamos la orden de trabajo para la propiedad <b>${inc.inmueble || inc.idadmon || ''}</b>.</p>
+              <ul style="color:#374151;font-size:14px">
+                <li><b>Categoría:</b> ${CAT[inc.categoria] || inc.categoria || '—'}</li>
+                <li><b>Urgencia:</b> ${URG[inc.urgencia] || inc.urgencia || '—'}</li>
+                <li><b>Descripción:</b> ${inc.descripcion || '—'}</li>
+              </ul>
+              <p style="color:#6b7280;font-size:13px">Por favor coordinar el acceso con el arrendatario y registrar fotos del antes y después.</p>
+            </div>`;
+          await resend.emails.send({
+            from, to,
+            subject: `Orden de trabajo ${inc.numero_ticket} — Fondo Capital`,
+            html,
+            attachments: [{ filename: `orden-trabajo-${inc.numero_ticket}.pdf`, content: Buffer.from(bytes).toString('base64') }],
+          });
+          emailed = true;
+          emailMsg = esPrueba
+            ? `Enviada en MODO PRUEBA a ${to} (destino real: ${destinoReal || 'sin email'}).`
+            : `Orden enviada a ${to}.`;
+        } catch (e) {
+          console.error('[orden email]', e);
+          emailMsg = 'La orden se generó, pero falló el envío: ' + (e.message || e);
+        }
+      }
+    }
+
+    return Response.json({ ok: true, url, path, emailed, emailMsg });
   } catch (err) {
     console.error('[api/incidencias/orden]', err);
     return Response.json({ error: 'No se pudo generar la orden: ' + (err.message || err) }, { status: 500 });

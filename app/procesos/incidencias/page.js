@@ -112,6 +112,8 @@ export default function IncidenciasPage() {
             )}
           </div>
 
+          {!cargando && incidencias.length > 0 && <Dashboard incidencias={incidencias} isMobile={isMobile} />}
+
           <Filtros filtros={filtros} setFiltros={setFiltros} isMobile={isMobile} />
 
           {cargando ? (
@@ -151,6 +153,86 @@ export default function IncidenciasPage() {
       )}
     </div>
     </>
+  );
+}
+
+// ---------- Dashboard de KPIs (calculado de la lista cargada) ----------
+function Dashboard({ incidencias, isMobile }) {
+  const m = useMemo(() => {
+    const abiertas = incidencias.filter((i) => !['cerrada', 'descartada'].includes(i.estado));
+    const now = Date.now();
+    const vencidas = abiertas.filter((i) => i.fecha_limite && new Date(i.fecha_limite).getTime() < now).length;
+    const proximas = abiertas.filter((i) => {
+      if (!i.fecha_limite) return false;
+      const t = new Date(i.fecha_limite).getTime();
+      return t >= now && t < now + 24 * 3600 * 1000;
+    }).length;
+    const urg = { alta: 0, media: 0, baja: 0 };
+    abiertas.forEach((i) => { if (urg[i.urgencia] != null) urg[i.urgencia]++; });
+    const d = new Date();
+    const cerradas = incidencias.filter((i) => i.estado === 'cerrada' && i.fecha_cierre);
+    const cerradasMes = cerradas.filter((i) => {
+      const c = new Date(i.fecha_cierre);
+      return c.getFullYear() === d.getFullYear() && c.getMonth() === d.getMonth();
+    }).length;
+    let horas = null;
+    const conTiempo = cerradas.filter((i) => i.fecha_reporte && i.fecha_cierre);
+    if (conTiempo.length) {
+      const tot = conTiempo.reduce((a, i) => a + (new Date(i.fecha_cierre) - new Date(i.fecha_reporte)), 0);
+      horas = tot / conTiempo.length / 3600000;
+    }
+    const catCount = {};
+    abiertas.forEach((i) => { catCount[i.categoria] = (catCount[i.categoria] || 0) + 1; });
+    const topCat = Object.entries(catCount).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    return { abiertas: abiertas.length, vencidas, proximas, urg, cerradasMes, horas, topCat, maxUrg: Math.max(1, urg.alta, urg.media, urg.baja) };
+  }, [incidencias]);
+
+  const fmtDur = (h) => h == null ? '—' : (h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} d`);
+  const tile = (lbl, valor, color) => (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', background: '#fff', minWidth: 0 }}>
+      <div style={{ fontSize: 26, fontWeight: 700, color: color || '#111827', lineHeight: 1.1 }}>{valor}</div>
+      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{lbl}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', marginBottom: 10 }}>
+        {tile('Abiertas', m.abiertas)}
+        {tile('Vencidas', m.vencidas, m.vencidas ? '#dc2626' : '#111827')}
+        {tile('Próximas a vencer', m.proximas, m.proximas ? '#d97706' : '#111827')}
+        {tile('Cerradas (mes)', m.cerradasMes, '#16a34a')}
+        {tile('Tiempo prom. resol.', fmtDur(m.horas))}
+      </div>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Abiertas por urgencia</div>
+          {URGENCIAS.map(([k, l, color]) => {
+            const n = m.urg[k] || 0;
+            return (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, width: 48, color: '#6b7280' }}>{l}</span>
+                <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${(n / m.maxUrg) * 100}%`, height: '100%', background: color, borderRadius: 4 }} />
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, width: 24, textAlign: 'right' }}>{n}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Abiertas por categoría (top)</div>
+          {m.topCat.length === 0 ? (
+            <div style={{ fontSize: 13, color: '#6b7280' }}>Sin incidencias abiertas.</div>
+          ) : m.topCat.map(([cat, n]) => (
+            <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 0' }}>
+              <span style={{ color: '#374151' }}>{label(CATEGORIAS, cat)}</span>
+              <span style={{ fontWeight: 600 }}>{n}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -684,9 +766,10 @@ function AsignadoSection({ inc, usuario, onCambio }) {
 
 // ---------- Orden de trabajo en PDF (genera vía API, lista las generadas) ----------
 function OrdenTrabajoBtn({ inc }) {
-  const [gen, setGen] = useState(false);
+  const [gen, setGen] = useState('');        // '' | 'pdf' | 'email'
   const [ordenes, setOrdenes] = useState([]);
   const [msg, setMsg] = useState('');
+  const [ok, setOk] = useState('');
 
   const cargar = useCallback(async () => {
     const { data } = await supabase.from('incidencia_adjuntos')
@@ -700,27 +783,32 @@ function OrdenTrabajoBtn({ inc }) {
   }, [inc.id]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  async function generar() {
-    setMsg(''); setGen(true);
+  async function generar(enviar) {
+    setMsg(''); setOk(''); setGen(enviar ? 'email' : 'pdf');
     try {
       const res = await fetch('/api/incidencias/orden', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ incidencia_id: inc.id }),
+        body: JSON.stringify({ incidencia_id: inc.id, enviar }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
       await cargar();
-      if (j.url) window.open(j.url, '_blank');
-    } catch (err) { console.error(err); setMsg('No se pudo generar: ' + (err.message || err)); }
-    finally { setGen(false); }
+      if (!enviar && j.url) window.open(j.url, '_blank');
+      if (enviar) {
+        if (j.emailed) setOk(j.emailMsg || 'Orden enviada al proveedor por email.');
+        else setMsg(j.emailMsg || 'La orden se generó, pero no se pudo enviar el email.');
+      }
+    } catch (err) { console.error(err); setMsg('No se pudo: ' + (err.message || err)); }
+    finally { setGen(''); }
   }
 
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Orden de trabajo</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={generar} disabled={gen} style={btnSecondary}>{gen ? 'Generando…' : 'Generar orden (PDF)'}</button>
-        {!inc.proveedor_id && <span style={{ fontSize: 12, color: '#9ca3af' }}>tip: asigna un proveedor para que salga en la orden</span>}
+        <button onClick={() => generar(false)} disabled={!!gen} style={btnSecondary}>{gen === 'pdf' ? 'Generando…' : 'Generar orden (PDF)'}</button>
+        <button onClick={() => generar(true)} disabled={!!gen || !inc.proveedor_id} style={btnSecondary}>{gen === 'email' ? 'Enviando…' : 'Generar y enviar al proveedor'}</button>
+        {!inc.proveedor_id && <span style={{ fontSize: 12, color: '#9ca3af' }}>asigna un proveedor para poder enviar</span>}
       </div>
       {ordenes.length > 0 && (
         <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
@@ -731,6 +819,7 @@ function OrdenTrabajoBtn({ inc }) {
           ))}
         </div>
       )}
+      {ok && <div style={{ color: '#16a34a', fontSize: 12, marginTop: 6 }}>{ok}</div>}
       {msg && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{msg}</div>}
     </div>
   );
