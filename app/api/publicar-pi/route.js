@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
@@ -212,7 +212,7 @@ function buildPayload(p) {
     { id: 'WAREHOUSES',           value_name: String(p.bodegas          || '0') },
     { id: 'COVERED_AREA',         value_name: `${p.mt2_const || '0'} m²` },
     { id: 'TOTAL_AREA',           value_name: `${p.mt2_terreno || p.mt2_const || '0'} m²` },
-    { id: 'MAINTENANCE_FEE',      value_name: String(p.ggcc             || '0') },
+    { id: 'MAINTENANCE_FEE',      value_name: String(p.ggcc || '0').replace(/[^0-9]/g, '') || '0' },
     { id: 'IS_SUITABLE_FOR_PETS', values: [boolPI(p.ksuitable_for_pets)] },
     { id: 'FURNISHED',            values: [boolPI(p.amoblado)] },
     ...(p.has_heating          ? [{ id: 'HAS_HEATING',          values: [boolPI(p.has_heating)] }] : []),

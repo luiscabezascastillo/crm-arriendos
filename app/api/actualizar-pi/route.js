@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sincronizarFotos } from '@/lib/fase2/fotos-ml'
 import { EJECUTIVOS } from '@/lib/ejecutivos'
@@ -223,7 +223,7 @@ export async function POST(request) {
       if (pub.bodegas          != null && pub.bodegas          !== '') amen.push({ id: 'WAREHOUSES',     value_name: String(pub.bodegas) })
       if (pub.mt2_const        != null && pub.mt2_const        !== '') amen.push({ id: 'COVERED_AREA',   value_name: String(pub.mt2_const) + ' m2' })
       if ((pub.mt2_terreno != null && pub.mt2_terreno !== '') || (pub.mt2_const != null && pub.mt2_const !== '')) amen.push({ id: 'TOTAL_AREA', value_name: String(pub.mt2_terreno || pub.mt2_const) + ' m2' })
-      if (pub.ggcc             != null && pub.ggcc             !== '') amen.push({ id: 'MAINTENANCE_FEE', value_name: String(pub.ggcc) })
+      if (pub.ggcc             != null && pub.ggcc             !== '') amen.push({ id: 'MAINTENANCE_FEE', value_name: String(pub.ggcc).replace(/[^0-9]/g, '') || '0' })
       if (pub.unit_floor                 != null && pub.unit_floor                 !== '') amen.push({ id: 'UNIT_FLOOR',                 value_name: String(pub.unit_floor) })
       if (pub.property_age               != null && pub.property_age               !== '') amen.push({ id: 'PROPERTY_AGE',               value_name: String(pub.property_age) + ' anos' })
       if (pub.floors                     != null && pub.floors                     !== '') amen.push({ id: 'FLOORS',                     value_name: String(pub.floors) })
