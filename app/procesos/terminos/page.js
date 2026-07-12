@@ -1,8 +1,9 @@
 'use client'
-// VERSION: v2 · 2026-07-12 · Bloque 3 Términos (parte código-segura): bug includes('FCR')→match
-//   exacto (2 sitios), aprobación bilateral del presupuesto (columnas aprob_*), compuerta de
-//   reversión de garantía (banner-guardia cuando la tiene el DUEÑO). Botones Email/PDF/Reclamación
-//   siguen pendientes de sus endpoints (ver traspaso). ('use client' debe ir 1º; VERSION en línea 2.)
+// VERSION: v3 · 2026-07-12 · Bloque 3 Términos: bug includes('FCR')→match exacto (2 sitios),
+//   aprobación bilateral del presupuesto (columnas aprob_*), compuerta de reversión de garantía,
+//   y CABLEADO del botón "Enviar Email" con panel de borradores editables (endpoints
+//   /api/terminos/borrador-email y /enviar-email). Presupuesto-PDF y Reclamación siguen pendientes.
+//   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -93,6 +94,7 @@ export default function TerminosPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [completandoWf, setCompletandoWf] = useState(false)
+  const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -329,6 +331,46 @@ export default function TerminosPage() {
     setEditando(false); setGuardando(false); setMsg({ tipo: 'ok', txt: 'Guardado.' })
   }
 
+  // ── Borradores de email (notificación de liquidación, N16/N17) ──
+  async function abrirBorradores() {
+    setEmailPanel({ loading: true, drafts: {} })
+    const dests = ['arrendatario', 'propietario']
+    const drafts = {}
+    for (const d of dests) {
+      try {
+        const res = await fetch('/api/terminos/borrador-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: idadmonSel, destinatario: d }),
+        })
+        const data = await res.json()
+        drafts[d] = (res.ok && !data.error)
+          ? { to: data.to || '', subject: data.subject || '', cuerpo: data.cuerpo || '', sinEmail: !!data.sinEmail, error: null, enviando: false, enviado: false }
+          : { to: '', subject: '', cuerpo: '', sinEmail: true, error: data.error || ('Error ' + res.status), enviando: false, enviado: false }
+      } catch (e) {
+        drafts[d] = { to: '', subject: '', cuerpo: '', sinEmail: true, error: e.message, enviando: false, enviado: false }
+      }
+    }
+    setEmailPanel({ loading: false, drafts })
+  }
+  const setDraft = (dest, field, v) => setEmailPanel(p => p ? ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], [field]: v } } }) : p)
+  async function enviarBorrador(dest) {
+    const dr = emailPanel?.drafts?.[dest]
+    if (!dr) return
+    if (!dr.to || !dr.subject || !dr.cuerpo) { setDraft(dest, 'error', 'Falta destinatario, asunto o cuerpo.'); return }
+    setDraft(dest, 'enviando', true); setDraft(dest, 'error', null)
+    try {
+      const res = await fetch('/api/terminos/enviar-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, destinatario: dest, to: dr.to, subject: dr.subject, cuerpo: dr.cuerpo }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setDraft(dest, 'enviando', false); setDraft(dest, 'error', data.error || ('Error ' + res.status)); return }
+      setEmailPanel(p => ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], enviando: false, enviado: true, error: null } } }))
+    } catch (e) {
+      setDraft(dest, 'enviando', false); setDraft(dest, 'error', e.message)
+    }
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -466,15 +508,56 @@ export default function TerminosPage() {
             <div style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button disabled title="Próximamente" style={btn('#2563eb', true)}>Enviar Email</button>
-            <button disabled title="Próximamente" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
-            <button disabled title="Próximamente" style={btn('#dc2626', true)}>Hacer Reclamación</button>
+            <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
+            <button disabled title="Próximamente (falta endpoint PDF)" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
+            <button disabled title="Próximamente (falta endpoint reclamación)" style={btn('#dc2626', true)}>Hacer Reclamación</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             <button onClick={() => { setModo('lista'); setPanel(null); setEditando(false) }} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>← Volver</button>
           </div>
         </div>
         {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
+
+        {emailPanel && (
+          <div style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>✉ Notificación de liquidación — borradores editables</div>
+              <button onClick={() => setEmailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
+            </div>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Revisa y edita cada correo antes de enviarlo. Sale desde info@fondocapital.com con copia a administración@; si alguien responde, le llega a ti (reply-to). Nada se envía sin tu clic.</div>
+            {emailPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borradores…</div> : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {['arrendatario', 'propietario'].map(dest => {
+                  const dr = emailPanel.drafts?.[dest]
+                  const titulo = dest === 'arrendatario' ? 'Ex-arrendatario' : 'Propietario'
+                  if (!dr) return <div key={dest} style={{ ...card, marginBottom: 0 }}>Sin datos.</div>
+                  return (
+                    <div key={dest} style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', marginBottom: 8 }}>{titulo}</div>
+                      {dr.enviado ? (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Enviado a {dr.to}</div>
+                      ) : (
+                        <>
+                          {dr.error && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>{dr.error}</div>}
+                          {dr.sinEmail && !dr.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ No hay email en la ficha. Escríbelo a mano abajo.</div>}
+                          <div style={lbl}>Para</div>
+                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.to} onChange={e => setDraft(dest, 'to', e.target.value)} placeholder="correo@…" />
+                          <div style={lbl}>Asunto</div>
+                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.subject} onChange={e => setDraft(dest, 'subject', e.target.value)} />
+                          <div style={lbl}>Cuerpo</div>
+                          <textarea style={{ ...inEd, minHeight: 220, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={dr.cuerpo} onChange={e => setDraft(dest, 'cuerpo', e.target.value)} />
+                          <button onClick={() => enviarBorrador(dest)} disabled={dr.enviando} style={{ ...btn('#2563eb', dr.enviando), marginTop: 10, width: '100%' }}>
+                            {dr.enviando ? 'Enviando…' : '✉ Enviar a ' + titulo}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {loadingPanel || !panel ? <div style={{ ...card, color: '#888' }}>Cargando término…</div>
           : !A ? <div style={{ ...card, color: '#b91c1c' }}>No se encontró {idadmonSel} en datos_arriendos.</div>
