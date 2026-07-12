@@ -1,10 +1,10 @@
 'use client'
-// VERSION: v4 · 2026-07-12 · Términos: CABLEADO del botón "Hacer Reclamación" (endpoints
-//   /api/terminos/borrador-reclamacion y /enviar-reclamacion). Un solo correo al ex-arrendatario
-//   con cc CONDICIONAL al aval (si existe) + administración@; panel de borrador editable; abre
-//   `solicitudes` (tipo=reclamacion) y deja constancia; soporta reenvío sin duplicar. Hereda v3
-//   (fix includes('FCR')→exacto, aprobación bilateral, compuerta de garantía, Enviar Email).
-//   Sigue pendiente: botón "Enviar Presupuesto" (PDF + fiscalidad).
+// VERSION: v5 · 2026-07-12 · Términos: el IDADMON de la lista vuelve a ser ENLACE al workflow
+//   (/procesos/terminos/[idadmon]) — se había quedado sin cablear tras el cambio de workflow, por
+//   eso "no abría" al pinchar el código. "Abrir término →" sigue abriendo el panel económico.
+//   Hereda v4 (botón "Hacer Reclamación": borrador editable, cc condicional al aval, solicitudes,
+//   constancia, reenvío) y v3 (fix includes('FCR')→exacto, aprobación bilateral, compuerta de
+//   garantía, Enviar Email). Sigue pendiente: botón "Enviar Presupuesto" (PDF + fiscalidad).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -469,7 +469,7 @@ export default function TerminosPage() {
                     {rows.length === 0 ? <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
                       : rows.map(r => (
                         <tr key={r.idadmon} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                          <td style={{ padding: '10px 12px', color: '#185FA5', fontWeight: 700 }}>{r.idadmon}</td>
+                          <td style={{ padding: '10px 12px' }}><span onClick={() => router.push('/procesos/terminos/' + r.idadmon)} title="Abrir workflow del término" style={{ color: '#185FA5', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>{r.idadmon}</span></td>
                           <td style={{ padding: '10px 12px', color: '#555', whiteSpace: 'nowrap' }}>{r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.propietario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.arrendatario || '—'}</td>
