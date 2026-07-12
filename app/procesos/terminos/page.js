@@ -120,8 +120,10 @@ export default function TerminosPage() {
     setNodos(data || [])
   }
   async function cargarLista() {
-    // Origen: datos_arriendos por estado de termino (Q en espera, N_DICOM derivados). No 'descuentos'.
-    const ESTADOS_TERMINO = ['Q', 'N_DICOM']
+    // Origen: datos_arriendos por estado de termino (Q en espera, N-DICOM derivados). No 'descuentos'.
+    // NOTA: el valor canónico del circuito es 'N-DICOM' (con guion). La base se normalizó
+    // desde las grafías históricas ('N DICOM', 'N_DICOM') a 'N-DICOM'.
+    const ESTADOS_TERMINO = ['Q', 'N-DICOM']
     const { data: da } = await supabase
       .from('datos_arriendos')
       .select('idadmon, arrendatario, inmueble, estado, propietario')

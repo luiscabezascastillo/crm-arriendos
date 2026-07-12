@@ -24,7 +24,56 @@ const CAMPOS_HEREDADOS = [
   'quien_cobra', 'tiene_termo_mant',
 ]
 
-const ESTADOS_VALIDOS = ['P', 'S', 'SQ', 'Q', 'N', 'N-DICOM', 'Inactiva']
+const ESTADOS_VALIDOS = ['P', 'S', 'SQ', 'Q', 'N', 'N-Liquidacion', 'N-DICOM', 'Inactiva']
+
+// Umbral por defecto (CLP) si no existe la fila en `configuracion`. Un cierre que
+// pierde garantía por encima de esto (o que abandona deuda cobrable) es "alto riesgo"
+// y exige autorización de Dirección. Parametrizable en configuracion.umbral_firma_termino.
+const UMBRAL_FIRMA_DEFAULT = 100000
+
+// Lee el umbral de firma desde `configuracion` (clave/valor). Fallback al default.
+async function leerUmbralFirma() {
+  try {
+    const { data } = await supabaseAdmin
+      .from('configuracion').select('valor').eq('clave', 'umbral_firma_termino').single()
+    const v = Number(data?.valor)
+    return isNaN(v) ? UMBRAL_FIRMA_DEFAULT : v
+  } catch {
+    return UMBRAL_FIRMA_DEFAULT
+  }
+}
+
+// Calcula el contexto de riesgo para el cierre (→ N). Lo calcula el SISTEMA desde datos
+// duros; NUNCA lo declara quien ejecuta. Devuelve { altoRiesgo, motivo }.
+//   - Pérdida de garantía (terminos.perdida_garantia) por encima del umbral -> alto riesgo.
+//   - Abandono: cerrar desde N-DICOM con deuda aún abierta en `cuentas` -> alto riesgo.
+//     (balance = Σcargo − Σabono, MISMA fórmula que el panel de términos.)
+async function calcularRiesgoCierre({ idadmon, estadoAnterior }) {
+  const umbral = await leerUmbralFirma()
+
+  // 1. Pérdida de garantía sobre umbral
+  const { data: term } = await supabaseAdmin
+    .from('terminos').select('perdida_garantia').eq('idadmon', idadmon).single()
+  const perdida = Number(term?.perdida_garantia) || 0
+  if (perdida > umbral) {
+    return { altoRiesgo: true, motivo: 'perdida' }
+  }
+
+  // 2. Abandono de reclamación cobrable: sale de DICOM con deuda todavía abierta
+  const de = String(estadoAnterior || '').trim().toUpperCase().replace(/[ _]/g, '-')
+  if (de === 'N-DICOM') {
+    const { data: movs } = await supabaseAdmin
+      .from('cuentas').select('cargo, abono').eq('idadmon', idadmon)
+    const balance = (movs || []).reduce((a, r) => a + (Number(r.cargo) || 0) - (Number(r.abono) || 0), 0)
+    if (balance > 0) {
+      return { altoRiesgo: true, motivo: 'abandonado' }   // deuda cobrable que se deja ir
+    }
+    return { altoRiesgo: false, motivo: 'recuperado' }
+  }
+
+  // Cierre limpio (sin pérdida sobre umbral, sin abandono)
+  return { altoRiesgo: false, motivo: 'limpio' }
+}
 
 function siguienteIdadmon(maxId) {
   // maxId tipo 'A00884' -> 'A00885'
@@ -63,11 +112,25 @@ export async function POST(req) {
   const estadoAnterior = contrato.estado
   const emailsEnviados = []
 
+  // Contexto de riesgo para el gate de cierre (maker-checker). Solo relevante cuando
+  // el destino es N; para el resto de transiciones no influye. Lo calcula el sistema.
+  let ctxCierre = {}
+  if (estadoNuevo === 'N') {
+    const riesgo = await calcularRiesgoCierre({ idadmon, estadoAnterior })
+    // ctx.autorizado: se leerá del registro de autorizaciones (PRÓXIMO BLOQUE).
+    // Hasta que ese registro exista, se deja en false: un cierre de alto riesgo
+    // queda BLOQUEADO para el supervisor (fail-safe), y solo responsable/Dirección
+    // pueden cerrar. Cuando exista la tabla, aquí se consultará la autorización.
+    ctxCierre = { altoRiesgo: riesgo.altoRiesgo, autorizado: false, motivo: riesgo.motivo }
+  }
+
   // Validar que ESTE rol puede hacer ESTA transición concreta
-  if (!puedeTransicion(cap, estadoAnterior, estadoNuevo)) {
+  if (!puedeTransicion(cap, estadoAnterior, estadoNuevo, ctxCierre)) {
+    const extra = (estadoNuevo === 'N' && ctxCierre.altoRiesgo)
+      ? ` Este cierre es de alto riesgo (${ctxCierre.motivo}) y requiere autorización de Dirección.`
+      : ` Validar inicio (P→S) y el cierre final (→N) tienen reglas específicas de rol.`
     return Response.json({
-      error: `No tienes permiso para la transición ${estadoAnterior} → ${estadoNuevo}. ` +
-             `Validar inicio (P→S) y cerrar (Q→N) son exclusivos del responsable de Gestión LOG.`,
+      error: `No tienes permiso para la transición ${estadoAnterior} → ${estadoNuevo}.` + extra,
     }, { status: 403 })
   }
 
