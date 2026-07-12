@@ -1,8 +1,10 @@
 'use client'
-// VERSION: v3 · 2026-07-12 · Bloque 3 Términos: bug includes('FCR')→match exacto (2 sitios),
-//   aprobación bilateral del presupuesto (columnas aprob_*), compuerta de reversión de garantía,
-//   y CABLEADO del botón "Enviar Email" con panel de borradores editables (endpoints
-//   /api/terminos/borrador-email y /enviar-email). Presupuesto-PDF y Reclamación siguen pendientes.
+// VERSION: v4 · 2026-07-12 · Términos: CABLEADO del botón "Hacer Reclamación" (endpoints
+//   /api/terminos/borrador-reclamacion y /enviar-reclamacion). Un solo correo al ex-arrendatario
+//   con cc CONDICIONAL al aval (si existe) + administración@; panel de borrador editable; abre
+//   `solicitudes` (tipo=reclamacion) y deja constancia; soporta reenvío sin duplicar. Hereda v3
+//   (fix includes('FCR')→exacto, aprobación bilateral, compuerta de garantía, Enviar Email).
+//   Sigue pendiente: botón "Enviar Presupuesto" (PDF + fiscalidad).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -95,6 +97,7 @@ export default function TerminosPage() {
   const [msg, setMsg] = useState(null)
   const [completandoWf, setCompletandoWf] = useState(false)
   const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
+  const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -371,6 +374,48 @@ export default function TerminosPage() {
     }
   }
 
+  // ── Reclamación de saldo pendiente (N18/N21) ──
+  // Un solo correo al ex-arrendatario, cc CONDICIONAL al aval. No cambia el estado.
+  async function abrirReclamacion() {
+    setReclamPanel({ loading: true, draft: null, aviso: null })
+    try {
+      const res = await fetch('/api/terminos/borrador-reclamacion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setReclamPanel({ loading: false, draft: null, aviso: data.error || ('Error ' + res.status) }); return }
+      setReclamPanel({ loading: false, aviso: null, draft: {
+        to: data.to || '', cc: data.cc || '', subject: data.subject || '', cuerpo: data.cuerpo || '',
+        saldo: n0(data.saldo), hayAval: !!data.hayAval, sinEmail: !!data.sinEmail,
+        error: null, yaAbierta: false, enviando: false, enviado: false, reenvio: false,
+      } })
+    } catch (e) {
+      setReclamPanel({ loading: false, draft: null, aviso: e.message })
+    }
+  }
+  const setReclam = (field, v) => setReclamPanel(p => (p && p.draft) ? ({ ...p, draft: { ...p.draft, [field]: v } }) : p)
+  async function enviarReclamacion(forzar) {
+    const dr = reclamPanel?.draft
+    if (!dr) return
+    if (!dr.to || !dr.subject || !dr.cuerpo) { setReclam('error', 'Falta destinatario, asunto o cuerpo.'); return }
+    setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: true, error: null } }) : p)
+    try {
+      const res = await fetch('/api/terminos/enviar-reclamacion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, to: dr.to, cc: dr.cc, subject: dr.subject, cuerpo: dr.cuerpo, forzar: !!forzar }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta } }) : p)
+        return
+      }
+      setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, enviado: true, error: null, reenvio: !!data.reenvio } }) : p)
+    } catch (e) {
+      setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: e.message } }) : p)
+    }
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -510,7 +555,7 @@ export default function TerminosPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
             <button disabled title="Próximamente (falta endpoint PDF)" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
-            <button disabled title="Próximamente (falta endpoint reclamación)" style={btn('#dc2626', true)}>Hacer Reclamación</button>
+            <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             <button onClick={() => { setModo('lista'); setPanel(null); setEditando(false) }} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>← Volver</button>
@@ -556,6 +601,46 @@ export default function TerminosPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {reclamPanel && (
+          <div style={{ ...card, border: '2px solid #dc2626', background: '#FFF7F7' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>⚖ Reclamación de saldo pendiente</div>
+              <button onClick={() => setReclamPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
+            </div>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Un solo correo al ex-arrendatario, con copia al aval (si existe) y a administración@. No cambia el estado del contrato; abre una reclamación que cierra Cobranzas al pagar. Nada se envía sin tu clic.</div>
+            {reclamPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borrador…</div>
+              : reclamPanel.aviso ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{reclamPanel.aviso}</div>
+              : reclamPanel.draft ? (
+                reclamPanel.draft.enviado ? (
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Reclamación {reclamPanel.draft.reenvio ? 'reenviada' : 'enviada'} a {reclamPanel.draft.to}{reclamPanel.draft.cc ? ' (cc ' + reclamPanel.draft.cc + ')' : ''}</div>
+                ) : (
+                  <div style={{ maxWidth: 640 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626', marginBottom: 10 }}>Saldo a reclamar: {fmtPesos(reclamPanel.draft.saldo)}</div>
+                    {reclamPanel.draft.error && (
+                      <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>
+                        {reclamPanel.draft.error}
+                        {reclamPanel.draft.yaAbierta && <button onClick={() => enviarReclamacion(true)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#dc2626', reclamPanel.draft.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}
+                      </div>
+                    )}
+                    {reclamPanel.draft.sinEmail && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ El arrendatario no tiene email en la ficha. Escríbelo a mano abajo.</div>}
+                    {!reclamPanel.draft.hayAval && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Sin avalista registrado: se envía solo al arrendatario (puedes añadir un cc a mano).</div>}
+                    <div style={lbl}>Para (arrendatario)</div>
+                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.to} onChange={e => setReclam('to', e.target.value)} placeholder="correo@…" />
+                    <div style={lbl}>Cc (aval)</div>
+                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.cc} onChange={e => setReclam('cc', e.target.value)} placeholder="(sin aval)" />
+                    <div style={lbl}>Asunto</div>
+                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.subject} onChange={e => setReclam('subject', e.target.value)} />
+                    <div style={lbl}>Cuerpo</div>
+                    <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={reclamPanel.draft.cuerpo} onChange={e => setReclam('cuerpo', e.target.value)} />
+                    <button onClick={() => enviarReclamacion(false)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#dc2626', reclamPanel.draft.enviando), marginTop: 10, width: '100%' }}>
+                      {reclamPanel.draft.enviando ? 'Enviando…' : '⚖ Enviar reclamación'}
+                    </button>
+                  </div>
+                )
+              ) : null}
           </div>
         )}
 
