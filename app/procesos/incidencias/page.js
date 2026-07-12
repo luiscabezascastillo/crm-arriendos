@@ -12,7 +12,7 @@ const CATEGORIAS = [
   ['sanitario', 'Sanitario'], ['electrico', 'Eléctrico'], ['gas', 'Gas'],
   ['estructural', 'Estructural'], ['cerrajeria', 'Cerrajería'], ['ascensor', 'Ascensor'],
   ['accesos', 'Accesos'], ['electrodomestico', 'Electrodoméstico'], ['seguridad', 'Seguridad'],
-  ['otros', 'Otros'],
+  ['termos', 'Termos'], ['otros', 'Otros'],
 ];
 const CANALES = [
   ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['formulario', 'Formulario'],
@@ -25,15 +25,12 @@ const URGENCIAS = [
 ];
 // Orden del flujo (alineado al Motor: Reporte → Clasificar → Validar → Resolver → Cierre)
 const ESTADOS = [
-  ['reporte', 'Reporte', '#6b7280'],
-  ['clasificada', 'Clasificada', '#2563eb'],
-  ['validada', 'Validada', '#7c3aed'],
+  ['abierta', 'Abierta', '#2563eb'],
   ['en_resolucion', 'En resolución', '#0891b2'],
-  ['esperando_aprobacion', 'Esperando aprobación', '#d97706'],
   ['cerrada', 'Cerrada', '#16a34a'],
   ['descartada', 'Descartada', '#9ca3af'],
 ];
-const FLUJO = ['reporte', 'clasificada', 'validada', 'en_resolucion', 'esperando_aprobacion', 'cerrada'];
+const FLUJO = ['abierta', 'en_resolucion', 'cerrada'];
 const label = (arr, k) => (arr.find((x) => x[0] === k)?.[1]) || k;
 const colorEstado = (k) => ESTADOS.find((x) => x[0] === k)?.[2] || '#6b7280';
 const infoUrgencia = (k) => URGENCIAS.find((x) => x[0] === k) || URGENCIAS[1];
@@ -61,6 +58,17 @@ function venc(inc) {
   if (ms < 0) return { txt: 'Vencida', color: '#dc2626' };
   if (ms < 24 * 3600 * 1000) return { txt: 'Vence pronto', color: '#d97706' };
   return null;
+}
+
+// Días desde el ingreso (o cuánto tomó resolverla si está cerrada)
+function dias(a, b) { return Math.max(0, Math.floor((b - new Date(a).getTime()) / 86400000)); }
+function antiguedadTxt(inc) {
+  if (!inc.fecha_reporte) return '';
+  if (inc.estado === 'cerrada' && inc.fecha_cierre) {
+    return `Resuelta en ${dias(inc.fecha_reporte, new Date(inc.fecha_cierre).getTime())} d`;
+  }
+  const d = dias(inc.fecha_reporte, Date.now());
+  return d === 0 ? 'ingresada hoy' : `hace ${d} ${d === 1 ? 'día' : 'días'}`;
 }
 
 export default function IncidenciasPage() {
@@ -284,6 +292,7 @@ function ListaTarjetas({ lista, onAbrir }) {
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               {chip(infoUrgencia(i.urgencia)[1], infoUrgencia(i.urgencia)[2])}
               {v && chip(v.txt, v.color)}
+              <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 'auto' }}>{antiguedadTxt(i)}</span>
             </div>
           </button>
         );
@@ -299,7 +308,7 @@ function TablaEscritorio({ lista, onAbrir }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-            {['Ticket', 'Inmueble / IDADMON', 'Categoría', 'Urgencia', 'Estado', 'Reporte'].map((h) => (
+            {['Ticket', 'Inmueble / IDADMON', 'Categoría', 'Urgencia', 'Estado', 'Reporte / antigüedad'].map((h) => (
               <th key={h} style={{ padding: '10px 12px', fontWeight: 600, color: '#374151' }}>{h}</th>
             ))}
           </tr>
@@ -319,7 +328,8 @@ function TablaEscritorio({ lista, onAbrir }) {
                 </td>
                 <td style={{ padding: '10px 12px' }}>{chip(label(ESTADOS, i.estado), colorEstado(i.estado))}</td>
                 <td style={{ padding: '10px 12px', color: '#6b7280' }}>
-                  {i.fecha_reporte ? new Date(i.fecha_reporte).toLocaleDateString('es-CL') : '—'}
+                  <div>{i.fecha_reporte ? new Date(i.fecha_reporte).toLocaleDateString('es-CL') : '—'}</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>{antiguedadTxt(i)}</div>
                 </td>
               </tr>
             );
@@ -374,16 +384,14 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
   }
 
   async function generarTicket() {
-    // INC-AAAAMMDD-NNN con secuencia diaria
-    const hoy = new Date();
-    const y = hoy.getFullYear();
-    const m = String(hoy.getMonth() + 1).padStart(2, '0');
-    const d = String(hoy.getDate()).padStart(2, '0');
-    const prefijo = `INC-${y}${m}${d}-`;
-    const desde = new Date(y, hoy.getMonth(), hoy.getDate()).toISOString();
-    const { count } = await supabase.from('incidencias')
-      .select('*', { count: 'exact', head: true }).gte('fecha_reporte', desde);
-    return prefijo + String((count || 0) + 1).padStart(3, '0');
+    // Correlativo global corto: INC-003 (continúa desde el número más alto existente)
+    const { data } = await supabase.from('incidencias').select('numero_ticket');
+    let max = 0;
+    (data || []).forEach((r) => {
+      const m = String(r.numero_ticket || '').match(/(\d+)\s*$/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return 'INC-' + String(max + 1).padStart(3, '0');
   }
 
   async function guardar(e) {
@@ -396,7 +404,7 @@ function FormularioNueva({ usuario, isMobile, onCancelar, onCreada }) {
     try {
       const numero_ticket = await generarTicket();
       const { error: err } = await supabase.from('incidencias').insert({
-        ...f, numero_ticket, estado: 'reporte', creado_por: usuario,
+        ...f, numero_ticket, estado: 'abierta', creado_por: usuario,
       });
       if (err) throw err;
       await onCreada();
@@ -542,7 +550,7 @@ function Detalle({ inc, usuario, isMobile, onVolver, onCambio }) {
             Avanzar a: {label(ESTADOS, siguiente)}
           </button>
         )}
-        {['en_resolucion', 'esperando_aprobacion'].includes(inc.estado) && !cierre && (
+        {['abierta', 'en_resolucion'].includes(inc.estado) && !cierre && (
           <button disabled={trabajando} onClick={() => setCierre(true)} style={btnPrimary}>
             Cerrar incidencia
           </button>
@@ -631,6 +639,7 @@ function InfoEditable({ inc, usuario, isMobile, onCambio }) {
           <Dato k="Urgencia" v={infoUrgencia(inc.urgencia)[1]} />
           <Dato k="Reportado por" v={`${inc.reportado_por || '—'} (${label(CANALES, inc.canal)})`} />
           <Dato k="Fecha reporte" v={inc.fecha_reporte ? new Date(inc.fecha_reporte).toLocaleString('es-CL') : '—'} />
+          <Dato k="Antigüedad" v={antiguedadTxt(inc)} />
           <Dato k="Fecha límite" v={inc.fecha_limite ? new Date(inc.fecha_limite).toLocaleString('es-CL') : '—'} />
           {inc.fecha_cierre && <Dato k="Cierre" v={new Date(inc.fecha_cierre).toLocaleString('es-CL')} />}
           <Dato k="Asignado a" v={inc.asignado_a || '—'} />
