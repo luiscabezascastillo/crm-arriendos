@@ -1,3 +1,7 @@
+// VERSION: v2 · 2026-07-12 · Bloque 2 Términos: autorización de cierre (lee `solicitudes`)
+//   + estampa autorizado_por/motivo_cierre en historico_idadmon + crea workflow_instance al pasar a Q.
+//   Sobre el v1 desplegado (gate maker-checker con 16 tests). Cambios marcados con ▼▼▼ BLOQUE 2.
+//
 // app/api/cc1/cambiar-estado/route.js
 //
 // Núcleo del circuito de estados. Recibe { idadmon, estadoNuevo, fecha? }.
@@ -75,6 +79,39 @@ async function calcularRiesgoCierre({ idadmon, estadoAnterior }) {
   return { altoRiesgo: false, motivo: 'limpio' }
 }
 
+// ▼▼▼ BLOQUE 2 · CAMBIO 1 — Autorización de cierre (lee `solicitudes`)
+// Busca una solicitud de cierre APROBADA y NO consumida para este IDADMON.
+// Devuelve la fila (con resuelto_por y motivo) o null. Ordena por la más reciente.
+// "No consumida" = no existe ya un historico_idadmon de cierre a N que la haya usado
+// (evita que una misma aprobación sirva para dos cierres). Se detecta por el par
+// (idadmon, autorizado_por no null) posterior a la fecha de resolución de la solicitud.
+async function buscarAutorizacionCierre(idadmon) {
+  const { data: sols } = await supabaseAdmin
+    .from('solicitudes')
+    .select('id, motivo, resuelto_por, fecha_resolucion')
+    .eq('tipo', 'cierre_termino')
+    .eq('idadmon', idadmon)
+    .eq('estado', 'APROBADA')
+    .order('fecha_resolucion', { ascending: false })
+    .limit(1)
+  const sol = sols?.[0]
+  if (!sol) return null
+
+  // ¿Ya se consumió? Buscar un cierre previo (autorizado_por no null) para este IDADMON
+  // posterior a la resolución de esta solicitud.
+  const { data: usada } = await supabaseAdmin
+    .from('historico_idadmon')
+    .select('id')
+    .eq('idadmon', idadmon)
+    .not('autorizado_por', 'is', null)
+    .gte('created_at', sol.fecha_resolucion)
+    .limit(1)
+  if (usada && usada.length > 0) return null   // aprobación ya usada en un cierre anterior
+
+  return sol
+}
+// ▲▲▲ BLOQUE 2 · CAMBIO 1
+
 function siguienteIdadmon(maxId) {
   // maxId tipo 'A00884' -> 'A00885'
   const m = String(maxId || '').match(/^([A-Za-z]*)(\d+)$/)
@@ -114,15 +151,23 @@ export async function POST(req) {
 
   // Contexto de riesgo para el gate de cierre (maker-checker). Solo relevante cuando
   // el destino es N; para el resto de transiciones no influye. Lo calcula el sistema.
+  // ▼▼▼ BLOQUE 2 · CAMBIO 1 — ctx.autorizado ahora sale del registro de solicitudes
   let ctxCierre = {}
+  let autorizacion = null   // fila de `solicitudes` aprobada, si la hay (para estampar luego)
   if (estadoNuevo === 'N') {
     const riesgo = await calcularRiesgoCierre({ idadmon, estadoAnterior })
-    // ctx.autorizado: se leerá del registro de autorizaciones (PRÓXIMO BLOQUE).
-    // Hasta que ese registro exista, se deja en false: un cierre de alto riesgo
-    // queda BLOQUEADO para el supervisor (fail-safe), y solo responsable/Dirección
-    // pueden cerrar. Cuando exista la tabla, aquí se consultará la autorización.
-    ctxCierre = { altoRiesgo: riesgo.altoRiesgo, autorizado: false, motivo: riesgo.motivo }
+    // Solo consultamos la autorización si el cierre es de alto riesgo (evita lecturas
+    // innecesarias en los cierres limpios, que no la necesitan).
+    if (riesgo.altoRiesgo) {
+      autorizacion = await buscarAutorizacionCierre(idadmon)
+    }
+    ctxCierre = {
+      altoRiesgo: riesgo.altoRiesgo,
+      autorizado: !!autorizacion,      // true SOLO si consta solicitud APROBADA no consumida
+      motivo: riesgo.motivo,
+    }
   }
+  // ▲▲▲ BLOQUE 2 · CAMBIO 1
 
   // Validar que ESTE rol puede hacer ESTA transición concreta
   if (!puedeTransicion(cap, estadoAnterior, estadoNuevo, ctxCierre)) {
@@ -146,11 +191,23 @@ export async function POST(req) {
     idadmon, estadoNuevo,
     propietario: contrato.propietario, inmueble: contrato.inmueble, fecha: fechaEvento,
   })
-  await supabaseAdmin.from('historico_idadmon').insert([{
+  // ▼▼▼ BLOQUE 2 · CAMBIO 2 — estampar la doble firma cuando el cierre iba autorizado
+  // Si este cierre a N usó una autorización aprobada, grabamos autorizado_por + motivo_cierre
+  // (doble firma real: quien autoriza ≠ quien ejecuta). En cierres limpios quedan null.
+  const filaHist = {
     idadmon, evento: 'cambio_estado',
     estado_anterior: estadoAnterior, estado_nuevo: estadoNuevo,
     fecha: fechaEvento, usuario: email, email_subject: subjectCambio,
-  }])
+  }
+  if (estadoNuevo === 'N' && autorizacion) {
+    filaHist.autorizado_por = autorizacion.resuelto_por
+    filaHist.motivo_cierre = autorizacion.motivo
+  } else if (estadoNuevo === 'N' && ctxCierre && !ctxCierre.altoRiesgo) {
+    // Cierre limpio: dejamos constancia del motivo calculado (limpio/recuperado), sin autorizador.
+    filaHist.motivo_cierre = ctxCierre.motivo
+  }
+  await supabaseAdmin.from('historico_idadmon').insert([filaHist])
+  // ▲▲▲ BLOQUE 2 · CAMBIO 2
   const r1 = await enviarNotificacion({
     subject: subjectCambio,
     autor: email,
@@ -162,6 +219,40 @@ export async function POST(req) {
     fecha: fechaEvento,
   })
   emailsEnviados.push({ subject: subjectCambio, ok: r1.ok })
+
+  // ▼▼▼ BLOQUE 2 · CAMBIO 3 — crear la workflow_instance de TERMINO al pasar a Q
+  // El expediente de término nace aquí (antes nacía perezoso cuando Karina guardaba).
+  // Solo al ENTRAR en Q, con salvaguarda anti-duplicado. No bloquea el cambio de estado
+  // ya hecho: si algo falla, se reporta como warning y el estado queda cambiado igual.
+  let workflowCreado = null
+  if (estadoNuevo === 'Q') {
+    try {
+      const { data: yaInst } = await supabaseAdmin
+        .from('workflow_instances')
+        .select('id')
+        .eq('workflow_codigo', 'TERMINO')
+        .eq('idadmon', idadmon)
+        .limit(1)
+      if (!yaInst || yaInst.length === 0) {
+        const { data: inst, error: eInst } = await supabaseAdmin
+          .from('workflow_instances')
+          .insert([{
+            workflow_codigo: 'TERMINO',
+            idadmon,
+            estado: 'ACTIVO',
+            fecha_inicio: new Date().toISOString(),
+            observaciones: 'Expediente creado automáticamente al pasar a Q (circuito CC1).',
+          }])
+          .select('id')
+          .single()
+        if (!eInst && inst) workflowCreado = inst.id
+      }
+    } catch (err) {
+      // No abortamos: el expediente puede crearse luego. Se reporta abajo.
+      workflowCreado = { error: String(err?.message || err) }
+    }
+  }
+  // ▲▲▲ BLOQUE 2 · CAMBIO 3
 
   // 4. ¿Hay que crear el nuevo IDADMON en P?
   //    Se crea cuando el contrato entra en SQ (aviso de término). Si pasa directo
@@ -204,6 +295,7 @@ export async function POST(req) {
           return Response.json({
             ok: true, estadoAnterior, estadoNuevo,
             warning: 'Estado cambiado, pero falló crear el P: ' + e2.message,
+            workflowCreado,
             emails: emailsEnviados,
           })
         }
@@ -258,6 +350,7 @@ export async function POST(req) {
     ok: true,
     idadmon, estadoAnterior, estadoNuevo,
     nuevoP,                       // IDADMON creado en P, o null
+    workflowCreado,               // id de la workflow_instance creada al pasar a Q, o null
     emails: emailsEnviados,
   })
 }
