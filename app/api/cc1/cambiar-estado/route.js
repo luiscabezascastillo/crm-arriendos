@@ -1,3 +1,5 @@
+// VERSION: v4 · 2026-07-13 · Acepta `comentario` (opcional) del cambio de estado y lo guarda en
+//   historico_idadmon.detalle (contexto de qué pasó). Aditivo: si no viene, queda null. Resto igual.
 // VERSION: v3 · 2026-07-13 · Al avisar/entrar en término (S->SQ, S->Q) se escribe la fecha
 //   comunicada en datos_arriendos.termino_actual (fecha real en que el arrendatario dice que se va).
 //   termino_inicial (la del contrato) NO se toca. Solo si viene `fecha`. Resto igual que v2.
@@ -138,7 +140,7 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { idadmon, estadoNuevo, fecha } = body || {}
+  const { idadmon, estadoNuevo, fecha, comentario } = body || {}
   if (!idadmon || !estadoNuevo) return Response.json({ error: 'Faltan idadmon o estadoNuevo' }, { status: 400 })
   if (!ESTADOS_VALIDOS.includes(estadoNuevo)) return Response.json({ error: 'Estado no válido: ' + estadoNuevo }, { status: 400 })
 
@@ -207,6 +209,7 @@ export async function POST(req) {
     idadmon, evento: 'cambio_estado',
     estado_anterior: estadoAnterior, estado_nuevo: estadoNuevo,
     fecha: fechaEvento, usuario: email, email_subject: subjectCambio,
+    detalle: (comentario && String(comentario).trim()) ? String(comentario).trim() : null,
   }
   if (estadoNuevo === 'N' && autorizacion) {
     filaHist.autorizado_por = autorizacion.resuelto_por

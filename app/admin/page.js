@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-07-13 · app/admin/page.js — al cambiar de estado se puede añadir un
+//   "Comentario (opcional)" junto a la fecha; viaja como `comentario` a /api/cc1/cambiar-estado
+//   (que lo guarda en historico_idadmon.detalle). Sin otros cambios de lógica.
 
 import { useEffect, useState, useRef, useLayoutEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -484,6 +487,7 @@ function AdminContent() {
   const [pendientes, setPendientes] = useState([])
   const [nuevoEstado, setNuevoEstado] = useState('')
   const [fechaEstado, setFechaEstado] = useState('')
+  const [comentarioEstado, setComentarioEstado] = useState('')
   const [cambiando, setCambiando] = useState(false)
   // ── Panel de inicios (P→S / TERMINAR): validación previa + DICOM ──
   const [iniciosPanel, setIniciosPanel] = useState(null)   // null | {previo:[], yaHayRenta:bool}
@@ -695,7 +699,7 @@ function AdminContent() {
     try {
       const res = await fetch('/api/cc1/cambiar-estado', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: form.idadmon, estadoNuevo: nuevoEstado, fecha: fechaEstado || undefined }),
+        body: JSON.stringify({ idadmon: form.idadmon, estadoNuevo: nuevoEstado, fecha: fechaEstado || undefined, comentario: comentarioEstado || undefined }),
       })
       const data = await res.json()
       if (!res.ok) { setMsg({ type: 'error', text: data.error || 'Error al cambiar estado' }); setCambiando(false); return }
@@ -705,6 +709,7 @@ function AdminContent() {
       if (data.warning) txt += ` ⚠ ${data.warning}`
       setMsg({ type: data.warning ? 'warn' : 'ok', text: txt })
       setNuevoEstado('')
+      setFechaEstado(''); setComentarioEstado('')
     } catch (err) {
       setMsg({ type: 'error', text: 'Error de conexión' })
     }
@@ -1288,6 +1293,9 @@ function AdminContent() {
                 <span style={{ fontSize: 10, color: '#9ca3af' }}>Fecha:</span>
                 <input type="date" value={fechaEstado} onChange={e => setFechaEstado(e.target.value)}
                   style={{ ...inputCell, width: 140, border: `1px solid ${C.border}` }} />
+                <input type="text" value={comentarioEstado} onChange={e => setComentarioEstado(e.target.value)}
+                  placeholder="Comentario (opcional)"
+                  style={{ ...inputCell, width: 260, border: `1px solid ${C.border}` }} />
                 <button onClick={cambiarEstado} disabled={cambiando || !nuevoEstado}
                   style={{
                     padding: '5px 14px', borderRadius: 5, border: 'none',
