@@ -1,10 +1,14 @@
 'use client'
+// VERSION: v2 · 2026-07-13 · app/procesos/mi-portal/page.js — FIX imports que rompían el build:
+//   '../../lib/supabaseClient' → '../../../lib/supabaseClient' (lib está en la raíz, sube 3), y
+//   '../components/ui/TopNav' → '@/app/components/ui/TopNav' (alias, como terminos/page.js).
+//   Normalizado CRLF→LF. Sin cambios de lógica (el agrupado por antigüedad va aparte).
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabaseClient'
-import TopNav from '../components/ui/TopNav'
+import { supabase } from '../../../lib/supabaseClient'
+import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
