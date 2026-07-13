@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-07-13 · Al avisar/entrar en término (S->SQ, S->Q) se escribe la fecha
+//   comunicada en datos_arriendos.termino_actual (fecha real en que el arrendatario dice que se va).
+//   termino_inicial (la del contrato) NO se toca. Solo si viene `fecha`. Resto igual que v2.
 // VERSION: v2 · 2026-07-12 · Bloque 2 Términos: autorización de cierre (lee `solicitudes`)
 //   + estampa autorizado_por/motivo_cierre en historico_idadmon + crea workflow_instance al pasar a Q.
 //   Sobre el v1 desplegado (gate maker-checker con 16 tests). Cambios marcados con ▼▼▼ BLOQUE 2.
@@ -180,9 +183,15 @@ export async function POST(req) {
   }
 
   // 3. Cambiar el estado del contrato
+  //    En el aviso/entrada en término (S->SQ, S->Q) escribimos la fecha COMUNICADA en
+  //    termino_actual (fecha real en que el arrendatario dice que se va). termino_inicial
+  //    (la del contrato) NUNCA se toca. Solo si el usuario aportó `fecha`; si no, no se pisa.
+  const camposUpdate = { estado: estadoNuevo, updated_at: new Date().toISOString() }
+  const esAvisoTermino = estadoAnterior === 'S' && (estadoNuevo === 'SQ' || estadoNuevo === 'Q')
+  if (esAvisoTermino && fecha) camposUpdate.termino_actual = fecha
   const { error: e1 } = await supabaseAdmin
     .from('datos_arriendos')
-    .update({ estado: estadoNuevo, updated_at: new Date().toISOString() })
+    .update(camposUpdate)
     .eq('idadmon', idadmon)
   if (e1) return Response.json({ error: 'Error al cambiar estado: ' + e1.message }, { status: 500 })
 
