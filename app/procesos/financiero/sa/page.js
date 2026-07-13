@@ -1,4 +1,4 @@
-// VERSION: v3 · 2026-07-13 · Vista SA: continua por defecto, filtros Excel en cabeceras, desglose editable en tabla compacta, folio + saldo.
+// VERSION: v4 · 2026-07-13 · Vista SA: hoja de clasificación 2/3 ancho, folio-subfolio con guion, orden folio·CCB·cantidad·concepto·cuenta1·cuenta2.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -17,7 +17,7 @@ const ESTADO = {
 
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const fmtFecha = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
-const subFolio = (orden, sub) => `${orden ?? '·'}.${String(sub).padStart(2, '0')}`
+const subFolio = (orden, sub) => `${orden ?? '·'}-${String(sub).padStart(2, '0')}`
 
 const COLDEFS = [
   { key: 'orden',        label: 'Folio',       w: '80px',  align: 'left',   get: m => (m.orden == null ? '' : String(m.orden)), filter: 'text' },
@@ -29,7 +29,7 @@ const COLDEFS = [
   { key: 'estado_clasificacion', label: 'Estado', w: '116px', align: 'center', get: m => m.estado_clasificacion,               filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
-const DGRID = '58px 74px 86px 86px 1fr 100px 26px'  // drawer: subfolio CCB cta1 cta2 concepto monto x
+const DGRID = '80px 76px 108px 1fr 90px 90px 26px'  // drawer: folio-sub · CCB · cantidad · concepto · cta1 · cta2 · x
 
 function Chip({ estado }) {
   const e = ESTADO[estado] || ESTADO.SIN_CLASIFICAR
@@ -290,7 +290,7 @@ export default function SaPage() {
       {sel && (
         <>
           <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 40 }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 720, maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 'clamp(640px, 66vw, 1120px)', maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E0DED6' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                 <div>
@@ -304,20 +304,20 @@ export default function SaPage() {
             </div>
 
             <div style={{ flex: 1, overflow: 'auto', padding: '12px 18px' }}>
-              <div style={{ minWidth: 560 }}>
+              <div style={{ minWidth: 620 }}>
                 {/* cabecera tabla */}
                 <div style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, fontSize: 10, fontWeight: 600, color: '#888780', padding: '0 2px 6px' }}>
-                  <div>Sub-folio</div><div>CCB</div><div>Cuenta 1</div><div>Cuenta 2</div><div>Concepto</div><div style={{ textAlign: 'right' }}>Monto</div><div />
+                  <div>Folio</div><div>CCB</div><div style={{ textAlign: 'right' }}>Cantidad</div><div>Concepto</div><div>Cuenta 1</div><div>Cuenta 2</div><div />
                 </div>
                 {lineas.length === 0 && <div style={{ fontSize: 13, color: '#B4B2A9', padding: '8px 2px' }}>Sin líneas. {canEdit && 'Añade una para clasificar.'}</div>}
                 {lineas.map((l, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, alignItems: 'center', marginBottom: 6 }}>
                     <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(sel.orden, i + 1)}</div>
                     <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
+                    <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
+                    <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
                     <input value={l.cuenta_1 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_1', e.target.value)} style={inp} />
                     <input value={l.cuenta_2 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_2', e.target.value)} style={inp} />
-                    <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
-                    <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
                     {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}
                   </div>
                 ))}
