@@ -1,9 +1,9 @@
-// VERSION: v4 · 2026-07-13 · Vista SA: hoja de clasificación 2/3 ancho, folio-subfolio con guion, orden folio·CCB·cantidad·concepto·cuenta1·cuenta2.
+// VERSION: v6 · 2026-07-13 · Vista SA: línea de apertura (saldo inicial) al principio, sobre el resto de la v5.
 'use client'
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
@@ -113,6 +113,23 @@ export default function SaPage() {
   const [confirmDesc, setConfirmDesc] = useState(false)
 
   const canEdit = EDITORES.includes(session?.user?.email)
+  const contentRef = useRef(null)
+  const wantScroll = useRef(false)
+  const [stickyTop, setStickyTop] = useState(0)
+
+  // Medir la altura del TopNav (elemento anterior) para fijar la cabecera justo debajo, sin taparla.
+  useEffect(() => {
+    const medir = () => {
+      const prev = contentRef.current?.previousElementSibling
+      if (prev) {
+        const pos = window.getComputedStyle(prev).position
+        setStickyTop((pos === 'fixed' || pos === 'sticky') ? Math.round(prev.getBoundingClientRect().height) : 0)
+      }
+    }
+    medir(); window.addEventListener('resize', medir)
+    const t = setTimeout(medir, 300)
+    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
+  }, [status])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -139,9 +156,12 @@ export default function SaPage() {
       const map = {}
       for (const l of (d.lineas || [])) { (map[l.movimiento_id] = map[l.movimiento_id] || []).push(l) }
       setLineasByMov(map)
+      if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) }
     }).finally(() => setLoading(false))
   }
-  useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || cargaId)) cargar() }, [modo, cargaId, status]) // eslint-disable-line
+  useEffect(() => {
+    if (status === 'authenticated' && (modo === 'continua' || cargaId)) { wantScroll.current = true; cargar() }
+  }, [modo, cargaId, status]) // eslint-disable-line
 
   const resumen = useMemo(() => {
     const r = { n: movs.length, cuad: 0, sin: 0, desc: 0, cargos: 0, abonos: 0 }
@@ -165,6 +185,16 @@ export default function SaPage() {
       return true
     })
   }, [movs, filters])
+
+  const apertura = useMemo(() => {
+    if (modo === 'cartola') {
+      const c = cargas.find(x => x.id === cargaId)
+      return c && c.saldo_inicial != null ? { saldo: c.saldo_inicial, label: `Apertura cartola ${c.nro_cartola}` } : null
+    }
+    if (!cargas.length) return null
+    const first = [...cargas].sort((a, b) => a.nro_cartola - b.nro_cartola)[0]
+    return first && first.saldo_inicial != null ? { saldo: first.saldo_inicial, label: 'Apertura 2026' } : null
+  }, [cargas, cargaId, modo])
 
   const abrir = (m) => { setSel(m); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
@@ -202,7 +232,7 @@ export default function SaPage() {
   return (
     <>
       <TopNav />
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 8px 40px' : '20px 24px 48px' }}>
+      <div ref={contentRef} style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 8px 40px' : '20px 24px 48px' }}>
 
         {/* CABECERA */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
@@ -237,7 +267,7 @@ export default function SaPage() {
 
         {/* TABLA */}
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: GRID, background: '#F7F6F2', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
+          <div style={{ position: 'sticky', top: stickyTop, zIndex: 20, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
             {COLDEFS.map(c => (
               <div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}>
                 <span>{c.label}</span>
@@ -248,37 +278,51 @@ export default function SaPage() {
 
           {loading ? (
             <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
-          ) : movsFiltrados.length === 0 ? (
-            <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin movimientos para este filtro.</div>
-          ) : movsFiltrados.map(m => {
-            const desg = lineasByMov[m.id] || []
-            return (
-              <div key={m.id}>
-                <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                  <div style={{ fontWeight: 600, color: '#0C447C' }}>{m.orden ?? '—'}</div>
-                  <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(m.fecha)}</div>
-                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
-                  <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</div>
-                  <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(m.saldo_calc)}</div>
-                  <div style={{ textAlign: 'center', color: '#888780', fontSize: 12 }}>{m.cargo_abono || '—'}</div>
-                  <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
+          ) : (
+            <>
+              {apertura && (
+                <div style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 12, background: '#F3F7FB', borderBottom: '0.5px solid #E7EDF3', alignItems: 'center', color: '#0C447C' }}>
+                  <div style={{ fontWeight: 600 }}>—</div>
+                  <div />
+                  <div style={{ fontWeight: 600 }}>{apertura.label}</div>
+                  <div />
+                  <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{clp(apertura.saldo)}</div>
+                  <div /><div />
                 </div>
-                {desg.map((l, k) => (
-                  <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: '#FCFCFA', borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
-                    <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(m.orden, l.sub_orden)}</div>
-                    <div />
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                      {l.ccb && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C', marginRight: 6 }}>{l.ccb}</span>}
-                      {l.concepto || l.cuenta_1 || '—'}
+              )}
+              {movsFiltrados.length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin movimientos para este filtro.</div>
+              ) : movsFiltrados.map(m => {
+                const desg = lineasByMov[m.id] || []
+                return (
+                  <div key={m.id}>
+                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      <div style={{ fontWeight: 600, color: '#0C447C' }}>{m.orden ?? '—'}</div>
+                      <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(m.fecha)}</div>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</div>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(m.saldo_calc)}</div>
+                      <div style={{ textAlign: 'center', color: '#888780', fontSize: 12 }}>{m.cargo_abono || '—'}</div>
+                      <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
-                    <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(l.monto)}</div>
-                    <div /><div /><div />
+                    {desg.map((l, k) => (
+                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: '#FCFCFA', borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
+                        <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(m.orden, l.sub_orden)}</div>
+                        <div />
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                          {l.ccb && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C', marginRight: 6 }}>{l.ccb}</span>}
+                          {l.concepto || l.cuenta_1 || '—'}
+                        </div>
+                        <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(l.monto)}</div>
+                        <div /><div /><div />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )
-          })}
+                )
+              })}
+            </>
+          )}
         </div>
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>
           {modo === 'cartola' && cargaActual ? `Cartola ${cargaActual.nro_cartola} · ${fmtFecha(cargaActual.fecha_desde)} a ${fmtFecha(cargaActual.fecha_hasta)}  ·  ` : (modo === 'continua' ? 'Vista continua (todos los meses)  ·  ' : '')}

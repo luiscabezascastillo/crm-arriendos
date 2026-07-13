@@ -59,7 +59,7 @@ export async function GET(req) {
   // Lista de cartolas para el selector
   const { data, error } = await admin
     .from('sa_cargas')
-    .select('id, nro_cartola, periodo, tipo, fecha_desde, fecha_hasta, n_movimientos')
+    .select('id, nro_cartola, periodo, tipo, fecha_desde, fecha_hasta, n_movimientos, saldo_inicial')
     .order('nro_cartola', { ascending: false })
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ cargas: data })
