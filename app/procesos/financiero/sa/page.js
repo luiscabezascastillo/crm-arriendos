@@ -1,4 +1,4 @@
-// VERSION: v6 · 2026-07-13 · Vista SA: línea de apertura (saldo inicial) al principio, sobre el resto de la v5.
+// VERSION: v7 · 2026-07-13 · Vista SA: barra superior fija con botones (Cargar extracto + 2 por definir); cabecera de tabla anclada debajo.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -114,8 +114,11 @@ export default function SaPage() {
 
   const canEdit = EDITORES.includes(session?.user?.email)
   const contentRef = useRef(null)
+  const toolbarRef = useRef(null)
   const wantScroll = useRef(false)
   const [stickyTop, setStickyTop] = useState(0)
+  const [toolbarH, setToolbarH] = useState(0)
+  const [showUploadNote, setShowUploadNote] = useState(false)
 
   // Medir la altura del TopNav (elemento anterior) para fijar la cabecera justo debajo, sin taparla.
   useEffect(() => {
@@ -130,6 +133,14 @@ export default function SaPage() {
     const t = setTimeout(medir, 300)
     return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
   }, [status])
+
+  // Altura de la toolbar fija (para anclar la cabecera de la tabla justo debajo).
+  useEffect(() => {
+    const m = () => { if (toolbarRef.current) setToolbarH(Math.round(toolbarRef.current.getBoundingClientRect().height)) }
+    m(); window.addEventListener('resize', m)
+    const t = setTimeout(m, 350)
+    return () => { window.removeEventListener('resize', m); clearTimeout(t) }
+  }, [status, modo, isMobile, showUploadNote])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -234,25 +245,38 @@ export default function SaPage() {
       <TopNav />
       <div ref={contentRef} style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 8px 40px' : '20px 24px 48px' }}>
 
-        {/* CABECERA */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>SA · Banco Santander</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>Movimientos y clasificación por Centro de Coste/Beneficio</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', border: '0.5px solid #D3D1C7', borderRadius: 8, overflow: 'hidden' }}>
-              {[['continua', 'Continua'], ['cartola', 'Por cartola']].map(([v, lbl]) => (
-                <button key={v} onClick={() => setModo(v)} style={{ fontSize: 12, padding: '7px 12px', border: 'none', cursor: 'pointer', background: modo === v ? '#1D9E75' : '#fff', color: modo === v ? '#fff' : '#2C2C2A', fontWeight: modo === v ? 600 : 400 }}>{lbl}</button>
-              ))}
+        {/* TOOLBAR FIJA */}
+        <div ref={toolbarRef} style={{ position: 'sticky', top: stickyTop, zIndex: 18, background: '#fff', paddingTop: 6, paddingBottom: 10, marginBottom: 8, borderBottom: '0.5px solid #ECEAE3' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>SA · Banco Santander</h1>
+              <div style={{ fontSize: 12, color: '#888780' }}>Movimientos y clasificación por Centro de Coste/Beneficio</div>
             </div>
-            {modo === 'cartola' && (
-              <select value={cargaId || ''} onChange={e => setCargaId(Number(e.target.value))} style={{ fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#2C2C2A' }}>
-                {cargas.map(c => <option key={c.id} value={c.id}>Cartola {c.nro_cartola} · {c.periodo}{c.tipo === 'provisoria' ? ' (prov.)' : ''}</option>)}
-              </select>
-            )}
-            <button onClick={() => router.push('/procesos/financiero')} style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Financiero</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', border: '0.5px solid #D3D1C7', borderRadius: 8, overflow: 'hidden' }}>
+                {[['continua', 'Continua'], ['cartola', 'Por cartola']].map(([v, lbl]) => (
+                  <button key={v} onClick={() => setModo(v)} style={{ fontSize: 12, padding: '7px 12px', border: 'none', cursor: 'pointer', background: modo === v ? '#1D9E75' : '#fff', color: modo === v ? '#fff' : '#2C2C2A', fontWeight: modo === v ? 600 : 400 }}>{lbl}</button>
+                ))}
+              </div>
+              {modo === 'cartola' && (
+                <select value={cargaId || ''} onChange={e => setCargaId(Number(e.target.value))} style={{ fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#2C2C2A' }}>
+                  {cargas.map(c => <option key={c.id} value={c.id}>Cartola {c.nro_cartola} · {c.periodo}{c.tipo === 'provisoria' ? ' (prov.)' : ''}</option>)}
+                </select>
+              )}
+              <button onClick={() => router.push('/procesos/financiero')} style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Financiero</button>
+            </div>
           </div>
+          {/* BOTONES DE ACCIÓN (izquierda) */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={() => setShowUploadNote(v => !v)} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>⬆ Cargar extracto</button>
+            <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
+            <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
+          </div>
+          {showUploadNote && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#0C447C', background: '#F3F7FB', border: '0.5px solid #E7EDF3', borderRadius: 8, padding: '8px 12px' }}>
+              Aquí subirás el extracto del Santander (el semanal provisorio o la cartola mensual) y se procesará automáticamente. <b>En construcción</b> — se activa con el cargador semanal.
+            </div>
+          )}
         </div>
 
         {/* RESUMEN */}
@@ -267,7 +291,7 @@ export default function SaPage() {
 
         {/* TABLA */}
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
-          <div style={{ position: 'sticky', top: stickyTop, zIndex: 20, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
+          <div style={{ position: 'sticky', top: stickyTop + toolbarH, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
             {COLDEFS.map(c => (
               <div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}>
                 <span>{c.label}</span>
