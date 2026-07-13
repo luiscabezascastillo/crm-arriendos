@@ -1,10 +1,13 @@
+// VERSION: v2 · 2026-07-13 · middleware.js — FIX acceso a /cc1 (LOG): se añade 'administracion'
+//   a la lista de roles permitidos de /cc1. Estaba fuera (olvido al reescribir la ruta), por eso
+//   Adalis (rol administracion) era enviada a /sin-acceso al entrar en LOG. Sin otros cambios.
 import { getToken } from 'next-auth/jwt'
 import { NextResponse } from 'next/server'
 const RUTAS = {
   '/canje':        ['direccion'],
   '/panel':        ['direccion', 'administracion', 'finanzas', 'legal', 'ventas', 'comercial', 'mantencion'],
   '/admin':        ['direccion', 'legal', 'ventas', 'administracion', 'finanzas'],
-  '/cc1':          ['direccion', 'finanzas', 'legal', 'ventas'],
+  '/cc1':          ['direccion', 'administracion', 'finanzas', 'legal', 'ventas'],
   '/publicaciones': ['direccion', 'administracion', 'comercial', 'ventas', 'legal'],
   '/procesos/cartolas': ['direccion', 'administracion', 'finanzas', 'legal'],
   '/procesos':     ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'],
@@ -19,7 +22,6 @@ export async function middleware(req) {
     return NextResponse.redirect(new URL('/', req.url))
   }
   const rol = token.role
-
   // Aterrizaje por rol: si caen en el Panel y no es lo suyo, llevarlos a su sección
   const DESTINO_POR_ROL = {
     ventas: '/procesos',
@@ -28,7 +30,6 @@ export async function middleware(req) {
   if (pathname === '/panel' && DESTINO_POR_ROL[rol]) {
     return NextResponse.redirect(new URL(DESTINO_POR_ROL[rol], req.url))
   }
-
   const rutaProtegida = Object.keys(RUTAS).find(r => pathname.startsWith(r))
   if (rutaProtegida && !RUTAS[rutaProtegida].includes(rol)) {
     return NextResponse.redirect(new URL('/sin-acceso', req.url))
