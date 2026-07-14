@@ -11,7 +11,10 @@ const SUBPROCESOS = [
   { icon: '👤', titulo: 'Cargar Boletas honorarios con CCB',         desc: 'Boletas de honorarios del mes con su CCB',                       cadencia: 'mensual', href: '/procesos/financiero/honorarios' },
   { icon: '💰', titulo: 'Cargar Remuneraciones con CCB',             desc: 'Remuneraciones del mes con CCB asignado',                        cadencia: 'mensual', href: '/procesos/financiero/remuneraciones' },
   { icon: '🏦', titulo: 'Cargar SA con CCB',                         desc: 'Movimientos del Banco Santander con CCB',                        cadencia: 'semanal', href: '/procesos/financiero/sa' },
-  { icon: '📤', titulo: 'Cargar liquidaciones en Portal Propietarios', desc: 'Subir las liquidaciones de propietarios al Portal',             cadencia: 'mensual', href: '/procesos/financiero/liquidaciones-portal' },
+  { icon: '🪙', titulo: 'Cargar Caja Chica con CCB',                 desc: 'Movimientos de caja chica con CCB',                              cadencia: 'mensual', href: '/procesos/financiero/caja-chica' },
+  { icon: '🌐', titulo: 'Cargar Global 66 con CCB',                  desc: 'Movimientos de la cuenta Global 66 con CCB',                     cadencia: 'mensual', href: '/procesos/financiero/global66' },
+  { icon: '🏛️', titulo: 'Cargar Internacional con CCB',             desc: 'Movimientos del Banco Internacional con CCB',                    cadencia: 'mensual', href: '/procesos/financiero/internacional' },
+  { icon: '📤', titulo: 'Cargar liquidaciones en Portal Propietarios', desc: 'Subir las liquidaciones de propietarios al Portal',             cadencia: 'mensual', href: '/procesos/financiero/liquidaciones-portal', muted: true },
   { icon: '📋', titulo: 'Cargar datos SII (F29 y similares)',        desc: 'Cargar F29 y declaraciones del SII',                             cadencia: 'mensual', href: '/procesos/financiero/sii' },
 ]
 
@@ -22,12 +25,13 @@ const CAD_BADGE = {
 
 function SubCard({ sub, onClick, isMobile }) {
   const badge = CAD_BADGE[sub.cadencia] || CAD_BADGE.mensual
+  const muted = sub.muted
   return (
     <div onClick={() => onClick(sub.href)}
       style={{
-        background: '#fff',
+        background: muted ? '#F0EFEA' : '#fff',
         border: '0.5px solid #B4B2A9',
-        borderLeft: '3px solid #1D9E75',
+        borderLeft: muted ? '3px solid #B4B2A9' : '3px solid #1D9E75',
         borderRadius: '0 10px 10px 0',
         padding: isMobile ? '12px 13px' : '13px 15px',
         cursor: 'pointer',
@@ -38,10 +42,10 @@ function SubCard({ sub, onClick, isMobile }) {
       }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = '#888780' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = '#B4B2A9' }}>
-      <span style={{ fontSize: 22, flexShrink: 0 }}>{sub.icon}</span>
+      <span style={{ fontSize: 22, flexShrink: 0, opacity: muted ? 0.6 : 1 }}>{sub.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#2C2C2A' }}>{sub.titulo}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: muted ? '#888780' : '#2C2C2A' }}>{sub.titulo}</span>
           <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: badge.bg, color: badge.color }}>{sub.cadencia}</span>
         </div>
         <div style={{ fontSize: 12, color: '#888780', marginTop: 3, lineHeight: 1.4 }}>{sub.desc}</div>
