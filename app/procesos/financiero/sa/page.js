@@ -1,4 +1,4 @@
-// VERSION: v7 · 2026-07-13 · Vista SA: barra superior fija con botones (Cargar extracto + 2 por definir); cabecera de tabla anclada debajo.
+// VERSION: v8 · 2026-07-13 · Vista SA: cargador de extracto (SheetJS + reconciliacion por posicion, folio siguiente para los nuevos).
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -18,6 +18,48 @@ const ESTADO = {
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const fmtFecha = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
 const subFolio = (orden, sub) => `${orden ?? '·'}-${String(sub).padStart(2, '0')}`
+
+function fechaISO(v) {
+  if (v == null || v === '') return null
+  if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`
+  const s = String(v).trim()
+  let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/); if (m) return `${m[3]}-${m[2]}-${m[1]}`
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  return null
+}
+function cellStr(v) { if (v == null) return null; let s = String(v).trim(); if (s.endsWith('.0')) s = s.slice(0, -2); return s || null }
+
+// Lee un extracto del Santander (provisoria o mensual) y devuelve la cabecera + movimientos limpios.
+async function parseCartola(file, XLSX) {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { cellDates: true })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false })
+  let hi = -1
+  for (let i = 0; i < rows.length; i++) { if (rows[i] && String(rows[i][0]).trim().toUpperCase() === 'MONTO') { hi = i; break } }
+  if (hi < 0) throw new Error('No encontré la cabecera (columna MONTO). ¿Es un extracto del Santander?')
+  const flat = rows.slice(0, hi + 1).map(r => (r || []).map(c => c == null ? '' : String(c)).join('  ')).join('  ')
+  const nroM = flat.match(/N[uú]mero cartola:\s*(\d+)/i)
+  const desde = fechaISO((flat.match(/Fecha desde:\s*([\d/]+)/i) || [])[1])
+  const hasta = fechaISO((flat.match(/Fecha hasta:\s*([\d/]+)/i) || [])[1])
+  const tipo = (/provisori/i.test(flat) || /provisori/i.test(file.name)) ? 'provisoria' : 'definitiva'
+  let saldo_inicial = null
+  for (let i = 0; i < hi; i++) {
+    const r = rows[i] || []
+    const idx = r.findIndex(c => String(c).trim().toUpperCase() === 'SALDO INICIAL')
+    if (idx >= 0) { const v = (rows[i + 1] || [])[idx]; if (v != null && v !== '' && !isNaN(Number(v))) saldo_inicial = Math.round(Number(v)); break }
+  }
+  const movimientos = []
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i] || []
+    const monto = Number(r[0]); const f = fechaISO(r[3])
+    if (r[0] == null || r[0] === '' || isNaN(monto) || !f) continue   // excluye saldos diarios y filas sin fecha
+    const ca = String(r[7] == null ? '' : r[7]).trim().toUpperCase().slice(0, 1)
+    movimientos.push({ fecha: f, monto: Math.round(monto), descripcion: cellStr(r[1]), n_documento: cellStr(r[4]), sucursal: cellStr(r[5]), cargo_abono: (ca === 'C' || ca === 'A') ? ca : null })
+  }
+  const periodo = hasta ? hasta.slice(0, 7) : (desde ? desde.slice(0, 7) : null)
+  return { nro_cartola: nroM ? Number(nroM[1]) : null, tipo, periodo, fecha_desde: desde, fecha_hasta: hasta, saldo_inicial, archivo: file.name, movimientos }
+}
 
 const COLDEFS = [
   { key: 'orden',        label: 'Folio',       w: '80px',  align: 'left',   get: m => (m.orden == null ? '' : String(m.orden)), filter: 'text' },
@@ -118,7 +160,9 @@ export default function SaPage() {
   const wantScroll = useRef(false)
   const [stickyTop, setStickyTop] = useState(0)
   const [toolbarH, setToolbarH] = useState(0)
-  const [showUploadNote, setShowUploadNote] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState(null)
+  const fileRef = useRef(null)
 
   // Medir la altura del TopNav (elemento anterior) para fijar la cabecera justo debajo, sin taparla.
   useEffect(() => {
@@ -140,7 +184,7 @@ export default function SaPage() {
     m(); window.addEventListener('resize', m)
     const t = setTimeout(m, 350)
     return () => { window.removeEventListener('resize', m); clearTimeout(t) }
-  }, [status, modo, isMobile, showUploadNote])
+  }, [status, modo, isMobile, uploadMsg])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -236,6 +280,27 @@ export default function SaPage() {
     } finally { setSaving(false) }
   }
 
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = ''
+    if (!file) return
+    setUploading(true); setUploadMsg(null)
+    try {
+      const XLSX = await import('xlsx')
+      const payload = await parseCartola(file, XLSX)
+      if (!payload.nro_cartola) { setUploadMsg({ error: 'No pude leer el número de cartola del archivo.' }); return }
+      if (!payload.movimientos.length) { setUploadMsg({ error: 'No encontré movimientos en el archivo.' }); return }
+      const res = await fetch('/api/financiero/sa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const d = await res.json()
+      if (!res.ok) { setUploadMsg({ error: d.error || 'No se pudo cargar el extracto.' }); return }
+      const tag = d.cartola_nueva ? 'cartola nueva' : 'recarga'
+      const cf = (d.conflictos && d.conflictos.length) ? ` · ${d.conflictos.length} línea(s) a revisar: ${d.conflictos.map(c => c.linea).join(', ')}` : ''
+      setUploadMsg({ text: `Cartola ${d.nro_cartola} (${tag}): ${d.nuevos} nuevo(s), ${d.existentes} ya estaban, ${d.total} en total${cf}.` })
+      fetch('/api/financiero/sa').then(r => r.json()).then(x => setCargas(x.cargas || [])).catch(() => {})
+      cargar()
+    } catch (err) { setUploadMsg({ error: String(err?.message || err) }) }
+    finally { setUploading(false) }
+  }
+
   if (status === 'loading') return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div></>)
   const cargaActual = cargas.find(c => c.id === cargaId)
   const inp = { fontSize: 12, padding: '5px 6px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', width: '100%' }
@@ -268,13 +333,17 @@ export default function SaPage() {
           </div>
           {/* BOTONES DE ACCIÓN (izquierda) */}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button onClick={() => setShowUploadNote(v => !v)} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>⬆ Cargar extracto</button>
+            <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading}
+              title={canEdit ? 'Subir extracto del Santander (provisoria o mensual)' : 'Sin permiso para cargar'}
+              style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar extracto'}</button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} style={{ display: 'none' }} />
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
           </div>
-          {showUploadNote && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#0C447C', background: '#F3F7FB', border: '0.5px solid #E7EDF3', borderRadius: 8, padding: '8px 12px' }}>
-              Aquí subirás el extracto del Santander (el semanal provisorio o la cartola mensual) y se procesará automáticamente. <b>En construcción</b> — se activa con el cargador semanal.
+          {uploadMsg && (
+            <div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8,
+              background: uploadMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${uploadMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: uploadMsg.error ? '#B23A3A' : '#085041' }}>
+              {uploadMsg.error || uploadMsg.text}
             </div>
           )}
         </div>

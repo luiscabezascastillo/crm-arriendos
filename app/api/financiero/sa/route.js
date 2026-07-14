@@ -97,3 +97,72 @@ export async function PUT(req) {
 
   return Response.json({ ok: true, n: lineas.length })
 }
+
+// POST: cargar un extracto (provisoria o definitiva). Reconcilia por posición y asigna folio a los nuevos.
+export async function POST(req) {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!EDITORES.includes(email)) return Response.json({ error: 'No tienes permiso para cargar extractos.' }, { status: 403 })
+
+  let body
+  try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
+  const { nro_cartola, tipo, periodo, fecha_desde, fecha_hasta, saldo_inicial } = body || {}
+  const movimientos = Array.isArray(body?.movimientos) ? body.movimientos : null
+  if (!nro_cartola || !movimientos || !movimientos.length) return Response.json({ error: 'Faltan nro_cartola o movimientos' }, { status: 400 })
+
+  const { data: cargaEx, error: e0 } = await admin.from('sa_cargas').select('id, tipo, n_movimientos').eq('nro_cartola', nro_cartola).maybeSingle()
+  if (e0) return Response.json({ error: e0.message }, { status: 500 })
+
+  const { data: maxRow } = await admin.from('sa_movimientos').select('orden').not('orden', 'is', null).order('orden', { ascending: false }).limit(1).maybeSingle()
+  let nextFolio = maxRow?.orden || 1877   // el primero de 2026 será 1878
+
+  const mkRow = (cargaId, m, i, folio) => ({
+    carga_id: cargaId, linea_cartola: i + 1, fecha: m.fecha, monto: Math.round(Number(m.monto)),
+    descripcion: m.descripcion || null, n_documento: m.n_documento || null, sucursal: m.sucursal || null,
+    cargo_abono: (m.cargo_abono === 'C' || m.cargo_abono === 'A') ? m.cargo_abono : null, orden: folio,
+  })
+
+  // CARTOLA NUEVA
+  if (!cargaEx) {
+    const { data: nueva, error: e1 } = await admin.from('sa_cargas').insert({
+      nro_cartola, tipo: tipo || 'definitiva', periodo: periodo || null,
+      fecha_desde: fecha_desde || null, fecha_hasta: fecha_hasta || null,
+      saldo_inicial: (saldo_inicial != null ? Math.round(Number(saldo_inicial)) : null),
+      n_movimientos: movimientos.length, cargado_por: email, archivo: body.archivo || null,
+    }).select('id').single()
+    if (e1) return Response.json({ error: e1.message }, { status: 500 })
+    const rows = movimientos.map((m, i) => mkRow(nueva.id, m, i, ++nextFolio))
+    const { error: e2 } = await admin.from('sa_movimientos').insert(rows)
+    if (e2) return Response.json({ error: e2.message }, { status: 500 })
+    return Response.json({ ok: true, cartola_nueva: true, nro_cartola, nuevos: rows.length, existentes: 0, total: movimientos.length, conflictos: [] })
+  }
+
+  // RECARGA: reconciliar por posición (linea_cartola)
+  const cargaId = cargaEx.id
+  const { data: exMovs, error: e3 } = await admin.from('sa_movimientos').select('linea_cartola, fecha, monto').eq('carga_id', cargaId)
+  if (e3) return Response.json({ error: e3.message }, { status: 500 })
+  const exByLinea = {}
+  for (const m of (exMovs || [])) exByLinea[m.linea_cartola] = m
+
+  const nuevos = []; const conflictos = []
+  movimientos.forEach((m, i) => {
+    const linea = i + 1
+    const ex = exByLinea[linea]
+    if (ex) {
+      if (String(ex.fecha).slice(0, 10) !== String(m.fecha).slice(0, 10) || Math.round(Number(ex.monto)) !== Math.round(Number(m.monto))) {
+        conflictos.push({ linea })
+      }
+      // ya existía → se conserva su folio y su clasificación (no se toca)
+    } else {
+      nuevos.push(mkRow(cargaId, m, i, ++nextFolio))
+    }
+  })
+  if (nuevos.length) {
+    const { error: e4 } = await admin.from('sa_movimientos').insert(nuevos)
+    if (e4) return Response.json({ error: e4.message }, { status: 500 })
+  }
+  await admin.from('sa_cargas').update({ tipo: tipo || cargaEx.tipo, fecha_hasta: fecha_hasta || null, n_movimientos: movimientos.length }).eq('id', cargaId)
+
+  return Response.json({ ok: true, cartola_nueva: false, nro_cartola, nuevos: nuevos.length, existentes: (exMovs?.length || 0), total: movimientos.length, conflictos })
+}
