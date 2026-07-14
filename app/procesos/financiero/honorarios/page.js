@@ -1,4 +1,4 @@
-// VERSION: v1 · 2026-07-13 · Vista Compras (Financiero): continua/mensual, recientes abajo, barra+cabecera fijas, filtros Excel, cargar mes, CCB editable.
+// VERSION: v1 · 2026-07-13 · Vista Honorarios (Financiero): continua/mensual, recientes abajo, barra+cabecera fijas, filtros Excel, cargar mes (subir/arrastrar/pegar), CCB editable.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -8,7 +8,6 @@ import TopNav from '@/app/components/ui/TopNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
-const PAGADO_SUGERIDOS = ['SA', 'BI', 'TC SA']
 
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const fmtFecha = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
@@ -23,8 +22,7 @@ function fechaISO(v) {
   return null
 }
 
-// Lee un Libro de Compra (formato SII completo o mensual). Cabecera detectada dinámicamente, mapeo por nombre.
-async function parseCompras(file, XLSX) {
+async function parseHonorarios(file, XLSX) {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { cellDates: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
@@ -32,44 +30,40 @@ async function parseCompras(file, XLSX) {
   let hi = -1
   for (let i = 0; i < rows.length; i++) {
     const hh = (rows[i] || []).map(c => String(c == null ? '' : c).trim().toUpperCase())
-    if (hh.includes('FOLIO') && hh.some(h => h.includes('RUT'))) { hi = i; break }
+    if (hh.some(h => h.includes('RUT')) && hh.some(h => h.includes('BRUTOS'))) { hi = i; break }
   }
-  if (hi < 0) throw new Error('No encontré la cabecera (Folio / RUT). ¿Es un Libro de Compra?')
+  if (hi < 0) throw new Error('No encontré la cabecera (Rut / Brutos). ¿Es un Libro de Honorarios?')
   const H = rows[hi].map(c => String(c == null ? '' : c).trim().toUpperCase())
   const idxExact = (name) => H.indexOf(name.toUpperCase())
   const idxHas = (...subs) => H.findIndex(h => subs.every(s => h.includes(s.toUpperCase())))
   const pick = (...specs) => { for (const s of specs) { const i = Array.isArray(s) ? idxHas(...s) : idxExact(s); if (i >= 0) return i } return -1 }
   const C = {
-    folio: pick('Folio'), tipo: pick('Tipo Doc', 'Tipo Compra'), rut: pick(['RUT']), prov: pick('Razon Social', ['RAZON']),
-    fecha: pick('Fecha Docto', ['FECHA', 'DOCTO'], ['FECHA']), exento: pick(['EXENTO']), neto: pick('Monto Neto'),
-    iva: pick('Monto IVA Recuperable', ['MONTO', 'IVA', 'REC'], ['MONTO', 'IVA']), total: pick('Monto Total'),
-    ccb: pick('CCB', ['COSTO', 'BENEFICIO']), pagado: pick('Pagado Por', 'Banco'), cuenta: pick('Ctas'),
-    estado: pick('Estado'), glosa: pick('Descripcion', ['DETALLE']),
+    folio: pick('N°', 'N\u00b0', 'Nº'), fecha: pick('Fecha'), estado: pick('Estado'), anul: pick(['ANULA']),
+    rut: pick('Rut', ['RUT']), nombre: pick(['NOMBRE']), soc: pick(['PROF']), brutos: pick('Brutos', ['BRUTOS']),
+    ret: pick('Retenido', ['RETEN']), pag: pick('Pagado', ['PAGADO']), ccb: pick('CCB', ['COSTO'], ['CENTRO']),
   }
+  if (C.folio < 0) C.folio = 0
   const num = (x) => { if (x == null || x === '') return null; const n = Number(x); return isNaN(n) ? null : Math.round(n) }
   const cl = (x) => { if (x == null) return null; const s = String(x).trim(); return (s === '' || s.toUpperCase() === 'X' || s === 'nan') ? null : s }
   const g = (r, i) => i >= 0 ? r[i] : null
-  const compras = []
+  const honorarios = []
   for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i] || []
     const folio = num(g(r, C.folio)); const fecha = fechaISO(g(r, C.fecha)); const rut = cl(g(r, C.rut))
     if (folio == null || !fecha || !rut) continue
-    compras.push({ folio, tipo_doc: cl(g(r, C.tipo)), fecha, rut, proveedor: cl(g(r, C.prov)), ccb: cl(g(r, C.ccb)),
-      cuenta: cl(g(r, C.cuenta)), pagado_por: cl(g(r, C.pagado)), exento: num(g(r, C.exento)), neto: num(g(r, C.neto)),
-      iva: num(g(r, C.iva)), total: num(g(r, C.total)), estado: cl(g(r, C.estado)), glosa: cl(g(r, C.glosa)), mes: fecha.slice(0, 7) })
+    honorarios.push({ folio, fecha, estado: cl(g(r, C.estado)), fecha_anulacion: fechaISO(g(r, C.anul)), rut, nombre: cl(g(r, C.nombre)), soc_prof: cl(g(r, C.soc)), brutos: num(g(r, C.brutos)), retenido: num(g(r, C.ret)), pagado: num(g(r, C.pag)), ccb: cl(g(r, C.ccb)), mes: fecha.slice(0, 7) })
   }
-  return { archivo: file.name, compras }
+  return { archivo: file.name, honorarios }
 }
 
 const COLDEFS = [
-  { key: 'folio', label: 'Folio', w: '82px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
+  { key: 'folio', label: 'Boleta', w: '78px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
-  { key: 'proveedor', label: 'Proveedor', w: '1fr', align: 'left', get: v => v.proveedor || '', filter: 'text' },
+  { key: 'nombre', label: 'Emisor', w: '1fr', align: 'left', get: v => v.nombre || '', filter: 'text' },
   { key: 'ccb', label: 'CCB', w: '74px', align: 'left', get: v => v.ccb || '', filter: 'list' },
-  { key: 'pagado_por', label: 'Pagado', w: '72px', align: 'left', get: v => v.pagado_por || '', filter: 'list' },
-  { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
-  { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
-  { key: 'total', label: 'Total', w: '112px', align: 'right', get: v => v.total, filter: null },
+  { key: 'brutos', label: 'Brutos', w: '104px', align: 'right', get: v => v.brutos, filter: null },
+  { key: 'retenido', label: 'Retenido', w: '96px', align: 'right', get: v => v.retenido, filter: null },
+  { key: 'pagado', label: 'Pagado', w: '104px', align: 'right', get: v => v.pagado, filter: null },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -79,10 +73,8 @@ function CcbChip({ ccb }) {
 }
 function Card({ label, value, color }) {
   return (<div style={{ background: '#fff', border: '0.5px solid #E0DED6', borderRadius: 10, padding: '10px 14px', minWidth: 108, flex: '1 1 auto' }}>
-    <div style={{ fontSize: 11, color: '#888780', marginBottom: 3 }}>{label}</div>
-    <div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
+    <div style={{ fontSize: 11, color: '#888780', marginBottom: 3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
 }
-
 function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
   const active = state && (state.text || (state.sel && state.sel.length))
   const distinct = useMemo(() => { if (col.filter !== 'list') return []; const s = new Set(); for (const m of movs) s.add(String(col.get(m))); return Array.from(s).sort() }, [movs, col])
@@ -110,66 +102,68 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
   )
 }
 
-export default function ComprasPage() {
+export default function HonorariosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
   const [modo, setModo] = useState('continua')
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
-  const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
+  const [honorarios, setHonorarios] = useState([]); const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
-  const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null); const handleFileRef = useRef(null)
+  const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null)
   const canEdit = EDITORES.includes(session?.user?.email)
-  const contentRef = useRef(null); const toolbarRef = useRef(null); const wantScroll = useRef(false)
+  const contentRef = useRef(null); const toolbarRef = useRef(null); const wantScroll = useRef(false); const handleFileRef = useRef(null)
   const [stickyTop, setStickyTop] = useState(0); const [toolbarH, setToolbarH] = useState(0)
 
   useEffect(() => { const medir = () => { const prev = contentRef.current?.previousElementSibling; if (prev) { const pos = window.getComputedStyle(prev).position; setStickyTop((pos === 'fixed' || pos === 'sticky') ? Math.round(prev.getBoundingClientRect().height) : 0) } }; medir(); window.addEventListener('resize', medir); const t = setTimeout(medir, 300); return () => { window.removeEventListener('resize', medir); clearTimeout(t) } }, [status])
   useEffect(() => { const m = () => { if (toolbarRef.current) setToolbarH(Math.round(toolbarRef.current.getBoundingClientRect().height)) }; m(); window.addEventListener('resize', m); const t = setTimeout(m, 350); return () => { window.removeEventListener('resize', m); clearTimeout(t) } }, [status, modo, isMobile, uploadMsg])
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
-  useEffect(() => { if (status !== 'authenticated') return; fetch('/api/financiero/compras').then(r => r.json()).then(d => { const l = d.meses || []; setMeses(l); if (l.length && mesSel == null) setMesSel(l[0].mes) }).catch(() => {}) }, [status]) // eslint-disable-line
+  useEffect(() => { if (status !== 'authenticated') return; fetch('/api/financiero/honorarios').then(r => r.json()).then(d => { const l = d.meses || []; setMeses(l); if (l.length && mesSel == null) setMesSel(l[0].mes) }).catch(() => {}) }, [status]) // eslint-disable-line
 
   const cargar = () => {
-    const url = modo === 'continua' ? '/api/financiero/compras?todas=1' : (mesSel ? `/api/financiero/compras?mes=${mesSel}` : null)
+    const url = modo === 'continua' ? '/api/financiero/honorarios?todas=1' : (mesSel ? `/api/financiero/honorarios?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setHonorarios(d.honorarios || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
-  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++ } return r }, [compras])
-  const comprasFiltradas = useMemo(() => compras.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [compras, filters])
+  const resumen = useMemo(() => { const r = { n: honorarios.length, brutos: 0, retenido: 0, pagado: 0, revisar: 0 }; for (const v of honorarios) { r.brutos += v.brutos || 0; r.retenido += v.retenido || 0; r.pagado += v.pagado || 0; if (!v.ccb) r.revisar++ } return r }, [honorarios])
+  const filtradas = useMemo(() => honorarios.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [honorarios, filters])
 
-  const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', pagado_por: v.pagado_por || '', estado: v.estado || '', glosa: v.glosa || '' }) }
+  const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', estado: v.estado || '' }) }
   const cerrar = () => { setSel(null) }
   const guardar = async () => {
     if (!sel) return; setSaving(true)
     try {
-      const res = await fetch('/api/financiero/compras', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sel.id, ...edit }) })
+      const res = await fetch('/api/financiero/honorarios', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sel.id, ...edit }) })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar'); return }
       setSavedFlag(true); cargar()
     } finally { setSaving(false) }
   }
+
   const handleFile = async (file) => {
     if (!file) return
     if (!canEdit) { setUploadMsg({ error: 'No tienes permiso para cargar.' }); return }
     setUploading(true); setUploadMsg(null)
     try {
       const XLSX = await import('xlsx')
-      const { compras: parsed, archivo } = await parseCompras(file, XLSX)
-      if (!parsed.length) { setUploadMsg({ error: 'No encontré compras en el archivo.' }); return }
-      const res = await fetch('/api/financiero/compras', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ compras: parsed, archivo }) })
+      const { honorarios: parsed, archivo } = await parseHonorarios(file, XLSX)
+      if (!parsed.length) { setUploadMsg({ error: 'No encontré honorarios en el archivo.' }); return }
+      const res = await fetch('/api/financiero/honorarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ honorarios: parsed, archivo }) })
       const d = await res.json()
       if (!res.ok) { setUploadMsg({ error: d.error || 'No se pudo cargar.' }); return }
-      setUploadMsg({ text: `${d.nuevas} compra(s) nueva(s), ${d.duplicadas} ya estaban, ${d.total} en el archivo.` })
-      fetch('/api/financiero/compras').then(r => r.json()).then(x => setMeses(x.meses || [])).catch(() => {})
+      setUploadMsg({ text: `${d.nuevas} boleta(s) nueva(s), ${d.duplicadas} ya estaban, ${d.total} en el archivo.` })
+      fetch('/api/financiero/honorarios').then(r => r.json()).then(x => setMeses(x.meses || [])).catch(() => {})
       cargar()
     } catch (err) { setUploadMsg({ error: String(err?.message || err) }) } finally { setUploading(false) }
   }
   handleFileRef.current = handleFile
   const onFileInput = (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleFile(f) }
 
+  // Arrastrar y pegar en toda la ventana
   useEffect(() => {
     const over = (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); setDragOver(true) } }
     const leave = (e) => { if (e.clientX <= 0 && e.clientY <= 0) setDragOver(false) }
@@ -194,8 +188,8 @@ export default function ComprasPage() {
         <div ref={toolbarRef} style={{ position: 'sticky', top: stickyTop, zIndex: 18, background: '#fff', paddingTop: 6, paddingBottom: 10, marginBottom: 8, borderBottom: '0.5px solid #ECEAE3' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div>
-              <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Compras</h1>
-              <div style={{ fontSize: 12, color: '#888780' }}>Compras del mes con Centro de Coste/Beneficio</div>
+              <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Honorarios</h1>
+              <div style={{ fontSize: 12, color: '#888780' }}>Boletas de honorarios con Centro de Coste/Beneficio</div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', border: '0.5px solid #D3D1C7', borderRadius: 8, overflow: 'hidden' }}>
@@ -206,66 +200,62 @@ export default function ComprasPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Compra mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar compras del mes'}</button>
+            <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir, arrastrar o pegar un Libro de Honorarios' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar honorarios del mes'}</button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+            {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el archivo</span>}
           </div>
           {uploadMsg && (<div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: uploadMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${uploadMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: uploadMsg.error ? '#B23A3A' : '#085041' }}>{uploadMsg.error || uploadMsg.text}</div>)}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          <Card label="Compras" value={resumen.n} />
-          <Card label="Neto" value={clp(resumen.neto)} />
-          <Card label="IVA" value={clp(resumen.iva)} />
-          <Card label="Total" value={clp(resumen.total)} color="#B23A3A" />
+          <Card label="Boletas" value={resumen.n} />
+          <Card label="Brutos" value={clp(resumen.brutos)} />
+          <Card label="Retenido" value={clp(resumen.retenido)} />
+          <Card label="Pagado" value={clp(resumen.pagado)} color="#085041" />
           <Card label="Sin CCB" value={resumen.revisar} color={resumen.revisar ? '#B23A3A' : '#888780'} />
         </div>
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: stickyTop + toolbarH, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={compras} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={honorarios} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
-          ) : comprasFiltradas.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin compras para este filtro.</div>
-          ) : comprasFiltradas.map(v => (
+          ) : filtradas.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin honorarios para este filtro.</div>
+          ) : filtradas.map(v => (
             <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.proveedor || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.nombre || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
               <div><CcbChip ccb={v.ccb} /></div>
-              <div style={{ fontSize: 12, color: '#888780' }}>{v.pagado_por || '—'}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.neto)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.iva)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{clp(v.total)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.brutos)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.retenido)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: '#085041' }}>{clp(v.pagado)}</div>
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las compras  ·  ' : '')}{comprasFiltradas.length} de {compras.length} compras. Pincha una para revisar/editar.</div>
+        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las boletas  ·  ' : '')}{filtradas.length} de {honorarios.length} boletas. Pincha una para revisar/editar.</div>
       </div>
 
       {sel && (<>
         <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 40 }} />
-        <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 460, maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 440, maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '16px 18px', borderBottom: '0.5px solid #E0DED6' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
               <div>
-                <div style={{ fontSize: 12, color: '#888780' }}>{sel.tipo_doc || 'Compra'} · Folio {sel.folio} · {fmtFecha(sel.fecha)}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#2C2C2A', marginTop: 2 }}>{sel.proveedor || '—'}</div>
+                <div style={{ fontSize: 12, color: '#888780' }}>Boleta {sel.folio} · {fmtFecha(sel.fecha)} · {sel.estado || ''}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#2C2C2A', marginTop: 2 }}>{sel.nombre || '—'}</div>
                 <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>{sel.rut || ''}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, color: '#B23A3A' }}>{clp(sel.total)}</div>
-                <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>Neto {clp(sel.neto)} · IVA {clp(sel.iva)}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, color: '#085041' }}>{clp(sel.pagado)}</div>
+                <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>Brutos {clp(sel.brutos)} · Retenido {clp(sel.retenido)}</div>
               </div>
               <button onClick={cerrar} style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: '#888780', lineHeight: 1 }}>×</button>
             </div>
             {!canEdit && <div style={{ marginTop: 8, fontSize: 12, color: '#888780', background: '#F7F6F2', padding: '6px 10px', borderRadius: 6 }}>Solo lectura.</div>}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ fontSize: 12, color: '#888780' }}>CCB<input list="ccb-list-c" value={edit.ccb} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, ccb: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <label style={{ fontSize: 12, color: '#888780' }}>Pagado por<input list="pag-list-c" value={edit.pagado_por} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, pagado_por: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta<input value={edit.cuenta} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, cuenta: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12, color: '#888780' }}>CCB<input list="ccb-list-h" value={edit.ccb} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, ccb: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12, color: '#888780' }}>Estado<input value={edit.estado} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, estado: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <label style={{ fontSize: 12, color: '#888780' }}>Glosa<input value={edit.glosa} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, glosa: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <datalist id="ccb-list-c">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
-            <datalist id="pag-list-c">{PAGADO_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
+            <datalist id="ccb-list-h">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
           </div>
           {canEdit && (<div style={{ borderTop: '0.5px solid #E0DED6', padding: '12px 18px' }}>
             <button onClick={guardar} disabled={saving} style={{ width: '100%', fontSize: 14, fontWeight: 600, padding: '10px', borderRadius: 8, border: 'none', cursor: saving ? 'default' : 'pointer', background: '#1D9E75', color: '#fff', opacity: saving ? 0.7 : 1 }}>{saving ? 'Guardando…' : 'Guardar'}</button>

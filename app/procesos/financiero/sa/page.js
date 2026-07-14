@@ -161,8 +161,8 @@ export default function SaPage() {
   const [stickyTop, setStickyTop] = useState(0)
   const [toolbarH, setToolbarH] = useState(0)
   const [uploading, setUploading] = useState(false)
-  const [uploadMsg, setUploadMsg] = useState(null)
-  const fileRef = useRef(null)
+  const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false)
+  const fileRef = useRef(null); const handleFileRef = useRef(null)
 
   // Medir la altura del TopNav (elemento anterior) para fijar la cabecera justo debajo, sin taparla.
   useEffect(() => {
@@ -280,9 +280,9 @@ export default function SaPage() {
     } finally { setSaving(false) }
   }
 
-  const onFile = async (e) => {
-    const file = e.target.files?.[0]; e.target.value = ''
+  const handleFile = async (file) => {
     if (!file) return
+    if (!canEdit) { setUploadMsg({ error: 'No tienes permiso para cargar.' }); return }
     setUploading(true); setUploadMsg(null)
     try {
       const XLSX = await import('xlsx')
@@ -300,6 +300,17 @@ export default function SaPage() {
     } catch (err) { setUploadMsg({ error: String(err?.message || err) }) }
     finally { setUploading(false) }
   }
+  handleFileRef.current = handleFile
+  const onFileInput = (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleFile(f) }
+
+  useEffect(() => {
+    const over = (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); setDragOver(true) } }
+    const leave = (e) => { if (e.clientX <= 0 && e.clientY <= 0) setDragOver(false) }
+    const drop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f) handleFileRef.current?.(f) }
+    const paste = (e) => { const f = e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); handleFileRef.current?.(f) } }
+    window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop); window.addEventListener('paste', paste)
+    return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); window.removeEventListener('paste', paste) }
+  }, [])
 
   if (status === 'loading') return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div></>)
   const cargaActual = cargas.find(c => c.id === cargaId)
@@ -308,6 +319,11 @@ export default function SaPage() {
   return (
     <>
       <TopNav />
+      {dragOver && canEdit && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ background: '#fff', padding: '16px 26px', borderRadius: 12, fontSize: 15, fontWeight: 700, color: '#085041', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}>⬆ Suelta el archivo para cargar</div>
+        </div>
+      )}
       <div ref={contentRef} style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 8px 40px' : '20px 24px 48px' }}>
 
         {/* TOOLBAR FIJA */}
@@ -336,7 +352,7 @@ export default function SaPage() {
             <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading}
               title={canEdit ? 'Subir extracto del Santander (provisoria o mensual)' : 'Sin permiso para cargar'}
               style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar extracto'}</button>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} style={{ display: 'none' }} />
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
           </div>
