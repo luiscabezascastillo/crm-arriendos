@@ -14,7 +14,7 @@ export async function GET(req) {
   if (mes || todas) {
     let q = admin.from('caja_chica').select(COLS)
     if (mes) q = q.eq('mes', mes)
-    q = q.order('fecha', { ascending: true }).order('orden', { ascending: true })
+    q = q.order('orden', { ascending: true })
     const { data, error } = await q
     if (error) return Response.json({ error: error.message }, { status: 500 })
     return Response.json({ movimientos: data })

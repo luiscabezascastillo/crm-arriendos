@@ -1,4 +1,4 @@
-// VERSION: v1 · 2026-07-13 · Vista Caja Chica (Financiero): continua/mensual, saldo + línea de apertura, recientes abajo, barra+cabecera fijas, filtros Excel, cargar (subir/arrastrar/pegar), CCB editable.
+// VERSION: v2 · 2026-07-14 · Caja Chica: orden por nº de fila (saldo corrido correcto) + resalte de saltos de saldo.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -142,6 +142,17 @@ export default function CajaChicaPage() {
     return { saldo: o.saldo - o.monto, label: modo === 'mensual' && mesSel ? `Apertura ${mesLabel(mesSel)}` : 'Apertura 2026' }
   }, [movimientos, modo, mesSel])
 
+  // Filas donde la cadena de saldo se rompe (el "Monto inicial" implícito ≠ Saldo Final de la fila anterior).
+  const rotos = useMemo(() => {
+    const set = new Set()
+    for (let i = 1; i < movimientos.length; i++) {
+      const cur = movimientos[i], prev = movimientos[i - 1]
+      if (cur.saldo == null || cur.monto == null || prev.saldo == null) continue
+      if ((cur.saldo - cur.monto) !== prev.saldo) set.add(cur.id)
+    }
+    return set
+  }, [movimientos])
+
   const filtrados = useMemo(() => movimientos.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [movimientos, filters])
 
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', detalle: v.detalle || '' }) }
@@ -223,6 +234,7 @@ export default function CajaChicaPage() {
           <Card label="Recibido" value={clp(resumen.recibido)} color="#085041" />
           <Card label="Saldo actual" value={clp(resumen.saldo)} />
           <Card label="Sin CCB" value={resumen.revisar} color={resumen.revisar ? '#B23A3A' : '#888780'} />
+          <Card label="Saltos de saldo" value={rotos.size} color={rotos.size ? '#B23A3A' : '#888780'} />
         </div>
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
@@ -241,17 +253,20 @@ export default function CajaChicaPage() {
               </div>
             )}
             {filtrados.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin movimientos para este filtro.</div>
-            ) : filtrados.map(v => (
-              <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+            ) : filtrados.map(v => {
+              const roto = rotos.has(v.id)
+              return (
+              <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', borderLeft: roto ? '3px solid #E8A13A' : '3px solid transparent', background: roto ? '#FDF6EA' : '#fff', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = roto ? '#FBEFD8' : '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = roto ? '#FDF6EA' : '#fff'}>
                 <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.detalle || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
                 <div style={{ fontSize: 12, color: '#888780', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.n_documento || '—'}</div>
                 <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: v.pagado ? '#B23A3A' : '#B4B2A9' }}>{v.pagado ? clp(v.pagado) : '—'}</div>
                 <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: v.recibido ? '#085041' : '#B4B2A9' }}>{v.recibido ? clp(v.recibido) : '—'}</div>
-                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.saldo)}</div>
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: roto ? '#B26A00' : '#888780', fontWeight: roto ? 700 : 400 }}>{clp(v.saldo)}{roto ? ' ⚠' : ''}</div>
                 <div><CcbChip ccb={v.ccb} /></div>
               </div>
-            ))}
+              )
+            })}
           </>)}
         </div>
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todos los movimientos de 2026  ·  ' : '')}{filtrados.length} de {movimientos.length} movimientos. Pincha uno para asignar/editar su CCB.</div>
