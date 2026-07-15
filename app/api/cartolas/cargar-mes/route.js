@@ -1,3 +1,5 @@
+// VERSION: v2 · 15-07-2026 · fecha de renta a dd/mm/yyyy (antes salía en ISO 2026-07-01 y descuadraba el orden de cuentas)
+// Verificación tras copiar: Select-String route.js -Pattern "VERSION: v2"
 // app/api/cartolas/cargar-mes/route.js
 // Carga los cargos del mes (el "A Cobrar" de CARTAS = base de calcular_liquidacion)
 // a la tabla `cuentas`, replicando el formato de las filas de junio.
@@ -21,7 +23,7 @@ const aammToTxt = aamm => {
   const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10)
   return `${MESES_TXT[m - 1] || '?'} 20${a}`
 }
-const aammToFecha = aamm => `20${String(aamm).slice(0, 2)}-${String(aamm).slice(2)}-01` // AAMM -> YYYY-MM-01
+const aammToFecha = aamm => `01/${String(aamm).slice(2)}/20${String(aamm).slice(0, 2)}` // AAMM -> DD/MM/YYYY (01/07/2026), consistente con el resto de cuentas
 
 function svc() {
   return createClient(

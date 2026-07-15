@@ -44,3 +44,5 @@ google-credentials.json
 
 # Respaldos locales
 *.bak*
+
+portal-propietarios/gc-nueva.json
