@@ -1,10 +1,8 @@
 'use client'
-// VERSION: v5 · 2026-07-12 · Términos: el IDADMON de la lista vuelve a ser ENLACE al workflow
-//   (/procesos/terminos/[idadmon]) — se había quedado sin cablear tras el cambio de workflow, por
-//   eso "no abría" al pinchar el código. "Abrir término →" sigue abriendo el panel económico.
-//   Hereda v4 (botón "Hacer Reclamación": borrador editable, cc condicional al aval, solicitudes,
-//   constancia, reenvío) y v3 (fix includes('FCR')→exacto, aprobación bilateral, compuerta de
-//   garantía, Enviar Email). Sigue pendiente: botón "Enviar Presupuesto" (PDF + fiscalidad).
+// VERSION: v6 · 2026-07-16 · Al guardar el término, la "Fecha de entrega" se propaga también a
+//   datos_arriendos.termino_actual (la fecha real del término que lee la vista LOG). Antes solo
+//   se guardaba en terminos.fecha_entrega y LOG mostraba el termino_actual viejo. Solo escribe si
+//   hay fecha (no pisa con null). Hereda v5 (IDADMON de la lista enlaza al workflow).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -331,6 +329,13 @@ export default function TerminosPage() {
     }
     const upR = await supabase.from('terminos').upsert(payload, { onConflict: 'idadmon' })
     if (upR.error) { setMsg({ tipo: 'error', txt: 'Error (terminos): ' + upR.error.message }); setGuardando(false); return }
+    // Propagar la fecha de entrega a datos_arriendos.termino_actual (la fecha real del término,
+    // que es la que lee la vista LOG). Solo si hay fecha: no pisamos con null si el campo está vacío.
+    if (form.fecha_entrega) {
+      const upDA = await supabase.from('datos_arriendos')
+        .update({ termino_actual: form.fecha_entrega }).eq('idadmon', idadmonSel)
+      if (upDA.error) { setMsg({ tipo: 'error', txt: 'Guardado el término, pero no se pudo actualizar la fecha en LOG: ' + upDA.error.message }); setGuardando(false); return }
+    }
     setEditando(false); setGuardando(false); setMsg({ tipo: 'ok', txt: 'Guardado.' })
   }
 
