@@ -1,8 +1,7 @@
 'use client'
-// VERSION: v3 · 2026-07-16 · app/admin/page.js — se añade "Término actual" (termino_actual) a la
-//   sección Datos adicionales para poder editarlo (editable en P o vía Correcciones excepcionales,
-//   como el resto). Guardado con el resto del form a datos_arriendos. Hereda v2 (comentario en
-//   cambio de estado).
+// VERSION: v4 · 2026-07-16 · Si se llega al ADMIN desde el panel de término (?volver=termino), el
+//   enlace de salir vuelve al término (/procesos/terminos/IDADMON) en vez de a /cc1, y muestra
+//   "← Término". Hereda v3 (Término actual en Datos adicionales) y v2 (comentario en cambio de estado).
 
 import { useEffect, useState, useRef, useLayoutEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -445,6 +444,9 @@ function AdminContent() {
   const emailUsuario = session?.user?.email || ''
   const searchParams = useSearchParams()
   const idParam = (searchParams.get('idadmon') || '').trim().toUpperCase()
+  const volverA = (searchParams.get('volver') || '').trim()  // si venimos del panel de término, volver allí
+  const destinoVolver = volverA === 'termino' && idParam ? ('/procesos/terminos/' + idParam) : '/cc1'
+  const etiquetaVolver = volverA === 'termino' && idParam ? '← Término' : '← LOG'
   const [idadmonInput, setIdadmonInput] = useState('')
   const [form, setForm] = useState(FORM_VACIO)
   const [logData, setLogData] = useState(null)
@@ -1086,11 +1088,11 @@ function AdminContent() {
         padding: '8px 16px', background: '#f0f4f8',
         borderBottom: `2px solid ${C.headerBg}`,
       }}>
-        <Link href="/cc1" style={{
+        <Link href={destinoVolver} style={{
           fontSize: 11, color: '#1a3a6b', textDecoration: 'none',
           display: 'flex', alignItems: 'center', gap: 3, marginRight: 4,
           fontWeight: 600, border: '1px solid #1a3a6b', borderRadius: 6, padding: '4px 10px',
-        }}>← LOG</Link>
+        }}>{etiquetaVolver}</Link>
 
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 

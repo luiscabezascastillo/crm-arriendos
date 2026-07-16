@@ -1,7 +1,7 @@
 'use client'
-// VERSION: v13 · 2026-07-16 · El panel del término muestra el ESTADO del contrato (datos_arriendos.
-//   estado: Q/N/N-Liquidacion…) junto al Propietario, como etiqueta, para verlo sin ir a LOG.
-//   Hereda v12 (columnas resultado/reparaciones + F.Entrega respaldo), v11 (botón Cambiar estado).
+// VERSION: v14 · 2026-07-16 · El botón "Cambiar estado →" pasa &volver=termino, para que al salir
+//   del ADMIN se regrese al panel del término (no a LOG). Hereda v13 (Estado LOG en panel), v12
+//   (columnas resultado/reparaciones), v11 (botón Cambiar estado), v10 (arreglos editable).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -593,7 +593,7 @@ export default function TerminosPage() {
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
             <button disabled title="Próximamente (falta endpoint PDF)" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
-            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel)} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones." style={btn('#0f766e')}>Cambiar estado →</button>
+            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             <button onClick={() => { setModo('lista'); setPanel(null); setEditando(false) }} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>← Volver</button>
