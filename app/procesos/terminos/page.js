@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v9 · 2026-07-16 · Se ocultan las flechitas (spinners) de los inputs numéricos del panel
-//   de término (CSS -webkit/-moz appearance). Hereda v8 (fecha entrega con respaldo en termino_actual),
-//   v7 (lista incluye N/N-Liquidacion), v6 (fecha entrega → termino_actual al guardar).
+// VERSION: v10 · 2026-07-16 · La línea "Arreglos presupuesto" (reparaciones) ahora es EDITABLE:
+//   arranca con el total del presupuesto pero se puede sobrescribir a mano (no toca el presupuesto,
+//   solo el importe de esa línea de la liquidación). Si se guarda un valor propio, manda ese.
+//   Hereda v9 (sin spinners), v8 (fecha entrega con respaldo), v7 (lista con N), v6 (fecha→termino_actual).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -211,8 +212,12 @@ export default function TerminosPage() {
       const out = []
       PLANTILLA[bk].forEach(concepto => {
         if (bk === 'reparaciones' && concepto === AUTO_CONCEPTO) {
-          const sv = saved.find(s => s.bloque === bk && s.concepto === concepto)
-          out.push({ concepto, monto: repPresu, comentario: sv?.comentario || '', ref: arreglosRef, es_fijo: true, auto: true })
+          const sv = saved.find(s => s.bloque === bk && s.concepto === concepto && s.es_fijo)
+          // Prellenar con el TOTAL del presupuesto, pero EDITABLE (auto:false): si el usuario
+          // guardó un valor propio (override), se usa ese; si no, arranca con el del presupuesto.
+          // No se toca el presupuesto: solo el importe de esta línea de la liquidación.
+          const montoInit = (sv && sv.monto != null && sv.monto !== '') ? sv.monto : repPresu
+          out.push({ concepto, monto: montoInit, comentario: sv?.comentario || '', ref: sv?.ref || arreglosRef, es_fijo: true, auto: false })
           return
         }
         const sv = saved.find(s => s.bloque === bk && s.concepto === concepto && s.es_fijo)
