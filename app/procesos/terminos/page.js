@@ -1,8 +1,7 @@
 'use client'
-// VERSION: v8 · 2026-07-16 · La "Fecha de entrega" del panel usa como RESPALDO datos_arriendos.
-//   termino_actual cuando terminos.fecha_entrega está vacío (términos viejos sin fila en `terminos`),
-//   para que se vea la fecha que ya existe en la base. Hereda v7 (lista incluye N/N-Liquidacion),
-//   v6 (fecha de entrega → termino_actual al guardar) y v5 (IDADMON enlaza al workflow).
+// VERSION: v9 · 2026-07-16 · Se ocultan las flechitas (spinners) de los inputs numéricos del panel
+//   de término (CSS -webkit/-moz appearance). Hereda v8 (fecha entrega con respaldo en termino_actual),
+//   v7 (lista incluye N/N-Liquidacion), v6 (fecha entrega → termino_actual al guardar).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -550,6 +549,11 @@ export default function TerminosPage() {
   return (
     <>
       <TopNav />
+      <style>{`
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+      `}</style>
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 18, fontFamily: '"DM Sans", sans-serif' }}>
         {/* B1 — cabecera fija al hacer scroll (debajo del TopNav, que mide 52px) */}
         <div style={{ position: 'sticky', top: 52, zIndex: 50, background: '#f4f6f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, padding: '12px 0', borderBottom: '1px solid #E8E6E0' }}>
