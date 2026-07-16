@@ -1,8 +1,9 @@
 'use client'
-// VERSION: v11 · 2026-07-16 · Botón "Cambiar estado →" en el cabecero del panel del término: lleva
-//   al ADMIN (/admin?idadmon=…) con el IDADMON ya cargado, para cambiar de estado sin buscar ni
-//   recuperar. Reutiliza el flujo del LOG con TODAS sus restricciones (permisos, doble firma,
-//   forzar estado). Hereda v10 (Arreglos presupuesto editable), v9 (sin spinners), v8, v7, v6.
+// VERSION: v12 · 2026-07-16 · Lista de términos: (1) F. Entrega usa termino_actual como respaldo
+//   (antes salía — en los viejos); (2) dos columnas nuevas RESULTADO TÉRMINO y TOTAL REPARACIONES,
+//   leídas de la vista vw_termino_resultado (defensivo: si la vista no existe, muestran —).
+//   Resultado en rojo si es negativo. Ordenación numérica en esas columnas. Hereda v11 (botón
+//   Cambiar estado), v10 (arreglos editable), v8 (respaldo fecha en panel).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -145,10 +146,10 @@ export default function TerminosPage() {
     const ESTADOS_TERMINO = ['Q', 'N', 'N-DICOM', 'N-Liquidacion']
     const { data: da } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, arrendatario, inmueble, estado, propietario')
+      .select('idadmon, arrendatario, inmueble, estado, propietario, termino_actual')
       .in('estado', ESTADOS_TERMINO)
     const base = (da || [])
-      .map(r => ({ idadmon: (r.idadmon || '').trim(), arrendatario: r.arrendatario, inmueble: r.inmueble, estado: r.estado, propietario: r.propietario }))
+      .map(r => ({ idadmon: (r.idadmon || '').trim(), arrendatario: r.arrendatario, inmueble: r.inmueble, estado: r.estado, propietario: r.propietario, termino_actual: r.termino_actual }))
       .filter(r => r.idadmon)
     // cruzar fecha_entrega desde 'terminos'
     const ids = base.map(r => r.idadmon)
@@ -157,7 +158,20 @@ export default function TerminosPage() {
       const { data: tt } = await supabase.from('terminos').select('idadmon, fecha_entrega').in('idadmon', ids.slice(i, i + 300))
       ;(tt || []).forEach(t => { fechas[(t.idadmon || '').trim()] = t.fecha_entrega })
     }
-    base.forEach(r => { r.fecha_entrega = fechas[r.idadmon] || null })
+    // resultado y reparaciones desde la vista vw_termino_resultado (defensivo: si no existe, quedan null)
+    const calc = {}
+    try {
+      for (let i = 0; i < ids.length; i += 300) {
+        const { data: vr } = await supabase.from('vw_termino_resultado').select('idadmon, resultado, reparaciones').in('idadmon', ids.slice(i, i + 300))
+        ;(vr || []).forEach(v => { calc[(v.idadmon || '').trim()] = { resultado: v.resultado, reparaciones: v.reparaciones } })
+      }
+    } catch (e) { /* vista no disponible aún: las columnas mostrarán — */ }
+    // fecha_entrega: terminos.fecha_entrega, con respaldo en datos_arriendos.termino_actual
+    base.forEach(r => {
+      r.fecha_entrega = fechas[r.idadmon] || r.termino_actual || null
+      r.resultado = calc[r.idadmon]?.resultado ?? null
+      r.reparaciones = calc[r.idadmon]?.reparaciones ?? null
+    })
     setListaIds(base.sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
     setListaCargada(true)
   }
@@ -438,7 +452,8 @@ export default function TerminosPage() {
 
   // ───────── LISTA ─────────
   if (modo === 'lista') {
-    const COLS = [{ key: 'idadmon', label: 'IDADMON' }, { key: 'fecha_entrega', label: 'F. Entrega' }, { key: 'propietario', label: 'Propietario' }, { key: 'arrendatario', label: 'Arrendatario' }, { key: 'inmueble', label: 'Inmueble' }, { key: 'estado', label: 'Estado' }]
+    const COLS = [{ key: 'idadmon', label: 'IDADMON' }, { key: 'fecha_entrega', label: 'F. Entrega' }, { key: 'propietario', label: 'Propietario' }, { key: 'arrendatario', label: 'Arrendatario' }, { key: 'inmueble', label: 'Inmueble' }, { key: 'estado', label: 'Estado' }, { key: 'resultado', label: 'Resultado término' }, { key: 'reparaciones', label: 'Total reparaciones' }]
+    const NUM_COLS = ['resultado', 'reparaciones']
     const estadosDisp = [...new Set(listaIds.map(r => up(r.estado)).filter(Boolean))].sort()
     const q = norm(busca)
     let rows = listaIds.filter(r => {
@@ -450,7 +465,13 @@ export default function TerminosPage() {
       if (filtros.fecha_entrega && !norm(r.fecha_entrega).includes(norm(filtros.fecha_entrega))) return false
       if (q && !norm([r.idadmon, r.arrendatario, r.inmueble].join(' ')).includes(q)) return false
       return true
-    }).sort((a, b) => { const va = norm(a[sortCol]), vb = norm(b[sortCol]); if (va < vb) return sortDir === 'asc' ? -1 : 1; if (va > vb) return sortDir === 'asc' ? 1 : -1; return 0 })
+    }).sort((a, b) => {
+      if (sortCol === 'resultado' || sortCol === 'reparaciones') {
+        const va = a[sortCol] == null ? -Infinity : Number(a[sortCol]), vb = b[sortCol] == null ? -Infinity : Number(b[sortCol])
+        return sortDir === 'asc' ? va - vb : vb - va
+      }
+      const va = norm(a[sortCol]), vb = norm(b[sortCol]); if (va < vb) return sortDir === 'asc' ? -1 : 1; if (va > vb) return sortDir === 'asc' ? 1 : -1; return 0
+    })
     const inpFiltro = { width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '4px 6px', fontSize: 12, border: '1px solid #E5E7EB', borderRadius: 5, fontFamily: 'inherit', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }
     const flecha = c => sortCol === c ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
     const toggleSort = c => { if (sortCol === c) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(c); setSortDir('asc') } }
@@ -471,12 +492,13 @@ export default function TerminosPage() {
                       <th key={c.key} style={{ padding: '8px 12px', textAlign: 'left', verticalAlign: 'top' }}>
                         <div onClick={() => toggleSort(c.key)} style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: .5, userSelect: 'none' }}>{c.label}{flecha(c.key)}</div>
                         {c.key === 'estado' ? <select value={filtros.estado} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))} style={inpFiltro}><option value="__all__">Todos</option>{estadosDisp.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                          : NUM_COLS.includes(c.key) ? <div style={{ ...inpFiltro, border: 'none', color: '#bbb', paddingLeft: 0 }}>(ordenar ↕)</div>
                           : <input value={filtros[c.key]} onChange={e => setFiltros(f => ({ ...f, [c.key]: e.target.value }))} placeholder="filtrar…" style={inpFiltro} />}
                       </th>
                     ))}<th style={{ width: 1 }}></th>
                   </tr></thead>
                   <tbody>
-                    {rows.length === 0 ? <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
+                    {rows.length === 0 ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
                       : rows.map(r => (
                         <tr key={r.idadmon} style={{ borderBottom: '1px solid #F3F4F6' }}>
                           <td style={{ padding: '10px 12px' }}><span onClick={() => router.push('/procesos/terminos/' + r.idadmon)} title="Abrir workflow del término" style={{ color: '#185FA5', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>{r.idadmon}</span></td>
@@ -485,6 +507,8 @@ export default function TerminosPage() {
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.arrendatario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#555' }}>{r.inmueble || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#888' }}>{r.estado || '—'}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: r.resultado == null ? '#bbb' : (Number(r.resultado) < 0 ? '#dc2626' : '#16a34a') }}>{r.resultado == null ? '—' : fmtPesos(r.resultado)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: '#555' }}>{r.reparaciones == null ? '—' : fmtPesos(r.reparaciones)}</td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}><button onClick={() => abrir(r.idadmon)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}>Abrir término →</button></td>
                         </tr>
                       ))}
