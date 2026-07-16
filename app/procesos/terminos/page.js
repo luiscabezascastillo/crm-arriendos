@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v6 · 2026-07-16 · Al guardar el término, la "Fecha de entrega" se propaga también a
-//   datos_arriendos.termino_actual (la fecha real del término que lee la vista LOG). Antes solo
-//   se guardaba en terminos.fecha_entrega y LOG mostraba el termino_actual viejo. Solo escribe si
-//   hay fecha (no pisa con null). Hereda v5 (IDADMON de la lista enlaza al workflow).
+// VERSION: v7 · 2026-07-16 · La lista de términos incluye ahora los cierres N y N-Liquidacion
+//   (además de Q y N-DICOM), para poder ver el HISTÓRICO de términos cerrados. El desplegable de
+//   estado se autopuebla, así que N aparece solo como opción de filtro. Hereda v6 (fecha de entrega
+//   → datos_arriendos.termino_actual) y v5 (IDADMON enlaza al workflow).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -138,10 +138,11 @@ export default function TerminosPage() {
     setNodos(data || [])
   }
   async function cargarLista() {
-    // Origen: datos_arriendos por estado de termino (Q en espera, N-DICOM derivados). No 'descuentos'.
+    // Origen: datos_arriendos por estado de termino. Q (en término), N-DICOM (derivados a legal),
+    // y los cierres N / N-Liquidacion para poder ver el HISTÓRICO de términos ya cerrados.
     // NOTA: el valor canónico del circuito es 'N-DICOM' (con guion). La base se normalizó
     // desde las grafías históricas ('N DICOM', 'N_DICOM') a 'N-DICOM'.
-    const ESTADOS_TERMINO = ['Q', 'N-DICOM']
+    const ESTADOS_TERMINO = ['Q', 'N', 'N-DICOM', 'N-Liquidacion']
     const { data: da } = await supabase
       .from('datos_arriendos')
       .select('idadmon, arrendatario, inmueble, estado, propietario')
