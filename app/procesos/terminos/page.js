@@ -1,9 +1,7 @@
 'use client'
-// VERSION: v12 · 2026-07-16 · Lista de términos: (1) F. Entrega usa termino_actual como respaldo
-//   (antes salía — en los viejos); (2) dos columnas nuevas RESULTADO TÉRMINO y TOTAL REPARACIONES,
-//   leídas de la vista vw_termino_resultado (defensivo: si la vista no existe, muestran —).
-//   Resultado en rojo si es negativo. Ordenación numérica en esas columnas. Hereda v11 (botón
-//   Cambiar estado), v10 (arreglos editable), v8 (respaldo fecha en panel).
+// VERSION: v13 · 2026-07-16 · El panel del término muestra el ESTADO del contrato (datos_arriendos.
+//   estado: Q/N/N-Liquidacion…) junto al Propietario, como etiqueta, para verlo sin ir a LOG.
+//   Hereda v12 (columnas resultado/reparaciones + F.Entrega respaldo), v11 (botón Cambiar estado).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -698,7 +696,7 @@ export default function TerminosPage() {
                   <div><div style={lbl}>Arrendatario</div><div style={val}>{A.arrendatario || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{A.movil || ''} {A.mail_arrendatario || ''}</div></div>
                   <div><div style={lbl}>Aval</div><div style={val}>{A.avalista || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{A.telefono_avalista || ''}</div></div>
                   <div><div style={lbl}>Propietario</div><div style={val}>{A.propietario || '—'}</div></div>
-                  <div></div>
+                  <div><div style={lbl}>Estado (LOG)</div><div style={{ ...val, display: 'inline-block', padding: '2px 10px', borderRadius: 6, fontWeight: 700, background: '#EEF2FF', color: '#3730a3', border: '1px solid #C7D2FE' }}>{A.estado || '—'}</div></div>
                   <div><div style={lbl}>Fecha de entrega</div>{editando ? <input type="date" style={inEd} value={form.fecha_entrega} onChange={e => setF('fecha_entrega', e.target.value)} /> : <div style={val}>{fmtFecha(form.fecha_entrega)}</div>}</div>
                   <div><div style={lbl}>Valoración legal</div>{editando ? <input style={inEd} value={form.valoracion_legal} onChange={e => setF('valoracion_legal', e.target.value)} /> : <div style={val}>{form.valoracion_legal || '—'}</div>}</div>
                   <div><div style={lbl}>Decisión actuación</div>{editando ? <input style={inEd} value={form.decision_actuacion} onChange={e => setF('decision_actuacion', e.target.value)} /> : <div style={val}>{form.decision_actuacion || '—'}</div>}</div>
