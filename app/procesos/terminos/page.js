@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v7 · 2026-07-16 · La lista de términos incluye ahora los cierres N y N-Liquidacion
-//   (además de Q y N-DICOM), para poder ver el HISTÓRICO de términos cerrados. El desplegable de
-//   estado se autopuebla, así que N aparece solo como opción de filtro. Hereda v6 (fecha de entrega
-//   → datos_arriendos.termino_actual) y v5 (IDADMON enlaza al workflow).
+// VERSION: v8 · 2026-07-16 · La "Fecha de entrega" del panel usa como RESPALDO datos_arriendos.
+//   termino_actual cuando terminos.fecha_entrega está vacío (términos viejos sin fila en `terminos`),
+//   para que se vea la fecha que ya existe en la base. Hereda v7 (lista incluye N/N-Liquidacion),
+//   v6 (fecha de entrega → termino_actual al guardar) y v5 (IDADMON enlaza al workflow).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -195,7 +195,7 @@ export default function TerminosPage() {
     const saved = linRes.data || []
     const g = (k, d = '') => (t && t[k] != null ? t[k] : d)
     setForm({
-      fecha_entrega: t?.fecha_entrega ? String(t.fecha_entrega).slice(0, 10) : '',
+      fecha_entrega: t?.fecha_entrega ? String(t.fecha_entrega).slice(0, 10) : (arriendo?.termino_actual ? String(arriendo.termino_actual).slice(0, 10) : ''),
       valoracion_legal: g('valoracion_legal'), decision_actuacion: g('decision_actuacion'),
       lectura_agua: g('lectura_agua'), lectura_luz: g('lectura_luz'), markup_fcr: g('markup_fcr'),
       comentarios_arrendatario: g('comentarios_arrendatario'), comentarios_internos: g('comentarios_internos'),
