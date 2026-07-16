@@ -1,4 +1,4 @@
-// VERSION: v2 · 2026-07-09 · "Calcular ajustes" oculto para quien no edita CC1 (solo Dirección/Legal/Administración)
+// VERSION: v3 · 2026-07-16 · LOG: "Vencido" ya no se muestra en términos cerrados (N/N-DICOM/N-Liquidacion) — un término cerrado no está vencido. Hereda v2 ("Calcular ajustes" solo Dirección/Legal/Administración)
 'use client'
 
 import Link from 'next/link'
@@ -358,8 +358,10 @@ const Ico = {
 
 const tabs = ['Datos base', 'Operación', 'Ajustes', 'Cierre']
 
-function alertaTermino(fecha) {
+function alertaTermino(fecha, estado) {
   if (!fecha) return null
+  // Los términos cerrados (N, N-DICOM, N-Liquidacion) no se marcan "Vencido": están cerrados, no vencidos.
+  if (String(estado || '').toUpperCase().startsWith('N')) return null
   const hoy = new Date()
   const termino = new Date(fecha)
   const dias = Math.ceil((termino - hoy) / (1000 * 60 * 60 * 24))
@@ -649,7 +651,7 @@ export default function CC1Page() {
               ) : propiedades.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
               ) : propiedades.map((p, i) => {
-                const alerta = alertaTermino(p.termino_actual)
+                const alerta = alertaTermino(p.termino_actual, p.estado)
                 const cargando = portalLoading === p.idadmon
                 return (
                   <tr key={i} style={{ cursor: 'pointer' }}

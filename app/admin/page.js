@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v2 · 2026-07-13 · app/admin/page.js — al cambiar de estado se puede añadir un
-//   "Comentario (opcional)" junto a la fecha; viaja como `comentario` a /api/cc1/cambiar-estado
-//   (que lo guarda en historico_idadmon.detalle). Sin otros cambios de lógica.
+// VERSION: v3 · 2026-07-16 · app/admin/page.js — se añade "Término actual" (termino_actual) a la
+//   sección Datos adicionales para poder editarlo (editable en P o vía Correcciones excepcionales,
+//   como el resto). Guardado con el resto del form a datos_arriendos. Hereda v2 (comentario en
+//   cambio de estado).
 
 import { useEffect, useState, useRef, useLayoutEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -1805,6 +1806,7 @@ function AdminContent() {
           {adicionalesAbierto && (
             <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
               {[
+                ['Término actual', 'termino_actual', 'date'],
                 ['Reajuste 1 fecha', 'fecha_reajuste1', 'date'],
                 ['Reajuste 1 cant.', 'cantidad_reajuste1', 'number'],
                 ['Reajuste 2 fecha', 'fecha_reajuste2', 'date'],
