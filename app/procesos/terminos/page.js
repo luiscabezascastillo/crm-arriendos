@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v10 · 2026-07-16 · La línea "Arreglos presupuesto" (reparaciones) ahora es EDITABLE:
-//   arranca con el total del presupuesto pero se puede sobrescribir a mano (no toca el presupuesto,
-//   solo el importe de esa línea de la liquidación). Si se guarda un valor propio, manda ese.
-//   Hereda v9 (sin spinners), v8 (fecha entrega con respaldo), v7 (lista con N), v6 (fecha→termino_actual).
+// VERSION: v11 · 2026-07-16 · Botón "Cambiar estado →" en el cabecero del panel del término: lleva
+//   al ADMIN (/admin?idadmon=…) con el IDADMON ya cargado, para cambiar de estado sin buscar ni
+//   recuperar. Reutiliza el flujo del LOG con TODAS sus restricciones (permisos, doble firma,
+//   forzar estado). Hereda v10 (Arreglos presupuesto editable), v9 (sin spinners), v8, v7, v6.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -571,6 +571,7 @@ export default function TerminosPage() {
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
             <button disabled title="Próximamente (falta endpoint PDF)" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
+            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel)} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             <button onClick={() => { setModo('lista'); setPanel(null); setEditando(false) }} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>← Volver</button>
