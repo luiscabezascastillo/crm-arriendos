@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-07-15 · Cierra la puerta trasera P→S: este endpoint RECHAZA estadoNuevo='S'.
+//   La activación (llegar a S) solo se hace por CERRAR Y FACTURAR (valida + escribe inicios +
+//   facturación). Emergencia: forzar-estado (solo Dirección, con registro). Resto idéntico a v4.
 // VERSION: v4 · 2026-07-13 · Acepta `comentario` (opcional) del cambio de estado y lo guarda en
 //   historico_idadmon.detalle (contexto de qué pasó). Aditivo: si no viene, queda null. Resto igual.
 // VERSION: v3 · 2026-07-13 · Al avisar/entrar en término (S->SQ, S->Q) se escribe la fecha
@@ -143,6 +146,19 @@ export async function POST(req) {
   const { idadmon, estadoNuevo, fecha, comentario } = body || {}
   if (!idadmon || !estadoNuevo) return Response.json({ error: 'Faltan idadmon o estadoNuevo' }, { status: 400 })
   if (!ESTADOS_VALIDOS.includes(estadoNuevo)) return Response.json({ error: 'Estado no válido: ' + estadoNuevo }, { status: 400 })
+
+  // ─── Cierre de la "puerta trasera" a S ───────────────────────────────────────
+  // La activación (llegar a estado 'S') SOLO se hace por CERRAR Y FACTURAR, que valida
+  // los datos de inicio, los escribe en `cuentas` y envía la facturación. Este endpoint
+  // es para los saltos posteriores (S→SQ, S→Q, Q→N / N-Liquidacion / N-DICOM), NUNCA para
+  // activar. Si por emergencia hiciera falta forzar S, es forzar-estado (solo Dirección,
+  // con registro). Sin esta guarda, un P→S por aquí dejaría el contrato activo SIN inicios
+  // ni facturación (que es justo el problema que arrastrábamos).
+  if (estadoNuevo === 'S') {
+    return Response.json({
+      error: 'Para activar un contrato (pasar a S) usa "CERRAR Y FACTURAR". Este endpoint no activa contratos.',
+    }, { status: 409 })
+  }
 
   const fechaEvento = fecha || new Date().toISOString().slice(0, 10)
 
