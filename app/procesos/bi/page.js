@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-07-15 · Gate: subir cartola es SOLO Karina + Dirección (EDIT_EMAILS). Quien no
+//   esté en la lista se redirige a /procesos/bi/movimientos (que sí puede ver: son cuentas de clientes).
+//   No cambia nada de la lógica de carga/preview/guardado.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -5,6 +8,15 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
 import TopNav from '@/app/components/ui/TopNav'
+
+// ── Quién puede SUBIR cartola: Karina + Dirección (misma lista que la edición del BI). ──
+// El resto del equipo puede VER movimientos, pero NO subir aquí. Match normalizado
+// (minúsculas/sin espacios) para evitar el problema del "email exacto".
+const SUBIR_EMAILS = [
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+  'karina.morales@fondocapital.com',
+]
 
 // serial de Excel -> dd/mm/aaaa
 function serialAFecha(n) {
@@ -53,6 +65,9 @@ function Chip({ label, valor, color }) {
 export default function BancoInternacionalPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  // ¿Puede subir cartola? (Karina + Dirección). Normalizado.
+  const emailSesion = (session?.user?.email || '').trim().toLowerCase()
+  const puedeSubir = SUBIR_EMAILS.includes(emailSesion)
   const [isMobile, setIsMobile] = useState(false)
   const [movs, setMovs] = useState([])
   const [nombreArchivo, setNombreArchivo] = useState('')
@@ -77,6 +92,10 @@ export default function BancoInternacionalPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
+  // Gate: si la sesión está lista y NO puede subir, lo mandamos a movimientos (que sí puede ver).
+  useEffect(() => {
+    if (status === 'authenticated' && !puedeSubir) router.replace('/procesos/bi/movimientos')
+  }, [status, puedeSubir, router])
 
   const llamar = async (movimientos, guardar) => {
     const r = await fetch('/api/bi/cartola', {
@@ -130,8 +149,8 @@ export default function BancoInternacionalPage() {
     } finally { setCargando(false) }
   }
 
-  if (status === 'loading') {
-    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div></>)
+  if (status === 'loading' || !puedeSubir) {
+    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>{status === 'loading' ? 'Cargando…' : 'Redirigiendo…'}</div></>)
   }
 
   const r = preview?.resumen
