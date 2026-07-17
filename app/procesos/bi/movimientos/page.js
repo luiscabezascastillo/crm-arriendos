@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-07-15 · PARTE 1 (cimiento de filtros): carga TODAS las filas de `bi` (paginado
+//   por rangos), muestra por defecto solo las recientes con "Ver todo" (no vuelca 6.7k inputs de golpe),
+//   y DESACTIVA el autorelleno de LIQ. MES2 (abrir la vista ya NO escribe nada). Solo lectura de datos.
 // VERSION: v3 · 2026-07-15 · Segundo nivel de permiso: Anthony/Neika/Adalis/Fabiola pueden IDENTIFICAR
 //   abonos (asociar RUT→IDADMON) por el drawer "➕ RUT" en modo manual (sin sugerencias). El rellenado
 //   del movimiento lo hace el endpoint asociar-rut (server-side), así no dependen de escritura en `bi`.
@@ -32,7 +35,7 @@ const ASOCIA_EMAILS = [
   'anthony.mendoza@fondocapital.com',   // ⚠ verificar
   'neika.duque@fondocapital.com',       // ⚠ verificar
   'fabiola.guerra@fondocapital.com',    // ⚠ verificar
-  'adalis@fondocapital.com',// ⚠ FALTA el email real de Adalis — añádelo (sin este, Adalis no entra)
+  // 'adalis.APELLIDO@fondocapital.com',// ⚠ FALTA el email real de Adalis — añádelo (sin este, Adalis no entra)
 ]
 // AAMM de 4 dígitos, meses 01–12 (para validar la reasignación de LIQ. MES2).
 const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
@@ -40,6 +43,9 @@ const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
 const LIMITE = 50
+// Con la carga completa, por defecto se PINTAN solo las N más recientes (para no volcar miles de
+// inputs de golpe). "Ver todo" pinta las 6.7k. El filtrado (Parte 2) mostrará todas las que casen.
+const TOPE_DEFECTO = 300
 
 // Extrae el RUT (dígitos-guión-verificador) del texto del detalle del movimiento.
 // "Transferencia de otro banco 16111735-8" -> "16111735-8". Sin RUT -> ''.
@@ -111,6 +117,7 @@ export default function BiVista() {
   const [noMore, setNoMore] = useState(false)
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [verTodos, setVerTodos] = useState(false)   // false = solo recientes (TOPE_DEFECTO); true = todas
   const [filtros, setFiltros] = useState({})
   const [openF, setOpenF] = useState(null)
   const [draft, setDraft] = useState({})
@@ -149,34 +156,35 @@ export default function BiVista() {
   }
 
   const fetchInitial = async (fActuales = filtros) => {
-    setRefreshing(true); setError(null); setNoMore(false)
-    const { data, error } = await buildQuery(fActuales).order('id', { ascending: false }).limit(LIMITE)
-    if (error) { setError(error.message); setRefreshing(false); setLoading(false); return }
-    const arr = (data || []).reverse()
+    setRefreshing(true); setError(null); setNoMore(true)
+    // Carga completa: Supabase devuelve máx. 1000 por consulta, así que paginamos por rangos
+    // hasta traerlas todas. Ascendente por id => antiguas arriba, recientes abajo.
+    const PAGE = 1000
+    let desde = 0
+    let todo = []
+    let errFinal = null
+    for (;;) {
+      const { data, error } = await buildQuery(fActuales)
+        .order('id', { ascending: true })
+        .range(desde, desde + PAGE - 1)
+      if (error) { errFinal = error; break }
+      todo = todo.concat(data || [])
+      if (!data || data.length < PAGE) break
+      desde += PAGE
+    }
+    if (errFinal) { setError(errFinal.message); setRefreshing(false); setLoading(false); return }
     anclarAbajo.current = true
-    setRows(arr)
-    setNoMore((data || []).length < LIMITE)
+    setRows(todo)
     setRefreshing(false); setLoading(false)
   }
   useEffect(() => { fetchInitial({}) }, [])
 
-  // Autollenado de LIQ. MES2: a las filas cargadas SIN valor se les escribe el mes de
-  // liquidación en curso (regla del día 23). Las históricas (ya con valor) NO se tocan.
-  // El ref evita reintentos infinitos si alguna escritura fallara.
-  const liqDoneRef = useRef(new Set())
-  useEffect(() => {
-    if (!puedeEditar) return   // solo Dirección/Karina autollenan; un observador no escribe al mirar
-    const actual = liqMes2Actual()
-    const pend = rows.filter(r => !String(r.liquidacion_mes2 ?? '').trim() && !liqDoneRef.current.has(r.id))
-    if (pend.length === 0) return
-    const ids = pend.map(r => r.id)
-    ids.forEach(id => liqDoneRef.current.add(id))
-    ;(async () => {
-      const { error } = await supabase.from('bi').update({ liquidacion_mes2: actual }).in('id', ids)
-      if (error) return   // si falla, no rompemos la vista; el ref impide reintentos en bucle
-      setRows(rs => rs.map(r => ids.includes(r.id) ? { ...r, liquidacion_mes2: actual } : r))
-    })()
-  }, [rows, puedeEditar])
+  // ── Autorelleno de LIQ. MES2: DESACTIVADO (Parte 1, opción A) ──────────────
+  // Antes, al abrir la vista se escribía el mes en curso a las filas sin valor. Con la carga
+  // completa eso dispararía miles de escrituras al abrir. Como esta vista pasa a ser de solo
+  // lectura para el filtrado, NO se autorellena nada. (La reasignación manual de LIQ. MES2 por
+  // Dirección/Karina en su celda sigue funcionando igual.)
+  const liqDoneRef = useRef(new Set())   // conservado por compatibilidad; ya no se usa para escribir
 
   // Guarda primero lo que se esté editando (celda con foco) y LUEGO refresca.
   // Sin esto, si el usuario escribe en una celda y pulsa el botón sin salir
@@ -233,6 +241,13 @@ export default function BiVista() {
       return { ...r, _check1: c1 }
     })
   }, [rows, hayFiltros])
+
+  // Qué filas se PINTAN. check1 se calcula sobre TODA la secuencia (arriba), pero por defecto
+  // solo mostramos las recientes para no volcar miles de inputs. "Ver todo" las pinta todas.
+  // (En la Parte 2, con filtro activo se mostrarán todas las que casen.)
+  const visibles = useMemo(() => {
+    return verTodos ? filas : filas.slice(-TOPE_DEFECTO)
+  }, [filas, verTodos])
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const guardarCelda = async (id, k, valor) => {
@@ -592,7 +607,7 @@ export default function BiVista() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltros ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
           <button onClick={() => router.push('/procesos/bi')}
             style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
@@ -635,6 +650,12 @@ export default function BiVista() {
               </button>
             )
           })}
+          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+          <button onClick={() => setVerTodos(v => !v)}
+            title={verTodos ? 'Mostrar solo las más recientes' : 'Mostrar las 6.7k filas (puede ir más lento)'}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: verTodos ? '#8A5A2B' : '#fff', color: verTodos ? '#fff' : '#6B4423', cursor: 'pointer' }}>
+            {verTodos ? `Ver recientes (${TOPE_DEFECTO})` : `Ver todo (${filas.length})`}
+          </button>
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
@@ -655,9 +676,9 @@ export default function BiVista() {
               </tr>
             </thead>
             <tbody>
-              {loadingMore && <tr><td colSpan={COLS.length} style={{ padding: 8, textAlign: 'center', color: '#888780' }}>Cargando más…</td></tr>}
-              {!loadingMore && noMore && filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
-              {filas.map((r) => (
+              {!verTodos && filas.length > TOPE_DEFECTO && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— mostrando las {TOPE_DEFECTO} más recientes de {filas.length} · «Ver todo» arriba —</td></tr>}
+              {(verTodos || filas.length <= TOPE_DEFECTO) && filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
+              {visibles.map((r) => (
                 <tr key={r.id}>
                   {COLS.map((c, ci) => (
                     <td key={ci} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
@@ -666,13 +687,13 @@ export default function BiVista() {
                   ))}
                 </tr>
               ))}
-              {filas.length === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
+              {visibles.length === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
             </tbody>
           </table>
         </div>
 
         <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-          {filas.length} fila(s) cargada(s){hayFiltros ? ' (filtradas)' : ''} · {noMore ? 'no hay más hacia atrás' : 'sube para cargar más'} · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
+          {visibles.length} de {filas.length} fila(s){hayFiltros ? ' (filtradas)' : ''} · carga completa · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
         </div>
       </div>
       {renderPop()}
