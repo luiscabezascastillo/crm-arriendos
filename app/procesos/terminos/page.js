@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v14 · 2026-07-16 · El botón "Cambiar estado →" pasa &volver=termino, para que al salir
-//   del ADMIN se regrese al panel del término (no a LOG). Hereda v13 (Estado LOG en panel), v12
-//   (columnas resultado/reparaciones), v11 (botón Cambiar estado), v10 (arreglos editable).
+// VERSION: v15 · 2026-07-17 · Depuración del panel (Fase 1): (1) en modo VER se ocultan las filas
+//   fijas a $0 (en EDICIÓN se muestran todas, para rellenar multas/intereses/etc. + "+ línea");
+//   (2) los servicios del término ya NO se rellenan desde ggcc_agua_luz — vienen SOLO de descuentos
+//   (los GGCC del mes pasarán a una sección informativa aparte en la Fase 2). Hereda v14.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -244,16 +245,8 @@ export default function TerminosPage() {
       // Balance de pagos del arrendatario = Σcargo − Σabono (tabla cuentas)
       const linBal = L.garantia.find(x => x.concepto === 'Balance de pagos del arrendatario' && x.es_fijo)
       if (linBal) { linBal.monto = balanceCuentas; linBal.ref = 'Cuentas (' + cuentasMovs.length + ' mov.)' }
-      // GC Pendientes, Luz y Agua desde ggcc_agua_luz (mes mas reciente). GC Atrasados queda manual.
-      if (ggcc) {
-        const fill = (concepto, val) => {
-          const lin = L.servicios.find(x => x.concepto === concepto && x.es_fijo)
-          if (lin) { lin.monto = n0(val); lin.ref = String(ggcc.id) }
-        }
-        fill('Gastos Comunes Pendientes', ggcc.deuda_gastos_comunes)
-        fill('Luz', ggcc.deuda_vigente_electricidad)
-        fill('Agua', ggcc.deuda_vigente_agua)
-      }
+      // Los servicios del TÉRMINO vienen SOLO de descuentos (proporcionales que pone Adalis/Fabiola).
+      // Los GGCC/luz/agua del mes NO se meten en el cálculo (se mostrarán como referencia informativa aparte).
       const MAP = {
         servicios: [], // servicios vienen de ggcc; los descuentos servicios se listan como lineas aparte
         reparaciones: [
@@ -557,7 +550,9 @@ export default function TerminosPage() {
             <th style={th}>Concepto</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentarios</th><th style={th}>Ref</th>{editando && <th style={{ width: 18 }}></th>}
           </tr></thead>
           <tbody>
-            {rows.map((l, idx) => (
+            {rows.filter(l => editando || !l.es_fijo || l.auto || n0(l.monto) !== 0 || (l.comentario && l.comentario.trim()) || (l.ref && String(l.ref).trim())).map((l, idx0) => {
+              const idx = rows.indexOf(l)
+              return (
               <tr key={idx} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                 <td style={tdL}>{(!l.es_fijo && editando) ? <input style={{ ...inEd, fontSize: 11, minWidth: 110 }} value={l.concepto} placeholder="(concepto)" onChange={e => setLinea(bk, idx, 'concepto', e.target.value)} /> : (l.concepto || '—')}</td>
                 <td style={tdR}>{l.auto ? fmtPesos(repPresu) : (editando ? <input style={inNum} type="number" value={l.monto} onChange={e => setLinea(bk, idx, 'monto', e.target.value)} /> : fmtPesos(n0(l.monto)))}</td>
@@ -565,7 +560,8 @@ export default function TerminosPage() {
                 <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? ('Pres. ' + arreglosRef) : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : (l.ref || ''))}</td>
                 {editando && <td style={{ textAlign: 'center' }}>{!l.es_fijo ? <button onClick={() => removeLinea(bk, idx)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button> : null}</td>}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
         {editando && <button onClick={() => addLinea(bk)} style={{ marginTop: 8, fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px dashed ' + bd, background: '#fff', color: headColor, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>+ línea</button>}
@@ -740,7 +736,7 @@ export default function TerminosPage() {
                     })()}
 
                     {renderBloque('garantia', 'Datos económicos', '#185FA5', '#EAF2FB', '#CBE0F5')}
-                    {renderBloque('servicios', 'Servicios', '#185FA5', '#F2F8FE', '#D8E9F8', panel.ggcc ? `GC pendientes, luz y agua de ${panel.ggcc.mes} (GGCC #${panel.ggcc.id})` : 'Sin datos de GGCC/agua/luz')}
+                    {renderBloque('servicios', 'Servicios', '#185FA5', '#F2F8FE', '#D8E9F8', 'Servicios del término (desde descuentos)')}
                     {renderBloque('reparaciones', 'Reparaciones', '#b45309', '#FCF4E7', '#F1E0BD')}
 
                     {/* RESULTADO resaltado (estilo Excel) */}
