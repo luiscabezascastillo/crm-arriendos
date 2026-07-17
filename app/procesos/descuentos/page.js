@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v2 · 2026-07-17 · Autorelleno de "IDADMON relacionado" en el alta: al buscar el IDADMON
+//   se trae su sucesor (mismo inmueble, en P/S/SQ) y, si "Imputar a" es un T-..., se rellena solo
+//   (editable, no bloqueante). Aviso si el relacionado escrito no está activo.
 
 import { useEffect, useMemo, useState, useRef, forwardRef } from 'react';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
@@ -798,7 +801,11 @@ function FormAlta({ onCreado }) {
   const [estado, setEstado] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [sucesor, setSucesor] = useState('');            // sucesor del inmueble (P/S/SQ), o ''
+  const [sucesorMult, setSucesorMult] = useState(false); // varios activos: no autocompletar
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const esTermino = (rep) => /^T-/i.test(String(rep || '').trim());
 
   async function buscarIdadmon() {
     const id = f.idadmon.trim();
@@ -809,8 +816,22 @@ function FormAlta({ onCreado }) {
       if (j.encontrado) {
         set('inmueble', j.inmueble || ''); set('propietario', j.propietario || '');
         setEstado(j.estado || '');
-      } else { setEstado('NO ENCONTRADO'); }
-    } catch { setEstado(''); }
+        setSucesor(j.sucesor || '');
+        setSucesorMult(!!j.sucesor_multiple);
+        // Autocompletar idadmon_relacionado si Imputar a es un T-... y el campo está vacío
+        if (esTermino(f.repercutir_a) && j.sucesor && !f.idadmon_relacionado.trim()) {
+          set('idadmon_relacionado', j.sucesor);
+        }
+      } else { setEstado('NO ENCONTRADO'); setSucesor(''); setSucesorMult(false); }
+    } catch { setEstado(''); setSucesor(''); setSucesorMult(false); }
+  }
+
+  // Al cambiar "Imputar a": si pasa a T-... y tenemos sucesor, autocompletar (si está vacío)
+  function cambiarRepercutir(v) {
+    set('repercutir_a', v);
+    if (esTermino(v) && sucesor && !f.idadmon_relacionado.trim()) {
+      set('idadmon_relacionado', sucesor);
+    }
   }
 
   const textoLen = f.texto_explicativo_para_carta_a_propietario.trim().length;
@@ -849,7 +870,7 @@ function FormAlta({ onCreado }) {
           </select>
         </Campo>
         <Campo label="Imputar a *">
-          <select value={f.repercutir_a} onChange={(e) => set('repercutir_a', e.target.value)} style={inp}>
+          <select value={f.repercutir_a} onChange={(e) => cambiarRepercutir(e.target.value)} style={inp}>
             {REPERCUTIR_A.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </Campo>
@@ -881,7 +902,16 @@ function FormAlta({ onCreado }) {
           {f.link_admon.trim() !== '' && !pareceURL(f.link_admon) &&
             <div style={{ fontSize: 11, color: C.ambar }}>¿Seguro que es un enlace? Suele empezar por http…</div>}
         </Campo>
-        <Campo label="IDADMON relacionado (términos)"><input value={f.idadmon_relacionado} onChange={(e) => set('idadmon_relacionado', e.target.value.toUpperCase())} placeholder="A00654" style={inp} /></Campo>
+        <Campo label="IDADMON relacionado (términos)">
+          <input value={f.idadmon_relacionado} onChange={(e) => set('idadmon_relacionado', e.target.value.toUpperCase())} placeholder="A00654" style={inp} />
+          {esTermino(f.repercutir_a) && f.idadmon_relacionado.trim() && sucesor && f.idadmon_relacionado.trim().toUpperCase() === sucesor.toUpperCase()
+            ? <div style={{ fontSize: 11, color: C.gris }}>✓ Sucesor del inmueble (autocompletado). Editable.</div>
+            : esTermino(f.repercutir_a) && sucesorMult
+              ? <div style={{ fontSize: 11, color: C.ambar }}>Hay varios contratos activos en este inmueble: elige a mano el IDADMON del nuevo ciclo.</div>
+              : esTermino(f.repercutir_a) && !sucesor && f.idadmon.trim()
+                ? <div style={{ fontSize: 11, color: C.ambar }}>No se encontró un sucesor activo (P/S/SQ) para este inmueble.</div>
+                : <div style={{ fontSize: 11, color: C.gris }}>En términos (T-…): IDADMON del nuevo ciclo del inmueble. Se autocompleta al buscar el IDADMON.</div>}
+        </Campo>
       </div>
 
       <div style={{ marginTop: 12 }}>
