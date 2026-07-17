@@ -1,7 +1,8 @@
 'use client';
-// VERSION: v2 · 2026-07-17 · Autorelleno de "IDADMON relacionado" en el alta: al buscar el IDADMON
-//   se trae su sucesor (mismo inmueble, en P/S/SQ) y, si "Imputar a" es un T-..., se rellena solo
-//   (editable, no bloqueante). Aviso si el relacionado escrito no está activo.
+// VERSION: v4 · 2026-07-17 · (a) Autorelleno de "IDADMON relacionado" con el sucesor en términos T-.
+//   (b) Aviso de confirmación al guardar (revisar datos + monto a transferir; no editable después).
+//   (c) Al imputar a ARRENDATARIO, selector obligatorio CARGO/ABONO que fija el signo del monto
+//   (ABONO→negativo, CARGO→positivo), para que el signo no quede al azar.
 
 import { useEffect, useMemo, useState, useRef, forwardRef } from 'react';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
@@ -803,9 +804,29 @@ function FormAlta({ onCreado }) {
   const [err, setErr] = useState('');
   const [sucesor, setSucesor] = useState('');            // sucesor del inmueble (P/S/SQ), o ''
   const [sucesorMult, setSucesorMult] = useState(false); // varios activos: no autocompletar
+  const [cargoAbono, setCargoAbono] = useState('');      // '' | 'CARGO' | 'ABONO' (solo ARRENDATARIO)
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const esTermino = (rep) => /^T-/i.test(String(rep || '').trim());
+  const esArrendatario = (rep) => String(rep || '').trim().toUpperCase() === 'ARRENDATARIO';
+
+  // Aplica el signo del monto según cargo/abono: ABONO → negativo, CARGO → positivo
+  function aplicarSigno(montoStr, ca) {
+    const n = Math.abs(Number(String(montoStr).replace(/[^\d.-]/g, '')));
+    if (isNaN(n) || n === 0) return montoStr;
+    if (ca === 'ABONO') return String(-n);
+    if (ca === 'CARGO') return String(n);
+    return montoStr;
+  }
+  function cambiarCargoAbono(ca) {
+    setCargoAbono(ca);
+    if (f.monto_a_imputar) set('monto_a_imputar', aplicarSigno(f.monto_a_imputar, ca));
+  }
+  function cambiarMonto(v) {
+    // si es ARRENDATARIO y ya eligió cargo/abono, fuerza el signo
+    if (esArrendatario(f.repercutir_a) && cargoAbono) set('monto_a_imputar', aplicarSigno(v, cargoAbono));
+    else set('monto_a_imputar', v);
+  }
 
   async function buscarIdadmon() {
     const id = f.idadmon.trim();
@@ -829,6 +850,7 @@ function FormAlta({ onCreado }) {
   // Al cambiar "Imputar a": si pasa a T-... y tenemos sucesor, autocompletar (si está vacío)
   function cambiarRepercutir(v) {
     set('repercutir_a', v);
+    if (!esArrendatario(v)) setCargoAbono('');   // el selector cargo/abono solo aplica a ARRENDATARIO
     if (esTermino(v) && sucesor && !f.idadmon_relacionado.trim()) {
       set('idadmon_relacionado', sucesor);
     }
@@ -839,6 +861,22 @@ function FormAlta({ onCreado }) {
   async function guardar() {
     setErr('');
     if (textoLen < 15) { setErr('El texto para liquidación debe tener al menos 15 caracteres.'); return; }
+    if (esArrendatario(f.repercutir_a) && !cargoAbono) {
+      setErr('Al imputar a ARRENDATARIO, indica si es CARGO (se le cobra) o ABONO (a su favor).'); return;
+    }
+    // Aviso de confirmación: recuerda revisar antes de guardar (no se puede editar después)
+    const falta = [];
+    if (!String(f.mes_a_imputar || '').trim()) falta.push('Mes a imputar');
+    if (!String(f.monto_a_imputar || '').trim()) falta.push('Monto a imputar');
+    if (!String(f.tipo || '').trim()) falta.push('Tipo');
+    const avisoTransf = !String(f.monto_a_transferir || '').trim()
+      ? '\n\n• "Monto a transferir" está VACÍO. Si este descuento implica una transferencia, complételo.' : '';
+    const mensaje =
+      'Antes de guardar, revise que están todos los datos.' +
+      avisoTransf +
+      '\n\nUna vez guardado, el descuento NO se podrá modificar.' +
+      '\n\n¿Guardar el descuento?';
+    if (!window.confirm(mensaje)) return;   // cancela → sigue editando
     setSaving(true);
     try {
       const r = await fetch('/api/descuentos/crear', {
@@ -881,7 +919,20 @@ function FormAlta({ onCreado }) {
           </select>
         </Campo>
 
-        <Campo label="Monto a imputar *"><input type="text" inputMode="numeric" value={f.monto_a_imputar} onChange={(e) => set('monto_a_imputar', e.target.value)} style={inp} /></Campo>
+        <Campo label="Monto a imputar *">
+          <input type="text" inputMode="numeric" value={f.monto_a_imputar} onChange={(e) => cambiarMonto(e.target.value)} style={inp} />
+          {esArrendatario(f.repercutir_a) && (
+            <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: C.gris }}>Arrendatario:</span>
+              <button type="button" onClick={() => cambiarCargoAbono('CARGO')}
+                style={{ ...chip, ...(cargoAbono === 'CARGO' ? chipOn(C.rojo) : {}) }}>Cargo (le cobras +)</button>
+              <button type="button" onClick={() => cambiarCargoAbono('ABONO')}
+                style={{ ...chip, ...(cargoAbono === 'ABONO' ? chipOn(C.verde) : {}) }}>Abono (a su favor −)</button>
+            </div>
+          )}
+          {esArrendatario(f.repercutir_a) && !cargoAbono &&
+            <div style={{ fontSize: 11, color: C.ambar, marginTop: 3 }}>Elige CARGO o ABONO: fija el signo del monto.</div>}
+        </Campo>
         <Campo label="Monto a transferir"><input type="text" inputMode="numeric" value={f.monto_a_transferir} onChange={(e) => set('monto_a_transferir', e.target.value)} style={inp} /></Campo>
         <Campo label="¿Necesita factura/boleta?">
           <select value={f.factura_boleta} onChange={(e) => set('factura_boleta', e.target.value)} style={inp}>
@@ -953,6 +1004,8 @@ function SelectMini({ value, opts, onChange }) {
   );
 }
 const inp = { padding: '6px 8px', border: '1px solid #c9d3e0', borderRadius: 4, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+const chip = { fontSize: 11, padding: '3px 8px', border: '1px solid #c9d3e0', borderRadius: 12, background: '#fff', color: '#555', cursor: 'pointer' };
+function chipOn(bg) { return { background: bg, color: '#fff', borderColor: bg, fontWeight: 700 }; }
 const linkMini = { color: '#1f4e79', cursor: 'pointer', fontSize: 11, marginLeft: 4, textDecoration: 'underline' };
 function btn(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 5, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }; }
 function btnMini(bg) { return { background: bg, color: '#fff', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }; }
