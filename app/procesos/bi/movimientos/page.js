@@ -39,7 +39,7 @@ const ASOCIA_EMAILS = [
   'anthony.mendoza@fondocapital.com',   // ⚠ verificar
   'neika.duque@fondocapital.com',       // ⚠ verificar
   'fabiola.guerra@fondocapital.com',    // ⚠ verificar
-  // 'adalis.APELLIDO@fondocapital.com',// ⚠ FALTA el email real de Adalis — añádelo (sin este, Adalis no entra)
+  'adalis.APELLIDO@fondocapital.com',// ⚠ FALTA el email real de Adalis — añádelo (sin este, Adalis no entra)
 ]
 // AAMM de 4 dígitos, meses 01–12 (para validar la reasignación de LIQ. MES2).
 const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
