@@ -1,3 +1,7 @@
+// VERSION: v5 · 2026-07-15 · PARTE 2 (filtros): sustituye el filtro "contiene" por filtro tipo Excel
+//   (casillas de valores + buscador + "solo" / "mostrar todos") en cada cabecera, filtrando en cliente
+//   sobre las 6.7k ya cargadas. En UNIQUE CONCEPT, además, chips de categoría de color (Todos /
+//   Identificados / Sin identificar / Cargos), combinables con las casillas. Los filtros SOLO filtran.
 // VERSION: v4 · 2026-07-15 · PARTE 1 (cimiento de filtros): carga TODAS las filas de `bi` (paginado
 //   por rangos), muestra por defecto solo las recientes con "Ver todo" (no vuelca 6.7k inputs de golpe),
 //   y DESACTIVA el autorelleno de LIQ. MES2 (abrir la vista ya NO escribe nada). Solo lectura de datos.
@@ -118,9 +122,10 @@ export default function BiVista() {
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [verTodos, setVerTodos] = useState(false)   // false = solo recientes (TOPE_DEFECTO); true = todas
-  const [filtros, setFiltros] = useState({})
-  const [openF, setOpenF] = useState(null)
-  const [draft, setDraft] = useState({})
+  const [filtros, setFiltros] = useState({})        // { col: Set(valores marcados) } — filtro Excel
+  const [catFiltro, setCatFiltro] = useState('todos') // chips: todos|identificados|sinid|cargos
+  const [menuF, setMenuF] = useState(null)          // { key, x, y } — menú de filtro abierto
+  const [busca, setBusca] = useState('')            // buscador dentro del menú
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
   const [copiando, setCopiando] = useState(false)
@@ -143,17 +148,27 @@ export default function BiVista() {
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
-  const activo = (key) => { const f = filtros[key]; return !!f && (f.search ?? '') !== '' }
-  const hayFiltros = Object.keys(filtros).some(k => activo(k))
+  // Con la carga completa, el filtrado es EN CLIENTE. buildQuery solo trae todo.
+  const buildQuery = () => supabase.from('bi').select('*')
 
-  const buildQuery = (fActuales) => {
-    let q = supabase.from('bi').select('*')
-    for (const [key, f] of Object.entries(fActuales)) {
-      if (!f || key === '_check1') continue
-      if ((f.search ?? '') !== '') q = q.ilike(key, `%${f.search}%`)
-    }
-    return q
+  // Valor de una celda para el filtro (vacío -> "(vacío)").
+  const valorCelda = (r, key) => { const v = r[key]; return (v ?? '') === '' ? '(vacío)' : String(v) }
+  // Valores distintos de una columna (sobre TODAS las filas cargadas), ordenados.
+  const valoresUnicos = (key) => {
+    const s = new Set()
+    rows.forEach(r => s.add(valorCelda(r, key)))
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'es'))
   }
+  // Categoría de la fila para los chips de color (misma lógica que colorFila / la leyenda).
+  const categoriaFila = (r) => {
+    const ab = num(r.abonos), ca = num(r.cargos)
+    if (ab > 0) return String(r.idadmon2 || r.unique_concept || '').trim() ? 'identificados' : 'sinid'
+    if (ca > 0) return 'cargos'
+    return 'otros'
+  }
+  // ¿La columna tiene un filtro de casillas parcial (algunas desmarcadas)?
+  const colFiltrada = (key) => { const s = filtros[key]; return s && s.size > 0 && s.size < valoresUnicos(key).length }
+  const hayFiltroActivo = catFiltro !== 'todos' || COLS.some(c => colFiltrada(c.key))
 
   const fetchInitial = async (fActuales = filtros) => {
     setRefreshing(true); setError(null); setNoMore(true)
@@ -164,7 +179,7 @@ export default function BiVista() {
     let todo = []
     let errFinal = null
     for (;;) {
-      const { data, error } = await buildQuery(fActuales)
+      const { data, error } = await buildQuery()
         .order('id', { ascending: true })
         .range(desde, desde + PAGE - 1)
       if (error) { errFinal = error; break }
@@ -231,23 +246,33 @@ export default function BiVista() {
 
   const onScroll = (e) => { if (e.currentTarget.scrollTop <= 40) loadMore() }
 
-  // check1: detector de saltos/duplicados del extracto. Solo SIN filtros.
-  const filas = useMemo(() => {
-    if (hayFiltros) return rows.map(r => ({ ...r, _check1: null }))
+  // check1 (saltos/duplicados) sobre la secuencia COMPLETA, siempre — así es correcto.
+  const conCheck = useMemo(() => {
     return rows.map((r, i) => {
       if (i === 0) return { ...r, _check1: null }
       const prev = rows[i - 1]
       const c1 = Math.round(num(prev.saldos) - num(r.cargos) + num(r.abonos) - num(r.saldos))
       return { ...r, _check1: c1 }
     })
-  }, [rows, hayFiltros])
+  }, [rows])
+
+  // Aplica los filtros: primero la categoría (chips de color), luego las casillas por columna.
+  // Si hay filtro activo, se oculta check1 (deja de tener sentido sobre un subconjunto).
+  const filas = useMemo(() => {
+    let out = conCheck
+    if (catFiltro !== 'todos') out = out.filter(r => categoriaFila(r) === catFiltro)
+    const activos = Object.entries(filtros).filter(([, s]) => s && s.size > 0)
+    if (activos.length) out = out.filter(r => activos.every(([k, s]) => s.has(valorCelda(r, k))))
+    if (hayFiltroActivo) out = out.map(r => ({ ...r, _check1: null }))
+    return out
+  }, [conCheck, catFiltro, filtros, hayFiltroActivo])
 
   // Qué filas se PINTAN. check1 se calcula sobre TODA la secuencia (arriba), pero por defecto
   // solo mostramos las recientes para no volcar miles de inputs. "Ver todo" las pinta todas.
   // (En la Parte 2, con filtro activo se mostrarán todas las que casen.)
   const visibles = useMemo(() => {
-    return verTodos ? filas : filas.slice(-TOPE_DEFECTO)
-  }, [filas, verTodos])
+    return (verTodos || hayFiltroActivo) ? filas : filas.slice(-TOPE_DEFECTO)
+  }, [filas, verTodos, hayFiltroActivo])
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const guardarCelda = async (id, k, valor) => {
@@ -398,10 +423,10 @@ export default function BiVista() {
   if (status === 'loading' || loading)
     return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando movimientos…</div></>)
 
-  const abonos = filas.filter(r => num(r.abonos) > 0).length
-  const cargos = filas.filter(r => num(r.cargos) > 0).length
-  const sinId = filas.filter(r => num(r.abonos) > 0 && !String(r.idadmon2 || r.unique_concept || '').trim()).length
-  const errChk = filas.filter(r => r._check1 != null && r._check1 !== 0).length
+  const abonos = rows.filter(r => num(r.abonos) > 0).length
+  const cargos = rows.filter(r => num(r.cargos) > 0).length
+  const sinId = rows.filter(r => num(r.abonos) > 0 && !String(r.idadmon2 || r.unique_concept || '').trim()).length
+  const errChk = conCheck.filter(r => r._check1 != null && r._check1 !== 0).length
 
   const cell = (r, c) => {
     if (c.key === '_check1') return r._check1 == null
@@ -496,38 +521,65 @@ export default function BiVista() {
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
   }
 
-  // ---- popover de filtro (server-side, contiene) ----
-  const popCol = openF ? COLS.find(c => c.key === openF.key) : null
+  // ---- filtro tipo Excel (cliente): casillas de valores + chips de color en UNIQUE CONCEPT ----
   const abrirFiltro = (c, e) => {
     const rc = e.currentTarget.getBoundingClientRect()
-    setDraft(filtros[c.key] || {})
-    setOpenF(openF && openF.key === c.key ? null : { key: c.key, x: rc.left, y: rc.bottom + 2 })
+    setBusca('')
+    setMenuF(menuF && menuF.key === c.key ? null : { key: c.key, x: rc.left, y: rc.bottom + 2 })
   }
-  const aplicarFiltro = () => {
-    const nf = { ...filtros, [openF.key]: draft }
-    setFiltros(nf); setOpenF(null); fetchInitial(nf)
-  }
-  const quitarFiltro = () => {
-    const nf = { ...filtros }; delete nf[openF.key]
-    setFiltros(nf); setOpenF(null); fetchInitial(nf)
-  }
-  const renderPop = () => {
-    if (!openF || !popCol) return null
-    const c = popCol
-    const left = Math.min(openF.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 260)
+  const toggleValor = (key, valor) => setFiltros(prev => {
+    // Si no había filtro en esta columna, partimos de "todos marcados" y quitamos el que se toca.
+    const base = new Set(prev[key] && prev[key].size ? prev[key] : valoresUnicos(key))
+    if (base.has(valor)) base.delete(valor); else base.add(valor)
+    return { ...prev, [key]: base }
+  })
+  const soloEste = (key, valor) => { setFiltros(prev => ({ ...prev, [key]: new Set([valor]) })); setMenuF(null) }
+  const mostrarTodos = (key) => setFiltros(prev => { const n = { ...prev }; delete n[key]; return n })
+
+  const CHIPS_CAT = [['todos', 'Todos'], ['identificados', 'Identificados'], ['sinid', 'Sin identificar'], ['cargos', 'Cargos']]
+
+  const renderFiltro = () => {
+    if (!menuF) return null
+    const key = menuF.key
+    const vals = valoresUnicos(key)
+    const sel = filtros[key] && filtros[key].size ? filtros[key] : new Set(vals)
+    const visiblesVal = vals.filter(v => v.toLowerCase().includes(busca.toLowerCase()))
+    const W = 250
+    const left = Math.min(menuF.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 12)
+    const esUC = key === 'unique_concept'
     return (
       <>
-        <div onClick={() => setOpenF(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-        <div style={{ position: 'fixed', left, top: openF.y, width: 248, background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
-          <div style={{ padding: 10 }}>
-            <div style={{ fontWeight: 600, color: '#5F5E5A', marginBottom: 6 }}>Filtrar: {c.h}</div>
-            <input autoFocus value={draft.search ?? ''} onChange={e => setDraft(d => ({ ...d, search: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter') aplicarFiltro() }} placeholder="contiene…"
-              style={{ width: '100%', fontSize: 12, padding: '5px 6px', border: '0.5px solid #D3D1C7', borderRadius: 5, boxSizing: 'border-box' }} />
+        <div onClick={() => setMenuF(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+        <div style={{ position: 'fixed', left, top: menuF.y, width: W, background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12, padding: 8 }}>
+          {esUC && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8, paddingBottom: 8, borderBottom: '0.5px solid #EDEBE4' }}>
+              {CHIPS_CAT.map(([k, lab]) => (
+                <button key={k} onClick={() => setCatFiltro(k)}
+                  style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, cursor: 'pointer',
+                    border: '0.5px solid ' + (catFiltro === k ? '#1D9E75' : '#D3D1C7'),
+                    background: catFiltro === k ? '#1D9E75' : '#fff', color: catFiltro === k ? '#fff' : '#5F5E5A', fontWeight: catFiltro === k ? 700 : 400 }}>
+                  {lab}
+                </button>
+              ))}
+            </div>
+          )}
+          <input autoFocus placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', marginBottom: 6, fontSize: 12, border: '0.5px solid #D3D1C7', borderRadius: 5 }} />
+          <button onClick={() => mostrarTodos(key)}
+            style={{ fontSize: 11, border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', marginBottom: 6 }}>Mostrar todos</button>
+          <div style={{ maxHeight: 200, overflowY: 'auto', border: '0.5px solid #eee', borderRadius: 4, padding: 4 }}>
+            {visiblesVal.map(v => (
+              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={sel.has(v)} onChange={() => toggleValor(key, v)} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                <a onClick={() => soloEste(key, v)} style={{ color: '#1D9E75', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>solo</a>
+              </label>
+            ))}
+            {visiblesVal.length === 0 && <div style={{ color: '#999', padding: 4 }}>Sin coincidencias</div>}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', borderTop: '0.5px solid #EDEBE4' }}>
-            <button onClick={quitarFiltro} style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Quitar</button>
-            <button onClick={aplicarFiltro} style={{ fontSize: 11, border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, padding: '4px 14px', cursor: 'pointer' }}>Aplicar</button>
+          <div style={{ textAlign: 'right', marginTop: 6 }}>
+            <button onClick={() => setMenuF(null)}
+              style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Cerrar</button>
           </div>
         </div>
       </>
@@ -607,7 +659,7 @@ export default function BiVista() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltros ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltroActivo ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
           <button onClick={() => router.push('/procesos/bi')}
             style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
@@ -623,7 +675,7 @@ export default function BiVista() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#EAF2FB', border: '0.5px solid #B9D4EE', borderRadius: 2 }} /> Abono ({abonos})</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FBECEC', border: '0.5px solid #E9B9B9', borderRadius: 2 }} /> Cargo ({cargos})</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FEF7D6', border: '0.5px solid #E6D58A', borderRadius: 2 }} /> Sin identificar ({sinId})</span>
-          {!hayFiltros && errChk > 0 && <span style={{ color: '#9B1C1C', fontWeight: 600 }}>⚠ check1 ≠ 0 en {errChk}</span>}
+          {!hayFiltroActivo && errChk > 0 && <span style={{ color: '#9B1C1C', fontWeight: 600 }}>⚠ check1 ≠ 0 en {errChk}</span>}
           {savingId && <span style={{ color: '#1D9E75' }}>guardando…</span>}
         </div>
 
@@ -668,7 +720,7 @@ export default function BiVista() {
                       {c.h}
                       {c.filt && (
                         <button onClick={(e) => abrirFiltro(c, e)} title="Filtrar"
-                          style={{ border: 'none', background: activo(c.key) ? '#1D9E75' : 'transparent', color: activo(c.key) ? '#fff' : '#888780', borderRadius: 4, cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: '2px 4px' }}>▾</button>
+                          style={{ border: 'none', background: (colFiltrada(c.key) || (c.key === 'unique_concept' && catFiltro !== 'todos')) ? '#1D9E75' : 'transparent', color: (colFiltrada(c.key) || (c.key === 'unique_concept' && catFiltro !== 'todos')) ? '#fff' : '#888780', borderRadius: 4, cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: '2px 4px' }}>▾</button>
                       )}
                     </span>
                   </th>
@@ -693,10 +745,10 @@ export default function BiVista() {
         </div>
 
         <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-          {visibles.length} de {filas.length} fila(s){hayFiltros ? ' (filtradas)' : ''} · carga completa · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
+          {visibles.length} de {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
         </div>
       </div>
-      {renderPop()}
+      {renderFiltro()}
       {renderPopDescuentos()}
       {asocOpen && (
         <>
