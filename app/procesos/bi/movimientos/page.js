@@ -1,3 +1,7 @@
+// VERSION: v3 · 2026-07-15 · Segundo nivel de permiso: Anthony/Neika/Adalis/Fabiola pueden IDENTIFICAR
+//   abonos (asociar RUT→IDADMON) por el drawer "➕ RUT" en modo manual (sin sugerencias). El rellenado
+//   del movimiento lo hace el endpoint asociar-rut (server-side), así no dependen de escritura en `bi`.
+//   Edición libre del resto del BI sigue siendo solo Dirección/Karina. Resto igual que v2.
 // VERSION: v2 · 2026-07-09 · gate de escritura (solo Dirección y Karina) + columna LIQ. MES2 editable con validación AAMM
 'use client'
 
@@ -19,6 +23,16 @@ const EDIT_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
   'karina.morales@fondocapital.com',
+]
+// ── Segundo nivel: SOLO pueden IDENTIFICAR abonos (asociar RUT→IDADMON por el drawer
+// "➕ RUT", en modo manual sin sugerencias). NO editan nada más del BI.
+// ⚠ EMAILS EXACTOS: verifica cada uno con el SELECT que te paso (la coincidencia debe ser
+// EXACTA; ya nos mordió antes la "m" de más de Anthony). Todo en minúsculas.
+const ASOCIA_EMAILS = [
+  'anthony.mendoza@fondocapital.com',   // ⚠ verificar
+  'neika.duque@fondocapital.com',       // ⚠ verificar
+  'fabiola.guerra@fondocapital.com',    // ⚠ verificar
+  'adalis@fondocapital.com',// ⚠ FALTA el email real de Adalis — añádelo (sin este, Adalis no entra)
 ]
 // AAMM de 4 dígitos, meses 01–12 (para validar la reasignación de LIQ. MES2).
 const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
@@ -89,6 +103,8 @@ export default function BiVista() {
   // ¿El usuario logueado puede EDITAR el BI? (Dirección y Karina). Normalizado.
   const emailSesion = (session?.user?.email || '').trim().toLowerCase()
   const puedeEditar = EDIT_EMAILS.includes(emailSesion)
+  // Puede IDENTIFICAR abonos (asociar RUT): edición total, o el segundo nivel (los 4).
+  const puedeAsociar = puedeEditar || ASOCIA_EMAILS.includes(emailSesion)
   const [rows, setRows] = useState([])               // ascendente por id: antiguos arriba, recientes abajo
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -232,10 +248,14 @@ export default function BiVista() {
 
   // ── Asociar RUT a IDADMON en bi_admon (origen: cuentas) ──────────────────
   const abrirAsociar = async (r) => {
-    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
+    if (!puedeAsociar) { flash('No tienes permiso para asociar RUT en el BI'); return }
     const rut = extraerRut(r.detalle_movimiento)
     if (!rut) { flash('No se encontró un RUT en el detalle'); return }
-    setAsocOpen({ row: r, rut }); setAsocCands([]); setAsocErr(null); setAsocId(''); setAsocLoading(true)
+    // Los del segundo nivel (no editores totales) van en modo MANUAL: sin sugerencias de IDADMON.
+    const soloManual = !puedeEditar
+    setAsocOpen({ row: r, rut, soloManual }); setAsocCands([]); setAsocErr(null); setAsocId('')
+    if (soloManual) { setAsocLoading(false); return }   // no se buscan candidatos
+    setAsocLoading(true)
     try {
       const res = await fetch('/api/bi/asociar-rut?rut=' + encodeURIComponent(rut))
       const d = await res.json()
@@ -251,14 +271,20 @@ export default function BiVista() {
     const { row, rut } = asocOpen
     setAsocGuardando(true); setAsocErr(null)
     try {
+      // Pasamos biId: el endpoint asocia en bi_admon Y rellena este movimiento (server-side),
+      // así funciona también para quien no tiene escritura directa en `bi`.
       const res = await fetch('/api/bi/asociar-rut', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rut, idadmon: id }),
+        body: JSON.stringify({ rut, idadmon: id, biId: row.id }),
       })
       const d = await res.json()
       if (!res.ok) { setAsocErr(d.error || 'Error al asociar'); setAsocGuardando(false); return }
-      // Rellena también el IDADMON en esta fila (resuelve el FALTA actual).
-      await guardarCelda(row.id, 'unique_concept', id)
+      if (d.rellenado === false && d.errorRelleno) {
+        setAsocErr('Se asoció el RUT pero no se pudo rellenar el movimiento: ' + d.errorRelleno)
+        setAsocGuardando(false); return
+      }
+      // Reflejar en la vista el IDADMON que el endpoint ya escribió en unique_concept.
+      setRows(rs => rs.map(r => r.id === row.id ? { ...r, unique_concept: id } : r))
       flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${id})` : `✓ Asociado ${rut} → ${id}`)
       setAsocGuardando(false); setAsocOpen(null)
     } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
@@ -384,7 +410,7 @@ export default function BiVista() {
       const esAbono = num(r.abonos) > 0
       const rut = extraerRut(r.detalle_movimiento)
       if (!esAbono || !rut) return <span style={{ color: '#B4B2A9' }}>—</span>
-      if (!puedeEditar) return <span style={{ color: '#B4B2A9' }}>—</span>
+      if (!puedeAsociar) return <span style={{ color: '#B4B2A9' }}>—</span>
       const resuelto = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
       const abierto = asocOpen && asocOpen.row?.id === r.id
       return (
@@ -667,23 +693,32 @@ export default function BiVista() {
             <div style={{ padding: '14px 18px', overflow: 'auto' }}>
               {asocErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{asocErr}</div>}
 
-              <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>Según pagos anteriores en CUENTAS:</div>
-              {asocLoading && <div style={{ padding: 16, textAlign: 'center', color: '#888780', fontSize: 13 }}>Buscando en el historial…</div>}
-              {!asocLoading && asocCands.length === 0 && (
-                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#FBF7EC', color: '#8a6d1e', fontSize: 12, marginBottom: 12 }}>
-                  Este RUT no aparece en CUENTAS con ningún IDADMON. Escríbelo a mano abajo.
+              {asocOpen.soloManual ? (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F1EFE8', color: '#5F5E5A', fontSize: 12, marginBottom: 4 }}>
+                  Escribe el IDADMON del contrato al que pertenece este abono. Al guardar, este RUT
+                  quedará asociado y sus abonos futuros se reconocerán solos.
                 </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>Según pagos anteriores en CUENTAS:</div>
+                  {asocLoading && <div style={{ padding: 16, textAlign: 'center', color: '#888780', fontSize: 13 }}>Buscando en el historial…</div>}
+                  {!asocLoading && asocCands.length === 0 && (
+                    <div style={{ padding: '10px 12px', borderRadius: 8, background: '#FBF7EC', color: '#8a6d1e', fontSize: 12, marginBottom: 12 }}>
+                      Este RUT no aparece en CUENTAS con ningún IDADMON. Escríbelo a mano abajo.
+                    </div>
+                  )}
+                  {!asocLoading && asocCands.map((c) => (
+                    <button key={c.idadmon} onClick={() => asociarRut(c.idadmon)} disabled={asocGuardando}
+                      style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 12px', marginBottom: 6, border: '0.5px solid #9BD7C2', background: '#F0FAF6', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                      <span style={{ fontWeight: 700, color: '#085041' }}>{c.idadmon}</span>
+                      <span style={{ fontSize: 11, color: '#5F5E5A' }}>pagó {c.veces} vez(ces) · asociar →</span>
+                    </button>
+                  ))}
+                </>
               )}
-              {!asocLoading && asocCands.map((c) => (
-                <button key={c.idadmon} onClick={() => asociarRut(c.idadmon)} disabled={asocGuardando}
-                  style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 12px', marginBottom: 6, border: '0.5px solid #9BD7C2', background: '#F0FAF6', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: '#085041' }}>{c.idadmon}</span>
-                  <span style={{ fontSize: 11, color: '#5F5E5A' }}>pagó {c.veces} vez(ces) · asociar →</span>
-                </button>
-              ))}
 
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '0.5px solid #EDEBE4' }}>
-                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>O escribe el IDADMON a mano:</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>{asocOpen.soloManual ? 'IDADMON del contrato:' : 'O escribe el IDADMON a mano:'}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={asocId} onChange={e => setAsocId(e.target.value.toUpperCase())} placeholder="A00819"
                     style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid #D3D1C7', borderRadius: 8, textTransform: 'uppercase' }} />

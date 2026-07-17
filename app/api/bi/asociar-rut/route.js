@@ -1,3 +1,8 @@
+// VERSION: v2 · 2026-07-15 · POST acepta `biId` opcional: además de asociar en bi_admon, rellena
+//   ese movimiento del BI (unique_concept = idadmon) SERVER-SIDE (service role). Así los usuarios
+//   sin escritura directa en `bi` (Anthony/Neika/Adalis/Fabiola) pueden identificar abonos. Aditivo:
+//   sin `biId` el comportamiento es idéntico al v1.
+//
 // app/api/bi/asociar-rut/route.js
 // Asocia un RUT a un IDADMON en la tabla `bi_admon`, para que los abonos futuros
 // de ese RUT se autocompleten solos en el BI.
@@ -63,17 +68,28 @@ export async function POST(req) {
     const body = await req.json()
     const rut = normRut(body?.rut)
     const idadmon = normIdadmon(body?.idadmon)
+    const biId = body?.biId ?? null   // id del movimiento en `bi` a rellenar (opcional)
     if (!rut) return Response.json({ error: 'RUT no válido' }, { status: 400 })
     if (!idadmon) return Response.json({ error: 'IDADMON no válido (debe ser Axxxxx, ej. A00819)' }, { status: 400 })
 
-    // ¿Ya existe esa pareja activa? No duplicar.
+    // Rellena el movimiento del BI (marca unique_concept = idadmon) SERVER-SIDE.
+    // Con service role funciona aunque el usuario no tenga escritura directa en `bi`.
+    // Solo se hace si nos pasan biId; devuelve el resultado para informar al cliente.
+    async function rellenarMovimiento() {
+      if (biId == null) return { rellenado: false }
+      const { error } = await supaAdmin.from('bi').update({ unique_concept: idadmon }).eq('id', biId)
+      return error ? { rellenado: false, errorRelleno: error.message } : { rellenado: true }
+    }
+
+    // ¿Ya existe esa pareja activa? No duplicar en bi_admon, pero SÍ rellenar el movimiento.
     const { data: existentes, error: e1 } = await supaAdmin
       .from('bi_admon').select('id, idadmon, activo').eq('rut', rut)
     if (e1) return Response.json({ error: e1.message }, { status: 500 })
 
     const yaExacta = (existentes || []).some(x => normIdadmon(x.idadmon) === idadmon && x.activo !== false)
     if (yaExacta) {
-      return Response.json({ ok: true, yaExistia: true, rut, idadmon })
+      const rel = await rellenarMovimiento()
+      return Response.json({ ok: true, yaExistia: true, rut, idadmon, ...rel })
     }
 
     // Insertar. Si el RUT ya tenía otro IDADMON, quedará con varias filas: el matching
@@ -87,7 +103,8 @@ export async function POST(req) {
       .map(x => normIdadmon(x.idadmon))
       .filter(id => id && id !== idadmon)
 
-    return Response.json({ ok: true, rut, idadmon, teniaOtros: otrosIdadmon })
+    const rel = await rellenarMovimiento()
+    return Response.json({ ok: true, rut, idadmon, teniaOtros: otrosIdadmon, ...rel })
   } catch (e) {
     return Response.json({ error: e.message || 'Error' }, { status: 500 })
   }
