@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
+// VERSION: v3 · 2026-07-18 · Añade botón "↗ Abrir Aguas Andinas" (como el de Sencillito en Luz).
+//   Incluye lo de v2 (meses automáticos + ID de extensión guardado por navegador).
 // VERSION: v2 · 2026-07-18 · Meses del desplegable automáticos (mes en curso + 12 atrás) e ID de la
 //   extensión CRM Bridge guardado por navegador (localStorage), como en la página de Luz.
 const NOMBRES_MES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
@@ -15,6 +17,7 @@ function generarMeses(nAtras = 12) {
 }
 const MESES_DISPONIBLES = generarMeses(12)
 const EXT_ID_STORAGE_KEY = 'crm_bridge_extension_id'
+const AGUAS_ANDINAS_URL = 'https://www.aguasandinas.cl/web/aguasandinas/pagar-mi-cuenta'
 
 async function guardarResultado(mes, idadmon, idinmue, deuda, fecha) {
   const res = await fetch('/api/servicios/agua', {
@@ -266,6 +269,9 @@ export default function ServiciosAguaPage() {
               value={extensionId} onChange={e => actualizarExtensionId(e.target.value)} />
             <button style={{ ...s.btn('#3b82f6', false), width: 'auto', padding: '8px 16px' }} onClick={verificarExtension}>
               Verificar
+            </button>
+            <button style={{ ...s.btn('#6366f1', false), width: 'auto', padding: '8px 16px' }} onClick={() => window.open(AGUAS_ANDINAS_URL, '_blank')}>
+              ↗ Abrir Aguas Andinas
             </button>
           </div>
           {extensionOk && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '8px' }}>✓ Extensión conectada</div>}
