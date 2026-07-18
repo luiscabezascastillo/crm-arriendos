@@ -7,8 +7,11 @@ const MESES_DISPONIBLES = [
   'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
 ]
 
+// VERSION: v2 · 2026-07-18 · El ID de la extensión CRM Bridge deja de estar fijo: ahora es un campo
+//   editable que se guarda por navegador (localStorage). Así funciona en cualquier PC, como la de Agua.
 // Extensión CRM Bridge (consulta ENEL vía Sencillito desde el navegador real)
-const EXTENSION_ID = 'jnhdggkodeajhgjgpchdjmmmdgnndgdd'
+const EXTENSION_ID_DEFAULT = 'jnhdggkodeajhgjgpchdjmmmdgnndgdd'
+const EXT_ID_STORAGE_KEY = 'crm_bridge_extension_id'
 const SENCILLITO_URL = 'https://sencillito.com/pagos-de-la-factura?industriaId=13&convenioId=6001'
 
 export default function ServiciosLuzPage() {
@@ -25,6 +28,23 @@ export default function ServiciosLuzPage() {
   const [resultados, setResultados] = useState([])
   const [extOk, setExtOk] = useState(null)
   const [extVer, setExtVer] = useState('')
+  const [extensionId, setExtensionId] = useState(EXTENSION_ID_DEFAULT)
+
+  // Cargar el ID de la extensión guardado en ESTE navegador (si lo hay).
+  useEffect(() => {
+    try {
+      const guardado = localStorage.getItem(EXT_ID_STORAGE_KEY)
+      if (guardado && guardado.trim()) setExtensionId(guardado.trim())
+    } catch {}
+  }, [])
+
+  // Guardar el ID por navegador cada vez que cambie (para no reescribirlo).
+  function actualizarExtensionId(v) {
+    const val = v.trim()
+    setExtensionId(val)
+    setExtOk(null)   // al cambiar el ID, hay que volver a verificar
+    try { if (val) localStorage.setItem(EXT_ID_STORAGE_KEY, val) } catch {}
+  }
   const procesandoRef = useRef(false)
   const cancelarRef = useRef(false)
   const logRef = useRef(null)
@@ -66,8 +86,9 @@ export default function ServiciosLuzPage() {
   function enviarAExtension(mensaje) {
     return new Promise((resolve, reject) => {
       if (!extDisponible()) { reject(new Error('Chrome extension API no disponible (usa Chrome con la extensión instalada)')); return }
+      if (!extensionId || !extensionId.trim()) { reject(new Error('Falta el ID de la extensión CRM Bridge (escríbelo arriba).')); return }
       try {
-        chrome.runtime.sendMessage(EXTENSION_ID, mensaje, (resp) => {
+        chrome.runtime.sendMessage(extensionId.trim(), mensaje, (resp) => {
           const err = chrome.runtime.lastError
           if (err) { reject(new Error(err.message || 'La extensión no respondió (¿instalada y activa?)')); return }
           resolve(resp)
@@ -236,6 +257,22 @@ export default function ServiciosLuzPage() {
           <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.6, marginBottom: 10 }}>
             La consulta se hace desde tu navegador con la extensión <strong style={{ color: '#e2e8f0' }}>CRM Bridge</strong>.
             Necesitas: (1) la extensión instalada y activa, y (2) una pestaña de Sencillito abierta <strong style={{ color: '#e2e8f0' }}>e iniciada sesión</strong>.
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              ID de la extensión CRM Bridge (en chrome://extensions)
+            </label>
+            <input
+              value={extensionId}
+              onChange={e => actualizarExtensionId(e.target.value)}
+              placeholder="p. ej. jnhdggkodeajhgjgpchdjmmmdgnndgdd"
+              style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '12px',
+                       padding: '7px 10px', borderRadius: 6, border: '1px solid #334155',
+                       background: '#0f172a', color: '#e2e8f0' }}
+            />
+            <div style={{ fontSize: '10px', color: '#64748b', marginTop: 4 }}>
+              Se guarda en este navegador. Cada PC lo escribe una vez; el ID sale en chrome://extensions (bajo "CRM Bridge").
+            </div>
           </div>
           <div style={s.toggleRow}>
             <button style={{ ...s.btn('#3b82f6', false), flex: 1 }} onClick={verificarExtension}>
