@@ -2,11 +2,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
-const MESES_DISPONIBLES = [
-  'JUNIO 2026', 'MAYO 2026', 'ABRIL 2026', 'MARZO 2026', 'FEBRERO 2026',
-  'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
-]
+// Meses del desplegable: se generan solos (mes en curso + 12 hacia atrás). Ya no hay que
+// editar el código cada mes. Formato "MES AAAA" en mayúsculas, igual que antes.
+const NOMBRES_MES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+function generarMeses(nAtras = 12) {
+  const hoy = new Date()
+  const lista = []
+  for (let i = 0; i <= nAtras; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+    lista.push(`${NOMBRES_MES[d.getMonth()]} ${d.getFullYear()}`)
+  }
+  return lista
+}
+const MESES_DISPONIBLES = generarMeses(12)
 
+// VERSION: v3 · 2026-07-18 · Los meses del desplegable se generan solos (mes en curso + 12 atrás);
+//   ya no hay lista fija que editar cada mes. Incluye lo de v2 (ID de extensión editable/guardado).
 // VERSION: v2 · 2026-07-18 · El ID de la extensión CRM Bridge deja de estar fijo: ahora es un campo
 //   editable que se guarda por navegador (localStorage). Así funciona en cualquier PC, como la de Agua.
 // Extensión CRM Bridge (consulta ENEL vía Sencillito desde el navegador real)
@@ -16,7 +27,7 @@ const SENCILLITO_URL = 'https://sencillito.com/pagos-de-la-factura?industriaId=1
 
 export default function ServiciosLuzPage() {
   const router = useRouter()
-  const [mes, setMes] = useState('JUNIO 2026')
+  const [mes, setMes] = useState(MESES_DISPONIBLES[0])
   const [soloPendientes, setSoloPendientes] = useState(false)
   const [codigos, setCodigos] = useState([])
   const [totalCodigos, setTotalCodigos] = useState(0)
