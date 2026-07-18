@@ -2,10 +2,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
-const MESES_DISPONIBLES = [
-  'MAYO 2026', 'ABRIL 2026', 'MARZO 2026', 'FEBRERO 2026',
-  'ENERO 2026', 'DICIEMBRE 2025', 'NOVIEMBRE 2025', 'OCTUBRE 2025'
-]
+// VERSION: v2 · 2026-07-18 · Meses del desplegable automáticos (mes en curso + 12 atrás) e ID de la
+//   extensión CRM Bridge guardado por navegador (localStorage), como en la página de Luz.
+const NOMBRES_MES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+function generarMeses(nAtras = 12) {
+  const hoy = new Date(); const lista = []
+  for (let i = 0; i <= nAtras; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+    lista.push(`${NOMBRES_MES[d.getMonth()]} ${d.getFullYear()}`)
+  }
+  return lista
+}
+const MESES_DISPONIBLES = generarMeses(12)
+const EXT_ID_STORAGE_KEY = 'crm_bridge_extension_id'
 
 async function guardarResultado(mes, idadmon, idinmue, deuda, fecha) {
   const res = await fetch('/api/servicios/agua', {
@@ -34,7 +43,7 @@ function consultarAguaviaExtension(extensionId, codigoNormalizado) {
 
 export default function ServiciosAguaPage() {
   const router = useRouter()
-  const [mes, setMes] = useState('MAYO 2026')
+  const [mes, setMes] = useState(MESES_DISPONIBLES[0])
   const [soloPendientes, setSoloPendientes] = useState(false)
   const [codigos, setCodigos] = useState([])
   const [totalCodigos, setTotalCodigos] = useState(0)
@@ -47,6 +56,22 @@ export default function ServiciosAguaPage() {
   const [log, setLog] = useState([])
   const [resultados, setResultados] = useState([])
   const procesandoRef = useRef(false)
+
+  // Cargar el ID de la extensión guardado en ESTE navegador (si lo hay).
+  useEffect(() => {
+    try {
+      const guardado = localStorage.getItem(EXT_ID_STORAGE_KEY)
+      if (guardado && guardado.trim()) setExtensionId(guardado.trim())
+    } catch {}
+  }, [])
+
+  // Guarda el ID por navegador y marca "por verificar" al cambiarlo.
+  function actualizarExtensionId(v) {
+    const val = v
+    setExtensionId(val)
+    setExtensionOk(false)
+    try { if (val.trim()) localStorage.setItem(EXT_ID_STORAGE_KEY, val.trim()) } catch {}
+  }
   const logRef = useRef(null)
 
   useEffect(() => { cargarCodigos() }, [mes, soloPendientes])
@@ -238,7 +263,7 @@ export default function ServiciosAguaPage() {
           </div>
           <div style={s.row}>
             <input style={s.input} placeholder="ID de la extensión CRM Bridge"
-              value={extensionId} onChange={e => { setExtensionId(e.target.value); setExtensionOk(false) }} />
+              value={extensionId} onChange={e => actualizarExtensionId(e.target.value)} />
             <button style={{ ...s.btn('#3b82f6', false), width: 'auto', padding: '8px 16px' }} onClick={verificarExtension}>
               Verificar
             </button>
