@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v10 · 2026-07-18 · Transferido/Diferencia leen de la RPC transferido_propietario (misma fuente que CARTAS), no de la columna liquidacion_idprop.transferido que está vacía
 // VERSION: v9 · 2026-07-08 · nombre "Pxxx — Nombre" + bloque resumen por propietario (validado/enviada/transferir/dif/observaciones)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
@@ -139,19 +140,27 @@ export default function FacturasPage() {
     setCargando(true); setError(null); setLineas([]); setPropMap({})
     try {
       // Lee de las tablas CONGELADAS (no en vivo). Requiere haber "Preparado mes" antes.
-      const [rLin, rProp] = await Promise.all([
+      // El "Transferido" NO se lee de liquidacion_idprop.transferido (esa columna no se
+      // puebla y queda null): se toma de la MISMA RPC que usa CARTAS (transferido_propietario),
+      // para que ambas vistas muestren el mismo dato y la decisión de facturar sea correcta.
+      const [rLin, rProp, rTransf] = await Promise.all([
         supabase.from('liquidacion_idadmon')
           .select('idadmon, idprop, propietario, inmueble, a_cobrar, comision, iva, estado, observaciones')
           .eq('mes', m),
         supabase.from('liquidacion_idprop')
           .select('idprop, nombre, tipo_factura, facturar, fecha_emision, comentario, cerrado, total_comision, total_a_transferir, transferido, transfer_validado, enviada_at')
           .eq('mes', m),
+        supabase.rpc('transferido_propietario', { p_mes: m }),
       ])
       if (rLin.error) { setError('lineas: ' + rLin.error.message); setCargando(false); return }
       if (rProp.error) { setError('propietarios: ' + rProp.error.message); setCargando(false); return }
 
+      // Mapa idprop -> transferido real (RPC). Mismo cálculo que CARTAS.
+      const transfMap = {}
+      for (const t of rTransf.data || []) transfMap[t.idprop] = Number(t.transferido) || 0
+
       const pm = {}
-      for (const p of rProp.data || []) pm[p.idprop] = p
+      for (const p of rProp.data || []) pm[p.idprop] = { ...p, _transf: transfMap[p.idprop] || 0 }
 
       // Observaciones de Alberto: vienen por línea en liquidacion_idadmon.
       // Se recopilan por propietario (la primera no vacía de cada idprop).
@@ -326,7 +335,7 @@ export default function FacturasPage() {
               const cerrado = !!p.cerrado
               // datos del bloque de resumen (informativo, para conocer la historia antes de facturar)
               const aTransf = Number(p.total_a_transferir) || 0
-              const transf = Number(p.transferido) || 0
+              const transf = Number(p._transf) || 0   // de la RPC (igual que CARTAS), no de la columna vacía
               const dif = aTransf - transf
               const validado = p.transfer_validado || ''
               const enviada = p.enviada_at
