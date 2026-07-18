@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-07-18 · Normaliza el mes a ISO (AAAA-MM) antes de filtrar (campo `mes` unificado).
+//   Acepta "JULIO 2026", "2026-07" o "2607".
 import { createClient } from '@supabase/supabase-js'
 import { consultarServicio } from '../../../../lib/scraping-servicios.js'
 
@@ -6,12 +8,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// Normaliza el mes al formato ISO 'AAAA-MM'. Acepta 'JULIO 2026' | '2026-07' | '2607'.
+function normalizarMes(m) {
+  if (!m) return m
+  const s = String(m).trim()
+  if (/^\d{4}-\d{2}$/.test(s)) return s
+  if (/^\d{4}$/.test(s)) return '20' + s.slice(0, 2) + '-' + s.slice(2)
+  const MESES = { enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
+    julio:'07', agosto:'08', septiembre:'09', setiembre:'09', octubre:'10', noviembre:'11', diciembre:'12' }
+  const mm = s.toLowerCase().match(/^([a-záéíóúñ]+)\s+(\d{4})$/)
+  if (mm && MESES[mm[1]]) return mm[2] + '-' + MESES[mm[1]]
+  return s
+}
+
 const EXCLUIR = ['estacionamiento','bodega','pendiente ubicar','']
 
 export async function POST(req) {
   try {
     const { mes } = await req.json()
-    const mesActual = mes || 'MAYO 2026'
+    const mesActual = normalizarMes(mes || 'MAYO 2026')
 
     const { data: registros, error } = await supabase
       .from('ggcc_agua_luz')

@@ -22,7 +22,30 @@ function totalF(f) {
          (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
-const MESES = ['MAYO 2026','ABRIL 2026','MARZO 2026','FEBRERO 2026','ENERO 2026','DICIEMBRE 2025','NOVIEMBRE 2025','OCTUBRE 2025']
+// VERSION: v2 · 2026-07-18 · Meses del desplegable automáticos (mes en curso + 12 atrás) y filtro por
+//   `mes` normalizado a ISO (AAAA-MM), tras unificar el campo `mes` de ggcc_agua_luz.
+const NOMBRES_MES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+function generarMeses(nAtras = 12) {
+  const hoy = new Date(); const lista = []
+  for (let i = 0; i <= nAtras; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+    lista.push(`${NOMBRES_MES[d.getMonth()]} ${d.getFullYear()}`)
+  }
+  return lista
+}
+// Normaliza el mes al formato ISO 'AAAA-MM' que tiene la columna `mes`. Acepta 'JULIO 2026' | '2026-07' | '2607'.
+function normalizarMes(m) {
+  if (!m) return m
+  const s = String(m).trim()
+  if (/^\d{4}-\d{2}$/.test(s)) return s
+  if (/^\d{4}$/.test(s)) return '20' + s.slice(0, 2) + '-' + s.slice(2)
+  const MM = { enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
+    julio:'07', agosto:'08', septiembre:'09', setiembre:'09', octubre:'10', noviembre:'11', diciembre:'12' }
+  const g = s.toLowerCase().match(/^([a-záéíóúñ]+)\s+(\d{4})$/)
+  if (g && MM[g[1]]) return g[2] + '-' + MM[g[1]]
+  return s
+}
+const MESES = generarMeses(12)
 
 function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
   const [open, setOpen] = useState(false)
@@ -137,7 +160,7 @@ function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
 const emptyF = { selected:[], sort:null, min:'', max:'' }
 
 export default function Deudas() {
-  const [mes, setMes] = useState('ABRIL 2026')
+  const [mes, setMes] = useState(MESES[0])
   const [filas, setFilas] = useState([])
   const [contratos, setContratos] = useState({})
   const [loading, setLoading] = useState(true)
@@ -176,7 +199,7 @@ export default function Deudas() {
     setSortCol(null); setSortDir(null)
     supabase.from('ggcc_agua_luz')
       .select('idadmon,idinmue,estado,aamm,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
-      .eq('mes', mes).limit(500)
+      .eq('mes', normalizarMes(mes)).limit(500)
       .then(({data}) => {
         setFilas((data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.')))
         setLoading(false)
@@ -228,7 +251,7 @@ export default function Deudas() {
           fecha_hecho_gas: editData.fecha_hecho_gas,
           updated_at: new Date().toISOString(),
         })
-        .eq('mes', mes)
+        .eq('mes', normalizarMes(mes))
         .eq('idadmon', drawer.idadmon)
         .eq('idinmue', drawer.idinmue)
       if (error) throw error
