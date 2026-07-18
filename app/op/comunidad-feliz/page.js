@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-07-18 · Añade "Pegar del portal": cargar GGCC pegando el texto de Comunidad
+//   Feliz (bloques de 3, con dedup y validación anti-desalineo) sin pasar por xlsx ni Drive.
+//   Reutiliza el previo/tabla/guardar existentes. La vía de Drive se mantiene intacta.
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 const FOLDER_ID = '1qE47HbwpDg32hkMUJIxRuWTRNA6Uhj47'
@@ -36,6 +39,9 @@ export default function ComunidadFeliz() {
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
   const [modoCorr, setModoCorr] = useState('supabase') // supabase | archivo
+  const [modoCarga, setModoCarga] = useState('texto')  // texto (pegar del portal) | drive
+  const [textoPegado, setTextoPegado] = useState('')
+  const [avisoParse, setAvisoParse] = useState(null)   // { propiedades, duplicados }
   const [filtroBuscar, setFiltroBuscar] = useState('')
   const [tabActiva, setTabActiva] = useState('todos') // todos | match | sinmatch | nuevos
 
@@ -86,6 +92,35 @@ export default function ComunidadFeliz() {
       if (!res.ok) throw new Error(data.error || 'Error procesando')
       setResultado(data.filas)
       setStats(data.stats)
+      setEstado('listo')
+    } catch (e) {
+      setError(e.message)
+      setEstado('idle')
+    }
+  }
+
+  // Analizar el TEXTO pegado del portal (alternativa a Drive). Produce el mismo previo.
+  async function analizarTexto() {
+    if (!textoPegado.trim()) return setError('Pega primero el texto del portal.')
+    setEstado('procesando'); setError(''); setResultado([]); setAvisoParse(null)
+    try {
+      const res = await fetch('/api/comunidad-feliz/parsear-texto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto: textoPegado, mesClave, aamm }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        // Error de estructura (desalineo): mostrar detalles y NO seguir
+        const det = data.detalles ? '\n· ' + data.detalles.join('\n· ') : ''
+        throw new Error((data.error || 'Error analizando el texto') + det)
+      }
+      setResultado(data.filas)
+      setStats(data.stats)
+      setAvisoParse({
+        propiedades: data.stats.propiedadesPegadas,
+        duplicados: data.stats.duplicadosIgnorados,
+      })
       setEstado('listo')
     } catch (e) {
       setError(e.message)
@@ -166,47 +201,79 @@ export default function ComunidadFeliz() {
         </div>
       </div>
 
-      {/* Paso 2 — Archivos Drive */}
+      {/* Paso 2 — Origen de los datos */}
       <div style={cardStyle}>
-        <div style={stepLabel}>2. Archivos en Drive</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-          <ArchivoBox
-            titulo="Archivo CF"
-            esperado={`${aamm}_CF.xlsx`}
-            archivo={archivoCF}
-          />
-          <ArchivoBox
-            titulo="Correspondencias"
-            esperado={`${aamm}_CF_correspondencias.xlsx`}
-            archivo={archivoCorr}
-            opcional={true}
-            nota="Opcional — se usa la tabla Supabase si no hay archivo"
-          />
+        <div style={stepLabel}>2. Origen de los datos</div>
+
+        {/* Toggle Pegar del portal / Drive */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {[
+            { k: 'texto', label: '📋 Pegar del portal' },
+            { k: 'drive', label: '📁 Buscar en Drive' },
+          ].map(m => (
+            <button key={m.k} onClick={() => { setModoCarga(m.k); setError(''); setResultado([]); setEstado('idle'); setAvisoParse(null) }}
+              style={{ ...tabBtn, ...(modoCarga === m.k ? tabBtnActive : {}) }}>
+              {m.label}
+            </button>
+          ))}
         </div>
-        <button
-          onClick={buscarArchivesDrive}
-          disabled={estado === 'buscando'}
-          style={btnSecondary}
-        >
-          {estado === 'buscando' ? '🔍 Buscando...' : '🔍 Buscar en Drive'}
-        </button>
+
+        {modoCarga === 'texto' ? (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 8px' }}>
+              En Comunidad Feliz → "Todas las propiedades" (50 filas por página), selecciona y copia
+              las 3 columnas (Comunidad / Propiedad / Deuda) y pégalas aquí. Puedes pegar las tandas
+              de 50 <b>una tras otra</b> en esta misma caja; los duplicados se ignoran solos.
+            </p>
+            <textarea
+              value={textoPegado}
+              onChange={e => { setTextoPegado(e.target.value); setAvisoParse(null) }}
+              placeholder={'Comunidad Alto Las Rejas II\n705\n$ 117.608\n...'}
+              rows={8}
+              style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 12,
+                       padding: 10, border: '1px solid #D1D5DB', borderRadius: 8, resize: 'vertical' }}
+            />
+            {avisoParse && (
+              <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>
+                Detectadas <b>{avisoParse.propiedades}</b> propiedades
+                {avisoParse.duplicados > 0 && <span> · {avisoParse.duplicados} duplicado(s) ignorado(s)</span>}.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <ArchivoBox titulo="Archivo CF" esperado={`${aamm}_CF.xlsx`} archivo={archivoCF} />
+              <ArchivoBox titulo="Correspondencias" esperado={`${aamm}_CF_correspondencias.xlsx`}
+                archivo={archivoCorr} opcional={true} nota="Opcional — se usa la tabla Supabase si no hay archivo" />
+            </div>
+            <button onClick={buscarArchivesDrive} disabled={estado === 'buscando'} style={btnSecondary}>
+              {estado === 'buscando' ? '🔍 Buscando...' : '🔍 Buscar en Drive'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Paso 3 — Procesar */}
       <div style={cardStyle}>
         <div style={stepLabel}>3. Procesar</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button
-            onClick={procesar}
-            disabled={!archivoCF || estado === 'procesando'}
-            style={btnPrimary}
-          >
-            {estado === 'procesando' ? '⚡ Procesando...' : '⚡ Procesar GGCC'}
-          </button>
+          {modoCarga === 'texto' ? (
+            <button onClick={analizarTexto} disabled={!textoPegado.trim() || estado === 'procesando'} style={btnPrimary}>
+              {estado === 'procesando' ? '⚡ Analizando...' : '⚡ Analizar y previsualizar'}
+            </button>
+          ) : (
+            <button onClick={procesar} disabled={!archivoCF || estado === 'procesando'} style={btnPrimary}>
+              {estado === 'procesando' ? '⚡ Procesando...' : '⚡ Procesar GGCC'}
+            </button>
+          )}
           {estado === 'listo' && (
             <button onClick={guardar} style={btnGuardar}>
               💾 Guardar en Supabase
             </button>
+          )}
+          {estado === 'guardando' && (
+            <span style={{ color: '#6B7280', fontSize: 14, alignSelf: 'center' }}>Guardando…</span>
           )}
           {estado === 'guardado' && (
             <span style={{ color: '#3B6D11', fontWeight: 500, fontSize: 14, alignSelf: 'center' }}>
@@ -214,8 +281,12 @@ export default function ComunidadFeliz() {
             </span>
           )}
         </div>
+        <p style={{ fontSize: 12, color: '#6B7280', margin: '10px 0 0' }}>
+          "Analizar" solo <b>previsualiza</b> (no escribe nada). Revisa los números y la tabla de abajo,
+          y solo entonces pulsa <b>Guardar en Supabase</b>.
+        </p>
         {error && (
-          <div style={{ marginTop: 10, color: '#A32D2D', fontSize: 13 }}>✗ {error}</div>
+          <div style={{ marginTop: 10, color: '#A32D2D', fontSize: 13, whiteSpace: 'pre-wrap' }}>✗ {error}</div>
         )}
       </div>
 
