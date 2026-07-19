@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v6 · 2026-07-19 · Fase 2b: en mes CONGELADO la columna Validado es solo-lectura (sin botón Validar ni quitar validación)
 // VERSION: v5 · 2026-07-19 · Fase 2: mes CONGELADO lee la foto (liquidacion_congelada_propietario + detalle de liquidacion_idadmon); mes en vivo sin cambios
 // VERSION: v4 · 2026-07-19 · Fase 1 coherencia: en mes CONGELADO solo se muestra el indicador 🔒 CONGELADA (se ocultan Recalcular fuentes y Congelar mes)
 // VERSION: v3 · 2026-07-19 · botón "Congelar mes" (modal de confirmación + indicador 🔒 CONGELADA + aviso "YA CONGELADA"); usa endpoint /api/liquidaciones/congelar-mes
@@ -479,6 +480,14 @@ export default function LiquidacionesPage() {
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
                     <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : estadoCongelado === 'congelada'
+                          /* Mes congelado: solo lectura. Muestra la validación tal como quedó, sin poder cambiarla. */
+                          ? (validaciones[p.idprop] && validaciones[p.idprop].validado
+                              ? <span title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}`}
+                                  style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>
+                                  ✓ {nombreCorto(validaciones[p.idprop].validado_por)}
+                                </span>
+                              : <span style={{ color: '#D1D5DB' }}>—</span>)
                         : (validaciones[p.idprop] && validaciones[p.idprop].validado)
                           ? <span onClick={puedeValidar ? (e => toggleValidar(p.idprop, e)) : undefined}
                               title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}${puedeValidar ? ' (clic para quitar)' : ''}`}
