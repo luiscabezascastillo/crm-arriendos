@@ -31,7 +31,7 @@ const RUTAS = {
   '/panel':         INTERNOS,
   '/procesos':      INTERNOS,
   '/propiedades':   INTERNOS,
-  '/mi-portal':     INTERNOS,
+  '/procesos/mi-portal': INTERNOS,
   // Bloque Ventas (solo rol 'ventas', interno):
   '/publicaciones':  ['ventas'],
   '/requerimientos': ['ventas'],
@@ -371,8 +371,8 @@ export default function TopNav() {
       </div>
 
       {/* Mis tareas */}
-      {puede('/mi-portal') && (
-        <Link href="/mi-portal" style={s.infoLink(isActive('/mi-portal'))}>📋 Mis tareas</Link>
+      {puede('/procesos/mi-portal') && (
+        <Link href="/procesos/mi-portal" style={s.infoLink(isActive('/procesos/mi-portal'))}>📋 Mis tareas</Link>
       )}
 
       {/* Menú de usuario */}
