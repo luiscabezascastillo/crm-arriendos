@@ -1,7 +1,7 @@
 'use client'
-// VERSION: v18 · 2026-07-19 · Quitar la línea redundante "Saldo a favor: devolver" bajo el Estado
-//   (el resultado ya indica a devolver/cobrar) y centrar verticalmente el bloque estado/resultado/
-//   garantía. Hereda v17 (cabecera y bloque de partes compactados) y v16 (descuentos separados).
+// VERSION: v19 · 2026-07-19 · "Estado del proceso" ahora agrupa los nodos bajo las 6 ETAPAS del
+//   modelo (antes listaba 23 pasos planos). Cada nodo muestra su tipo (Auto/Tarea/Verificar/Decisión)
+//   y marca ● los que bloquean el cierre (controles anti-pérdida). Botón "Ver las 6 etapas". Hereda v18.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -85,6 +85,7 @@ export default function TerminosPage() {
   const [panel, setPanel] = useState(null)
   const [loadingPanel, setLoadingPanel] = useState(false)
   const [nodos, setNodos] = useState([])
+  const [etapas, setEtapas] = useState([])
   const [wfExpandido, setWfExpandido] = useState(false)
   const [sucesorExpandido, setSucesorExpandido] = useState(false)  // descuentos del inmueble siguiente (colapsado por defecto)
   const [lineas, setLineas] = useState({ garantia: [], servicios: [], reparaciones: [] })
@@ -134,8 +135,10 @@ export default function TerminosPage() {
   }
 
   async function cargarNodos() {
-    const { data } = await supabase.from('workflow_nodes').select('codigo, nombre, area_responsable, orden_visual').eq('workflow_codigo', 'TERMINO').order('orden_visual')
+    const { data } = await supabase.from('workflow_nodes').select('codigo, nombre, area_responsable, orden_visual, etapa_numero, tipo, bloquea_cierre').eq('workflow_codigo', 'TERMINO').order('orden_visual')
     setNodos(data || [])
+    const { data: et } = await supabase.from('workflow_etapas').select('numero, nombre, compuerta_dura').eq('workflow_codigo', 'TERMINO').order('numero')
+    setEtapas(et || [])
   }
   async function cargarLista() {
     // Origen: datos_arriendos por estado de termino. Q (en término), N-DICOM (derivados a legal),
@@ -537,6 +540,18 @@ export default function TerminosPage() {
   const tareasPorNodo = {}; wfTasks.forEach(t => { tareasPorNodo[t.node_codigo] = t })
   let pasoActual = null
   for (const nd of nodos) { if (estadoTarea(tareasPorNodo[nd.codigo]) !== 'hecho') { pasoActual = nd; break } }
+  // Etiqueta y color del tipo de nodo (AUTO / TAREA / VERIFICACION / DECISION)
+  const tipoInfo = (tp) => {
+    switch (String(tp || '').toUpperCase()) {
+      case 'DECISION': return { txt: 'Decisión', bg: '#FEF3C7', col: '#92400e' }
+      case 'VERIFICACION': return { txt: 'Verificar', bg: '#DBEAFE', col: '#1e40af' }
+      case 'TAREA': return { txt: 'Tarea', bg: '#E5E7EB', col: '#374151' }
+      case 'AUTO': return { txt: 'Auto', bg: '#F3F4F6', col: '#9ca3af' }
+      default: return { txt: '', bg: '#F3F4F6', col: '#9ca3af' }
+    }
+  }
+  // Nodos agrupados por etapa (para la vista de 6 etapas)
+  const nodosPorEtapa = {}; nodos.forEach(nd => { (nodosPorEtapa[nd.etapa_numero] ??= []).push(nd) })
 
   const btn = (bg, dis) => ({ padding: '7px 12px', borderRadius: 7, border: 'none', background: dis ? '#cbd5e1' : bg, color: '#fff', fontSize: 12, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', fontFamily: 'inherit' })
   const th = { padding: '4px 6px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: .3 }
@@ -758,7 +773,7 @@ export default function TerminosPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Estado del proceso</span>
                         <button onClick={() => router.push('/procesos/terminos/' + idadmonSel)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#fff' }}>Abrir workflow →</button>
-                        <button onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#185FA5' }}>{wfExpandido ? 'Ver paso actual' : `Ver los ${nodos.length} pasos`}</button>
+                        <button onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#185FA5' }}>{wfExpandido ? 'Ver paso actual' : `Ver las ${etapas.length || 6} etapas`}</button>
                       </div>
                       {nodos.length === 0 ? <div style={{ color: '#888', fontSize: 12 }}>Cargando pasos…</div>
                         : !wfTasks.length ? <div style={{ color: '#9ca3af', fontSize: 12 }}>Sin instancia de workflow para este IDADMON.</div>
@@ -766,7 +781,7 @@ export default function TerminosPage() {
                             pasoActual ? (
                               <div style={{ padding: 8, background: '#EAF2FB', borderRadius: 8 }}>
                                 <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Paso actual</div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{pasoActual.codigo} · {pasoActual.nombre}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{pasoActual.nombre}</div>
                                 <div style={{ fontSize: 11, color: '#888' }}>{pasoActual.area_responsable}</div>
                                 <button onClick={() => completarPaso(pasoActual)} disabled={completandoWf} style={{ marginTop: 8, fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, border: 'none', background: completandoWf ? '#9ca3af' : '#185FA5', color: '#fff', cursor: completandoWf ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                                   {completandoWf ? 'Completando…' : 'Completar paso →'}
@@ -774,17 +789,35 @@ export default function TerminosPage() {
                               </div>
                             ) : <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>Todos los pasos completados ✓</div>
                           ) : (
-                            nodos.map(nd => {
-                              const t = tareasPorNodo[nd.codigo]; const st = estadoTarea(t)
-                              const dot = st === 'hecho' ? '#16a34a' : st === 'curso' ? '#2563eb' : '#d1d5db'
-                              const fecha = t?.fecha_cierre || t?.fecha_limite
+                            (etapas.length ? etapas : [...Array(6)].map((_, i) => ({ numero: i, nombre: 'Etapa ' + i }))).map(et => {
+                              const nds = nodosPorEtapa[et.numero] || []
+                              if (!nds.length) return null
+                              const hechos = nds.filter(nd => estadoTarea(tareasPorNodo[nd.codigo]) === 'hecho').length
                               return (
-                                <div key={nd.codigo} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid #F6F5F2' }}>
-                                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, fontWeight: 700 }}>{st === 'hecho' ? '✓' : ''}</span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: st === 'pendiente' ? '#9ca3af' : '#1a1a2e' }}>{nd.codigo} · {nd.nombre}</div>
-                                    <div style={{ fontSize: 10, color: '#aaa' }}>{nd.area_responsable}{fecha ? ' · ' + fmtFecha(fecha) : ''}{st === 'curso' ? ' · en curso' : ''}</div>
+                                <div key={et.numero} style={{ marginBottom: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4, paddingBottom: 3, borderBottom: '2px solid #E8EEF6' }}>
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: '#185FA5' }}>{et.numero}. {et.nombre}{et.compuerta_dura ? ' 🔒' : ''}</span>
+                                    <span style={{ fontSize: 10, color: '#9ca3af' }}>{hechos}/{nds.length}</span>
                                   </div>
+                                  {nds.map(nd => {
+                                    const t = tareasPorNodo[nd.codigo]; const st = estadoTarea(t)
+                                    const dot = st === 'hecho' ? '#16a34a' : st === 'curso' ? '#2563eb' : '#d1d5db'
+                                    const fecha = t?.fecha_cierre || t?.fecha_limite
+                                    const ti = tipoInfo(nd.tipo)
+                                    return (
+                                      <div key={nd.codigo} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid #F6F5F2', alignItems: 'flex-start' }}>
+                                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, fontWeight: 700 }}>{st === 'hecho' ? '✓' : ''}</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: 12, fontWeight: 600, color: st === 'pendiente' ? '#9ca3af' : '#1a1a2e' }}>
+                                            {nd.nombre}
+                                            {nd.bloquea_cierre ? <span title="Bloquea el cierre (control anti-pérdida)" style={{ color: '#dc2626', marginLeft: 4 }}>●</span> : null}
+                                          </div>
+                                          <div style={{ fontSize: 10, color: '#aaa' }}>{nd.area_responsable}{fecha ? ' · ' + fmtFecha(fecha) : ''}{st === 'curso' ? ' · en curso' : ''}</div>
+                                        </div>
+                                        {ti.txt && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: ti.bg, color: ti.col, flexShrink: 0, marginTop: 2 }}>{ti.txt}</span>}
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               )
                             })
