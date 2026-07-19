@@ -1,8 +1,7 @@
 'use client'
-// VERSION: v20 · 2026-07-19 · "Estado del proceso" rediseñado para NO agobiar: barra de 6 etapas +
-//   UNA tarjeta de acción ("ahora te toca a ti" con botón, o "esperando a otro equipo" sin botón según
-//   el rol), saltándose los pasos AUTO. El detalle de los 23 nodos queda plegado ("ver proceso completo").
-//   Hereda v19.
+// VERSION: v21 · 2026-07-19 · El IDADMON de la lista y el panel ya NO llevan a la página de bandas
+//   (el "muro de 23 cajas"): el IDADMON abre el panel, y se quita el botón "Abrir workflow ↗".
+//   La vista del término es SOLO el panel (barra de 6 etapas + tarjeta de acción). Hereda v20.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -496,7 +495,7 @@ export default function TerminosPage() {
                     {rows.length === 0 ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
                       : rows.map(r => (
                         <tr key={r.idadmon} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                          <td style={{ padding: '10px 12px' }}><span onClick={() => router.push('/procesos/terminos/' + r.idadmon)} title="Abrir workflow del término" style={{ color: '#185FA5', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>{r.idadmon}</span></td>
+                          <td style={{ padding: '10px 12px' }}><span onClick={() => abrir(r.idadmon)} title="Abrir término" style={{ color: '#185FA5', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>{r.idadmon}</span></td>
                           <td style={{ padding: '10px 12px', color: '#555', whiteSpace: 'nowrap' }}>{r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.propietario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.arrendatario || '—'}</td>
@@ -831,7 +830,6 @@ export default function TerminosPage() {
                                 {/* Detalle completo, plegado */}
                                 <div style={{ marginTop: 10 }}>
                                   <span onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, color: '#9ca3af', cursor: 'pointer', fontWeight: 600 }}>{wfExpandido ? '▾ Ocultar el proceso completo' : '▸ Ver el proceso completo (6 etapas)'}</span>
-                                  <button onClick={() => router.push('/procesos/terminos/' + idadmonSel)} style={{ marginLeft: 12, fontSize: 11, color: '#185FA5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Abrir workflow ↗</button>
                                 </div>
 
                                 {wfExpandido && listaEt.map(et => {
