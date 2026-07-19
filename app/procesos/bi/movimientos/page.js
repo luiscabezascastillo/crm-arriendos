@@ -1,3 +1,6 @@
+// VERSION: v13 · 2026-07-19 · Fix dropdown filtro: pasa a position:fixed (coords al abrir) para
+//   escapar del scroll de la tabla (overflow:auto/maxHeight:72vh); antes quedaba atrapado y se salía
+//   por abajo. Altura acotada desde su posición hasta el borde inferior; botones siempre visibles.
 // VERSION: v12 · 2026-07-19 · Dropdown del filtro acotado a la altura de pantalla: la lista de casillas
 //   hace scroll y los botones Limpiar/Ver todos quedan siempre fijos abajo (sin bajar el zoom).
 // VERSION: v11 · 2026-07-19 · Tooltip al hover: cada celda muestra su texto completo en la burbuja del
@@ -148,15 +151,29 @@ function bgCelda(ci, r) {
 // Opcional: `chips` renderiza una fila de botones de categoría arriba (para UNIQUE CONCEPT).
 function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ left: 0, top: 0 })   // coords del dropdown (fixed)
   const [buscar, setBuscar] = useState('')
   const [pending, setPending] = useState(null)
   const ref = useRef(null)
+  const btnRef = useRef(null)
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
   useEffect(() => { if (open) { setBuscar(''); setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
+  // Abre el dropdown calculando su posición fija (respecto a la pantalla, no a la tabla con scroll).
+  const abrir = () => {
+    if (open) { setOpen(false); return }
+    const rc = btnRef.current?.getBoundingClientRect()
+    if (rc) {
+      const W = 250
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+      const left = align === 'right' ? Math.max(8, rc.right - W) : Math.min(rc.left, vw - W - 8)
+      setPos({ left, top: rc.bottom + 4 })
+    }
+    setOpen(true)
+  }
   const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const activo = (value && value.length > 0) || sortCol === col || (chips && catFiltro && catFiltro !== 'todos')
   const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
@@ -168,14 +185,14 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
   const limpiar = () => { setPending(new Set()); onApply(col, []); setOpen(false) }
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: activo ? '#1a56db' : '#5F5E5A', letterSpacing: '0.03em' }}>
+      <button ref={btnRef} onClick={abrir} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: activo ? '#1a56db' : '#5F5E5A', letterSpacing: '0.03em' }}>
         {label}
         <span style={{ fontSize: 9, color: activo ? '#1a56db' : '#B4B2A9' }}>
           {value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
         </span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, maxHeight: 'calc(100vh - 150px)', display: 'flex', flexDirection: 'column', zIndex: 300, padding: 8, boxSizing: 'border-box' }}>
+        <div style={{ position: 'fixed', left: pos.left, top: pos.top, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, maxHeight: `calc(100vh - ${pos.top + 12}px)`, display: 'flex', flexDirection: 'column', zIndex: 300, padding: 8, boxSizing: 'border-box' }}>
           {chips && (
             <>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Categoría</div>
