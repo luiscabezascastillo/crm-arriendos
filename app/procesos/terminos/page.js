@@ -1,8 +1,7 @@
 'use client'
-// VERSION: v17 · 2026-07-19 · Compactar el panel: (1) cabecera del término en una sola línea
-//   (Término · IDADMON · inmueble); (2) Estado/Resultado con la etiqueta secundaria en línea;
-//   (3) bloque de partes (arrendatario/aval/propietario/…) con menos altura (padding y gaps
-//   reducidos). Hereda v16 (descuentos término/sucesor separados).
+// VERSION: v18 · 2026-07-19 · Quitar la línea redundante "Saldo a favor: devolver" bajo el Estado
+//   (el resultado ya indica a devolver/cobrar) y centrar verticalmente el bloque estado/resultado/
+//   garantía. Hereda v17 (cabecera y bloque de partes compactados) y v16 (descuentos separados).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -687,8 +686,8 @@ export default function TerminosPage() {
           : !A ? <div style={{ ...card, color: '#b91c1c' }}>No se encontró {idadmonSel} en datos_arriendos.</div>
             : (
               <>
-                <div style={{ ...card, display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 16 }}>
-                  <div><div style={lbl}>Estado del término</div><div style={{ fontSize: 17, fontWeight: 800, color: R.conSaldo ? '#16a34a' : '#dc2626' }}>{etiq}</div><div style={{ fontSize: 11, color: '#888' }}>{R.conSaldo ? 'Saldo a favor · devolver' : 'Saldo negativo · reclamar/imputar'}</div></div>
+                <div style={{ ...card, display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                  <div><div style={lbl}>Estado del término</div><div style={{ fontSize: 17, fontWeight: 800, color: R.conSaldo ? '#16a34a' : '#dc2626' }}>{etiq}</div></div>
                   <div><div style={lbl}>Resultado del término</div><div style={{ fontSize: 20, fontWeight: 800, color: R.resultado < 0 ? '#dc2626' : '#16a34a' }}>{fmtPesos(R.resultado)} <span style={{ fontSize: 11, fontWeight: 500, color: '#888' }}>{R.resultado < 0 ? 'a cobrar' : 'a devolver'}</span></div></div>
                   <div><div style={lbl}>Quién tiene la garantía</div><div style={{ ...val, fontSize: 16 }}>{quienGar}</div></div>
                   <div><div style={lbl}>Garantía entregada</div><div style={{ ...val, fontSize: 16 }}>{fmtPesos(garantiaVal)}</div></div>
