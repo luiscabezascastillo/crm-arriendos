@@ -1,3 +1,5 @@
+// VERSION: v11 · 2026-07-19 · Tooltip al hover: cada celda muestra su texto completo en la burbuja del
+//   navegador (title en el <td>), para leer lo que se corta (UNIQUE CONCEPT, COMENTARIOS, DISCRIMINADOR…).
 // VERSION: v10 · 2026-07-19 · Fix amarillo UNIQUE CONCEPT: un texto libre identificado (ej. "PO64-
 //   PAVEZ, JUANA") quita el aviso amarillo "falta teclear IDADMON", igual que un IDADMON válido.
 //   Vacío o IDADMON a medio teclear siguen en amarillo. (Complementa v9.)
@@ -864,11 +866,16 @@ export default function BiVista() {
               {(verTodos || filas.length <= TOPE_DEFECTO) && filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
               {visibles.map((r) => (
                 <tr key={r.id}>
-                  {COLS.map((c, ci) => (
-                    <td key={ci} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
+                  {COLS.map((c, ci) => {
+                    // Tooltip (burbuja del navegador) con el texto completo de la celda al hacer hover,
+                    // para poder leer lo que se corta. Columnas de botón/check no llevan.
+                    const tdTitle = c.key.startsWith('_') ? undefined : (c.money ? (fmt(r[c.key]) || undefined) : (String(r[c.key] ?? '').trim() || undefined))
+                    return (
+                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
                       {cell(r, c)}
                     </td>
-                  ))}
+                    )
+                  })}
                 </tr>
               ))}
               {visibles.length === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
