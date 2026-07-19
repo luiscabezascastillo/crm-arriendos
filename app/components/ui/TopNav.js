@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v1 · 2026-07-19 · El menú "Propiedades" solo lo ve Dirección (esDireccion: rol direccion
+//   o email de dirección), además del permiso de proceso que ya existía. Resto del TopNav sin cambios.
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -233,8 +235,8 @@ export default function TopNav() {
         <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
       )}
 
-      {/* Propiedades — módulo de datos maestros (entre Panel y Procesos) */}
-      {puede('/propiedades') && (
+      {/* Propiedades — módulo de datos maestros. Solo Dirección (rol direccion o email de dirección). */}
+      {esDireccion && puede('/propiedades') && (
       <div ref={propiedadesRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(propiedadesActive)} onClick={() => { setPropiedadesOpen(v => !v); setProcesosOpen(false); setVentasOpen(false); }}>
           Propiedades <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
