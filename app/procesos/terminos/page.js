@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v16 · 2026-07-19 · Rediseño descuentos (paso 1): el bloque "Descuentos relacionados" se
-//   separa en dos: "Descuentos de este término" (los que cuentan, con total) y "Descuentos del
-//   inmueble siguiente" (sucesor, colapsable, para chequear gastos compartidos — no suman). Antes
-//   iban en una tabla corrida distinguidos solo por un fondo sutil. Hereda v15.
+// VERSION: v17 · 2026-07-19 · Compactar el panel: (1) cabecera del término en una sola línea
+//   (Término · IDADMON · inmueble); (2) Estado/Resultado con la etiqueta secundaria en línea;
+//   (3) bloque de partes (arrendatario/aval/propietario/…) con menos altura (padding y gaps
+//   reducidos). Hereda v16 (descuentos término/sucesor separados).
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -437,8 +437,8 @@ export default function TerminosPage() {
 
   const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
   const input = { padding: '8px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
-  const lbl = { fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 2 }
-  const val = { fontSize: 13, color: '#1a1a2e', fontWeight: 600 }
+  const lbl = { fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 1, lineHeight: 1.2 }
+  const val = { fontSize: 13, color: '#1a1a2e', fontWeight: 600, lineHeight: 1.25 }
   const inEd = { ...input, padding: '4px 7px', fontSize: 12 }
   const inNum = { ...inEd, textAlign: 'right', width: 100 }
 
@@ -585,10 +585,10 @@ export default function TerminosPage() {
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 18, fontFamily: '"DM Sans", sans-serif' }}>
         {/* B1 — cabecera fija al hacer scroll (debajo del TopNav, que mide 52px) */}
         <div style={{ position: 'sticky', top: 52, zIndex: 50, background: '#f4f6f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, padding: '12px 0', borderBottom: '1px solid #E8E6E0' }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5 }}>Término de arriendo</div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1a1a2e', margin: '2px 0' }}>{idadmonSel}</h1>
-            <div style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5 }}>Término</span>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>{idadmonSel}</h1>
+            <span style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
@@ -688,12 +688,12 @@ export default function TerminosPage() {
             : (
               <>
                 <div style={{ ...card, display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 16 }}>
-                  <div><div style={lbl}>Estado del término</div><div style={{ fontSize: 18, fontWeight: 800, color: R.conSaldo ? '#16a34a' : '#dc2626' }}>{etiq}</div><div style={{ fontSize: 11, color: '#888' }}>{R.conSaldo ? 'Saldo a favor: devolver' : 'Saldo negativo: reclamar / imputar'}</div></div>
-                  <div><div style={lbl}>Resultado del término</div><div style={{ fontSize: 22, fontWeight: 800, color: R.resultado < 0 ? '#dc2626' : '#16a34a' }}>{fmtPesos(R.resultado)}</div><div style={{ fontSize: 11, color: '#888' }}>{R.resultado < 0 ? 'a cobrar' : 'a devolver'}</div></div>
+                  <div><div style={lbl}>Estado del término</div><div style={{ fontSize: 17, fontWeight: 800, color: R.conSaldo ? '#16a34a' : '#dc2626' }}>{etiq}</div><div style={{ fontSize: 11, color: '#888' }}>{R.conSaldo ? 'Saldo a favor · devolver' : 'Saldo negativo · reclamar/imputar'}</div></div>
+                  <div><div style={lbl}>Resultado del término</div><div style={{ fontSize: 20, fontWeight: 800, color: R.resultado < 0 ? '#dc2626' : '#16a34a' }}>{fmtPesos(R.resultado)} <span style={{ fontSize: 11, fontWeight: 500, color: '#888' }}>{R.resultado < 0 ? 'a cobrar' : 'a devolver'}</span></div></div>
                   <div><div style={lbl}>Quién tiene la garantía</div><div style={{ ...val, fontSize: 16 }}>{quienGar}</div></div>
                   <div><div style={lbl}>Garantía entregada</div><div style={{ ...val, fontSize: 16 }}>{fmtPesos(garantiaVal)}</div></div>
                 </div>
-                <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+                <div style={{ ...card, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px 14px' }}>
                   <div><div style={lbl}>Arrendatario</div><div style={val}>{A.arrendatario || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{A.movil || ''} {A.mail_arrendatario || ''}</div></div>
                   <div><div style={lbl}>Aval</div><div style={val}>{A.avalista || '—'}</div><div style={{ fontSize: 11, color: '#888' }}>{A.telefono_avalista || ''}</div></div>
                   <div><div style={lbl}>Propietario</div><div style={val}>{A.propietario || '—'}</div></div>
