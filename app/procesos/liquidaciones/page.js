@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v5 · 2026-07-19 · Fase 2: mes CONGELADO lee la foto (liquidacion_congelada_propietario + detalle de liquidacion_idadmon); mes en vivo sin cambios
 // VERSION: v4 · 2026-07-19 · Fase 1 coherencia: en mes CONGELADO solo se muestra el indicador 🔒 CONGELADA (se ocultan Recalcular fuentes y Congelar mes)
 // VERSION: v3 · 2026-07-19 · botón "Congelar mes" (modal de confirmación + indicador 🔒 CONGELADA + aviso "YA CONGELADA"); usa endpoint /api/liquidaciones/congelar-mes
 // VERSION: v2 · 2026-07-08 · boton renombrado a 'Recalcular fuentes'
@@ -85,8 +86,21 @@ export default function LiquidacionesPage() {
 
   async function cargarMes(m) {
     setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
+    // ¿El mes está congelado? Si lo está, se lee la FOTO congelada (no se recalcula en vivo).
+    let congelado = false
+    try {
+      const rc = await fetch('/api/liquidaciones/congelar-mes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes: m, check: true }),
+      })
+      const jc = await rc.json().catch(() => ({}))
+      congelado = jc.estado === 'congelada'
+      setEstadoCongelado(jc.estado || null)
+    } catch { setEstadoCongelado(null) }
     const [rLiq, rTransf] = await Promise.all([
-      supabase.rpc('calcular_liquidacion_propietario', { p_mes: m }),
+      // Congelado -> resumen desde liquidacion_idadmon; en vivo -> RPC de cálculo.
+      supabase.rpc(congelado ? 'liquidacion_congelada_propietario' : 'calcular_liquidacion_propietario', { p_mes: m }),
+      // El transferido se lee del bi (estable en meses pasados), igual en ambos casos.
       supabase.rpc('transferido_propietario', { p_mes: m }),
     ])
     if (rLiq.error) { setError(rLiq.error.message); setPropietarios([]); setCargando(false); return }
@@ -122,9 +136,27 @@ export default function LiquidacionesPage() {
     if (expandido === idprop) { setExpandido(null); return }
     setExpandido(idprop)
     if (detalles[idprop]) return
-    const { data, error } = await supabase.rpc('calcular_liquidacion', { p_mes: mes })
-    if (error) { setError(error.message); return }
-    const delProp = (data || []).filter(d => d.idprop === idprop)
+    let delProp = []
+    if (estadoCongelado === 'congelada') {
+      // Mes congelado: leer las líneas de la FOTO (liquidacion_idadmon) y mapear
+      // los nombres de columna a los que espera el render (como calcular_liquidacion).
+      const { data, error } = await supabase.from('liquidacion_idadmon')
+        .select('idadmon, idprop, inmueble, a_cobrar, comision, iva, descuentos, neto_transferir, recibido, falta_al_cierre')
+        .eq('mes', mes).eq('idprop', idprop)
+      if (error) { setError(error.message); return }
+      delProp = (data || []).map(r => ({
+        idadmon: r.idadmon, idprop: r.idprop, inmueble: r.inmueble,
+        base: n0(r.a_cobrar), comision: n0(r.comision), iva_comision: n0(r.iva),
+        total_descuentos: n0(r.descuentos), neto_transferir: n0(r.neto_transferir),
+        recibido_banco: n0(r.recibido), falta: n0(r.falta_al_cierre),
+        hubo_falta: n0(r.falta_al_cierre) > 0,
+      }))
+    } else {
+      // Mes en vivo: recalcular
+      const { data, error } = await supabase.rpc('calcular_liquidacion', { p_mes: mes })
+      if (error) { setError(error.message); return }
+      delProp = (data || []).filter(d => d.idprop === idprop)
+    }
     const ids = delProp.map(d => d.idadmon)
     let descs = [], coments = [], arriendos = [], pagos = []
     if (ids.length) {
