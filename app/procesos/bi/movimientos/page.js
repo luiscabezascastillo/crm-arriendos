@@ -1,3 +1,6 @@
+// VERSION: v9 · 2026-07-19 · ➕RUT flexible: acepta IDADMON (Axxxxx) para todos los asociadores, y
+//   además TEXTO LIBRE (ingreso de propietario, etc., sin límite) solo para Dirección/Karina. El texto
+//   libre rellena UNIQUE CONCEPT y se asocia en bi_admon para reconocer ingresos futuros del mismo RUT.
 // VERSION: v8 · 2026-07-19 · PARTE 2 colores manuales: columna bi.color_manual. Dirección/Karina pintan
 //   la fila con un punto a la derecha de UNIQUE CONCEPT (Negocio SA naranja fuerte / A corregir amarillo /
 //   Sin color / Automático). colorFila da prioridad al manual (naranja SA manda). El filtro de UNIQUE
@@ -425,17 +428,27 @@ export default function BiVista() {
     setAsocLoading(false)
   }
 
-  const asociarRut = async (idadmon) => {
-    const id = String(idadmon || '').trim().toUpperCase()
-    if (!/^A\d{5}$/.test(id)) { setAsocErr('IDADMON no válido (debe ser Axxxxx, ej. A00819)'); return }
+  const asociarRut = async (entrada) => {
+    const raw = String(entrada || '').trim()
+    if (!raw) { setAsocErr('Escribe un IDADMON o un texto de identificación'); return }
+    let valor
+    if (/^a\d/i.test(raw)) {
+      // Parece IDADMON -> exigir formato Axxxxx (6 caracteres).
+      const id = raw.toUpperCase()
+      if (!/^A\d{5}$/.test(id)) { setAsocErr('IDADMON no válido (debe ser Axxxxx, ej. A00819)'); return }
+      valor = id
+    } else {
+      // Texto libre (ingreso de propietario, etc.) -> SOLO Dirección/Karina, sin límite de caracteres.
+      if (!puedeEditar) { setAsocErr('Solo puedes asociar un IDADMON (Axxxxx). El texto libre está reservado a Dirección/Karina.'); return }
+      valor = raw
+    }
     const { row, rut } = asocOpen
     setAsocGuardando(true); setAsocErr(null)
     try {
-      // Pasamos biId: el endpoint asocia en bi_admon Y rellena este movimiento (server-side),
-      // así funciona también para quien no tiene escritura directa en `bi`.
+      // Pasamos biId: el endpoint asocia en bi_admon Y rellena este movimiento (server-side).
       const res = await fetch('/api/bi/asociar-rut', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rut, idadmon: id, biId: row.id }),
+        body: JSON.stringify({ rut, idadmon: valor, biId: row.id }),
       })
       const d = await res.json()
       if (!res.ok) { setAsocErr(d.error || 'Error al asociar'); setAsocGuardando(false); return }
@@ -443,9 +456,9 @@ export default function BiVista() {
         setAsocErr('Se asoció el RUT pero no se pudo rellenar el movimiento: ' + d.errorRelleno)
         setAsocGuardando(false); return
       }
-      // Reflejar en la vista el IDADMON que el endpoint ya escribió en unique_concept.
-      setRows(rs => rs.map(r => r.id === row.id ? { ...r, unique_concept: id } : r))
-      flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${id})` : `✓ Asociado ${rut} → ${id}`)
+      // Reflejar en la vista el valor que el endpoint ya escribió en unique_concept.
+      setRows(rs => rs.map(r => r.id === row.id ? { ...r, unique_concept: valor } : r))
+      flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${valor})` : `✓ Asociado ${rut} → ${valor}`)
       setAsocGuardando(false); setAsocOpen(null)
     } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
   }
@@ -900,10 +913,18 @@ export default function BiVista() {
               )}
 
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '0.5px solid #EDEBE4' }}>
-                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>{asocOpen.soloManual ? 'IDADMON del contrato:' : 'O escribe el IDADMON a mano:'}</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>
+                  {asocOpen.soloManual ? 'IDADMON del contrato:' : 'IDADMON o texto de identificación:'}
+                </div>
+                {!asocOpen.soloManual && (
+                  <div style={{ fontSize: 11, color: '#888780', marginBottom: 6 }}>
+                    Un IDADMON (ej. A00819) o un texto libre (ej. ingreso de un propietario: "PO64-PAVEZ, JUANA").
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input value={asocId} onChange={e => setAsocId(e.target.value.toUpperCase())} placeholder="A00819"
-                    style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid #D3D1C7', borderRadius: 8, textTransform: 'uppercase' }} />
+                  <input value={asocId} onChange={e => setAsocId(e.target.value)}
+                    placeholder={asocOpen.soloManual ? 'A00819' : 'A00819  o  texto de identificación'}
+                    style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid #D3D1C7', borderRadius: 8 }} />
                   <button onClick={() => asociarRut(asocId)} disabled={asocGuardando || !asocId.trim()}
                     style={{ fontSize: 13, fontWeight: 700, padding: '7px 16px', borderRadius: 8, border: 'none', background: asocId.trim() ? '#1D9E75' : '#D3D1C7', color: '#fff', cursor: asocId.trim() ? 'pointer' : 'default' }}>
                     {asocGuardando ? 'Asociando…' : 'Asociar'}
