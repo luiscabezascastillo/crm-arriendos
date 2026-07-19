@@ -1,7 +1,9 @@
 'use client'
-// VERSION: v21 · 2026-07-19 · El IDADMON de la lista y el panel ya NO llevan a la página de bandas
-//   (el "muro de 23 cajas"): el IDADMON abre el panel, y se quita el botón "Abrir workflow ↗".
-//   La vista del término es SOLO el panel (barra de 6 etapas + tarjeta de acción). Hereda v20.
+// VERSION: v22 · 2026-07-19 · MARKUP ÚNICO: el presupuesto del término se muestra CON markup
+//   (precio al cliente) como principal; el resultado del término usa ese total con markup (repPresu
+//   con markup, se jubila el markup como monto suelto). El % (terminos.markup_fcr, default 20) es
+//   editable solo por Karina/Dirección, con drop-down "ver coste sin markup" y el margen FCR. Los
+//   demás solo ven el presupuesto comunicable. Hereda v21.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -10,6 +12,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
@@ -55,6 +58,15 @@ const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: ''
   // Aprobación bilateral del presupuesto (Etapa 4). Columnas ya existentes en `terminos`.
   aprob_arrendatario_fecha: '', aprob_arrendatario_via: '', aprob_propietario_fecha: '', aprob_propietario_via: '' }
 
+// Precio de una línea de presupuesto CON markup aplicado (factura: sobre neto; honorario: sobre bruto).
+// Devuelve { base, iva, total } ya con markup. mkDefault = % por defecto del término.
+function lineaConMarkup(l, mkDefault) {
+  const base = n0(l.base_imponible)
+  const mk = (l.markup_pct === '' || l.markup_pct == null) ? n0(mkDefault) : n0(l.markup_pct)
+  const baseMk = Math.round(base * (1 + mk / 100))
+  const ivaMk = Math.round(baseMk * 0.19)
+  return { base: baseMk, iva: ivaMk, total: baseMk + ivaMk, markup: mk }
+}
 function calcResult(L, markup, garantia, repPresu, quien) {
   const sumB = b => (L[b] || []).reduce((a, l) => a + (l.auto ? repPresu : n0(l.monto)), 0)
   const sg = sumB('garantia'), ss = sumB('servicios'), sr = sumB('reparaciones')
@@ -88,6 +100,7 @@ export default function TerminosPage() {
   const [etapas, setEtapas] = useState([])
   const [wfExpandido, setWfExpandido] = useState(false)
   const [sucesorExpandido, setSucesorExpandido] = useState(false)  // descuentos del inmueble siguiente (colapsado por defecto)
+  const [costeExpandido, setCosteExpandido] = useState(false)  // drop-down "ver coste sin markup" (solo Karina/Dir)
   const [lineas, setLineas] = useState({ garantia: [], servicios: [], reparaciones: [] })
 
   const [editando, setEditando] = useState(false)
@@ -198,7 +211,7 @@ export default function TerminosPage() {
     const presupuestos = presRes.data || []
     let detalle = []
     if (presupuestos.length) {
-      const { data: det } = await supabase.from('presupuesto_detalle').select('presupuesto_id, orden, descripcion, cantidad, coste_unit, base_imponible, iva, total').in('presupuesto_id', presupuestos.map(p => p.id)).order('orden')
+      const { data: det } = await supabase.from('presupuesto_detalle').select('presupuesto_id, orden, descripcion, cantidad, coste_unit, base_imponible, iva, total, markup_pct, tipo_comprobante').in('presupuesto_id', presupuestos.map(p => p.id)).order('orden')
       detalle = det || []
     }
     let wfTasks = []
@@ -222,7 +235,10 @@ export default function TerminosPage() {
       aprob_propietario_via: g('aprob_propietario_via'),
     })
 
-    const repPresu = presupuestos.reduce((a, p) => a + n0(p.total), 0)
+    // repPresu = total del presupuesto CON markup (precio al cliente). El markup por defecto es
+    // terminos.markup_fcr (%, default 20). Se aplica línea a línea sobre el detalle.
+    const mkDefault = (() => { const v = n0(g('markup_fcr')); return v > 0 ? v : 20 })()
+    const repPresu = detalle.reduce((a, l) => a + lineaConMarkup(l, mkDefault).total, 0)
     const arreglosRef = presupuestos.map(p => p.numero).filter(Boolean).join(', ') || '0'
     const buildBloque = bk => {
       const out = []
@@ -306,9 +322,10 @@ export default function TerminosPage() {
     const arr = panel.arriendo
     const garantia = n0(arr?.garantia_pedida)
     const quien = arr?.quien_tiene_garantia || arr?.garantia_con || ''
-    const repPresu = panel.presupuestos.reduce((a, p) => a + n0(p.total), 0)
+    const mkDef = (() => { const v = n0(form.markup_fcr); return v > 0 ? v : 20 })()
+    const repPresu = (panel.detalle || []).reduce((a, l) => a + lineaConMarkup(l, mkDef).total, 0)
     const arreglosRef = panel.arreglosRef
-    const R = calcResult(lineas, form.markup_fcr, garantia, repPresu, quien)
+    const R = calcResult(lineas, 0, garantia, repPresu, quien)
 
     const rows = []
     ;['garantia', 'servicios', 'reparaciones'].forEach(bk => {
@@ -534,7 +551,7 @@ export default function TerminosPage() {
   const totDelTermino = descDelTermino.reduce((s, d) => s + n0(d.monto_a_imputar), 0)
   const quienGar = A?.quien_tiene_garantia || A?.garantia_con || '—'
   const garantiaVal = n0(A?.garantia_pedida)
-  const R = panel ? calcResult(lineas, form.markup_fcr, garantiaVal, repPresu, quienGar) : null
+  const R = panel ? calcResult(lineas, 0, garantiaVal, repPresu, quienGar) : null
   const etiq = R ? `T. ${R.conSaldo ? 'CON' : 'SIN'} SALDO - ${R.esFCR ? 'FCR' : 'DUEÑO'}` : ''
   const descGarantia = descuentos.filter(d => familiaDe(d.tipo) === 'garantia')
   const tareasPorNodo = {}; wfTasks.forEach(t => { tareasPorNodo[t.node_codigo] = t })
@@ -549,6 +566,7 @@ export default function TerminosPage() {
   }
   // ¿Es el turno de quien mira? Dirección/admin ve todo; si no, compara el área del nodo con su perfil.
   const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const puedeVerMarkup = esDireccion || FINANZAS_EMAILS.includes(email)  // Karina + Dirección ven/editan el markup
   const areaDelUsuario = (session?.user?.area || '').toLowerCase()  // si existe; si no, Dirección ve todo igualmente
   const esMiTurno = (nd) => {
     if (!nd) return false
@@ -936,27 +954,66 @@ export default function TerminosPage() {
                     )}
 
                     <div style={card}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>Presupuesto de reparaciones</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Presupuesto de reparaciones</span>
+                        {puedeVerMarkup && presupuestos.length > 0 && (
+                          <span style={{ fontSize: 11, color: '#888' }}>
+                            Markup FCR:{' '}
+                            <input type="number" value={form.markup_fcr === '' || form.markup_fcr == null ? 20 : form.markup_fcr}
+                              onChange={e => setF('markup_fcr', e.target.value)}
+                              style={{ width: 48, padding: '2px 6px', border: '1px solid #C9DEF5', borderRadius: 5, fontSize: 12, textAlign: 'right', fontFamily: 'inherit' }} />% 
+                          </span>
+                        )}
+                      </div>
                       {presupuestos.length === 0 ? <div style={{ color: '#9ca3af', fontSize: 12, padding: '8px 0' }}>Sin presupuesto registrado. (Se valora desde el módulo Presupuestos.)</div>
                         : presupuestos.map(p => {
                           const lineas2 = detalle.filter(d => d.presupuesto_id === p.id)
+                          const mkDef = (() => { const v = n0(form.markup_fcr); return v > 0 ? v : 20 })()
+                          const conMk = lineas2.map(l => ({ l, m: lineaConMarkup(l, mkDef) }))
+                          const totBaseMk = conMk.reduce((a, x) => a + x.m.base, 0)
+                          const totIvaMk = conMk.reduce((a, x) => a + x.m.iva, 0)
+                          const totTotalMk = conMk.reduce((a, x) => a + x.m.total, 0)
                           return (
                             <div key={p.id} style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', marginBottom: 4 }}>{p.numero} · {p.descripcion || 'presupuesto'}</div>
+                              {/* Presupuesto CON markup (precio al cliente) — el comunicable */}
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead><tr style={{ background: '#FAFAF8' }}><th style={th}>Descripción</th><th style={{ ...th, textAlign: 'right' }}>Cant</th><th style={{ ...th, textAlign: 'right' }}>Base</th><th style={{ ...th, textAlign: 'right' }}>IVA</th><th style={{ ...th, textAlign: 'right' }}>Total</th></tr></thead>
                                 <tbody>
-                                  {lineas2.map((l, i) => (
+                                  {conMk.map(({ l, m }, i) => (
                                     <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
                                       <td style={tdL}>{l.descripcion}</td><td style={{ ...tdR, fontWeight: 400 }}>{l.cantidad ?? ''}</td>
-                                      <td style={{ ...tdR, fontWeight: 400, color: '#666' }}>{n0(l.base_imponible).toLocaleString('es-CL')}</td>
-                                      <td style={{ ...tdR, fontWeight: 400, color: '#999' }}>{n0(l.iva).toLocaleString('es-CL')}</td>
-                                      <td style={tdR}>{n0(l.total).toLocaleString('es-CL')}</td>
+                                      <td style={{ ...tdR, fontWeight: 400, color: '#666' }}>{m.base.toLocaleString('es-CL')}</td>
+                                      <td style={{ ...tdR, fontWeight: 400, color: '#999' }}>{m.iva.toLocaleString('es-CL')}</td>
+                                      <td style={tdR}>{m.total.toLocaleString('es-CL')}</td>
                                     </tr>
                                   ))}
-                                  <tr style={{ borderTop: '2px solid #E8E6E0' }}><td style={{ ...tdL, fontWeight: 700 }}>TOTALES</td><td></td><td style={{ ...tdR, fontWeight: 700 }}>{n0(p.neto).toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#888' }}>{n0(p.iva).toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#185FA5' }}>{n0(p.total).toLocaleString('es-CL')}</td></tr>
+                                  <tr style={{ borderTop: '2px solid #E8E6E0' }}><td style={{ ...tdL, fontWeight: 700 }}>TOTALES</td><td></td><td style={{ ...tdR, fontWeight: 700 }}>{totBaseMk.toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#888' }}>{totIvaMk.toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#185FA5' }}>{totTotalMk.toLocaleString('es-CL')}</td></tr>
                                 </tbody>
                               </table>
+                              {/* Drop-down: coste sin markup (solo Karina/Dirección) */}
+                              {puedeVerMarkup && (
+                                <>
+                                  <span onClick={() => setCosteExpandido(x => !x)} style={{ fontSize: 10, color: '#9ca3af', cursor: 'pointer', fontWeight: 600, display: 'inline-block', marginTop: 4 }}>{costeExpandido ? '▾ ocultar coste sin markup' : '▸ ver coste sin markup'}</span>
+                                  {costeExpandido && (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, background: '#FBFAF7' }}>
+                                      <thead><tr style={{ background: '#F5F1E8' }}><th style={th}>Descripción</th><th style={{ ...th, textAlign: 'right' }}>Cant</th><th style={{ ...th, textAlign: 'right' }}>Base</th><th style={{ ...th, textAlign: 'right' }}>IVA</th><th style={{ ...th, textAlign: 'right' }}>Total</th></tr></thead>
+                                      <tbody>
+                                        {lineas2.map((l, i) => (
+                                          <tr key={i} style={{ borderBottom: '1px solid #EDE7D9' }}>
+                                            <td style={{ ...tdL, color: '#8a6d3b' }}>{l.descripcion}</td><td style={{ ...tdR, color: '#a08a5b' }}>{l.cantidad ?? ''}</td>
+                                            <td style={{ ...tdR, color: '#a08a5b' }}>{n0(l.base_imponible).toLocaleString('es-CL')}</td>
+                                            <td style={{ ...tdR, color: '#a08a5b' }}>{n0(l.iva).toLocaleString('es-CL')}</td>
+                                            <td style={{ ...tdR, color: '#8a6d3b' }}>{n0(l.total).toLocaleString('es-CL')}</td>
+                                          </tr>
+                                        ))}
+                                        <tr style={{ borderTop: '2px solid #EDE7D9' }}><td style={{ ...tdL, fontWeight: 700, color: '#8a6d3b' }}>COSTE</td><td></td><td style={{ ...tdR, fontWeight: 700, color: '#8a6d3b' }}>{n0(p.neto).toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#a08a5b' }}>{n0(p.iva).toLocaleString('es-CL')}</td><td style={{ ...tdR, fontWeight: 700, color: '#8a6d3b' }}>{n0(p.total).toLocaleString('es-CL')}</td></tr>
+                                        <tr><td style={{ ...tdL, fontSize: 10, color: '#a08a5b', fontStyle: 'italic' }} colSpan={5}>Margen FCR: {(totTotalMk - n0(p.total)).toLocaleString('es-CL')} (markup {mkDef}%)</td></tr>
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </>
+                              )}
                             </div>
                           )
                         })}
