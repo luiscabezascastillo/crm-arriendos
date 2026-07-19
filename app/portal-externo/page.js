@@ -91,7 +91,7 @@ export default function PortalExternoPage() {
           </div>
           {esDireccion && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button onClick={() => router.push('/mi-portal')}
+              <button onClick={() => router.push('/procesos/mi-portal')}
                 style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--gray-600)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 ← Ver empleados
               </button>
