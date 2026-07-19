@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-07-19 · Fase 1 coherencia: en mes CONGELADO solo se muestra el indicador 🔒 CONGELADA (se ocultan Recalcular fuentes y Congelar mes)
 // VERSION: v3 · 2026-07-19 · botón "Congelar mes" (modal de confirmación + indicador 🔒 CONGELADA + aviso "YA CONGELADA"); usa endpoint /api/liquidaciones/congelar-mes
 // VERSION: v2 · 2026-07-08 · boton renombrado a 'Recalcular fuentes'
 import { useState, useEffect } from 'react'
@@ -335,30 +336,26 @@ export default function LiquidacionesPage() {
           </select>
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar propietario…"
             style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: 240 }} />
-          <button onClick={() => cargarMes(mes)} disabled={cargando}
-            title="Vuelve a leer bi, descuentos y comentarios y recalcula todo"
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-            {cargando ? 'Calculando…' : '🔄 Recalcular fuentes'}
-          </button>
-          {estadoCongelado === 'congelada' && (
-            <span title="Este mes está congelado (cerrado y protegido)"
-              style={{ fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 7, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+          {estadoCongelado === 'congelada' ? (
+            <span title="Este mes está congelado (cerrado y protegido). No se recalcula."
+              style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 7, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
               🔒 CONGELADA
             </span>
-          )}
-          {puedeCongelar && estadoCongelado !== 'congelada' && (
-            <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
-              title="Congela este mes: guarda una foto definitiva y ya no se recalculará"
-              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FBBF24', background: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>
-              🔒 Congelar mes
-            </button>
-          )}
-          {puedeCongelar && estadoCongelado === 'congelada' && (
-            <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
-              title="Este mes ya está congelado"
-              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#9CA3AF', cursor: 'pointer', fontFamily: 'inherit' }}>
-              🔒 Congelar mes
-            </button>
+          ) : (
+            <>
+              <button onClick={() => cargarMes(mes)} disabled={cargando}
+                title="Vuelve a leer bi, descuentos y comentarios y recalcula todo"
+                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {cargando ? 'Calculando…' : '🔄 Recalcular fuentes'}
+              </button>
+              {puedeCongelar && (
+                <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
+                  title="Congela este mes: guarda una foto definitiva y ya no se recalculará"
+                  style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FBBF24', background: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  🔒 Congelar mes
+                </button>
+              )}
+            </>
           )}
           <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
