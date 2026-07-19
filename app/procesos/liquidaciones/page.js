@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-07-19 · botón "Congelar mes" (modal de confirmación + indicador 🔒 CONGELADA + aviso "YA CONGELADA"); usa endpoint /api/liquidaciones/congelar-mes
 // VERSION: v2 · 2026-07-08 · boton renombrado a 'Recalcular fuentes'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -63,6 +64,12 @@ export default function LiquidacionesPage() {
   const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
   const [valSaving, setValSaving] = useState(null)          // idprop guardándose
   const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  // ── Congelar mes ──
+  const [estadoCongelado, setEstadoCongelado] = useState(null)  // 'congelada' | 'abierta' | 'vacia' | null
+  const [modalCongelar, setModalCongelar] = useState(false)     // muestra confirmación
+  const [congelando, setCongelando] = useState(false)
+  const [avisoCongelar, setAvisoCongelar] = useState(null)      // texto de resultado
+  const puedeCongelar = rol === 'admin' || DIRECCION_EMAILS.includes(email)
   const nombreCorto = (mail) => { const p = String(mail || '').split('@')[0].split('.')[0]; return p ? p.charAt(0).toUpperCase() + p.slice(1) : '' }
 
   // Acceso
@@ -73,7 +80,7 @@ export default function LiquidacionesPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) cargarMes(mes) }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes) } }, [accesoOk])
 
   async function cargarMes(m) {
     setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
@@ -165,7 +172,47 @@ export default function LiquidacionesPage() {
     setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm, inicios } }))
   }
 
-  function cambiarMes(m) { setMes(m); cargarMes(m) }
+  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m) }
+
+  // Consulta si el mes está congelado (para el indicador de candado)
+  async function consultarCongelado(m) {
+    try {
+      const res = await fetch('/api/liquidaciones/congelar-mes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes: m, check: true }),
+      })
+      const j = await res.json().catch(() => ({}))
+      setEstadoCongelado(res.ok ? (j.estado || null) : null)
+    } catch { setEstadoCongelado(null) }
+  }
+
+  // Ejecuta el congelado (tras confirmación del modal)
+  async function ejecutarCongelar() {
+    setCongelando(true); setAvisoCongelar(null)
+    try {
+      const res = await fetch('/api/liquidaciones/congelar-mes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAvisoCongelar('⚠ Error: ' + (j.error || res.status))
+      } else if (j.ya_congelada) {
+        setAvisoCongelar('🔒 Liquidación ' + aammToTxt(mes) + ' YA CONGELADA')
+        setEstadoCongelado('congelada')
+      } else if (j.congelada) {
+        setAvisoCongelar('✅ Liquidación ' + aammToTxt(mes) + ' congelada (' + (j.lineas ?? '?') + ' líneas)')
+        setEstadoCongelado('congelada')
+      }
+    } catch (e) {
+      setAvisoCongelar('⚠ Error de red al congelar')
+    } finally {
+      setCongelando(false)
+      setModalCongelar(false)
+    }
+  }
 
   async function toggleValidar(idprop, ev) {
     if (ev) ev.stopPropagation()
@@ -220,7 +267,58 @@ export default function LiquidacionesPage() {
   return (
     <>
       <TopNav />
+      {/* Modal de confirmación de congelar */}
+      {modalCongelar && (
+        <div onClick={() => !congelando && setModalCongelar(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: 26, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: '"DM Sans", sans-serif' }}>
+            {estadoCongelado === 'congelada' ? (
+              <>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#1E40AF', marginBottom: 10 }}>🔒 Liquidación ya congelada</div>
+                <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
+                  La liquidación de <b>{aammToTxt(mes)}</b> ya está congelada y protegida. No hay nada que hacer.
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setModalCongelar(false)}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Entendido
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#92400E', marginBottom: 10 }}>🔒 ¿Congelar la liquidación de {aammToTxt(mes)}?</div>
+                <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.55, marginBottom: 8 }}>
+                  Al congelar, este mes queda <b>cerrado y protegido</b>: se guarda una foto definitiva con los datos actuales (se recalcula una última vez) y ya <b>no se recalculará automáticamente</b>.
+                </div>
+                <div style={{ fontSize: 13, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 12px', marginBottom: 20 }}>
+                  Úsalo solo cuando el mes esté revisado y cuadrado. Si te has equivocado de mes, pulsa Cancelar.
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button onClick={() => setModalCongelar(false)} disabled={congelando}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={ejecutarCongelar} disabled={congelando}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#D97706', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {congelando ? 'Congelando…' : `Sí, congelar ${aammToTxt(mes)}`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' }}>
+        {avisoCongelar && (
+          <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, padding: '10px 14px', borderRadius: 8,
+            background: avisoCongelar.startsWith('⚠') ? '#FEF2F2' : '#F0FDF4',
+            color: avisoCongelar.startsWith('⚠') ? '#B91C1C' : '#166534',
+            border: '1px solid ' + (avisoCongelar.startsWith('⚠') ? '#FECACA' : '#BBF7D0') }}>
+            {avisoCongelar}
+          </div>
+        )}
 
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>TRANSFER</h1>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Transferencias a propietarios · los datos vienen de sus tablas de origen (datos_arriendos, bi, descuentos)</div>
@@ -242,6 +340,26 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular fuentes'}
           </button>
+          {estadoCongelado === 'congelada' && (
+            <span title="Este mes está congelado (cerrado y protegido)"
+              style={{ fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 7, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+              🔒 CONGELADA
+            </span>
+          )}
+          {puedeCongelar && estadoCongelado !== 'congelada' && (
+            <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
+              title="Congela este mes: guarda una foto definitiva y ya no se recalculará"
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FBBF24', background: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>
+              🔒 Congelar mes
+            </button>
+          )}
+          {puedeCongelar && estadoCongelado === 'congelada' && (
+            <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
+              title="Este mes ya está congelado"
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#9CA3AF', cursor: 'pointer', fontFamily: 'inherit' }}>
+              🔒 Congelar mes
+            </button>
+          )}
           <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
             📄 CARTAS
