@@ -1,3 +1,6 @@
+// VERSION: v10 · 2026-07-19 · Fix amarillo UNIQUE CONCEPT: un texto libre identificado (ej. "PO64-
+//   PAVEZ, JUANA") quita el aviso amarillo "falta teclear IDADMON", igual que un IDADMON válido.
+//   Vacío o IDADMON a medio teclear siguen en amarillo. (Complementa v9.)
 // VERSION: v9 · 2026-07-19 · ➕RUT flexible: acepta IDADMON (Axxxxx) para todos los asociadores, y
 //   además TEXTO LIBRE (ingreso de propietario, etc., sin límite) solo para Dirección/Karina. El texto
 //   libre rellena UNIQUE CONCEPT y se asocia en bi_admon para reconocer ingresos futuros del mismo RUT.
@@ -109,6 +112,14 @@ function colorFila(m) {
 }
 // IDADMON válido: A + 5 dígitos (ej. A00819).
 const esIdadmonValido = (uc) => /^A\d{5}$/.test(String(uc ?? '').trim().toUpperCase())
+// ¿La celda de UNIQUE CONCEPT está IDENTIFICADA? (quita el amarillo de "falta teclear IDADMON")
+//   vacío -> no · empieza por A+dígito -> debe ser Axxxxx completo · texto libre no vacío -> sí.
+const estaIdentificado = (uc) => {
+  const s = String(uc ?? '').trim()
+  if (!s) return false
+  if (/^A\d/i.test(s)) return esIdadmonValido(s)   // parece IDADMON: exige formato completo
+  return true                                       // texto libre (ingreso de propietario, etc.): identificado
+}
 
 // LIQ. MES2 (AAMM) según la fecha de hoy (hora de Chile):
 //   día >= 23 -> mes actual + 1   ·   día <= 22 -> mes actual
@@ -633,7 +644,7 @@ export default function BiVista() {
       }
       const esUC = c.key === 'unique_concept'
       const baseAm = esUC && num(r.abonos) > 0 && ['FALTA', 'REVISAR'].includes(String(r.check2_pasar_a_cartola ?? '').trim().toUpperCase())
-      const amarillo = baseAm && !esIdadmonValido(r[c.key])
+      const amarillo = baseAm && !estaIdentificado(r[c.key])
       const inputUC = (
         <input value={r[c.key] ?? ''} title={amarillo ? 'Falta teclear el IDADMON (A+5 dígitos)' : (r[c.key] ?? '')}
           placeholder={amarillo ? 'IDADMON…' : ''}
@@ -642,7 +653,7 @@ export default function BiVista() {
           onBlur={e => {
             const orig = e.target.dataset.orig ?? ''
             const actual = e.target.value ?? ''
-            const sigueAm = baseAm && !esIdadmonValido(actual)
+            const sigueAm = baseAm && !estaIdentificado(actual)
             e.target.style.border = '1px solid transparent'
             e.target.style.background = sigueAm ? '#FFE84D' : 'transparent'
             if (orig !== actual) guardarCelda(r.id, c.key, actual)
