@@ -1,3 +1,5 @@
+// VERSION: v12 · 2026-07-19 · Dropdown del filtro acotado a la altura de pantalla: la lista de casillas
+//   hace scroll y los botones Limpiar/Ver todos quedan siempre fijos abajo (sin bajar el zoom).
 // VERSION: v11 · 2026-07-19 · Tooltip al hover: cada celda muestra su texto completo en la burbuja del
 //   navegador (title en el <td>), para leer lo que se corta (UNIQUE CONCEPT, COMENTARIOS, DISCRIMINADOR…).
 // VERSION: v10 · 2026-07-19 · Fix amarillo UNIQUE CONCEPT: un texto libre identificado (ej. "PO64-
@@ -173,7 +175,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
         </span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, zIndex: 300, padding: 8 }}>
+        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, maxHeight: 'calc(100vh - 150px)', display: 'flex', flexDirection: 'column', zIndex: 300, padding: 8, boxSizing: 'border-box' }}>
           {chips && (
             <>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Categoría</div>
@@ -200,7 +202,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
             <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
             (Seleccionar todo){buscar ? ' (lo visible)' : ''}
           </label>
-          <div style={{ maxHeight: 230, overflowY: 'auto', margin: '2px 0 8px' }}>
+          <div style={{ flex: 1, minHeight: 40, overflowY: 'auto', margin: '2px 0 8px' }}>
             {visibles.length === 0
               ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
               : visibles.map(o => (
@@ -210,7 +212,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
                 </label>
               ))}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             <button onClick={limpiar} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>Limpiar</button>
             <button onClick={aplicar} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>{[...p].length ? `Aplicar (${[...p].length})` : 'Ver todos'}</button>
           </div>
