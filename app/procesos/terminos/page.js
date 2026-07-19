@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v19 · 2026-07-19 · "Estado del proceso" ahora agrupa los nodos bajo las 6 ETAPAS del
-//   modelo (antes listaba 23 pasos planos). Cada nodo muestra su tipo (Auto/Tarea/Verificar/Decisión)
-//   y marca ● los que bloquean el cierre (controles anti-pérdida). Botón "Ver las 6 etapas". Hereda v18.
+// VERSION: v20 · 2026-07-19 · "Estado del proceso" rediseñado para NO agobiar: barra de 6 etapas +
+//   UNA tarjeta de acción ("ahora te toca a ti" con botón, o "esperando a otro equipo" sin botón según
+//   el rol), saltándose los pasos AUTO. El detalle de los 23 nodos queda plegado ("ver proceso completo").
+//   Hereda v19.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -540,6 +541,22 @@ export default function TerminosPage() {
   const tareasPorNodo = {}; wfTasks.forEach(t => { tareasPorNodo[t.node_codigo] = t })
   let pasoActual = null
   for (const nd of nodos) { if (estadoTarea(tareasPorNodo[nd.codigo]) !== 'hecho') { pasoActual = nd; break } }
+  // Paso HUMANO actual: primer nodo no-hecho cuyo tipo no sea AUTO (los AUTO se completan solos)
+  let pasoHumano = null
+  for (const nd of nodos) {
+    if (estadoTarea(tareasPorNodo[nd.codigo]) === 'hecho') continue
+    if (String(nd.tipo || '').toUpperCase() === 'AUTO') continue
+    pasoHumano = nd; break
+  }
+  // ¿Es el turno de quien mira? Dirección/admin ve todo; si no, compara el área del nodo con su perfil.
+  const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const areaDelUsuario = (session?.user?.area || '').toLowerCase()  // si existe; si no, Dirección ve todo igualmente
+  const esMiTurno = (nd) => {
+    if (!nd) return false
+    if (esDireccion) return true
+    const area = String(nd.area_responsable || '').toLowerCase()
+    return areaDelUsuario && area.includes(areaDelUsuario)
+  }
   // Etiqueta y color del tipo de nodo (AUTO / TAREA / VERIFICACION / DECISION)
   const tipoInfo = (tp) => {
     switch (String(tp || '').toUpperCase()) {
@@ -768,60 +785,83 @@ export default function TerminosPage() {
                       <div style={{ fontSize: 30, fontWeight: 800, color: R.resultado < 0 ? '#dc2626' : '#16a34a' }}>{fmtPesos(R.resultado)}</div>
                     </div>
 
-                    {/* ESTADO DEL PROCESO (debajo del excel del término) */}
+                    {/* ESTADO DEL PROCESO — barra de 6 etapas + acción actual (lo justo para actuar) */}
                     <div style={card}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Estado del proceso</span>
-                        <button onClick={() => router.push('/procesos/terminos/' + idadmonSel)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #185FA5', background: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#fff' }}>Abrir workflow →</button>
-                        <button onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: '#185FA5' }}>{wfExpandido ? 'Ver paso actual' : `Ver las ${etapas.length || 6} etapas`}</button>
-                      </div>
-                      {nodos.length === 0 ? <div style={{ color: '#888', fontSize: 12 }}>Cargando pasos…</div>
+                      {nodos.length === 0 ? <div style={{ color: '#888', fontSize: 12 }}>Cargando proceso…</div>
                         : !wfTasks.length ? <div style={{ color: '#9ca3af', fontSize: 12 }}>Sin instancia de workflow para este IDADMON.</div>
-                          : !wfExpandido ? (
-                            pasoActual ? (
-                              <div style={{ padding: 8, background: '#EAF2FB', borderRadius: 8 }}>
-                                <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Paso actual</div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{pasoActual.nombre}</div>
-                                <div style={{ fontSize: 11, color: '#888' }}>{pasoActual.area_responsable}</div>
-                                <button onClick={() => completarPaso(pasoActual)} disabled={completandoWf} style={{ marginTop: 8, fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, border: 'none', background: completandoWf ? '#9ca3af' : '#185FA5', color: '#fff', cursor: completandoWf ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-                                  {completandoWf ? 'Completando…' : 'Completar paso →'}
-                                </button>
-                              </div>
-                            ) : <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>Todos los pasos completados ✓</div>
-                          ) : (
-                            (etapas.length ? etapas : [...Array(6)].map((_, i) => ({ numero: i, nombre: 'Etapa ' + i }))).map(et => {
-                              const nds = nodosPorEtapa[et.numero] || []
-                              if (!nds.length) return null
-                              const hechos = nds.filter(nd => estadoTarea(tareasPorNodo[nd.codigo]) === 'hecho').length
-                              return (
-                                <div key={et.numero} style={{ marginBottom: 10 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4, paddingBottom: 3, borderBottom: '2px solid #E8EEF6' }}>
-                                    <span style={{ fontSize: 12, fontWeight: 800, color: '#185FA5' }}>{et.numero}. {et.nombre}{et.compuerta_dura ? ' 🔒' : ''}</span>
-                                    <span style={{ fontSize: 10, color: '#9ca3af' }}>{hechos}/{nds.length}</span>
-                                  </div>
-                                  {nds.map(nd => {
-                                    const t = tareasPorNodo[nd.codigo]; const st = estadoTarea(t)
-                                    const dot = st === 'hecho' ? '#16a34a' : st === 'curso' ? '#2563eb' : '#d1d5db'
-                                    const fecha = t?.fecha_cierre || t?.fecha_limite
-                                    const ti = tipoInfo(nd.tipo)
+                          : (() => {
+                            const etapaActual = pasoHumano ? pasoHumano.etapa_numero : (pasoActual ? pasoActual.etapa_numero : 5)
+                            const listaEt = etapas.length ? etapas : [...Array(6)].map((_, i) => ({ numero: i, nombre: 'Etapa ' + i }))
+                            return (
+                              <>
+                                {/* Barra de 6 etapas */}
+                                <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                                  {listaEt.map(et => {
+                                    const done = et.numero < etapaActual
+                                    const now = et.numero === etapaActual
                                     return (
-                                      <div key={nd.codigo} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid #F6F5F2', alignItems: 'flex-start' }}>
-                                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: dot, flexShrink: 0, marginTop: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, fontWeight: 700 }}>{st === 'hecho' ? '✓' : ''}</span>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ fontSize: 12, fontWeight: 600, color: st === 'pendiente' ? '#9ca3af' : '#1a1a2e' }}>
-                                            {nd.nombre}
-                                            {nd.bloquea_cierre ? <span title="Bloquea el cierre (control anti-pérdida)" style={{ color: '#dc2626', marginLeft: 4 }}>●</span> : null}
-                                          </div>
-                                          <div style={{ fontSize: 10, color: '#aaa' }}>{nd.area_responsable}{fecha ? ' · ' + fmtFecha(fecha) : ''}{st === 'curso' ? ' · en curso' : ''}</div>
-                                        </div>
-                                        {ti.txt && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: ti.bg, color: ti.col, flexShrink: 0, marginTop: 2 }}>{ti.txt}</span>}
-                                      </div>
+                                      <div key={et.numero} title={`${et.numero}. ${et.nombre}`} style={{ flex: 1, height: 6, borderRadius: 3, background: done ? '#16a34a' : now ? '#185FA5' : '#E5E7EB' }} />
                                     )
                                   })}
                                 </div>
-                              )
-                            })
-                          )}
+                                <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                                  Etapa {etapaActual} de 5 · <b style={{ color: '#185FA5' }}>{(listaEt.find(e => e.numero === etapaActual) || {}).nombre || '—'}</b>
+                                </div>
+
+                                {/* Tarjeta de acción: qué toca ahora */}
+                                {!pasoHumano ? (
+                                  <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, padding: 8, background: '#F0FDF4', borderRadius: 8 }}>✓ Proceso completado</div>
+                                ) : esMiTurno(pasoHumano) ? (
+                                  <div style={{ padding: 12, background: '#EAF2FB', borderRadius: 8, border: '1px solid #C9DEF5' }}>
+                                    <div style={{ fontSize: 10, color: '#185FA5', fontWeight: 800, textTransform: 'uppercase', letterSpacing: .5 }}>Ahora te toca a ti</div>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a2e', margin: '3px 0' }}>{pasoHumano.nombre}{pasoHumano.bloquea_cierre ? <span title="Control anti-pérdida" style={{ color: '#dc2626', marginLeft: 6, fontSize: 12 }}>● crítico</span> : null}</div>
+                                    {pasoHumano.descripcion && <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>{pasoHumano.descripcion}</div>}
+                                    <button onClick={() => completarPaso(pasoHumano)} disabled={completandoWf} style={{ marginTop: 4, fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 6, border: 'none', background: completandoWf ? '#9ca3af' : '#185FA5', color: '#fff', cursor: completandoWf ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                                      {completandoWf ? 'Guardando…' : '✓ Hacer y avanzar'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ padding: 12, background: '#FAFAF8', borderRadius: 8, border: '1px solid #EEE' }}>
+                                    <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Esperando a otro equipo</div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: '#666', margin: '3px 0' }}>{pasoHumano.nombre}</div>
+                                    <div style={{ fontSize: 12, color: '#999' }}>Responsable: {pasoHumano.area_responsable}</div>
+                                  </div>
+                                )}
+
+                                {/* Detalle completo, plegado */}
+                                <div style={{ marginTop: 10 }}>
+                                  <span onClick={() => setWfExpandido(x => !x)} style={{ fontSize: 11, color: '#9ca3af', cursor: 'pointer', fontWeight: 600 }}>{wfExpandido ? '▾ Ocultar el proceso completo' : '▸ Ver el proceso completo (6 etapas)'}</span>
+                                  <button onClick={() => router.push('/procesos/terminos/' + idadmonSel)} style={{ marginLeft: 12, fontSize: 11, color: '#185FA5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Abrir workflow ↗</button>
+                                </div>
+
+                                {wfExpandido && listaEt.map(et => {
+                                  const nds = nodosPorEtapa[et.numero] || []
+                                  if (!nds.length) return null
+                                  const hechos = nds.filter(nd => estadoTarea(tareasPorNodo[nd.codigo]) === 'hecho').length
+                                  return (
+                                    <div key={et.numero} style={{ marginTop: 8 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3, paddingBottom: 2, borderBottom: '1px solid #E8EEF6' }}>
+                                        <span style={{ fontSize: 11, fontWeight: 800, color: '#185FA5' }}>{et.numero}. {et.nombre}{et.compuerta_dura ? ' 🔒' : ''}</span>
+                                        <span style={{ fontSize: 10, color: '#9ca3af' }}>{hechos}/{nds.length}</span>
+                                      </div>
+                                      {nds.map(nd => {
+                                        const t = tareasPorNodo[nd.codigo]; const st = estadoTarea(t)
+                                        const dot = st === 'hecho' ? '#16a34a' : st === 'curso' ? '#2563eb' : '#d1d5db'
+                                        const ti = tipoInfo(nd.tipo)
+                                        return (
+                                          <div key={nd.codigo} style={{ display: 'flex', gap: 6, padding: '2px 0', alignItems: 'center' }}>
+                                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                                            <span style={{ flex: 1, fontSize: 11, color: st === 'pendiente' ? '#9ca3af' : '#444' }}>{nd.nombre}{nd.bloquea_cierre ? <span style={{ color: '#dc2626', marginLeft: 3 }}>●</span> : null}</span>
+                                            {ti.txt && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: ti.bg, color: ti.col }}>{ti.txt}</span>}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })}
+                              </>
+                            )
+                          })()}
                     </div>
                     <div style={{ ...card, color: '#9ca3af', fontSize: 12 }}>Acciones realizadas — <i>próximamente</i>.</div>
 
