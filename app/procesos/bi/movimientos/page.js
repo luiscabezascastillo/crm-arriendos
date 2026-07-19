@@ -1,3 +1,7 @@
+// VERSION: v8 · 2026-07-19 · PARTE 2 colores manuales: columna bi.color_manual. Dirección/Karina pintan
+//   la fila con un punto a la derecha de UNIQUE CONCEPT (Negocio SA naranja fuerte / A corregir amarillo /
+//   Sin color / Automático). colorFila da prioridad al manual (naranja SA manda). El filtro de UNIQUE
+//   CONCEPT pasa a filtrar por COLOR real (Abono / A corregir / Cargo / Negocio SA). Solo filtra/pinta.
 // VERSION: v7 · 2026-07-18 · PARTE 1 filtros LOG: sustituye el filtro propio por el mecanismo del LOG
 //   (ordenar A→Z/Z→A + casillas estilo Excel + buscador + "Seleccionar todo") en cada cabecera.
 //   Se mantienen los chips de categoría en UNIQUE CONCEPT. Filtra en cliente sobre las 6.7k. Solo filtra/ordena.
@@ -83,11 +87,22 @@ const COLS = [
 const I_REG = COLS.findIndex(c => c.key === 'reg')
 const I_UC = COLS.findIndex(c => c.key === 'unique_concept')
 
+// Paleta de colores del BI:
+//   Naranja fuerte #F4A73B = negocio SA (manual, MANDA) · Amarillo #FEF7D6 = a corregir (auto+manual)
+//   Azul #EAF2FB = abono identificado (auto) · Naranja clarito #FBECEC = cargo (auto)
+const COLOR = { naranja_sa: '#F4A73B', amarillo: '#FEF7D6', abono: '#EAF2FB', cargo: '#FBECEC', ninguno: '#fff' }
+
 function colorFila(m) {
+  // 1) Color MANUAL guardado — tiene prioridad sobre el automático.
+  const cm = String(m.color_manual || '').trim()
+  if (cm === 'naranja_sa') return COLOR.naranja_sa   // negocio SA manda sobre todo
+  if (cm === 'amarillo') return COLOR.amarillo
+  if (cm === 'sin_color') return COLOR.ninguno        // fuerza quitar el automático
+  // 2) Automático (cuando no hay marca manual).
   const ab = num(m.abonos), ca = num(m.cargos)
-  if (ab > 0) return String(m.idadmon2 || m.unique_concept || '').trim() ? '#EAF2FB' : '#FEF7D6'
-  if (ca > 0) return '#FBECEC'
-  return '#fff'
+  if (ab > 0) return String(m.idadmon2 || m.unique_concept || '').trim() ? COLOR.abono : COLOR.amarillo
+  if (ca > 0) return COLOR.cargo
+  return COLOR.ninguno
 }
 // IDADMON válido: A + 5 dígitos (ej. A00819).
 const esIdadmonValido = (uc) => /^A\d{5}$/.test(String(uc ?? '').trim().toUpperCase())
@@ -147,8 +162,11 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
             <>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Categoría</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #F3F4F6' }}>
-                {chips.map(([k, lab]) => (
-                  <button key={k} onClick={() => onCat(k)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', border: '1px solid ' + (catFiltro === k ? '#1a56db' : '#E5E7EB'), background: catFiltro === k ? '#1a56db' : '#fff', color: catFiltro === k ? '#fff' : '#374151', fontWeight: catFiltro === k ? 600 : 400 }}>{lab}</button>
+                {chips.map(([k, lab, col]) => (
+                  <button key={k} onClick={() => onCat(k)} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', border: '1px solid ' + (catFiltro === k ? '#1a56db' : '#E5E7EB'), background: catFiltro === k ? '#1a56db' : '#fff', color: catFiltro === k ? '#fff' : '#374151', fontWeight: catFiltro === k ? 600 : 400 }}>
+                    {col && <span style={{ width: 10, height: 10, borderRadius: '50%', border: '1px solid #9A968C', background: col, flexShrink: 0 }} />}
+                    {lab}
+                  </button>
                 ))}
               </div>
             </>
@@ -206,6 +224,7 @@ export default function BiVista() {
   const [sortCol, setSortCol] = useState(null)      // columna de ordenación (key)
   const [sortDir, setSortDir] = useState('asc')     // 'asc' | 'desc'
   const [savingId, setSavingId] = useState(null)
+  const [colorOpen, setColorOpen] = useState(null)   // { row, x, y } — selector de color de fila
   const [toast, setToast] = useState(null)
   const [copiando, setCopiando] = useState(false)
   const [descOpen, setDescOpen] = useState(null)   // { row, x, y, modo } popover de descuentos
@@ -345,7 +364,7 @@ export default function BiVista() {
   // Si hay filtro/orden activo, se oculta check1 (deja de tener sentido sobre un subconjunto/reordenado).
   const filas = useMemo(() => {
     let out = conCheck
-    if (catFiltro !== 'todos') out = out.filter(r => categoriaFila(r) === catFiltro)
+    if (catFiltro !== 'todos') out = out.filter(r => colorFila(r) === catFiltro)
     const activos = Object.entries(filtros).filter(([, a]) => Array.isArray(a) && a.length > 0)
     if (activos.length) out = out.filter(r => activos.every(([k, a]) => a.includes(valorCelda(r, k))))
     if (sortCol) {
@@ -373,6 +392,18 @@ export default function BiVista() {
     if (error) { setError('No se pudo guardar: ' + error.message); return }
     setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
     flash('✓ Guardado')
+  }
+
+  // ── Selector de color manual de la fila (solo Dirección/Karina) ──────────
+  const abrirColor = (r, e) => {
+    e.stopPropagation()
+    const rc = e.currentTarget.getBoundingClientRect()
+    setColorOpen(colorOpen && colorOpen.row.id === r.id ? null : { row: r, x: rc.left, y: rc.bottom + 2 })
+  }
+  // val: 'naranja_sa' | 'amarillo' | 'sin_color' | 'auto' (auto = null, vuelve al automático)
+  const aplicarColor = async (id, val) => {
+    setColorOpen(null)
+    await guardarCelda(id, 'color_manual', val === 'auto' ? '' : val)
   }
 
   // ── Asociar RUT a IDADMON en bi_admon (origen: cuentas) ──────────────────
@@ -590,7 +621,7 @@ export default function BiVista() {
       const esUC = c.key === 'unique_concept'
       const baseAm = esUC && num(r.abonos) > 0 && ['FALTA', 'REVISAR'].includes(String(r.check2_pasar_a_cartola ?? '').trim().toUpperCase())
       const amarillo = baseAm && !esIdadmonValido(r[c.key])
-      return (
+      const inputUC = (
         <input value={r[c.key] ?? ''} title={amarillo ? 'Falta teclear el IDADMON (A+5 dígitos)' : (r[c.key] ?? '')}
           placeholder={amarillo ? 'IDADMON…' : ''}
           onChange={e => onLocal(r.id, c.key, e.target.value)}
@@ -605,6 +636,18 @@ export default function BiVista() {
           }}
           style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
       )
+      if (!esUC) return inputUC
+      // En UNIQUE CONCEPT: input + punto de color a la derecha (compacto) para pintar la fila.
+      const cm = String(r.color_manual || '').trim()
+      const dot = cm === 'naranja_sa' ? COLOR.naranja_sa : cm === 'amarillo' ? COLOR.amarillo : cm === 'sin_color' ? '#fff' : null
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{inputUC}</div>
+          <button onClick={(e) => abrirColor(r, e)} title="Color de la fila (Dirección/Karina)"
+            style={{ flexShrink: 0, width: 13, height: 13, borderRadius: '50%', cursor: 'pointer', padding: 0,
+              border: '1px solid #9A968C', background: dot || 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 6px 6px' }} />
+        </div>
+      )
     }
     if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
@@ -612,10 +655,42 @@ export default function BiVista() {
 
   // Los filtros de cabecera los dibuja el componente <ColFilterExcel> (patrón del LOG),
   // definido fuera de este componente. Aquí solo se pasan onSort / onApply y el estado.
-  const CHIPS_CAT = [['todos', 'Todos'], ['identificados', 'Identificados'], ['sinid', 'Sin identificar'], ['cargos', 'Cargos']]
+  const CHIPS_CAT = [['todos', 'Todos', null], [COLOR.abono, 'Abono', COLOR.abono], [COLOR.amarillo, 'A corregir', COLOR.amarillo], [COLOR.cargo, 'Cargo', COLOR.cargo], [COLOR.naranja_sa, 'Negocio SA', COLOR.naranja_sa]]
 
 
   // ---- popover de descuentos (texto para contabilidad, con copiar) ----
+  // Popover del selector de color de fila
+  const renderColorPicker = () => {
+    if (!colorOpen) return null
+    const { row, x, y } = colorOpen
+    const W = 168
+    const left = Math.min(x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 12)
+    const opciones = [
+      ['naranja_sa', 'Negocio SA', COLOR.naranja_sa],
+      ['amarillo', 'A corregir', COLOR.amarillo],
+      ['sin_color', 'Sin color', '#fff'],
+      ['auto', 'Automático', null],
+    ]
+    const actual = String(row.color_manual || '').trim() || 'auto'
+    return (
+      <>
+        <div onClick={() => setColorOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+        <div style={{ position: 'fixed', left, top: y, width: W, background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12, padding: 6 }}>
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', padding: '2px 4px 6px' }}>Color de la fila</div>
+          {opciones.map(([val, lab, col]) => (
+            <button key={val} onClick={() => aplicarColor(row.id, val)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                border: actual === val ? '1px solid #1a56db' : '1px solid transparent', background: actual === val ? '#EFF6FF' : 'transparent', color: '#374151', marginBottom: 2 }}>
+              <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, border: '1px solid #9A968C',
+                background: col === null ? 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 6px 6px' : col }} />
+              {lab}
+            </button>
+          ))}
+        </div>
+      </>
+    )
+  }
+
   const renderPopDescuentos = () => {
     if (!descOpen) return null
     const W = 460
@@ -783,6 +858,7 @@ export default function BiVista() {
       </div>
       {/* filtros: ahora en las cabeceras vía ColFilterExcel */}
       {renderPopDescuentos()}
+      {renderColorPicker()}
       {asocOpen && (
         <>
           <div onClick={() => !asocGuardando && setAsocOpen(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
