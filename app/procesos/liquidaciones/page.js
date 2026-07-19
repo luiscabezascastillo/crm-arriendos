@@ -1,621 +1,848 @@
+// VERSION: v7 · 2026-07-18 · PARTE 1 filtros LOG: sustituye el filtro propio por el mecanismo del LOG
+//   (ordenar A→Z/Z→A + casillas estilo Excel + buscador + "Seleccionar todo") en cada cabecera.
+//   Se mantienen los chips de categoría en UNIQUE CONCEPT. Filtra en cliente sobre las 6.7k. Solo filtra/ordena.
+// VERSION: v6 · 2026-07-15 · ASOCIA_EMAILS con los 4 emails reales (Anthony, Neika, Fabiola, Adalis).
+//   Sin cambios de lógica respecto a v5; corrige la lista que se había quedado con placeholders.
+// VERSION: v5 · 2026-07-15 · PARTE 2 (filtros): sustituye el filtro "contiene" por filtro tipo Excel
+//   (casillas de valores + buscador + "solo" / "mostrar todos") en cada cabecera, filtrando en cliente
+//   sobre las 6.7k ya cargadas. En UNIQUE CONCEPT, además, chips de categoría de color (Todos /
+//   Identificados / Sin identificar / Cargos), combinables con las casillas. Los filtros SOLO filtran.
+// VERSION: v4 · 2026-07-15 · PARTE 1 (cimiento de filtros): carga TODAS las filas de `bi` (paginado
+//   por rangos), muestra por defecto solo las recientes con "Ver todo" (no vuelca 6.7k inputs de golpe),
+//   y DESACTIVA el autorelleno de LIQ. MES2 (abrir la vista ya NO escribe nada). Solo lectura de datos.
+// VERSION: v3 · 2026-07-15 · Segundo nivel de permiso: Anthony/Neika/Adalis/Fabiola pueden IDENTIFICAR
+//   abonos (asociar RUT→IDADMON) por el drawer "➕ RUT" en modo manual (sin sugerencias). El rellenado
+//   del movimiento lo hace el endpoint asociar-rut (server-side), así no dependen de escritura en `bi`.
+//   Edición libre del resto del BI sigue siendo solo Dirección/Karina. Resto igual que v2.
+// VERSION: v2 · 2026-07-09 · gate de escritura (solo Dirección y Karina) + columna LIQ. MES2 editable con validación AAMM
 'use client'
-// VERSION: v6 · 2026-07-19 · Fase 2b: en mes CONGELADO la columna Validado es solo-lectura (sin botón Validar ni quitar validación)
-// VERSION: v5 · 2026-07-19 · Fase 2: mes CONGELADO lee la foto (liquidacion_congelada_propietario + detalle de liquidacion_idadmon); mes en vivo sin cambios
-// VERSION: v4 · 2026-07-19 · Fase 1 coherencia: en mes CONGELADO solo se muestra el indicador 🔒 CONGELADA (se ocultan Recalcular fuentes y Congelar mes)
-// VERSION: v3 · 2026-07-19 · botón "Congelar mes" (modal de confirmación + indicador 🔒 CONGELADA + aviso "YA CONGELADA"); usa endpoint /api/liquidaciones/congelar-mes
-// VERSION: v2 · 2026-07-08 · boton renombrado a 'Recalcular fuentes'
-import { useState, useEffect } from 'react'
+
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabaseClient'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
-const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+// ── Permisos de ESCRITURA del BI ──────────────────────────────────────────
+// Ver la tabla bi lo puede hacer cualquiera con acceso al proceso (proceso_permisos).
+// EDITAR (celdas, asociar RUT, copiar a CUENTAS, reasignar LIQ. MES2) queda
+// reservado a Dirección y Karina, la MISMA lista que preparar-mes y EMAILS.
+// El match es case-insensitive y sin espacios (evita el caso de correos con
+// variantes que ya rompió permisos antes). Nota: este gate es de INTERFAZ;
+// el blindaje server-side de los endpoints (cartola, asociar-rut, copiar-cuentas)
+// es una segunda entrega pendiente.
+const EDIT_EMAILS = [
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+  'karina.morales@fondocapital.com',
+]
+// ── Segundo nivel: SOLO pueden IDENTIFICAR abonos (asociar RUT→IDADMON por el drawer
+// "➕ RUT", en modo manual sin sugerencias). NO editan nada más del BI.
+// Emails confirmados con crm_users (15-jul-2026). Coincidencia EXACTA, en minúsculas.
+const ASOCIA_EMAILS = [
+  'anthony.mendoza@fondocapital.com',
+  'neika.duque@fondocapital.com',
+  'fabiola.guerra@fondocapital.com',
+  'adalis@fondocapital.com',
+]
+// AAMM de 4 dígitos, meses 01–12 (para validar la reasignación de LIQ. MES2).
+const esAAMM = (v) => /^\d{2}(0[1-9]|1[0-2])$/.test(String(v ?? '').trim())
 
-const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
-const NUM_FONT = { fontFamily: '"DM Mono", "Roboto Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace', fontVariantNumeric: 'tabular-nums' }
-const fmtPesos = n => {
-  const v = Number(n)
-  const s = (isNaN(v) || n === null || n === '') ? '—' : '$' + Math.round(v).toLocaleString('es-CL')
-  return <span style={NUM_FONT}>{s}</span>
+const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
+const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
+const LIMITE = 50
+// Con la carga completa, por defecto se PINTAN solo las N más recientes (para no volcar miles de
+// inputs de golpe). "Ver todo" pinta las 6.7k. El filtrado (Parte 2) mostrará todas las que casen.
+const TOPE_DEFECTO = 300
+
+// Extrae el RUT (dígitos-guión-verificador) del texto del detalle del movimiento.
+// "Transferencia de otro banco 16111735-8" -> "16111735-8". Sin RUT -> ''.
+function extraerRut(txt) {
+  const m = String(txt ?? '').match(/(\d{5,9})-([\dkK])/)
+  return m ? `${m[1]}-${m[2].toUpperCase()}` : ''
 }
-const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
 
-// Mes AAMM -> etiqueta legible y viceversa
-const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-const aammToTxt = aamm => { if (!aamm || aamm.length !== 4) return aamm; const a = aamm.slice(0, 2), m = parseInt(aamm.slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }
-// Genera lista de meses AAMM desde 2412 hacia atrás y adelante (para el selector)
-function generarMeses() {
-  const out = []
-  const hoy = new Date()
-  for (let i = 6; i >= -1; i--) {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
-    const aa = String(d.getFullYear()).slice(2)
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    out.push(aa + mm)
-  }
-  return out
+const COLS = [
+  { key: 'fecha',                  h: 'Fecha',          ro: true, w: 84,  align: 'left',  filt: true },
+  { key: 'detalle_movimiento',     h: 'Detalle mov.',   ro: true, w: 230, align: 'left',  filt: true, wrap: true },
+  { key: 'n_doc',                  h: 'N° Doc',         ro: true, w: 86,  align: 'left',  filt: true },
+  { key: 'cargos',                 h: 'Cargo',          ro: true, w: 84,  align: 'right', money: true, color: '#9B1C1C', filt: true },
+  { key: 'abonos',                 h: 'Abono',          ro: true, w: 84,  align: 'right', money: true, color: '#085041', filt: true },
+  { key: 'saldos',                 h: 'Saldo',          ro: true, w: 92,  align: 'right', money: true, filt: true },
+  { key: '_check1',                h: 'check1',         ro: true, w: 60,  align: 'right' },
+  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 78,  align: 'left',  filt: true },
+  { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
+  { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
+  { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
+  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
+  { key: 'idadmon2',               h: 'IDADMON',        w: 84,  align: 'left', filt: true },
+  { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
+  { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
+  { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
+]
+const I_REG = COLS.findIndex(c => c.key === 'reg')
+const I_UC = COLS.findIndex(c => c.key === 'unique_concept')
+
+function colorFila(m) {
+  const ab = num(m.abonos), ca = num(m.cargos)
+  if (ab > 0) return String(m.idadmon2 || m.unique_concept || '').trim() ? '#EAF2FB' : '#FEF7D6'
+  if (ca > 0) return '#FBECEC'
+  return '#fff'
+}
+// IDADMON válido: A + 5 dígitos (ej. A00819).
+const esIdadmonValido = (uc) => /^A\d{5}$/.test(String(uc ?? '').trim().toUpperCase())
+
+// LIQ. MES2 (AAMM) según la fecha de hoy (hora de Chile):
+//   día >= 23 -> mes actual + 1   ·   día <= 22 -> mes actual
+// Ej.: 23-jun -> 2607 · del 24-jun al 22-jul -> 2607 · 23-jul -> 2608.
+function liqMes2Actual(base = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(base)
+  const g = (t) => Number(partes.find((p) => p.type === t)?.value)
+  let y = g('year'), m = g('month')
+  const day = g('day')
+  if (day >= 23) { m += 1; if (m > 12) { m = 1; y += 1 } }
+  return `${String(y).slice(-2)}${String(m).padStart(2, '0')}`
+}
+function bgCelda(ci, r) {
+  if (ci === I_REG) return '#C19A6B'
+  if (ci >= I_UC) return colorFila(r)
+  return '#fff'
 }
 
-export default function LiquidacionesPage() {
+// ── Filtro de cabecera estilo LOG: ordenar A→Z/Z→A + casillas Excel + buscador ──
+// Opcional: `chips` renderiza una fila de botones de categoría arriba (para UNIQUE CONCEPT).
+function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat }) {
+  const [open, setOpen] = useState(false)
+  const [buscar, setBuscar] = useState('')
+  const [pending, setPending] = useState(null)
+  const ref = useRef(null)
+  useEffect(() => {
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+  useEffect(() => { if (open) { setBuscar(''); setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
+  const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const activo = (value && value.length > 0) || sortCol === col || (chips && catFiltro && catFiltro !== 'todos')
+  const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
+  const p = pending || new Set()
+  const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
+  const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
+  const toggleTodas = () => { const n = new Set(p); todasVisiblesMarcadas ? visibles.forEach(o => n.delete(o)) : visibles.forEach(o => n.add(o)); setPending(n) }
+  const aplicar = () => { const arr = [...p]; onApply(col, (arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr); setOpen(false) }
+  const limpiar = () => { setPending(new Set()); onApply(col, []); setOpen(false) }
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: activo ? '#1a56db' : '#5F5E5A', letterSpacing: '0.03em' }}>
+        {label}
+        <span style={{ fontSize: 9, color: activo ? '#1a56db' : '#B4B2A9' }}>
+          {value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
+        </span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, zIndex: 300, padding: 8 }}>
+          {chips && (
+            <>
+              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Categoría</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #F3F4F6' }}>
+                {chips.map(([k, lab]) => (
+                  <button key={k} onClick={() => onCat(k)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, cursor: 'pointer', border: '1px solid ' + (catFiltro === k ? '#1a56db' : '#E5E7EB'), background: catFiltro === k ? '#1a56db' : '#fff', color: catFiltro === k ? '#fff' : '#374151', fontWeight: catFiltro === k ? 600 : 400 }}>{lab}</button>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
+              <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer', background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB', borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB', color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151' }}>{lbl}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
+          <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
+          <input placeholder={`Buscar ${String(label).toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
+            <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
+            (Seleccionar todo){buscar ? ' (lo visible)' : ''}
+          </label>
+          <div style={{ maxHeight: 230, overflowY: 'auto', margin: '2px 0 8px' }}>
+            {visibles.length === 0
+              ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
+              : visibles.map(o => (
+                <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
+                  <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
+                </label>
+              ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={limpiar} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>Limpiar</button>
+            <button onClick={aplicar} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>{[...p].length ? `Aplicar (${[...p].length})` : 'Ver todos'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function BiVista() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const email = session?.user?.email
-  const rol = session?.user?.role
-
-  const [accesoOk, setAccesoOk] = useState(null)
-  // Mes de liquidación en curso: el mes actual, pero a partir del día 23
-  // ya se prepara el mes siguiente (calendario de cierre de FCR).
-  function mesEnCurso() {
-    const h = new Date()
-    let y = h.getFullYear(), m = h.getMonth()  // m: 0-11
-    if (h.getDate() >= 23) { m += 1; if (m > 11) { m = 0; y += 1 } }
-    return String(y).slice(2) + String(m + 1).padStart(2, '0')
-  }
-  const [mes, setMes] = useState(mesEnCurso())
-  const [cargando, setCargando] = useState(false)
+  // ¿El usuario logueado puede EDITAR el BI? (Dirección y Karina). Normalizado.
+  const emailSesion = (session?.user?.email || '').trim().toLowerCase()
+  const puedeEditar = EDIT_EMAILS.includes(emailSesion)
+  // Puede IDENTIFICAR abonos (asociar RUT): edición total, o el segundo nivel (los 4).
+  const puedeAsociar = puedeEditar || ASOCIA_EMAILS.includes(emailSesion)
+  const [rows, setRows] = useState([])               // ascendente por id: antiguos arriba, recientes abajo
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [noMore, setNoMore] = useState(false)
   const [error, setError] = useState(null)
-  const [propietarios, setPropietarios] = useState([])   // resumen por propietario
-  const [transf, setTransf] = useState({})   // transferido ya pagado por idprop (RPC)
-  const [detalles, setDetalles] = useState({})            // idprop -> [inmuebles]
-  const [expandido, setExpandido] = useState(null)        // idprop expandido
-  const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
-  const [busca, setBusca] = useState('')
-  const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
-  const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
-  const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
-  const [valSaving, setValSaving] = useState(null)          // idprop guardándose
-  const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
-  // ── Congelar mes ──
-  const [estadoCongelado, setEstadoCongelado] = useState(null)  // 'congelada' | 'abierta' | 'vacia' | null
-  const [modalCongelar, setModalCongelar] = useState(false)     // muestra confirmación
-  const [congelando, setCongelando] = useState(false)
-  const [avisoCongelar, setAvisoCongelar] = useState(null)      // texto de resultado
-  const puedeCongelar = rol === 'admin' || DIRECCION_EMAILS.includes(email)
-  const nombreCorto = (mail) => { const p = String(mail || '').split('@')[0].split('.')[0]; return p ? p.charAt(0).toUpperCase() + p.slice(1) : '' }
+  const [refreshing, setRefreshing] = useState(false)
+  const [verTodos, setVerTodos] = useState(false)   // false = solo recientes (TOPE_DEFECTO); true = todas
+  const [filtros, setFiltros] = useState({})        // { col: [valores marcados] } — filtro Excel del LOG
+  const [catFiltro, setCatFiltro] = useState('todos') // chips: todos|identificados|sinid|cargos
+  const [sortCol, setSortCol] = useState(null)      // columna de ordenación (key)
+  const [sortDir, setSortDir] = useState('asc')     // 'asc' | 'desc'
+  const [savingId, setSavingId] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [copiando, setCopiando] = useState(false)
+  const [descOpen, setDescOpen] = useState(null)   // { row, x, y, modo } popover de descuentos
+  const [descRows, setDescRows] = useState([])
+  const [descLoading, setDescLoading] = useState(false)
+  const [descQuery, setDescQuery] = useState('')   // buscador libre dentro del popover
+  // Drawer "Asociar RUT" (busca en cuentas y escribe en bi_admon)
+  const [asocOpen, setAsocOpen] = useState(null)   // { row, rut }
+  const [asocLoading, setAsocLoading] = useState(false)
+  const [asocCands, setAsocCands] = useState([])   // [{ idadmon, veces }]
+  const [asocErr, setAsocErr] = useState(null)
+  const [asocId, setAsocId] = useState('')         // idadmon escrito a mano
+  const [asocGuardando, setAsocGuardando] = useState(false)
+  const scrollRef = useRef(null)
+  const anclarAbajo = useRef(false)
+  const pendingAdjust = useRef(null)
 
-  // Acceso
+  const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1400) }
+
+  useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
+
+  // Con la carga completa, el filtrado es EN CLIENTE. buildQuery solo trae todo.
+  const buildQuery = () => supabase.from('bi').select('*')
+
+  // Valor de una celda para el filtro (vacío -> "(vacío)").
+  const valorCelda = (r, key) => { const v = r[key]; return (v ?? '') === '' ? '(vacío)' : String(v) }
+  // Valores distintos de una columna (sobre TODAS las filas cargadas), ordenados.
+  const valoresUnicos = (key) => {
+    const s = new Set()
+    rows.forEach(r => s.add(valorCelda(r, key)))
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'es'))
+  }
+  // Categoría de la fila para los chips de color (misma lógica que colorFila / la leyenda).
+  const categoriaFila = (r) => {
+    const ab = num(r.abonos), ca = num(r.cargos)
+    if (ab > 0) return String(r.idadmon2 || r.unique_concept || '').trim() ? 'identificados' : 'sinid'
+    if (ca > 0) return 'cargos'
+    return 'otros'
+  }
+  // ¿La columna tiene un filtro de casillas activo? (array con valores)
+  const colFiltrada = (key) => { const a = filtros[key]; return Array.isArray(a) && a.length > 0 }
+  const hayFiltroActivo = catFiltro !== 'todos' || COLS.some(c => colFiltrada(c.key)) || !!sortCol
+  const onSort = (col, dir) => { setSortCol(col); setSortDir(dir) }
+  const onApply = (col, arr) => setFiltros(prev => {
+    const n = { ...prev }
+    if (!arr || arr.length === 0) delete n[col]; else n[col] = arr
+    return n
+  })
+
+  const fetchInitial = async (fActuales = filtros) => {
+    setRefreshing(true); setError(null); setNoMore(true)
+    // Carga completa: Supabase devuelve máx. 1000 por consulta, así que paginamos por rangos
+    // hasta traerlas todas. Ascendente por id => antiguas arriba, recientes abajo.
+    const PAGE = 1000
+    let desde = 0
+    let todo = []
+    let errFinal = null
+    for (;;) {
+      const { data, error } = await buildQuery()
+        .order('id', { ascending: true })
+        .range(desde, desde + PAGE - 1)
+      if (error) { errFinal = error; break }
+      todo = todo.concat(data || [])
+      if (!data || data.length < PAGE) break
+      desde += PAGE
+    }
+    if (errFinal) { setError(errFinal.message); setRefreshing(false); setLoading(false); return }
+    anclarAbajo.current = true
+    setRows(todo)
+    setRefreshing(false); setLoading(false)
+  }
+  useEffect(() => { fetchInitial({}) }, [])
+
+  // ── Autorelleno de LIQ. MES2: DESACTIVADO (Parte 1, opción A) ──────────────
+  // Antes, al abrir la vista se escribía el mes en curso a las filas sin valor. Con la carga
+  // completa eso dispararía miles de escrituras al abrir. Como esta vista pasa a ser de solo
+  // lectura para el filtrado, NO se autorellena nada. (La reasignación manual de LIQ. MES2 por
+  // Dirección/Karina en su celda sigue funcionando igual.)
+  const liqDoneRef = useRef(new Set())   // conservado por compatibilidad; ya no se usa para escribir
+
+  // Guarda primero lo que se esté editando (celda con foco) y LUEGO refresca.
+  // Sin esto, si el usuario escribe en una celda y pulsa el botón sin salir
+  // de ella, el onBlur no llega a dispararse y la recarga borra lo escrito.
+  const guardarYRefrescar = async () => {
+    const ae = document.activeElement
+    if (ae && ae.tagName === 'INPUT') {
+      ae.blur()                                   // dispara el onBlur -> guardarCelda
+      await new Promise(res => setTimeout(res, 350)) // esperar a que guarde en Supabase
+    }
+    fetchInitial()
+  }
+
+  const loadMore = async () => {
+    if (loadingMore || noMore || loading || rows.length === 0) return
+    setLoadingMore(true)
+    const minId = rows[0].id
+    const el = scrollRef.current
+    const prevH = el ? el.scrollHeight : 0
+    const prevT = el ? el.scrollTop : 0
+    const { data, error } = await buildQuery(filtros).lt('id', minId).order('id', { ascending: false }).limit(LIMITE)
+    if (error) { setError(error.message); setLoadingMore(false); return }
+    const nuevos = (data || []).reverse()
+    if (nuevos.length > 0) {
+      pendingAdjust.current = { prevH, prevT }
+      setRows(rs => [...nuevos, ...rs])
+    }
+    if ((data || []).length < LIMITE) setNoMore(true)
+    setLoadingMore(false)
+  }
+
   useEffect(() => {
-    if (status !== 'authenticated' || !email) return
-    if (rol === 'admin' || DIRECCION_EMAILS.includes(email)) { setAccesoOk(true); return }
-    supabase.from('proceso_permisos').select('proceso').eq('email', email).eq('activo', true)
-      .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
-  }, [status, email, rol])
-  useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes) } }, [accesoOk])
+    const el = scrollRef.current
+    if (!el) return
+    if (pendingAdjust.current) {
+      const { prevH, prevT } = pendingAdjust.current
+      el.scrollTop = prevT + (el.scrollHeight - prevH)
+      pendingAdjust.current = null
+    } else if (anclarAbajo.current) {
+      el.scrollTop = el.scrollHeight
+      anclarAbajo.current = false
+    }
+  }, [rows])
 
-  async function cargarMes(m) {
-    setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
-    // ¿El mes está congelado? Si lo está, se lee la FOTO congelada (no se recalcula en vivo).
-    let congelado = false
-    try {
-      const rc = await fetch('/api/liquidaciones/congelar-mes', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes: m, check: true }),
-      })
-      const jc = await rc.json().catch(() => ({}))
-      congelado = jc.estado === 'congelada'
-      setEstadoCongelado(jc.estado || null)
-    } catch { setEstadoCongelado(null) }
-    const [rLiq, rTransf] = await Promise.all([
-      // Congelado -> resumen desde liquidacion_idadmon; en vivo -> RPC de cálculo.
-      supabase.rpc(congelado ? 'liquidacion_congelada_propietario' : 'calcular_liquidacion_propietario', { p_mes: m }),
-      // El transferido se lee del bi (estable en meses pasados), igual en ambos casos.
-      supabase.rpc('transferido_propietario', { p_mes: m }),
-    ])
-    if (rLiq.error) { setError(rLiq.error.message); setPropietarios([]); setCargando(false); return }
-    setPropietarios(rLiq.data || [])
-    const tmap = {}
-    for (const t of rTransf.data || []) tmap[t.idprop] = n0(t.transferido)
-    setTransf(tmap)
-    // "Cobra dueño": propietario cuyos contratos activos son TODOS quien_cobra='DUEÑO' (no se le transfiere)
-    const { data: qc } = await supabase.from('datos_arriendos').select('idprop, quien_cobra').in('estado', ['S', 'SQ', 'P'])
-    const porProp = {}
-    for (const r of qc || []) { const k = r.idprop; (porProp[k] = porProp[k] || []).push(String(r.quien_cobra || '').trim().toUpperCase()) }
-    const cd = new Set()
-    for (const [k, arr] of Object.entries(porProp)) {
-      const hayDueno = arr.some(v => v === 'DUEÑO')
-      const hayFCR = arr.some(v => v === 'FCR')
-      if (hayDueno && !hayFCR) cd.add(k)   // cobra el dueño si hay DUEÑO y ningún contrato FCR (ignora vacíos)
-    }
-    setCobraDueno(cd)
-    // Validaciones de transferencia del mes (por idprop)
-    try {
-      const rv = await fetch(`/api/transfer/validar?mes=${m}`, { cache: 'no-store' })
-      const jv = await rv.json()
-      const vmap = {}
-      for (const r of (jv.rows || [])) vmap[r.idprop] = r
-      setValidaciones(vmap)
-    } catch { setValidaciones({}) }
-    setUltimaAct(new Date())
-    setCargando(false)
-  }
+  const onScroll = (e) => { if (e.currentTarget.scrollTop <= 40) loadMore() }
 
-  // Cargar detalle por inmueble + descuentos + comentarios + ajustes del mes
-  async function toggle(idprop) {
-    if (expandido === idprop) { setExpandido(null); return }
-    setExpandido(idprop)
-    if (detalles[idprop]) return
-    let delProp = []
-    if (estadoCongelado === 'congelada') {
-      // Mes congelado: leer las líneas de la FOTO (liquidacion_idadmon) y mapear
-      // los nombres de columna a los que espera el render (como calcular_liquidacion).
-      const { data, error } = await supabase.from('liquidacion_idadmon')
-        .select('idadmon, idprop, inmueble, a_cobrar, comision, iva, descuentos, neto_transferir, recibido, falta_al_cierre')
-        .eq('mes', mes).eq('idprop', idprop)
-      if (error) { setError(error.message); return }
-      delProp = (data || []).map(r => ({
-        idadmon: r.idadmon, idprop: r.idprop, inmueble: r.inmueble,
-        base: n0(r.a_cobrar), comision: n0(r.comision), iva_comision: n0(r.iva),
-        total_descuentos: n0(r.descuentos), neto_transferir: n0(r.neto_transferir),
-        recibido_banco: n0(r.recibido), falta: n0(r.falta_al_cierre),
-        hubo_falta: n0(r.falta_al_cierre) > 0,
-      }))
-    } else {
-      // Mes en vivo: recalcular
-      const { data, error } = await supabase.rpc('calcular_liquidacion', { p_mes: mes })
-      if (error) { setError(error.message); return }
-      delProp = (data || []).filter(d => d.idprop === idprop)
-    }
-    const ids = delProp.map(d => d.idadmon)
-    let descs = [], coments = [], arriendos = [], pagos = []
-    if (ids.length) {
-      const [rDesc, rCom, rArr, rPag] = await Promise.all([
-        supabase.from('descuentos')
-          .select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
-          .in('idadmon', ids).eq('mes_a_imputar', aammToTxt(mes)).eq('repercutir_a', 'PROPIETARIO'),
-        supabase.from('comentarios_liquidacion')
-          .select('idadmon, comentario').in('idadmon', ids).eq('mes', mes),
-        supabase.from('datos_arriendos')
-          .select('idadmon, fecha_inicio, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
-          .in('idadmon', ids),
-        supabase.from('bi')
-          .select('idadmon2, fecha, reg, arriendo').eq('liquidacion_mes2', mes).in('idadmon2', ids),
-      ])
-      descs = rDesc.data || []; coments = rCom.data || []; arriendos = rArr.data || []; pagos = rPag.data || []
-    }
-    // Ajuste del mes = cantidad_reajusteN cuya fecha cae en el mes AAMM liquidado
-    const ajustes = {}
-    arriendos.forEach(a => {
-      for (let i = 1; i <= 6; i++) {
-        const f = a['fecha_reajuste' + i], c = n0(a['cantidad_reajuste' + i])
-        if (f && c !== 0) {
-          const aamm = String(f).slice(2, 4) + String(f).slice(5, 7)  // YYYY-MM-DD -> AAMM
-          if (aamm === mes) ajustes[a.idadmon] = c
-        }
-      }
+  // check1 (saltos/duplicados) sobre la secuencia COMPLETA, siempre — así es correcto.
+  const conCheck = useMemo(() => {
+    return rows.map((r, i) => {
+      if (i === 0) return { ...r, _check1: null }
+      const prev = rows[i - 1]
+      const c1 = Math.round(num(prev.saldos) - num(r.cargos) + num(r.abonos) - num(r.saldos))
+      return { ...r, _check1: c1 }
     })
-    // Pie de textos: IDADMON · cantidad · texto
-    const pie = []
-    ids.forEach(id => {
-      descs.filter(d => d.idadmon === id).forEach(d =>
-        pie.push({ idadmon: id, cantidad: n0(d.monto_a_imputar), texto: d.texto_explicativo_para_carta_a_propietario || 'Descuento' }))
-      if (ajustes[id]) pie.push({ idadmon: id, cantidad: ajustes[id], texto: 'Ajuste del mes' })
-      coments.filter(c => c.idadmon === id && c.comentario).forEach(c =>
-        pie.push({ idadmon: id, cantidad: null, texto: c.comentario }))
-    })
-    const sumaDesc = {}
-    descs.forEach(d => { sumaDesc[d.idadmon] = (sumaDesc[d.idadmon] || 0) + n0(d.monto_a_imputar) })
-    // pagos del BI agrupados por inmueble (para el desglose al pinchar Recibido)
-    const pagosPorInm = {}
-    pagos.forEach(pg => { (pagosPorInm[pg.idadmon2] = pagosPorInm[pg.idadmon2] || []).push(pg) })
-    // Inicio del contrato (fecha_inicio de datos_arriendos) por inmueble
-    const inicios = {}
-    arriendos.forEach(a => { inicios[a.idadmon] = a.fecha_inicio })
-    setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm, inicios } }))
-  }
+  }, [rows])
 
-  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m) }
-
-  // Consulta si el mes está congelado (para el indicador de candado)
-  async function consultarCongelado(m) {
-    try {
-      const res = await fetch('/api/liquidaciones/congelar-mes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes: m, check: true }),
-      })
-      const j = await res.json().catch(() => ({}))
-      setEstadoCongelado(res.ok ? (j.estado || null) : null)
-    } catch { setEstadoCongelado(null) }
-  }
-
-  // Ejecuta el congelado (tras confirmación del modal)
-  async function ejecutarCongelar() {
-    setCongelando(true); setAvisoCongelar(null)
-    try {
-      const res = await fetch('/api/liquidaciones/congelar-mes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes }),
-      })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setAvisoCongelar('⚠ Error: ' + (j.error || res.status))
-      } else if (j.ya_congelada) {
-        setAvisoCongelar('🔒 Liquidación ' + aammToTxt(mes) + ' YA CONGELADA')
-        setEstadoCongelado('congelada')
-      } else if (j.congelada) {
-        setAvisoCongelar('✅ Liquidación ' + aammToTxt(mes) + ' congelada (' + (j.lineas ?? '?') + ' líneas)')
-        setEstadoCongelado('congelada')
-      }
-    } catch (e) {
-      setAvisoCongelar('⚠ Error de red al congelar')
-    } finally {
-      setCongelando(false)
-      setModalCongelar(false)
+  // Aplica los filtros: categoría (chips) + casillas por columna (arrays) + ordenación.
+  // Si hay filtro/orden activo, se oculta check1 (deja de tener sentido sobre un subconjunto/reordenado).
+  const filas = useMemo(() => {
+    let out = conCheck
+    if (catFiltro !== 'todos') out = out.filter(r => categoriaFila(r) === catFiltro)
+    const activos = Object.entries(filtros).filter(([, a]) => Array.isArray(a) && a.length > 0)
+    if (activos.length) out = out.filter(r => activos.every(([k, a]) => a.includes(valorCelda(r, k))))
+    if (sortCol) {
+      const dir = sortDir === 'asc' ? 1 : -1
+      out = [...out].sort((x, y) => valorCelda(x, sortCol).localeCompare(valorCelda(y, sortCol), 'es', { numeric: true }) * dir)
     }
-  }
-
-  async function toggleValidar(idprop, ev) {
-    if (ev) ev.stopPropagation()
-    if (!puedeValidar) return
-    const actual = validaciones[idprop]
-    const nuevo = !(actual && actual.validado)
-    setValSaving(idprop)
-    try {
-      const res = await fetch('/api/transfer/validar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idprop, mes, validado: nuevo }),
-      })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error || 'Error')
-      setValidaciones(prev => ({ ...prev, [idprop]: { idprop, validado: j.validado, validado_por: j.validado_por, validado_at: j.validado_at } }))
-    } catch (err) { alert(err.message) }
-    setValSaving(null)
-  }
-
-  if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
-  if (accesoOk === false) return null
-
-  // ── Alertas automáticas por propietario ──
-  function alertasDe(p) {
-    const out = []
-    if (n0(p.n_con_falta) > 0) out.push({ tipo: 'falta', txt: `${p.n_con_falta} inmueble${p.n_con_falta > 1 ? 's' : ''} con falta de pago` })
-    if (n0(p.n_propiedades) === 1 && n0(p.total_falta) > 0) out.push({ tipo: 'riesgo', txt: 'Propietario de 1 sola propiedad con falta — recuperar adelanto es difícil' })
+    if (hayFiltroActivo) out = out.map(r => ({ ...r, _check1: null }))
     return out
+  }, [conCheck, catFiltro, filtros, sortCol, sortDir, hayFiltroActivo])
+
+  // Qué filas se PINTAN. check1 se calcula sobre TODA la secuencia (arriba), pero por defecto
+  // solo mostramos las recientes para no volcar miles de inputs. "Ver todo" las pinta todas.
+  // (En la Parte 2, con filtro activo se mostrarán todas las que casen.)
+  const visibles = useMemo(() => {
+    return (verTodos || hayFiltroActivo) ? filas : filas.slice(-TOPE_DEFECTO)
+  }, [filas, verTodos, hayFiltroActivo])
+
+  const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
+  const guardarCelda = async (id, k, valor) => {
+    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
+    const v = valor === '' ? null : valor
+    setSavingId(id)
+    const { error } = await supabase.from('bi').update({ [k]: v }).eq('id', id)
+    setSavingId(null)
+    if (error) { setError('No se pudo guardar: ' + error.message); return }
+    setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
+    flash('✓ Guardado')
   }
 
-  const q = norm(busca)
-  const lista = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
+  // ── Asociar RUT a IDADMON en bi_admon (origen: cuentas) ──────────────────
+  const abrirAsociar = async (r) => {
+    if (!puedeAsociar) { flash('No tienes permiso para asociar RUT en el BI'); return }
+    const rut = extraerRut(r.detalle_movimiento)
+    if (!rut) { flash('No se encontró un RUT en el detalle'); return }
+    // Los del segundo nivel (no editores totales) van en modo MANUAL: sin sugerencias de IDADMON.
+    const soloManual = !puedeEditar
+    setAsocOpen({ row: r, rut, soloManual }); setAsocCands([]); setAsocErr(null); setAsocId('')
+    if (soloManual) { setAsocLoading(false); return }   // no se buscan candidatos
+    setAsocLoading(true)
+    try {
+      const res = await fetch('/api/bi/asociar-rut?rut=' + encodeURIComponent(rut))
+      const d = await res.json()
+      if (!res.ok) { setAsocErr(d.error || 'Error al buscar'); setAsocLoading(false); return }
+      setAsocCands(d.candidatos || [])
+    } catch { setAsocErr('Error de conexión') }
+    setAsocLoading(false)
+  }
 
-  // Totales del mes (los "cobra dueño" NO cuentan: no se les transfiere)
-  const totMes = lista.reduce((a, p) => {
-    if (cobraDueno.has(p.idprop)) return a
-    return {
-      transferir: a.transferir + n0(p.total_transferir),
-      transferido: a.transferido + n0(transf[p.idprop]),
-      comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
-      falta: a.falta + n0(p.total_falta),
+  const asociarRut = async (idadmon) => {
+    const id = String(idadmon || '').trim().toUpperCase()
+    if (!/^A\d{5}$/.test(id)) { setAsocErr('IDADMON no válido (debe ser Axxxxx, ej. A00819)'); return }
+    const { row, rut } = asocOpen
+    setAsocGuardando(true); setAsocErr(null)
+    try {
+      // Pasamos biId: el endpoint asocia en bi_admon Y rellena este movimiento (server-side),
+      // así funciona también para quien no tiene escritura directa en `bi`.
+      const res = await fetch('/api/bi/asociar-rut', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut, idadmon: id, biId: row.id }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setAsocErr(d.error || 'Error al asociar'); setAsocGuardando(false); return }
+      if (d.rellenado === false && d.errorRelleno) {
+        setAsocErr('Se asoció el RUT pero no se pudo rellenar el movimiento: ' + d.errorRelleno)
+        setAsocGuardando(false); return
+      }
+      // Reflejar en la vista el IDADMON que el endpoint ya escribió en unique_concept.
+      setRows(rs => rs.map(r => r.id === row.id ? { ...r, unique_concept: id } : r))
+      flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${id})` : `✓ Asociado ${rut} → ${id}`)
+      setAsocGuardando(false); setAsocOpen(null)
+    } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
+  }
+
+  const copiarFaltan = async () => {
+    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
+    if (copiando) return
+    if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA con IDADMON válido?')) return
+    setCopiando(true); setError(null)
+    try {
+      const r = await fetch('/api/bi/copiar-cuentas', { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Error en el servidor')
+      if (d.invalidos?.length) {
+        const regs = d.invalidos.map(x => x.reg).filter(Boolean).join(', ')
+        setError(
+          `ERROR: se ha colocado "FALTA" a ${d.invalidos.length} movimiento(s) NO asociado(s) a un IDADMON válido (Axxxxx). ` +
+          `NO se han pasado a CARTOLAS y siguen en FALTA. Corrígelos en BI` + (regs ? ` (Reg: ${regs}).` : '.')
+        )
+      }
+      flash(`✓ ${d.copiados} copiado(s) a CUENTAS`)
+      fetchInitial()
+    } catch (err) {
+      setError('No se pudo copiar: ' + err.message)
+    } finally { setCopiando(false) }
+  }
+
+  // Parte B: localizar el descuento que justifica un movimiento y pegar su
+  // texto_para_contabilidad en UNIQUE CONCEPT. Dos modos:
+  //  - abono con IDADMON  -> descuentos de ese IDADMON
+  //  - egreso (cargo)     -> descuentos con monto_a_transferir = cargo (candidatos por importe)
+  // Lectura server-side (service role) para no depender del RLS de descuentos.
+  const buscarDescuentos = async ({ monto, q }) => {
+    setDescLoading(true)
+    try {
+      const p = new URLSearchParams()
+      if (monto != null) p.set('monto', String(monto))
+      if (q) p.set('q', q)
+      const res = await fetch(`/api/descuentos/buscar?${p.toString()}`)
+      const d = await res.json()
+      setDescRows(d.rows || [])
+    } catch { setDescRows([]) }
+    finally { setDescLoading(false) }
+  }
+
+  const abrirDescuentos = async (r, e) => {
+    const rc = e.currentTarget.getBoundingClientRect()
+    if (descOpen && descOpen.row?.id === r.id) { setDescOpen(null); return }
+    const idadmon = String(r.idadmon2 || '').trim().toUpperCase()
+    const cargo = num(r.cargos)
+    const modo = cargo > 0 ? 'importe' : 'idadmon'
+    setDescOpen({ row: r, x: rc.left, y: rc.bottom + 2, modo })
+    setDescRows([]); setDescQuery('')
+    if (modo === 'importe') await buscarDescuentos({ monto: Math.round(cargo) })
+    else if (idadmon) {
+      setDescLoading(true)
+      try {
+        const res = await fetch(`/api/descuentos/por-idadmon?idadmon=${encodeURIComponent(idadmon)}`)
+        const d = await res.json()
+        setDescRows(d.rows || [])
+      } catch { setDescRows([]) }
+      finally { setDescLoading(false) }
     }
-  }, { transferir: 0, transferido: 0, comision: 0, falta: 0 })
-  const nCobraDueno = lista.filter(p => cobraDueno.has(p.idprop)).length
-  const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
+  }
 
-  const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
-  const metric = { flex: 1, minWidth: 130, background: '#FAFAF8', borderRadius: 8, padding: '10px 14px' }
-  const metricLbl = { fontSize: 12, color: '#888' }
-  const metricVal = { fontSize: 20, fontWeight: 700, color: '#1a1a2e' }
+  // Pega el texto_para_contabilidad del descuento elegido en UNIQUE CONCEPT de la fila.
+  const usarEnUniqueConcept = async (d) => {
+    if (!descOpen?.row) return
+    const txt = String(d.texto_para_contabilidad || '').trim()
+    if (!txt) return
+    const actual = String(descOpen.row.unique_concept || '').trim()
+    // si ya hay un texto de contabilidad (empieza por "num Axxxxx"), pedir confirmación
+    const yaTieneTexto = /^\d+\s+A\d{5}\b/.test(actual)
+    if (yaTieneTexto && !confirm(`UNIQUE CONCEPT ya tiene:\n\n${actual}\n\n¿Reemplazar por?\n\n${txt}`)) return
+    await guardarCelda(descOpen.row.id, 'unique_concept', txt)
+    setDescOpen(null)
+  }
+
+  const copiarTexto = async (t) => {
+    const txt = String(t ?? '')
+    if (!txt) return
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(txt)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'
+        document.body.appendChild(ta); ta.select()
+        document.execCommand('copy'); document.body.removeChild(ta)
+      }
+      flash('✓ Texto copiado')
+    } catch { /* si falla, no rompemos nada */ }
+  }
+
+  if (status === 'loading' || loading)
+    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando movimientos…</div></>)
+
+  const abonos = rows.filter(r => num(r.abonos) > 0).length
+  const cargos = rows.filter(r => num(r.cargos) > 0).length
+  const sinId = rows.filter(r => num(r.abonos) > 0 && !String(r.idadmon2 || r.unique_concept || '').trim()).length
+  const errChk = conCheck.filter(r => r._check1 != null && r._check1 !== 0).length
+
+  const cell = (r, c) => {
+    if (c.key === '_check1') return r._check1 == null
+      ? <span style={{ color: '#B4B2A9' }}>—</span>
+      : <span style={{ fontWeight: 600, color: r._check1 === 0 ? '#1D9E75' : '#9B1C1C' }}>{r._check1}</span>
+    if (c.key === '_descuentos') {
+      const tieneId = String(r.idadmon2 || '').trim() !== ''
+      const esEgreso = num(r.cargos) > 0
+      if (!tieneId && !esEgreso) return <span style={{ color: '#B4B2A9' }}>—</span>
+      if (!puedeEditar) return <span style={{ color: '#B4B2A9' }}>—</span>
+      const abierto = descOpen && descOpen.row?.id === r.id
+      return (
+        <button onClick={(e) => abrirDescuentos(r, e)}
+          title={esEgreso
+            ? 'Buscar el descuento que justifica este egreso (por importe) y pegar su texto en UNIQUE CONCEPT'
+            : 'Ver el/los texto(s) para contabilidad del descuento de este IDADMON'}
+          style={{ border: '0.5px solid #C8C5BC', background: abierto ? '#E6F1FB' : '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '2px 7px' }}>📋</button>
+      )
+    }
+    if (c.key === '_asociar') {
+      const esAbono = num(r.abonos) > 0
+      const rut = extraerRut(r.detalle_movimiento)
+      if (!esAbono || !rut) return <span style={{ color: '#B4B2A9' }}>—</span>
+      if (!puedeAsociar) return <span style={{ color: '#B4B2A9' }}>—</span>
+      const resuelto = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
+      const abierto = asocOpen && asocOpen.row?.id === r.id
+      return (
+        <button onClick={() => abrirAsociar(r)}
+          title={`Asociar el RUT ${rut} a un IDADMON en bi_admon (busca en CUENTAS a qué contrato pagó antes)`}
+          style={{ border: '0.5px solid ' + (resuelto ? '#C8C5BC' : '#9BD7C2'), background: abierto ? '#E1F5EE' : (resuelto ? '#fff' : '#F0FAF6'), color: resuelto ? '#8A8780' : '#085041', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: '2px 7px' }}>➕ RUT</button>
+      )
+    }
+    // LIQ. MES2: mes de liquidación al que se imputa el pago. Editable SOLO por
+    // Dirección/Karina (reasignar excepciones del corte del día 23). Valida AAMM.
+    // Si la celda está vacía, muestra en gris el valor que le tocaría por la regla
+    // del día (liqMes2Actual), sin escribirlo aquí (de eso se ocupa el autollenado).
+    if (c.key === 'liquidacion_mes2') {
+      const actual = String(r.liquidacion_mes2 ?? '').trim()
+      if (!puedeEditar) {
+        const v = actual || liqMes2Actual()
+        return <span title={v} style={{ color: '#5F5E5A' }}>{v}</span>
+      }
+      const vacio = actual === ''
+      return (
+        <input value={actual} title={vacio ? `Sin asignar (por regla: ${liqMes2Actual()})` : actual}
+          placeholder={liqMes2Actual()} inputMode="numeric" maxLength={4}
+          onChange={e => onLocal(r.id, c.key, e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+          onFocus={e => { e.target.dataset.orig = actual; e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
+          onBlur={e => {
+            const orig = e.target.dataset.orig ?? ''
+            const val = (e.target.value ?? '').trim()
+            e.target.style.border = '1px solid transparent'
+            e.target.style.background = 'transparent'
+            if (val === orig) return                                  // sin cambios
+            if (val !== '' && !esAAMM(val)) {                          // formato inválido -> revertir
+              onLocal(r.id, c.key, orig)
+              flash('LIQ. MES2 debe ser AAMM (p. ej. 2607)')
+              return
+            }
+            guardarCelda(r.id, c.key, val)                            // válido o vaciado
+          }}
+          style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, background: 'transparent', textAlign: c.align, color: vacio ? '#B4B2A9' : '#2C2C2A', boxSizing: 'border-box' }} />
+      )
+    }
+    if (!c.ro) {
+      // Columnas editables (unique_concept, idadmon2, discriminador, check2):
+      // en modo lectura (observador) se muestran como texto, sin input.
+      if (!puedeEditar) {
+        const s = String(r[c.key] ?? '').trim()
+        return <span title={s}>{s || '—'}</span>
+      }
+      const esUC = c.key === 'unique_concept'
+      const baseAm = esUC && num(r.abonos) > 0 && ['FALTA', 'REVISAR'].includes(String(r.check2_pasar_a_cartola ?? '').trim().toUpperCase())
+      const amarillo = baseAm && !esIdadmonValido(r[c.key])
+      return (
+        <input value={r[c.key] ?? ''} title={amarillo ? 'Falta teclear el IDADMON (A+5 dígitos)' : (r[c.key] ?? '')}
+          placeholder={amarillo ? 'IDADMON…' : ''}
+          onChange={e => onLocal(r.id, c.key, e.target.value)}
+          onFocus={e => { e.target.dataset.orig = (r[c.key] ?? ''); e.target.style.border = '1px solid #1D9E75'; e.target.style.background = '#fff' }}
+          onBlur={e => {
+            const orig = e.target.dataset.orig ?? ''
+            const actual = e.target.value ?? ''
+            const sigueAm = baseAm && !esIdadmonValido(actual)
+            e.target.style.border = '1px solid transparent'
+            e.target.style.background = sigueAm ? '#FFE84D' : 'transparent'
+            if (orig !== actual) guardarCelda(r.id, c.key, actual)
+          }}
+          style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
+      )
+    }
+    if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
+  }
+
+  // Los filtros de cabecera los dibuja el componente <ColFilterExcel> (patrón del LOG),
+  // definido fuera de este componente. Aquí solo se pasan onSort / onApply y el estado.
+  const CHIPS_CAT = [['todos', 'Todos'], ['identificados', 'Identificados'], ['sinid', 'Sin identificar'], ['cargos', 'Cargos']]
+
+
+  // ---- popover de descuentos (texto para contabilidad, con copiar) ----
+  const renderPopDescuentos = () => {
+    if (!descOpen) return null
+    const W = 460
+    const left = Math.min(descOpen.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 12)
+    const r = descOpen.row
+    const cargo = num(r?.cargos)
+    const esImporte = descOpen.modo === 'importe'
+    const unico = !descLoading && descRows.length === 1   // precarga: único candidato
+    return (
+      <>
+        <div onClick={() => setDescOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+        <div style={{ position: 'fixed', left, top: descOpen.y, width: W, maxHeight: 420, overflow: 'auto', background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
+          <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #EDEBE4', fontWeight: 600, color: '#5F5E5A', position: 'sticky', top: 0, background: '#fff' }}>
+            {esImporte
+              ? <>Egreso de <b>{fmt(cargo)}</b> · descuentos con transferir = {fmt(cargo)}</>
+              : <>Descuentos de {String(r?.idadmon2 || '').trim().toUpperCase()}</>}
+          </div>
+
+          {/* buscador para navegar (por IDADMON, N° o texto) */}
+          <div style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 6 }}>
+            <input value={descQuery} onChange={e => setDescQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && descQuery.trim()) buscarDescuentos({ q: descQuery.trim() }) }}
+              placeholder="Buscar por IDADMON, N° o texto…"
+              style={{ flex: 1, border: '1px solid #C8C5BC', borderRadius: 6, padding: '4px 8px', fontSize: 12 }} />
+            <button onClick={() => descQuery.trim() && buscarDescuentos({ q: descQuery.trim() })}
+              style={{ border: 'none', background: '#5F6B7A', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 10px' }}>Buscar</button>
+            {esImporte && (
+              <button onClick={() => { setDescQuery(''); buscarDescuentos({ monto: Math.round(cargo) }) }}
+                title="Volver a los candidatos por importe"
+                style={{ border: '0.5px solid #C8C5BC', background: '#fff', color: '#5F5E5A', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>↺ importe</button>
+            )}
+          </div>
+
+          {descLoading
+            ? <div style={{ padding: 12, color: '#888780' }}>Cargando…</div>
+            : descRows.length === 0
+              ? <div style={{ padding: 12, color: '#888780' }}>
+                  {esImporte ? 'Ningún descuento con ese importe. Usa el buscador para localizarlo.' : 'Sin resultados.'}
+                </div>
+              : descRows.map((d, i) => (
+                <div key={i} style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', display: 'flex', gap: 8, alignItems: 'flex-start', background: unico ? '#F3FAF6' : '#fff' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: '#888780', marginBottom: 2 }}>
+                      N° {d.num || '—'} · {d.idadmon || ''} · {d.tipo || ''} · transferir {fmt(d.monto_a_transferir)}{unico ? ' · (único candidato)' : ''}
+                    </div>
+                    <div style={{ color: '#2C2C2A', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {d.texto_para_contabilidad || <span style={{ color: '#B4B2A9' }}>(sin texto de contabilidad)</span>}
+                    </div>
+                  </div>
+                  {d.texto_para_contabilidad && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => usarEnUniqueConcept(d)} title="Pegar este texto en UNIQUE CONCEPT de la fila"
+                        style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px', whiteSpace: 'nowrap' }}>Usar este</button>
+                      <button onClick={() => copiarTexto(d.texto_para_contabilidad)} title="Solo copiar al portapapeles"
+                        style={{ border: 'none', background: '#E6F1FB', color: '#0C447C', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>📋</button>
+                    </div>
+                  )}
+                </div>
+              ))
+          }
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
       <TopNav />
-      {/* Modal de confirmación de congelar */}
-      {modalCongelar && (
-        <div onClick={() => !congelando && setModalCongelar(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 14, padding: 26, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: '"DM Sans", sans-serif' }}>
-            {estadoCongelado === 'congelada' ? (
-              <>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#1E40AF', marginBottom: 10 }}>🔒 Liquidación ya congelada</div>
-                <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 20 }}>
-                  La liquidación de <b>{aammToTxt(mes)}</b> ya está congelada y protegida. No hay nada que hacer.
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setModalCongelar(false)}
-                    style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Entendido
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#92400E', marginBottom: 10 }}>🔒 ¿Congelar la liquidación de {aammToTxt(mes)}?</div>
-                <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.55, marginBottom: 8 }}>
-                  Al congelar, este mes queda <b>cerrado y protegido</b>: se guarda una foto definitiva con los datos actuales (se recalcula una última vez) y ya <b>no se recalculará automáticamente</b>.
-                </div>
-                <div style={{ fontSize: 13, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 12px', marginBottom: 20 }}>
-                  Úsalo solo cuando el mes esté revisado y cuadrado. Si te has equivocado de mes, pulsa Cancelar.
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                  <button onClick={() => setModalCongelar(false)} disabled={congelando}
-                    style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Cancelar
-                  </button>
-                  <button onClick={ejecutarCongelar} disabled={congelando}
-                    style={{ fontSize: 13, fontWeight: 700, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#D97706', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {congelando ? 'Congelando…' : `Sí, congelar ${aammToTxt(mes)}`}
-                  </button>
-                </div>
-              </>
-            )}
+      <div style={{ maxWidth: 1640, margin: '0 auto', padding: '18px 20px 30px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltroActivo ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
+          <button onClick={() => router.push('/procesos/bi')}
+            style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
         </div>
-      )}
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif', fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1' }}>
-        {avisoCongelar && (
-          <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, padding: '10px 14px', borderRadius: 8,
-            background: avisoCongelar.startsWith('⚠') ? '#FEF2F2' : '#F0FDF4',
-            color: avisoCongelar.startsWith('⚠') ? '#B91C1C' : '#166534',
-            border: '1px solid ' + (avisoCongelar.startsWith('⚠') ? '#FECACA' : '#BBF7D0') }}>
-            {avisoCongelar}
+
+        {!puedeEditar && (
+          <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FBF7EC', border: '0.5px solid #E6D58A', color: '#8a6d1e', fontSize: 12 }}>
+            Modo solo lectura — la edición del BI (asociar RUT, IDADMON, mes de liquidación, copiar a CUENTAS) está reservada a Dirección y Karina.
           </div>
         )}
 
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>TRANSFER</h1>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Transferencias a propietarios · los datos vienen de sus tablas de origen (datos_arriendos, bi, descuentos)</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 10, fontSize: 11, color: '#5F5E5A', alignItems: 'center' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#EAF2FB', border: '0.5px solid #B9D4EE', borderRadius: 2 }} /> Abono ({abonos})</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FBECEC', border: '0.5px solid #E9B9B9', borderRadius: 2 }} /> Cargo ({cargos})</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FEF7D6', border: '0.5px solid #E6D58A', borderRadius: 2 }} /> Sin identificar ({sinId})</span>
+          {!hayFiltroActivo && errChk > 0 && <span style={{ color: '#9B1C1C', fontWeight: 600 }}>⚠ check1 ≠ 0 en {errChk}</span>}
+          {savingId && <span style={{ color: '#1D9E75' }}>guardando…</span>}
+        </div>
 
-        {/* CABECERA FIJA (sticky): controles + KPIs + títulos */}
-        <div style={{ position: 'sticky', top: 52, zIndex: 20, background: '#F7F7F5', paddingTop: 6 }}>
+        {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
 
-        {/* Barra: mes + búsqueda */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-          <label style={{ fontSize: 13, color: '#666' }}>Mes:</label>
-          <select value={mes} onChange={e => cambiarMes(e.target.value)}
-            style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit' }}>
-            {generarMeses().map(m => <option key={m} value={m}>{aammToTxt(m)}</option>)}
-          </select>
-          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar propietario…"
-            style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: 240 }} />
-          {estadoCongelado === 'congelada' ? (
-            <span title="Este mes está congelado (cerrado y protegido). No se recalcula."
-              style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 7, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
-              🔒 CONGELADA
-            </span>
-          ) : (
-            <>
-              <button onClick={() => cargarMes(mes)} disabled={cargando}
-                title="Vuelve a leer bi, descuentos y comentarios y recalcula todo"
-                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                {cargando ? 'Calculando…' : '🔄 Recalcular fuentes'}
+        {/* BARRA DE ACCIONES */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+          <button onClick={guardarYRefrescar} disabled={refreshing}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+            {refreshing ? 'Actualizando…' : '🔄 Refrescar lista'}
+          </button>
+          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+          {[
+            ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
+            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido)', copiarFaltan],
+            ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR', null],
+          ].map(([label, hint, accion], i) => {
+            const habilitado = !!accion && !copiando && puedeEditar
+            return (
+              <button key={i} title={hint} disabled={!habilitado}
+                onClick={() => { if (accion) accion() }}
+                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid ' + (habilitado ? '#6B4423' : '#C8C5BC'), background: habilitado ? '#8A5A2B' : '#D3D1C7', color: '#fff', cursor: habilitado ? 'pointer' : 'default' }}>
+                {label}
               </button>
-              {puedeCongelar && (
-                <button onClick={() => { setAvisoCongelar(null); setModalCongelar(true) }} disabled={congelando}
-                  title="Congela este mes: guarda una foto definitiva y ya no se recalculará"
-                  style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FBBF24', background: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  🔒 Congelar mes
-                </button>
-              )}
-            </>
-          )}
-          <button onClick={() => router.push('/procesos/liquidaciones/cartas')}
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#3730A3', cursor: 'pointer', fontFamily: 'inherit' }}>
-            📄 CARTAS
+            )
+          })}
+          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+          <button onClick={() => setVerTodos(v => !v)}
+            title={verTodos ? 'Mostrar solo las más recientes' : 'Mostrar las 6.7k filas (puede ir más lento)'}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: verTodos ? '#8A5A2B' : '#fff', color: verTodos ? '#fff' : '#6B4423', cursor: 'pointer' }}>
+            {verTodos ? `Ver recientes (${TOPE_DEFECTO})` : `Ver todo (${filas.length})`}
           </button>
-          <div style={{ width: 1, height: 22, background: '#E5E7EB', margin: '0 2px' }} />
-          <button onClick={() => router.push('/procesos/liquidaciones/faltan')}
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontFamily: 'inherit' }}>
-            ⚠ FALTAN
-          </button>
-          <button onClick={() => router.push('/procesos/liquidaciones/emails')}
-            title="EMAILS · envío de liquidaciones a propietarios (módulo en construcción)"
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', cursor: 'pointer', fontFamily: 'inherit' }}>
-            ✉ EMAILS
-          </button>
-          <button onClick={() => router.push('/procesos/liquidaciones/facturas')}
-            title="FACTURAS · preparación de facturación SimpleFactura"
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #DDD6FE', background: '#F5F3FF', color: '#6D28D9', cursor: 'pointer', fontFamily: 'inherit' }}>
-            🧾 FACTURAS
-          </button>
-          {ultimaAct && <span style={{ fontSize: 11, color: '#94A3B8' }}>Actualizado {ultimaAct.toLocaleTimeString('es-CL')}</span>}
         </div>
 
-        {/* Métricas */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={metric}><div style={metricLbl}>A transferir</div><div style={metricVal}>{fmtPesos(totMes.transferir)}</div></div>
-          <div style={metric}><div style={metricLbl}>Transferido</div><div style={{ ...metricVal, color: '#0C447C' }}>{fmtPesos(totMes.transferido)}</div></div>
-          <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
-          <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
-          <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
-          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
+        <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, minWidth: 1600 }}>
+            <thead>
+              <tr style={{ background: '#F1EFE8' }}>
+                {COLS.map((c, i) => (
+                  <th key={i} style={{ padding: '6px 8px', textAlign: c.align, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap', minWidth: c.w, position: 'sticky', top: 0, background: '#F1EFE8', zIndex: 3, borderBottom: '0.5px solid #D3D1C7' }}>
+                    {c.filt ? (
+                      <ColFilterExcel
+                        label={c.h} col={c.key} align={c.align === 'right' ? 'right' : 'left'}
+                        sortCol={sortCol} sortDir={sortDir} onSort={onSort}
+                        opciones={valoresUnicos(c.key)} value={filtros[c.key] || []} onApply={onApply}
+                        chips={c.key === 'unique_concept' ? CHIPS_CAT : null}
+                        catFiltro={catFiltro} onCat={setCatFiltro}
+                      />
+                    ) : (
+                      <span>{c.h}</span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!verTodos && filas.length > TOPE_DEFECTO && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— mostrando las {TOPE_DEFECTO} más recientes de {filas.length} · «Ver todo» arriba —</td></tr>}
+              {(verTodos || filas.length <= TOPE_DEFECTO) && filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
+              {visibles.map((r) => (
+                <tr key={r.id}>
+                  {COLS.map((c, ci) => (
+                    <td key={ci} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
+                      {cell(r, c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {visibles.length === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
+            </tbody>
+          </table>
         </div>
 
-        {/* Títulos de columnas (parte de la cabecera fija) */}
-        {!cargando && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '9px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', fontSize: 12, color: '#888', fontWeight: 700 }}>
-            <div>Propietario</div>
-            <div style={{ textAlign: 'right' }}>A cobrar</div>
-            <div style={{ textAlign: 'right' }}>Recibido</div>
-            <div style={{ textAlign: 'right' }}>Comisión</div>
-            <div style={{ textAlign: 'right' }}>IVA</div>
-            <div style={{ textAlign: 'right' }}>Descuentos</div>
-            <div style={{ textAlign: 'right' }}>A transferir</div>
-            <div style={{ textAlign: 'right' }}>Transferido</div>
-            <div style={{ textAlign: 'center' }}>Validado</div>
-            <div style={{ textAlign: 'center' }}>Estado</div>
-          </div>
-        )}
+        <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
+          {visibles.length} de {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
+        </div>
+      </div>
+      {/* filtros: ahora en las cabeceras vía ColFilterExcel */}
+      {renderPopDescuentos()}
+      {asocOpen && (
+        <>
+          <div onClick={() => !asocGuardando && setAsocOpen(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(520px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71 }}>
+            <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E4E2DA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#2C2C2A' }}>Asociar RUT a IDADMON</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A' }}>RUT <b>{asocOpen.rut}</b> — se guardará en <code>bi_admon</code> para autocompletar sus abonos futuros.</div>
+              </div>
+              <button onClick={() => !asocGuardando && setAsocOpen(null)}
+                style={{ border: 'none', background: '#F1EFE8', color: '#5F5E5A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cerrar</button>
+            </div>
 
-        </div>{/* fin cabecera fija */}
+            <div style={{ padding: '14px 18px', overflow: 'auto' }}>
+              {asocErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{asocErr}</div>}
 
-        {error && <div style={{ ...card, background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, marginTop: 12 }}>Error: {error}</div>}
-
-        {cargando ? <div style={{ color: '#888', padding: 20 }}>Calculando liquidación de {aammToTxt(mes)}…</div> : (
-          <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
-
-
-
-            {lista.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay propietarios con contratos activos para {aammToTxt(mes)}.</div>}
-
-            {lista.map(p => {
-              const alertas = alertasDe(p)
-              const abierto = expandido === p.idprop
-              const detObj = detalles[p.idprop] || null
-              const det = detObj ? detObj.inmuebles : []
-              const pie = detObj ? detObj.pie : []
-              const sumaDesc = detObj ? detObj.sumaDesc : {}
-              const cd = cobraDueno.has(p.idprop)
-              const pagadoOk = !cd && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
-              const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr 0.75fr'
-              return (
-                <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
-                  {/* Fila propietario */}
-                  <div onClick={() => toggle(p.idprop)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.8fr 0.8fr 0.7fr 0.6fr 0.75fr 0.85fr 0.85fr 0.95fr 0.45fr', gap: 8, padding: '11px 16px', cursor: 'pointer', alignItems: 'center', background: abierto ? '#F5F9FF' : (cd ? '#FAFAFA' : (pagadoOk ? '#F0FDF4' : '#fff')), fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, color: cd ? '#9CA3AF' : '#1a1a2e', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
-                      <span style={{ color: '#9ca3af' }}>{abierto ? '▼' : '▶'}</span>
-                      <span>{p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario}</span>
-                      <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
-                      {cd && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280', whiteSpace: 'nowrap' }}>cobra dueño</span>}
-                      {pagadoOk && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>✓ transferido</span>}
-                    </div>
-                    <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
-                    <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_recibido)}</div>
-                    <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_comision) === 0 ? '—' : fmtPesos(p.total_comision)}</div>
-                    <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_iva) === 0 ? '—' : fmtPesos(p.total_iva)}</div>
-                    <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(p.total_transferir)}</div>
-                    <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
-                    <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
-                        : estadoCongelado === 'congelada'
-                          /* Mes congelado: solo lectura. Muestra la validación tal como quedó, sin poder cambiarla. */
-                          ? (validaciones[p.idprop] && validaciones[p.idprop].validado
-                              ? <span title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}`}
-                                  style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>
-                                  ✓ {nombreCorto(validaciones[p.idprop].validado_por)}
-                                </span>
-                              : <span style={{ color: '#D1D5DB' }}>—</span>)
-                        : (validaciones[p.idprop] && validaciones[p.idprop].validado)
-                          ? <span onClick={puedeValidar ? (e => toggleValidar(p.idprop, e)) : undefined}
-                              title={`Validado por ${nombreCorto(validaciones[p.idprop].validado_por)}${validaciones[p.idprop].validado_at ? ' · ' + new Date(validaciones[p.idprop].validado_at).toLocaleString('es-CL') : ''}${puedeValidar ? ' (clic para quitar)' : ''}`}
-                              style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', cursor: puedeValidar ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
-                              ✓ {nombreCorto(validaciones[p.idprop].validado_por)}
-                            </span>
-                          : puedeValidar
-                            ? <button onClick={e => toggleValidar(p.idprop, e)} disabled={valSaving === p.idprop}
-                                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                {valSaving === p.idprop ? '…' : 'Validar'}
-                              </button>
-                            : <span style={{ fontSize: 11, color: '#9CA3AF' }}>Pendiente</span>}
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
-                        : alertas.length > 0
-                        ? <span title={alertas.map(a => a.txt).join(' · ')} style={{ color: '#dc2626' }}>⚠</span>
-                        : <span style={{ color: '#1D9E75' }}>✓</span>}
-                    </div>
-                  </div>
-
-                  {/* Detalle expandido */}
-                  {abierto && (
-                    <div style={{ padding: '4px 16px 16px', background: '#F5F9FF' }}>
-                      {/* Alertas */}
-                      {alertas.map((a, i) => (
-                        <div key={i} style={{ background: a.tipo === 'riesgo' ? '#FFF7ED' : '#FEF2F2', border: '1px solid ' + (a.tipo === 'riesgo' ? '#FED7AA' : '#FCA5A5'), borderRadius: 8, padding: '7px 12px', marginBottom: 8, fontSize: 12, color: a.tipo === 'riesgo' ? '#9A3412' : '#991B1B' }}>
-                          ⚠ {a.txt}
-                        </div>
-                      ))}
-
-                      {/* Tabla de inmuebles */}
-                      {!detObj ? <div style={{ fontSize: 12, color: '#888', padding: 8 }}>Cargando inmuebles…</div> : (
-                        <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 8, overflow: 'hidden' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '6px 12px', background: '#FAFAF8', fontSize: 11, color: '#9ca3af', fontWeight: 700 }}>
-                            <div>Inmueble</div>
-                            <div style={{ textAlign: 'right' }}>A cobrar</div>
-                            <div style={{ textAlign: 'right' }}>Recibido</div>
-                            <div style={{ textAlign: 'right' }}>Comisión</div>
-                            <div style={{ textAlign: 'right' }}>IVA</div>
-                            <div style={{ textAlign: 'right' }}>Descuentos</div>
-                            <div style={{ textAlign: 'right' }}>A transferir</div>
-                            <div style={{ textAlign: 'center' }}>Aviso</div>
-                            <div style={{ textAlign: 'center' }}>Inicio</div>
-                          </div>
-                          {det.map(d => {
-                            const esProp = (d.inmueble || '').startsWith('[proporcional')
-                            const sd = esProp ? 0 : sumaDesc[d.idadmon]
-                            const notasInm = esProp ? [] : pie.filter(f => f.idadmon === d.idadmon)
-                            const pagosInm = esProp ? [] : ((detObj.pagosPorInm && detObj.pagosPorInm[d.idadmon]) || [])
-                            const verPagos = pagoAbierto === 'R' + d.idadmon
-                            const verDescs = pagoAbierto === 'D' + d.idadmon
-                            const clic = key => setPagoAbierto(prev => prev === key ? null : key)
-                            return (
-                            <div key={d.idadmon + (esProp ? '·prop' : '')}>
-                            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '7px 12px', borderTop: '1px solid #F0EEE8', fontSize: 12, background: d.hubo_falta ? '#FEF6F6' : '#fff', alignItems: 'center' }}>
-                              <div title={d.idadmon + ' · ' + (d.inmueble || '')}><span style={{ fontWeight: 600 }}>{d.idadmon}</span> <span style={{ color: '#9ca3af' }}>{(d.inmueble || '').slice(0, 24)}</span></div>
-                              <div style={{ textAlign: 'right' }}>{fmtPesos(d.base)}</div>
-                              <div style={{ textAlign: 'right' }}>
-                                {n0(d.recibido_banco) > 0 && pagosInm.length > 0
-                                  ? <span onClick={() => clic('R' + d.idadmon)} style={{ cursor: 'pointer', color: '#185FA5', borderBottom: '1px dotted #185FA5' }}>{fmtPesos(d.recibido_banco)}</span>
-                                  : <span style={{ color: n0(d.recibido_banco) === 0 ? '#dc2626' : '#666' }}>{fmtPesos(d.recibido_banco)}</span>}
-                              </div>
-                              <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.comision) === 0 ? '—' : fmtPesos(d.comision)}</div>
-                              <div style={{ textAlign: 'right', color: '#666' }}>{n0(d.iva_comision) === 0 ? '—' : fmtPesos(d.iva_comision)}</div>
-                              <div style={{ textAlign: 'right' }}>
-                                {sd
-                                  ? <span onClick={() => clic('D' + d.idadmon)} style={{ cursor: 'pointer', color: sd < 0 ? '#dc2626' : '#1D9E75', fontWeight: 600, borderBottom: '1px dotted ' + (sd < 0 ? '#dc2626' : '#1D9E75') }}>{fmtPesos(sd)}</span>
-                                  : <span style={{ color: '#ccc' }}>—</span>}
-                              </div>
-                              <div style={{ textAlign: 'right', fontWeight: 600 }}>{fmtPesos(d.neto_transferir)}</div>
-                              <div style={{ textAlign: 'center', fontSize: 10 }}>
-                                {d.hubo_falta ? <span style={{ color: '#dc2626' }}>falta</span> : <span style={{ color: '#1D9E75' }}>✓</span>}
-                              </div>
-                              <div style={{ textAlign: 'center', fontSize: 11, color: '#666' }}>{esProp ? '—' : fmtFecha(detObj.inicios && detObj.inicios[d.idadmon])}</div>
-                            </div>
-                            {/* Desglose de pagos del BI (al pinchar Recibido) */}
-                            {verPagos && pagosInm.map((pg, i) => (
-                              <div key={'p' + i} style={{ display: 'flex', gap: 12, padding: '3px 12px 3px 34px', fontSize: 11, background: '#F0F6FC', alignItems: 'baseline' }}>
-                                <span style={{ color: '#8Fb4dd', width: 12 }}>↳</span>
-                                <span style={{ color: '#666', width: 80 }}>{fmtFecha(pg.fecha)}</span>
-                                <span style={{ color: '#9ca3af', width: 70 }}>Reg {pg.reg}</span>
-                                <span style={{ color: '#185FA5', fontWeight: 600 }}>{fmtPesos(pg.arriendo)}</span>
-                              </div>
-                            ))}
-                            {/* Detalle de descuentos/ajustes/comentarios (al pinchar Descuentos) */}
-                            {verDescs && notasInm.map((f, i) => (
-                              <div key={'d' + i} style={{ display: 'flex', gap: 10, padding: '3px 12px 3px 34px', fontSize: 11, background: '#FBFBF9', alignItems: 'baseline' }}>
-                                <span style={{ color: '#c0bdb2', width: 12 }}>↳</span>
-                                <span style={{ textAlign: 'right', width: 78, fontWeight: 600, color: f.cantidad == null ? '#ccc' : (f.cantidad < 0 ? '#dc2626' : '#1D9E75') }}>{f.cantidad == null ? '—' : fmtPesos(f.cantidad)}</span>
-                                <span style={{ color: '#666' }}>{f.texto}</span>
-                              </div>
-                            ))}
-                            </div>
-                          )})}
-                          {/* Fila TOTALES */}
-                          <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 4, padding: '8px 12px', borderTop: '2px solid #E8E6E0', fontSize: 12, fontWeight: 700, background: '#FAFAF8' }}>
-                            <div>TOTALES · {p.n_propiedades} inmuebles</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_base)}</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_recibido)}</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_comision)}</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_iva)}</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_descuentos)}</div>
-                            <div style={{ textAlign: 'right' }}>{fmtPesos(p.total_transferir)}</div>
-                            <div></div>
-                            <div></div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* A transferir destacado */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, padding: '8px 12px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8 }}>
-                        <span style={{ fontSize: 12, color: '#065F46' }}>A transferir a {p.propietario}</span>
-                        <span style={{ fontSize: 16, fontWeight: 700, color: '#065F46' }}>{fmtPesos(p.total_transferir)}</span>
-                      </div>
+              {asocOpen.soloManual ? (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F1EFE8', color: '#5F5E5A', fontSize: 12, marginBottom: 4 }}>
+                  Escribe el IDADMON del contrato al que pertenece este abono. Al guardar, este RUT
+                  quedará asociado y sus abonos futuros se reconocerán solos.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>Según pagos anteriores en CUENTAS:</div>
+                  {asocLoading && <div style={{ padding: 16, textAlign: 'center', color: '#888780', fontSize: 13 }}>Buscando en el historial…</div>}
+                  {!asocLoading && asocCands.length === 0 && (
+                    <div style={{ padding: '10px 12px', borderRadius: 8, background: '#FBF7EC', color: '#8a6d1e', fontSize: 12, marginBottom: 12 }}>
+                      Este RUT no aparece en CUENTAS con ningún IDADMON. Escríbelo a mano abajo.
                     </div>
                   )}
+                  {!asocLoading && asocCands.map((c) => (
+                    <button key={c.idadmon} onClick={() => asociarRut(c.idadmon)} disabled={asocGuardando}
+                      style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 12px', marginBottom: 6, border: '0.5px solid #9BD7C2', background: '#F0FAF6', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                      <span style={{ fontWeight: 700, color: '#085041' }}>{c.idadmon}</span>
+                      <span style={{ fontSize: 11, color: '#5F5E5A' }}>pagó {c.veces} vez(ces) · asociar →</span>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '0.5px solid #EDEBE4' }}>
+                <div style={{ fontSize: 12, color: '#5F5E5A', fontWeight: 600, marginBottom: 6 }}>{asocOpen.soloManual ? 'IDADMON del contrato:' : 'O escribe el IDADMON a mano:'}</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={asocId} onChange={e => setAsocId(e.target.value.toUpperCase())} placeholder="A00819"
+                    style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid #D3D1C7', borderRadius: 8, textTransform: 'uppercase' }} />
+                  <button onClick={() => asociarRut(asocId)} disabled={asocGuardando || !asocId.trim()}
+                    style={{ fontSize: 13, fontWeight: 700, padding: '7px 16px', borderRadius: 8, border: 'none', background: asocId.trim() ? '#1D9E75' : '#D3D1C7', color: '#fff', cursor: asocId.trim() ? 'pointer' : 'default' }}>
+                    {asocGuardando ? 'Asociando…' : 'Asociar'}
+                  </button>
                 </div>
-              )
-            })}
+              </div>
+            </div>
           </div>
-        )}
-
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 10 }}>
-          Los datos provienen de sus tablas de origen. Para modificar un valor, hay que cambiarlo en su origen (datos_arriendos, descuentos), no aquí.
+        </>
+      )}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#2C2C2A', color: '#fff', fontSize: 13, padding: '10px 18px', borderRadius: 8, zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+          {toast}
         </div>
-
-      </div>
+      )}
     </>
   )
 }
