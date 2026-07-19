@@ -1,8 +1,8 @@
 'use client'
-// VERSION: v15 · 2026-07-17 · Depuración del panel (Fase 1): (1) en modo VER se ocultan las filas
-//   fijas a $0 (en EDICIÓN se muestran todas, para rellenar multas/intereses/etc. + "+ línea");
-//   (2) los servicios del término ya NO se rellenan desde ggcc_agua_luz — vienen SOLO de descuentos
-//   (los GGCC del mes pasarán a una sección informativa aparte en la Fase 2). Hereda v14.
+// VERSION: v16 · 2026-07-19 · Rediseño descuentos (paso 1): el bloque "Descuentos relacionados" se
+//   separa en dos: "Descuentos de este término" (los que cuentan, con total) y "Descuentos del
+//   inmueble siguiente" (sucesor, colapsable, para chequear gastos compartidos — no suman). Antes
+//   iban en una tabla corrida distinguidos solo por un fondo sutil. Hereda v15.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -87,6 +87,7 @@ export default function TerminosPage() {
   const [loadingPanel, setLoadingPanel] = useState(false)
   const [nodos, setNodos] = useState([])
   const [wfExpandido, setWfExpandido] = useState(false)
+  const [sucesorExpandido, setSucesorExpandido] = useState(false)  // descuentos del inmueble siguiente (colapsado por defecto)
   const [lineas, setLineas] = useState({ garantia: [], servicios: [], reparaciones: [] })
 
   const [editando, setEditando] = useState(false)
@@ -525,6 +526,10 @@ export default function TerminosPage() {
   const descResumen = panel?.descResumen || []
   const ordenImputar = r => { const x = up(r.repercutir_a); if (!x) return 0; if (x.startsWith('T-')) return 1; if (x === 'PROPIETARIO') return 2; return 3 }
   const descResumenOrd = [...descResumen].sort((a, b) => ordenImputar(a) - ordenImputar(b) || (n0(a.num) - n0(b.num)))
+  // Separar: los de ESTE término (idadmonSel) vs los del INMUEBLE SIGUIENTE (sucesor) — para chequeo de gastos compartidos
+  const descDelTermino = descResumenOrd.filter(d => d.idadmon === idadmonSel)
+  const descDelSucesor = descResumenOrd.filter(d => d.idadmon !== idadmonSel)
+  const totDelTermino = descDelTermino.reduce((s, d) => s + n0(d.monto_a_imputar), 0)
   const quienGar = A?.quien_tiene_garantia || A?.garantia_con || '—'
   const garantiaVal = n0(A?.garantia_pedida)
   const R = panel ? calcResult(lineas, form.markup_fcr, garantiaVal, repPresu, quienGar) : null
@@ -805,21 +810,20 @@ export default function TerminosPage() {
                     {/* Resumen de descuentos relacionados (para el controller) */}
                     <div style={card}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Descuentos relacionados (término y propietario)</span>
-                        <span style={{ fontSize: 11, color: '#888' }}>{idadmonSel}{asociado ? ' + ' + asociado : ''}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Descuentos de este término</span>
+                        <span style={{ fontSize: 11, color: '#888' }}>{idadmonSel} · {descDelTermino.length} · {fmtPesos(totDelTermino)}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Todos los descuentos del IDADMON{asociado ? ' y su asociado (mismo inmueble)' : ''}, ordenados por imputar (— · T- · Propietario). Solo lectura.</div>
-                      {descResumenOrd.length === 0 ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Sin descuentos.</div> : (
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Descuentos imputados a este IDADMON (los que cuentan en esta liquidación). Solo lectura.</div>
+                      {descDelTermino.length === 0 ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Sin descuentos.</div> : (
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead><tr style={{ background: '#FAFAF8' }}>
-                            <th style={th}>Num</th><th style={th}>F.Cont</th><th style={th}>IDADMON</th><th style={th}>Imputar a</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentario</th>
+                            <th style={th}>Num</th><th style={th}>F.Cont</th><th style={th}>Imputar a</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentario</th>
                           </tr></thead>
                           <tbody>
-                            {descResumenOrd.map((d, i) => (
-                              <tr key={i} style={{ borderBottom: '1px solid #F3F4F6', background: d.idadmon === idadmonSel ? '#fff' : '#FBFAF7' }}>
+                            {descDelTermino.map((d, i) => (
+                              <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
                                 <td style={{ ...tdL, color: '#185FA5', fontWeight: 700 }}>{d.num}</td>
                                 <td style={{ ...tdL, color: '#888', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
-                                <td style={{ ...tdL, fontWeight: 600 }}>{d.idadmon}</td>
                                 <td style={{ ...tdL, color: '#666' }}>{d.repercutir_a || '—'}</td>
                                 <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
                                 <td style={{ ...tdL, color: '#555' }}>{d.texto_explicativo_para_carta_a_propietario || ''}</td>
@@ -829,6 +833,37 @@ export default function TerminosPage() {
                         </table>
                       )}
                     </div>
+
+                    {/* Descuentos del INMUEBLE SIGUIENTE (sucesor) — referencia para gastos compartidos, colapsable */}
+                    {asociado && descDelSucesor.length > 0 && (
+                      <div style={{ ...card, background: '#FBFAF7', borderColor: '#EDE7D9' }}>
+                        <div onClick={() => setSucesorExpandido(v => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#8a6d3b' }}>{sucesorExpandido ? '▾' : '▸'} Descuentos del inmueble siguiente ({asociado}) — referencia</span>
+                          <span style={{ fontSize: 11, color: '#a08a5b' }}>{descDelSucesor.length} · gastos compartidos</span>
+                        </div>
+                        {sucesorExpandido && (
+                          <>
+                            <div style={{ fontSize: 11, color: '#a08a5b', margin: '6px 0 8px' }}>Del contrato sucesor de la misma propiedad. NO cuentan en esta liquidación; sirven para chequear el reparto de gastos compartidos (término / período desocupado / nuevo arrendatario).</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead><tr style={{ background: '#F5F1E8' }}>
+                                <th style={th}>Num</th><th style={th}>F.Cont</th><th style={th}>Imputar a</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentario</th>
+                              </tr></thead>
+                              <tbody>
+                                {descDelSucesor.map((d, i) => (
+                                  <tr key={i} style={{ borderBottom: '1px solid #EDE7D9' }}>
+                                    <td style={{ ...tdL, color: '#8a6d3b', fontWeight: 700 }}>{d.num}</td>
+                                    <td style={{ ...tdL, color: '#a08a5b', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
+                                    <td style={{ ...tdL, color: '#8a6d3b' }}>{d.repercutir_a || '—'}</td>
+                                    <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
+                                    <td style={{ ...tdL, color: '#8a6d3b' }}>{d.texto_explicativo_para_carta_a_propietario || ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     <div style={card}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>Presupuesto de reparaciones</div>
