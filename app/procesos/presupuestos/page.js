@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-07-20 · Al teclear el IDADMON (S/SQ/P/Q) autocompleta Ubicación+Propietario desde datos_arriendos (solo si vacíos), como ya hacía Q
 // VERSION: v2 · 2026-07-20 · Presupuestos para cualquier estado activo (S/SQ/P/Q, no solo Q): guarda estado_idadmon (foto de datos_arriendos al crear) + Nº de incidencia (incidencia_id) cuando el motivo es Incidencia; badge de estado del IDADMON.
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -112,13 +113,22 @@ export default function PresupuestosPage() {
   // estado del IDADMON de una fila/form
   function estadoDe(idadmon) { return estados[(idadmon || '').trim()] }
 
-  // lee el estado actual del IDADMON tecleado desde datos_arriendos (para el badge y la foto del momento)
+  // lee de datos_arriendos el estado del IDADMON tecleado (para el badge y la foto del momento)
+  // y autocompleta Ubicación (inmueble) y Propietario, igual que las sugerencias de Q.
+  // Solo rellena los campos que estén vacíos: nunca pisa lo que ya escribió el usuario.
   async function leerEstado(idadmon) {
     const k = (idadmon || '').trim()
     if (!k) { setEstadoLive(''); return }
     try {
-      const { data } = await supabase.from('datos_arriendos').select('estado').eq('idadmon', k).limit(1).maybeSingle()
+      const { data } = await supabase.from('datos_arriendos').select('estado, inmueble, propietario').eq('idadmon', k).limit(1).maybeSingle()
       setEstadoLive(data?.estado || '')
+      if (data) {
+        setForm(f => ({
+          ...f,
+          ubicacion: (f.ubicacion || '').trim() ? f.ubicacion : (data.inmueble || ''),
+          propietario: (f.propietario || '').trim() ? f.propietario : (data.propietario || ''),
+        }))
+      }
     } catch { setEstadoLive('') }
   }
 
