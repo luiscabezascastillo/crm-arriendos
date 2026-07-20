@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-07-20 · Buscador "ir a propietario" (scroll+realce) + filtro "Solo no enviadas" en la barra de controles
 // VERSION: v2 · 2026-07-20 · Desbloqueo justificado: Dirección/Karina pueden habilitar el envío de una
 //   carta en CHECK/TO SEE dejando un motivo obligatorio (se guarda en liquidacion_envios: desbloqueo_motivo
 //   + desbloqueado_por). enviable() acepta OK/OK DESC o desbloqueadas. El candado sigue para el resto.
@@ -9,6 +10,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import BuscarLiquidacion from '@/app/components/ui/BuscarLiquidacion'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
@@ -62,6 +64,7 @@ export default function CartasPage() {
   const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
   const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
   const [reducir1p, setReducir1p] = useState({})   // idprop -> true = forzar 1 página (borrador + envío)
+  const [soloNoEnviadas, setSoloNoEnviadas] = useState(false)   // filtro: ocultar propietarios ya enviados
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -352,6 +355,14 @@ export default function CartasPage() {
   const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
 
+  // "Enviada" = tiene registro de envío (fecha) este mes. El filtro oculta las enviadas,
+  // deje el estado que deje (muestra OK, CHECK, TO SEE... todo lo que aún no se envió).
+  // Nota: la barra "Seleccionar todas las enviables" y el envío siguen operando sobre `bloques`
+  // (todo el mes), no sobre lo filtrado; el filtro es solo visual.
+  const estaEnviada = b => !!envios[b.idprop]?.fecha_envio
+  const nNoEnviadas = bloques.filter(b => !estaEnviada(b)).length
+  const visibles = soloNoEnviadas ? bloques.filter(b => !estaEnviada(b)) : bloques
+
   return (
     <>
       <TopNav />
@@ -393,6 +404,14 @@ export default function CartasPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          <BuscarLiquidacion
+            bloques={bloques}
+            idPrefix="liq"
+            mostrarFiltroEnviadas
+            soloNoEnviadas={soloNoEnviadas}
+            onSoloNoEnviadas={setSoloNoEnviadas}
+            nNoEnviadas={nNoEnviadas}
+          />
         </div>
 
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
@@ -418,11 +437,11 @@ export default function CartasPage() {
         )}
         </div>{/* fin zona sticky */}
 
-        {!cargando && bloques.map(b => {
+        {!cargando && visibles.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
           return (
-            <div key={b.idprop} style={{ border: '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
+            <div key={b.idprop} id={'liq-' + b.idprop} style={{ scrollMarginTop: 210, border: '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
               <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -598,6 +617,9 @@ export default function CartasPage() {
 
         {!cargando && bloques.length === 0 && !error && (
           <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 14 }}>No hay propietarios con liquidación para {aammToTxt(mes)}.</div>
+        )}
+        {!cargando && bloques.length > 0 && visibles.length === 0 && soloNoEnviadas && (
+          <div style={{ padding: 30, textAlign: 'center', color: '#166534', fontSize: 14 }}>Todas las cartas de {aammToTxt(mes)} ya se enviaron. Desmarca «Solo no enviadas» para verlas.</div>
         )}
       </div>
 
