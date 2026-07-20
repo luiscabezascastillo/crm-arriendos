@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-20 · Presupuestos para cualquier estado activo (S/SQ/P/Q, no solo Q): guarda estado_idadmon (foto de datos_arriendos al crear) + Nº de incidencia (incidencia_id) cuando el motivo es Incidencia; badge de estado del IDADMON.
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -41,7 +42,7 @@ function hoyISO() { return new Date().toISOString().slice(0, 10) }
 
 const FORM_VACIO = {
   numero: '', fecha: hoyISO(), id_admon_new: '', id_admon_old: '',
-  ubicacion: '', propietario: '', descripcion: '', motivo: 'termino',
+  ubicacion: '', propietario: '', descripcion: '', motivo: 'termino', incidencia_id: '',
 }
 
 export default function PresupuestosPage() {
@@ -53,6 +54,7 @@ export default function PresupuestosPage() {
   const [accesoOk, setAccesoOk] = useState(null) // null = verificando · true/false
   const [lista, setLista] = useState([])
   const [estados, setEstados] = useState({})     // idadmon -> estado (datos_arriendos)
+  const [estadoLive, setEstadoLive] = useState('') // estado del IDADMON tecleado (lectura en vivo)
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState(null) // null = listado; {} o {...} = form
@@ -86,7 +88,7 @@ export default function PresupuestosPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from('presupuestos')
-      .select('id, numero, fecha, id_admon_new, id_admon_old, ubicacion, propietario, descripcion, neto, iva, total, en_termino')
+      .select('id, numero, fecha, id_admon_new, id_admon_old, ubicacion, propietario, descripcion, neto, iva, total, en_termino, incidencia_id, estado_idadmon')
       .order('id', { ascending: false })
     const filas = error ? [] : (data || [])
     setLista(filas)
@@ -109,6 +111,16 @@ export default function PresupuestosPage() {
 
   // estado del IDADMON de una fila/form
   function estadoDe(idadmon) { return estados[(idadmon || '').trim()] }
+
+  // lee el estado actual del IDADMON tecleado desde datos_arriendos (para el badge y la foto del momento)
+  async function leerEstado(idadmon) {
+    const k = (idadmon || '').trim()
+    if (!k) { setEstadoLive(''); return }
+    try {
+      const { data } = await supabase.from('datos_arriendos').select('estado').eq('idadmon', k).limit(1).maybeSingle()
+      setEstadoLive(data?.estado || '')
+    } catch { setEstadoLive('') }
+  }
 
   // IDADMONs en estado Q (para sugerir los pendientes al crear)
   async function cargarQ() {
@@ -135,6 +147,7 @@ export default function PresupuestosPage() {
       ubicacion: q.inmueble || f.ubicacion,
       propietario: q.propietario || f.propietario,
     }))
+    setEstadoLive('Q')
   }
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -167,6 +180,7 @@ export default function PresupuestosPage() {
     cargarQ()
     const num = await siguienteNumero()
     setForm({ ...FORM_VACIO, numero: num })
+    setEstadoLive('')
     setLineas([{ ...LINEA_VACIA }])
     setEditando({})
   }
@@ -174,6 +188,7 @@ export default function PresupuestosPage() {
   async function editar(r) {
     setMsg(null)
     setSoloLectura(esHistorico(estadoDe(r.id_admon_new)))
+    leerEstado(r.id_admon_new)
     setForm({
       ...FORM_VACIO, ...r,
       fecha: r.fecha ? String(r.fecha).slice(0, 10) : hoyISO(),
@@ -223,6 +238,7 @@ export default function PresupuestosPage() {
       descripcion: form.descripcion || null,
       neto: totBase, iva: totIva, total: totTotal,
       en_termino: form.motivo === 'incidencia' ? false : true,
+      incidencia_id: (form.motivo === 'incidencia' && String(form.incidencia_id || '').trim()) ? Number(String(form.incidencia_id).trim()) : null,
       updated_at: new Date().toISOString(),
     }
 
@@ -232,6 +248,11 @@ export default function PresupuestosPage() {
       if (error) { setMsg({ tipo: 'error', txt: 'Error: ' + error.message }); setGuardando(false); return }
       await supabase.from('presupuesto_detalle').delete().eq('presupuesto_id', presupuestoId)
     } else {
+      // foto del estado del IDADMON en el momento de crear (de la tabla madre datos_arriendos)
+      try {
+        const { data: da } = await supabase.from('datos_arriendos').select('estado').eq('idadmon', (form.id_admon_new || '').trim()).limit(1).maybeSingle()
+        cab.estado_idadmon = da?.estado || estadoDe(form.id_admon_new) || null
+      } catch { cab.estado_idadmon = estadoDe(form.id_admon_new) || null }
       const { data, error } = await supabase.from('presupuestos').insert(cab).select('id').single()
       if (error) { setMsg({ tipo: 'error', txt: 'Error: ' + error.message }); setGuardando(false); return }
       presupuestoId = data.id
@@ -384,7 +405,7 @@ export default function PresupuestosPage() {
             <div style={{ display: 'grid', gridTemplateColumns: mostrarOld ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div><label style={label}>Número</label><input style={ro ? inputRo : input} value={form.numero} disabled={ro} onChange={e => set('numero', e.target.value)} /></div>
               <div><label style={label}>Fecha</label><input style={ro ? inputRo : input} type="date" value={form.fecha} disabled={ro} onChange={e => set('fecha', e.target.value)} /></div>
-              <div><label style={label}>IDADMON</label><input style={ro ? inputRo : input} value={form.id_admon_new} disabled={ro} onChange={e => set('id_admon_new', e.target.value)} placeholder="A00600" /></div>
+              <div><label style={label}>IDADMON {(estadoLive || estForm) ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: '#EEF2FF', color: '#3730A3' }}>estado: {estadoLive || estForm}</span> : null}</label><input style={ro ? inputRo : input} value={form.id_admon_new} disabled={ro} onChange={e => set('id_admon_new', e.target.value)} onBlur={e => leerEstado(e.target.value)} placeholder="A00600" /></div>
               {mostrarOld && (
                 <div><label style={label}>IDADMON (old) · histórico</label><input style={inputRo} value={form.id_admon_old} disabled readOnly /></div>
               )}
@@ -409,6 +430,14 @@ export default function PresupuestosPage() {
                 ))}
               </div>
             </div>
+            {form.motivo === 'incidencia' && (
+              <div style={{ marginTop: 12, maxWidth: 260 }}>
+                <label style={label}>Nº de incidencia</label>
+                <input style={ro ? inputRo : input} value={form.incidencia_id} disabled={ro}
+                  onChange={e => set('incidencia_id', e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="Ej. 1234" inputMode="numeric" />
+              </div>
+            )}
           </div>
 
           {/* Lineas */}
