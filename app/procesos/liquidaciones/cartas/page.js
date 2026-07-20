@@ -1,3 +1,4 @@
+// VERSION: v1 · 2026-07-20 · Buscador "ir a propietario" + filtro "Solo no enviadas" en la barra de controles
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -5,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import BuscarLiquidacion from '@/app/components/ui/BuscarLiquidacion'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
@@ -93,6 +95,7 @@ export default function CartasPage() {
   const [obsAbierta, setObsAbierta] = useState({})   // idprop -> bool (expandido)
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
   const [envios, setEnvios] = useState({})           // idprop -> {estado_envio, fecha_envio, email_dest}
+  const [soloNoEnviadas, setSoloNoEnviadas] = useState(false)   // filtro: ocultar propietarios ya enviados
   const [emailProp, setEmailProp] = useState({})     // idprop -> email
   const [obsGuardando, setObsGuardando] = useState({})
   // Carga de cargos del mes a la tabla `cuentas` (solo Direccion)
@@ -469,6 +472,12 @@ export default function CartasPage() {
   const td = { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const rt = { textAlign: 'right', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }
 
+  // "Enviada" = tiene registro de envío (fecha) este mes. El filtro oculta las enviadas,
+  // deje el estado que deje (muestra OK, CHECK, TO SEE... todo lo que aún no se envió).
+  const estaEnviada = b => !!envios[b.idprop]?.fecha_envio
+  const nNoEnviadas = bloques.filter(b => !estaEnviada(b)).length
+  const visibles = soloNoEnviadas ? bloques.filter(b => !estaEnviada(b)) : bloques
+
   return (
     <>
       <TopNav />
@@ -519,6 +528,14 @@ export default function CartasPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          <BuscarLiquidacion
+            bloques={bloques}
+            idPrefix="liq"
+            mostrarFiltroEnviadas
+            soloNoEnviadas={soloNoEnviadas}
+            onSoloNoEnviadas={setSoloNoEnviadas}
+            nNoEnviadas={nNoEnviadas}
+          />
           {esDireccion && (
             <button onClick={abrirCargaCuentas} disabled={cargaLoading}
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #C4B5FD', background: '#F5F3FF', color: '#5B21B6', cursor: 'pointer' }}>
@@ -530,12 +547,12 @@ export default function CartasPage() {
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}
 
-        {!cargando && bloques.map(b => {
+        {!cargando && visibles.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
           const tieneOvr = (b.inmuebles || []).some(x => x.override)
           return (
-            <div key={b.idprop} style={{ border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
+            <div key={b.idprop} id={'liq-' + b.idprop} style={{ scrollMarginTop: 110, border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: tieneOvr ? '#FEE2E2' : '#E0E7FF', borderBottom: tieneOvr ? '1px solid #FCA5A5' : '1px solid #C7D2FE' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -674,6 +691,9 @@ export default function CartasPage() {
 
         {!cargando && bloques.length === 0 && !error && (
           <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 14 }}>No hay propietarios con liquidación para {aammToTxt(mes)}.</div>
+        )}
+        {!cargando && bloques.length > 0 && visibles.length === 0 && soloNoEnviadas && (
+          <div style={{ padding: 30, textAlign: 'center', color: '#166534', fontSize: 14 }}>Todas las cartas de {aammToTxt(mes)} ya se enviaron. Desmarca «Solo no enviadas» para verlas.</div>
         )}
 
         {/* === Modal: Cargar cargos del mes a Cuentas === */}
