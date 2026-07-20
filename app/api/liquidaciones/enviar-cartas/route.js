@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-07-20 · CC de liquidaciones pasa a lista: administracion@ + karina.morales@ (antes solo administracion@).
 // VERSION: v2 · 2026-07-20 · El envío acepta cartas no cuadradas SOLO si tienen desbloqueo justificado
 //   (desbloqueo_motivo) en liquidacion_envios. El upsert de ENVIADA conserva el rastro del desbloqueo.
 // app/api/liquidaciones/enviar-cartas/route.js
@@ -27,7 +28,9 @@ async function nPaginas(bytes) {
 
 // ── Quién puede enviar (cámbialo aquí si hace falta) ──
 const PUEDEN_ENVIAR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
-const CC_FIJO = 'administracion@fondocapital.com'
+// CC fijo de las liquidaciones. Nodemailer acepta una lista (array): NO hay que separar con
+// coma ni punto y coma; cada correo es un elemento. Para añadir/quitar copia, edita esta lista.
+const CC_FIJO = ['administracion@fondocapital.com', 'karina.morales@fondocapital.com']
 // ──────────────────────────────────────────────────────
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)

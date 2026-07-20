@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-07-20 · Texto informativo del CC actualizado (administracion@ + karina.morales@)
 // VERSION: v3 · 2026-07-20 · Buscador "ir a propietario" (scroll+realce) + filtro "Solo no enviadas" en la barra de controles
 // VERSION: v2 · 2026-07-20 · Desbloqueo justificado: Dirección/Karina pueden habilitar el envío de una
 //   carta en CHECK/TO SEE dejando un motivo obligatorio (se guarda en liquidacion_envios: desbloqueo_motivo
@@ -664,7 +665,7 @@ export default function CartasPage() {
                 <textarea value={despedida} onChange={e => setDespedida(e.target.value)} rows={2}
                   style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
                 <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
-                  Asunto: <b>[NO RESPONDER] Liquidación mes de {aammToTxt(mes)}</b> · CC a administracion@fondocapital.com · Adjunto PDF. Al enviar se pone candado (fecha de envío) y no se reenvía.
+                  Asunto: <b>[NO RESPONDER] Liquidación mes de {aammToTxt(mes)}</b> · CC a administracion@ y karina.morales@ · Adjunto PDF. Al enviar se pone candado (fecha de envío) y no se reenvía.
                 </div>
               </div>
 
