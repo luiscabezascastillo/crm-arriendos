@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-07-20 · Botón "Guardar observación" a la izquierda (antes quedaba fuera de pantalla a la derecha)
 // VERSION: v1 · 2026-07-20 · Buscador "ir a propietario" + filtro "Solo no enviadas" en la barra de controles
 'use client'
 
@@ -677,7 +678,7 @@ export default function CartasPage() {
                   <textarea value={obsTexto[b.idprop] || ''} onChange={e => setObsTexto(t => ({ ...t, [b.idprop]: e.target.value }))}
                     placeholder="Conclusiones / observaciones de Alberto para este propietario…"
                     rows={3} style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
-                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-start' }}>
                     <button onClick={() => guardarObs(b.idprop)} disabled={obsGuardando[b.idprop]}
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
                       {obsGuardando[b.idprop] ? 'Guardando…' : 'Guardar observación'}
