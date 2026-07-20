@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-07-20 · Desbloqueo justificado: Dirección/Karina pueden habilitar el envío de una
+//   carta en CHECK/TO SEE dejando un motivo obligatorio (se guarda en liquidacion_envios: desbloqueo_motivo
+//   + desbloqueado_por). enviable() acepta OK/OK DESC o desbloqueadas. El candado sigue para el resto.
 // VERSION: v5 · 2026-07-08 · sticky top:52 (debajo del TopNav de 52px, antes chocaba en top:0)
 
 import { useState, useEffect } from 'react'
@@ -86,7 +89,7 @@ export default function CartasPage() {
         supabase.from('comentarios_liquidacion').select('idadmon, comentario, mes, para_mes_txt, created_at').in('idadmon', ids),
         supabase.rpc('transferido_propietario', { p_mes: m }),
         supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
-        supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest, enviado_por').eq('mes', m),
+        supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest, enviado_por, desbloqueo_motivo, desbloqueado_por').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
         supabase.from('liquidacion_envios_log').select('idprop, fecha_envio, enviado_por, reducido').eq('mes', m).order('fecha_envio', { ascending: false }),
       ])
@@ -235,10 +238,30 @@ export default function CartasPage() {
     setObsGuardando(g => ({ ...g, [idprop]: false }))
   }
 
-  // ¿Se puede enviar esta carta? Solo si está OK/OK DESC y no se ha enviado ya.
+  // ¿Se puede enviar esta carta? OK/OK DESC, o CHECK/TO SEE con DESBLOQUEO justificado registrado.
+  function estaDesbloqueada(b) {
+    return !!String(envios[b.idprop]?.desbloqueo_motivo || '').trim()
+  }
   function enviable(b) {
-    // Se permite reenviar: ya NO se bloquea por envío previo (al reenviar se pide confirmación).
-    return b.estado === 'OK' || b.estado === 'OK DESC'         // solo cuadradas
+    if (b.estado === 'OK' || b.estado === 'OK DESC') return true   // cuadradas
+    return estaDesbloqueada(b)                                     // o desbloqueadas con justificación
+  }
+  // Solo Dirección/Karina pueden desbloquear, y solo cartas NO cuadradas y aún no enviadas.
+  function puedeDesbloquear(b) {
+    return puedeEnviar && !(b.estado === 'OK' || b.estado === 'OK DESC') && !envios[b.idprop]?.fecha_envio
+  }
+  async function desbloquear(b) {
+    if (!puedeDesbloquear(b)) return
+    const motivo = (typeof window !== 'undefined' ? window.prompt(`Desbloquear el envío de ${b.idprop} — ${b.propietario} (estado ${b.estado}).\n\nEscribe la justificación (obligatoria):`, '') : '') || ''
+    if (!motivo.trim()) { flash('Desbloqueo cancelado: falta la justificación.'); return }
+    const { error } = await supabase.from('liquidacion_envios').upsert(
+      { mes, idprop: b.idprop, desbloqueo_motivo: motivo.trim(), desbloqueado_por: email },
+      { onConflict: 'mes,idprop' }
+    )
+    if (error) { flash('No se pudo desbloquear: ' + error.message); return }
+    setEnvios(prev => ({ ...prev, [b.idprop]: { ...(prev[b.idprop] || {}), desbloqueo_motivo: motivo.trim(), desbloqueado_por: email } }))
+    setSeleccion(s => ({ ...s, [b.idprop]: true }))
+    flash('🔓 Envío desbloqueado con justificación')
   }
   const seleccionadas = bloques.filter(b => seleccion[b.idprop] && enviable(b))
   function toggleSel(idprop) { setSeleccion(s => ({ ...s, [idprop]: !s[idprop] })) }
@@ -405,11 +428,22 @@ export default function CartasPage() {
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                   {puedeEnviar && (enviable(b) ? (
                     <input type="checkbox" checked={!!seleccion[b.idprop]} onChange={() => toggleSel(b.idprop)}
-                      title="Seleccionar para enviar" style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                      title={estaDesbloqueada(b) ? `Desbloqueada por ${envios[b.idprop]?.desbloqueado_por || '—'}: ${envios[b.idprop]?.desbloqueo_motivo || ''}` : 'Seleccionar para enviar'} style={{ width: 16, height: 16, cursor: 'pointer' }} />
                   ) : (
                     <input type="checkbox" disabled checked={false}
-                      title={envios[b.idprop]?.fecha_envio ? 'Ya enviada' : 'No se puede enviar hasta que esté en OK'} style={{ width: 16, height: 16 }} />
+                      title={envios[b.idprop]?.fecha_envio ? 'Ya enviada' : 'No se puede enviar hasta que esté en OK (o se desbloquee con justificación)'} style={{ width: 16, height: 16 }} />
                   ))}
+                  {puedeDesbloquear(b) && !estaDesbloqueada(b) && (
+                    <button onClick={() => desbloquear(b)} title="Desbloquear el envío dejando una justificación (Dirección/Karina)"
+                      style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
+                      🔓 Desbloquear
+                    </button>
+                  )}
+                  {estaDesbloqueada(b) && !envios[b.idprop]?.fecha_envio && (
+                    <span title={`Motivo: ${envios[b.idprop]?.desbloqueo_motivo || ''}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#FEF9C3', color: '#854D0E' }}>
+                      🔓 Desbloqueada{envios[b.idprop]?.desbloqueado_por ? ' · ' + String(envios[b.idprop].desbloqueado_por).split('@')[0] : ''}
+                    </span>
+                  )}
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
                     ? <span title={`Enviada por ${envios[b.idprop].enviado_por || '—'}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {(historialEnv[b.idprop]?.length || 1)}x · {new Date(envios[b.idprop].fecha_envio).toLocaleString('es-CL')}{envios[b.idprop].enviado_por ? ' · ' + String(envios[b.idprop].enviado_por).split('@')[0] : ''}</span>

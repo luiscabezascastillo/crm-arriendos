@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-07-20 · El envío acepta cartas no cuadradas SOLO si tienen desbloqueo justificado
+//   (desbloqueo_motivo) en liquidacion_envios. El upsert de ENVIADA conserva el rastro del desbloqueo.
 // app/api/liquidaciones/enviar-cartas/route.js
 // FASE B — envío real de las cartas de liquidación.
 // - Solo Alberto y Luis pueden enviar (PUEDEN_ENVIAR).
@@ -69,8 +71,13 @@ export async function POST(req) {
     try {
       if (!idprop || !bloque) { results.push({ ...marca, ok: false, motivo: 'datos_incompletos' }); continue }
 
-      // Solo cartas cuadradas
-      if (!['OK', 'OK DESC'].includes(bloque.estado)) { results.push({ ...marca, ok: false, motivo: 'estado_no_enviable' }); continue }
+      // Solo cartas cuadradas (OK/OK DESC) o DESBLOQUEADAS con justificación registrada en base.
+      if (!['OK', 'OK DESC'].includes(bloque.estado)) {
+        const { data: db } = await admin
+          .from('liquidacion_envios').select('desbloqueo_motivo').eq('mes', mes).eq('idprop', idprop).maybeSingle()
+        const desbloqueada = !!String(db?.desbloqueo_motivo || '').trim()
+        if (!desbloqueada) { results.push({ ...marca, ok: false, motivo: 'estado_no_enviable' }); continue }
+      }
 
       if (!dest) { results.push({ ...marca, ok: false, motivo: 'sin_email' }); continue }
 
