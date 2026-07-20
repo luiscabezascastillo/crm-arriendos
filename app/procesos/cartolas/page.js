@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-20 · Aviso de proporcional: coteja el cargo contra datos_arriendos.proporcional (el dato con que se carga el inicio), no contra el recálculo. Recálculo de calendario queda como info. Tolerancia ±100; avisa si falta respaldo en LOG.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -602,7 +603,7 @@ function CartolaIdadmonVista() {
     // 1) ficha en datos_arriendos (idadmon es único -> una fila)
     const { data: da, error: e1 } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia, fecha_inicio, cuota, meses, cantidad, unid')
+      .select('idadmon, estado, propietario, arrendatario, avalista, inmueble, garantia_pedida, quien_tiene_garantia, fecha_inicio, cuota, meses, cantidad, unid, proporcional')
       .eq('idadmon', id)
       .limit(1)
     if (e1) { setError('Error leyendo ficha: ' + e1.message); setBuscando(false); return }
@@ -655,11 +656,19 @@ function CartolaIdadmonVista() {
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
   const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
 
-  // Proporcional del primer mes (desde datos_arriendos) y cotejo con la cartola
+  // Proporcional del primer mes.
+  //  - propCalc: recálculo estándar de calendario (cuota × UF × días) → SOLO informativo.
+  //  - propLog: datos_arriendos.proporcional → es el dato REAL con el que cc1Inicios carga el
+  //    inicio, así que el cotejo de descuadre se hace contra ESTE, no contra el recálculo.
   const propCalc = calcProporcional(ficha, ufMesInicio)
+  const propLog = num(ficha?.proporcional)
   const filaPropCartola = movs.find(m => esInicio(m) && /PROPORCIONAL/i.test(String(m.concepto || '')))
-  const descuadre = propCalc && propCalc.prop != null && !propCalc.inicioDia1 && filaPropCartola
-    && Math.abs(num(filaPropCartola.cargo) - propCalc.prop) > 1
+  const TOL_PROP = 100   // misma tolerancia que cc1Inicios (redondeos)
+  const cargoProp = filaPropCartola ? num(filaPropCartola.cargo) : null
+  const faltaRespaldoLog = !!filaPropCartola && !(propLog > 0)   // hay línea en cartola pero LOG sin proporcional
+  const descuadre = !!filaPropCartola && !(propCalc && propCalc.inicioDia1) && (
+    faltaRespaldoLog ? true : Math.abs(cargoProp - propLog) > TOL_PROP
+  )
 
   const Dato = ({ label, value, strong }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
@@ -749,18 +758,29 @@ function CartolaIdadmonVista() {
                         : '(cuota normal)'} · {propCalc.diasCobrar} de {propCalc.diasMes} días de {propCalc.mesNombre} {propCalc.anio}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#0C447C', marginTop: 2 }}>
-                    Proporcional calculado: {money(propCalc.prop)}
+                    Proporcional en el LOG (datos_arriendos): {propLog > 0 ? money(propLog) : '—'}
                   </div>
                   {filaPropCartola ? (
                     descuadre ? (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#92400E', fontWeight: 600 }}>
-                        ⚠ En la cartola figura {money(num(filaPropCartola.cargo))} ("{filaPropCartola.concepto}"). Debería ser {money(propCalc.prop)} según datos_arriendos. Si es un error, corrígelo en el origen (datos_arriendos → CUENTAS), no aquí.
-                      </div>
+                      faltaRespaldoLog ? (
+                        <div style={{ marginTop: 8, fontSize: 12, color: '#92400E', fontWeight: 600 }}>
+                          ⚠ En la cartola figura {money(cargoProp)} ("{filaPropCartola.concepto}") pero el LOG no tiene proporcional cargado. Revisar el origen (datos_arriendos → campo proporcional), no aquí.
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 8, fontSize: 12, color: '#92400E', fontWeight: 600 }}>
+                          ⚠ En la cartola figura {money(cargoProp)} ("{filaPropCartola.concepto}"), pero el LOG dice {money(propLog)} (diferencia {money(Math.abs(cargoProp - propLog))}). Si es un error, corrígelo en el origen (datos_arriendos → CUENTAS), no aquí.
+                        </div>
+                      )
                     ) : (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#085041', fontWeight: 600 }}>✓ Coincide con la línea de proporcional de la cartola.</div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#085041', fontWeight: 600 }}>✓ El cargo de la cartola coincide con el proporcional del LOG.</div>
                     )
                   ) : (
                     <div style={{ marginTop: 8, fontSize: 12, color: '#888780' }}>No hay línea de proporcional (INICIO) en la cartola para comparar.</div>
+                  )}
+                  {propCalc.prop != null && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#888780' }}>
+                      Info · proporcional de calendario: {money(propCalc.prop)} ({propCalc.diasCobrar}/{propCalc.diasMes} días de {propCalc.mesNombre}). Puede diferir del pactado si el contrato fija un pago especial (p. ej. incluir otro mes).
+                    </div>
                   )}
                 </>
               )}
