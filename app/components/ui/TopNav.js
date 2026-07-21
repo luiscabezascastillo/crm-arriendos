@@ -1,4 +1,5 @@
 'use client';
+// VERSION: v3 · 2026-07-21 · Dropdown de 'Procesos en producción' ordenado alfabéticamente por título.
 // VERSION: v2 · 2026-07-20 · Rol 'comercial' ve su bloque Ventas (Publicaciones/Requerimientos/Visitas/Calendario/Contactos); Cumpleaños y Edificios ocultos salvo permiso. Tirza fuera de DIRECCION_EMAILS para pruebas de espejo.
 // VERSION: v1 · 2026-07-19 · El menú "Propiedades" solo lo ve Dirección (esDireccion: rol direccion
 //   o email de dirección), además del permiso de proceso que ya existía. Resto del TopNav sin cambios.
@@ -277,7 +278,7 @@ export default function TopNav() {
         {procesosOpen && (
           <div style={s.dropdown}>
             <div style={s.dropLabel}>Procesos en producción</div>
-            {PROCESOS.filter(p => p.produccion).map(p => {
+            {PROCESOS.filter(p => p.produccion).slice().sort((a, b) => a.titulo.localeCompare(b.titulo, 'es')).map(p => {
               const tiene = procKeys.has(p.key) && !!p.href;
               return tiene ? (
                 <Link key={p.key} href={p.href} style={s.dropItem} onClick={() => setProcesosOpen(false)}
