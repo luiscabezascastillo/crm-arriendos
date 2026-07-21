@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-07-21 · Cartola IDADMON: proporcional colapsado (details), números sin $ con separador de miles y fuente monoespaciada, más altura para movimientos (cabeceras ya sticky).
 // VERSION: v2 · 2026-07-20 · Aviso de proporcional: coteja el cargo contra datos_arriendos.proporcional (el dato con que se carga el inicio), no contra el recálculo. Recálculo de calendario queda como info. Tolerancia ±100; avisa si falta respaldo en LOG.
 
 import { useSession } from 'next-auth/react'
@@ -679,7 +680,7 @@ function CartolaIdadmonVista() {
 
   const cellMov = (r, c) => {
     if (c.key === '_saldo') return <span style={{ fontWeight: 600, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{money(r._saldo)}</span>
-    if (c.money) { const s = fmt(r[c.key]); return <span style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     if (c.key === 'comentarios') return <span style={{ fontWeight: filaEsBI(r) ? 700 : 400 }}>{r[c.key] ?? '—'}</span>
     if (c.key === 'calif') return <span style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>
     return <span>{r[c.key] ?? '—'}</span>
@@ -737,9 +738,14 @@ function CartolaIdadmonVista() {
             </div>
           </div>
 
-          {/* PROPORCIONAL PRIMER MES (calculado desde datos_arriendos) */}
+          {/* PROPORCIONAL PRIMER MES (calculado desde datos_arriendos) · colapsado por defecto */}
           {propCalc && (
-            <div style={{ border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
+            <details style={{ border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 10, marginBottom: 14, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
+              <summary style={{ cursor: 'pointer', padding: '8px 16px', fontSize: 12, color: descuadre ? '#92400E' : '#5F5E5A', fontWeight: 600, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{descuadre ? '⚠ Proporcional del primer mes — revisar' : '✓ Proporcional del primer mes'}</span>
+                <span style={{ fontWeight: 400, color: '#888780' }}>· ver detalle</span>
+              </summary>
+              <div style={{ padding: '4px 16px 12px' }}>
               <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 6 }}>Proporcional del primer mes · calculado desde datos_arriendos</div>
               {propCalc.inicioDia1 ? (
                 <div style={{ fontSize: 13, color: '#5F5E5A' }}>El contrato inicia el día 1 de {propCalc.mesNombre}: mes completo, sin proporcional.</div>
@@ -784,11 +790,12 @@ function CartolaIdadmonVista() {
                   )}
                 </>
               )}
-            </div>
+              </div>
+            </details>
           )}
 
           {/* MOVIMIENTOS */}
-          <div style={{ overflow: 'auto', maxHeight: '60vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
+          <div style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%', fontVariantNumeric: 'tabular-nums' }}>
               <thead>
                 <tr style={{ background: '#F1EFE8' }}>
