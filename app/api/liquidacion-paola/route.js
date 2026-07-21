@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-07-21 · Al guardar (guardarEnDrive) persiste en Supabase: liquidacion_paola (resultado por
+//   contrato-mes) y paola_cartola_movimientos (abonos con su identificación). Upserts idempotentes por mes.
 import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
 import { google } from 'googleapis'
@@ -91,7 +93,7 @@ export async function GET() {
 // POST — procesar liquidación
 export async function POST(request) {
   try {
-    const { mes, controlId, cartolaId, guardarEnDrive } = await request.json()
+    const { mes, controlId, cartolaId, guardarEnDrive, email } = await request.json()
     const auth = getAuth()
     const drive = google.drive({ version: 'v3', auth })
 
@@ -162,12 +164,13 @@ export async function POST(request) {
       const row = rawCart[i]
       if (!row[0]) continue
       const monto = Number(row[3] || 0)
-      if (monto > 10) abonos.push({ fecha: row[0], detalle: String(row[1] || ''), monto, rut: extraerRut(row[1]) })
+      if (monto > 10) abonos.push({ fila: abonos.length, fecha: row[0], detalle: String(row[1] || ''), monto, rut: extraerRut(row[1]) })
     }
 
     // Cruzar abonos con contratos
     const pagosMap = {}
     const sinIdentificar = []
+    const movimientosCartola = []   // TODOS los abonos con su identificación (para persistir la cartola)
 
     for (const abono of abonos) {
       let encontrado = null, confianza = null, metodo = null
@@ -219,6 +222,13 @@ export async function POST(request) {
       } else {
         sinIdentificar.push(abono)
       }
+      movimientosCartola.push({
+        fila: abono.fila,
+        fecha: abono.fecha instanceof Date ? abono.fecha.toLocaleDateString('es-CL') : String(abono.fecha || ''),
+        detalle: abono.detalle, monto: abono.monto, rut_detectado: abono.rut || null,
+        idadmon: encontrado || null, confianza: confianza || null, metodo: metodo || null,
+        identificado: !!encontrado,
+      })
     }
 
     // Resultado por contrato
@@ -259,14 +269,39 @@ export async function POST(request) {
 
     // Guardar en Drive si se solicita
     let guardadoEnDrive = false
+    let guardadoEnSupabase = false
     if (guardarEnDrive && controlFileId) {
       await subirADrive(drive, controlFileId, outBuffer)
       guardadoEnDrive = true
+
+      const mesGuardar = mes
+        || (controlName && (controlName.match(/(\d{4}-\d{2})/) || [])[1])
+        || (cartolaName && (cartolaName.match(/(\d{4}-\d{2})/) || [])[1])
+        || new Date().toISOString().slice(0, 7)
+      try {
+        const filasLiq = resultado.map(r => ({
+          mes: mesGuardar, idadmon: r.idadmon, propiedad: r.propiedad, arrendatario: r.arrendatario,
+          a_cobrar: r.aCobrar, unid: r.unid || null, recibido: r.recibido, falta_mes: r.faltaMes,
+          fechas_pago: (r.fechas && r.fechas.length) ? r.fechas.join(' / ') : null,
+          confianza: r.confianza || null, detalle_pagos: r.pagos || [],
+          generado_por: email || null, updated_at: new Date().toISOString(),
+        }))
+        await supabase.from('liquidacion_paola').delete().eq('mes', mesGuardar)
+        if (filasLiq.length) await supabase.from('liquidacion_paola').insert(filasLiq)
+
+        const filasCart = movimientosCartola.map(m => ({ mes: mesGuardar, ...m, updated_at: new Date().toISOString() }))
+        await supabase.from('paola_cartola_movimientos').delete().eq('mes', mesGuardar)
+        if (filasCart.length) await supabase.from('paola_cartola_movimientos').insert(filasCart)
+
+        guardadoEnSupabase = true
+      } catch (e) {
+        console.error('Persistencia Paola falló (Drive sí se guardó):', e)
+      }
     }
 
     return NextResponse.json({
       ok: true, mesLabel: hojaLiq, controlName, cartolaName,
-      guardadoEnDrive,
+      guardadoEnDrive, guardadoEnSupabase,
       resultado, sinIdentificar,
       resumen: {
         totalContratos: resultado.length,
