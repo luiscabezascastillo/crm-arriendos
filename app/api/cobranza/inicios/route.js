@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-07-21 · Ver: direccion/administracion/finanzas/legal (alineado con la ruta /op del middleware).
 // VERSION: v4 · 2026-07-21 · Cobranza · Inicios. Excluye propietarios que cobran ellos mismos (quien_cobra = DUEÑO).
 //   Marca sin_cobrador=true las filas con quien_cobra vacío/null (S/SQ/Q) para auditar y corregir en el LOG.
 // VERSION: v3 · 2026-07-21 · Cobranza · Inicios. Impago = deuda VIVA (saldo de hoy) > umbral; se elimina el
@@ -20,7 +21,8 @@ export const maxDuration = 60
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-// Solo roles internos con visión de cobranza.
+// Ver Cobranza: mismos roles que protege la ruta /op en el middleware.
+// (Actuar -notificar/bitácora- se restringirá a administracion/finanzas/direccion cuando exista esa parte.)
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 
 // num(): idéntico al de la Cartola (limpia formato de miles).
