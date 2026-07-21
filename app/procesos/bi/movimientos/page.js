@@ -1,3 +1,4 @@
+// VERSION: v16 · 2026-07-21 · El botón +RUT pasa a vivir DENTRO de la celda de UNIQUE CONCEPT (junto al de color), donde es más útil; se oculta la columna _asociar del final. UNIQUE CONCEPT algo más ancha.
 // VERSION: v15 · 2026-07-21 · Oculta LIQ. MES2; quita botón 'Corregir en CUENTAS' (obsoleto, +RUT corrige solo); columna +RUT (bi_admon) fija a la derecha (sticky) para verla sin scroll.
 // VERSION: v14 · 2026-07-21 · Oculta columna IDADMON (idadmon2, vestigio sin uso); ensancha DISCRIMINADOR (conocimiento para discriminar). Números en fuente monoespaciada.
 // VERSION: v13 · 2026-07-19 · Fix dropdown filtro: pasa a position:fixed (coords al abrir) para
@@ -91,14 +92,15 @@ const COLS = [
   { key: '_check1',                h: 'check1',         ro: true, w: 60,  align: 'right' },
   { key: 'check2_pasar_a_cartola', h: 'check2',         w: 78,  align: 'left',  filt: true },
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
-  { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
+  { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 170, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
   // LIQ. MES2 oculto de la vista (el dato sigue existiendo; no se edita a diario).
   // { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
   // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
-  { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
+  // Columna +RUT (_asociar) oculta: el botón +RUT ahora vive dentro de la celda de UNIQUE CONCEPT, junto al de color.
+  // { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
 ]
 const I_REG = COLS.findIndex(c => c.key === 'reg')
 const I_UC = COLS.findIndex(c => c.key === 'unique_concept')
@@ -688,9 +690,19 @@ export default function BiVista() {
       // En UNIQUE CONCEPT: input + punto de color a la derecha (compacto) para pintar la fila.
       const cm = String(r.color_manual || '').trim()
       const dot = cm === 'naranja_sa' ? COLOR.naranja_sa : cm === 'amarillo' ? COLOR.amarillo : cm === 'sin_color' ? '#fff' : null
+      // Botón +RUT en la propia celda (solo abonos con RUT y con permiso), junto al de color.
+      const rutUC = extraerRut(r.detalle_movimiento)
+      const mostrarRut = num(r.abonos) > 0 && rutUC && puedeAsociar
+      const resueltoUC = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
+      const asocAbiertoUC = asocOpen && asocOpen.row?.id === r.id
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           <div style={{ flex: 1, minWidth: 0 }}>{inputUC}</div>
+          {mostrarRut && (
+            <button onClick={() => abrirAsociar(r)}
+              title={`Asociar el RUT ${rutUC} a un IDADMON (busca en CUENTAS a qué contrato pagó antes)`}
+              style={{ flexShrink: 0, border: '0.5px solid ' + (resueltoUC ? '#C8C5BC' : '#9BD7C2'), background: asocAbiertoUC ? '#E1F5EE' : (resueltoUC ? '#fff' : '#F0FAF6'), color: resueltoUC ? '#8A8780' : '#085041', borderRadius: 5, cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: '1px 5px', lineHeight: 1.4 }}>➕RUT</button>
+          )}
           <button onClick={(e) => abrirColor(r, e)} title="Color de la fila (Dirección/Karina)"
             style={{ flexShrink: 0, width: 13, height: 13, borderRadius: '50%', cursor: 'pointer', padding: 0,
               border: '1px solid #9A968C', background: dot || 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 6px 6px' }} />
