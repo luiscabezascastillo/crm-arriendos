@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-07-21 · Cobranza · Inicios. Filtra por estado (S/SQ = vigente, Q = termino; P y N/N-DICOM fuera),
+//   excluye cuentas sin propietario/anómalas, y corrige el saldo_en_ventana (no arrastra cargos futuros).
 // VERSION: v1 · 2026-07-21 · Cobranza · Inicios. Calcula el saldo corrido (idéntico a la Cartola:
 //   orden fecha↑ / empate id↑ / +cargo −abono) para todos los IDADMON con cargos de INICIO, detecta
 //   impago del arranque (saldo en la fecha del último inicio VENCIDO + ventana, contra umbral) y
@@ -116,13 +118,14 @@ export async function GET(req) {
     const ultimoInicio = iniciosVencidos[iniciosVencidos.length - 1]
     const finVentana = ultimoInicio._f + ventanaMs
 
-    // Saldo al cierre de la ventana del último inicio vencido (último saldo con _f <= finVentana)
+    // Saldo al cierre de la ventana = suma de (cargo − abono) SOLO de los movimientos con fecha <= finVentana.
+    // Sumamos directamente (no leemos el saldo corrido global) para que ningún cargo futuro contamine el corte.
     let saldoEnVentana = 0
-    for (const m of conSaldo) { if (m._f <= finVentana) saldoEnVentana = m._saldo; else break }
+    for (const m of conSaldo) { if (m._f <= finVentana) saldoEnVentana += num(m.cargo) - num(m.abono) }
 
-    // Deuda VIVA: saldo corrido hasta hoy (excluye cargos con fecha futura)
+    // Deuda VIVA: saldo corrido hasta hoy (suma solo de movimientos con fecha <= hoy; excluye futuros).
     let saldoHoy = 0
-    for (const m of conSaldo) { if (m._f <= hoy) saldoHoy = m._saldo; else break }
+    for (const m of conSaldo) { if (m._f <= hoy) saldoHoy += num(m.cargo) - num(m.abono) }
 
     // Clasificación (detección con el saldo en ventana; importe con el saldo de hoy)
     const impago = saldoEnVentana > umbral
@@ -131,7 +134,19 @@ export async function GET(req) {
     else if (saldoHoy < -umbralSobrepago) clase = 'sobrepago'
 
     const c = info[idadmon] || {}
+
+    // Excluir cuentas anómalas / sin propietario (p. ej. A00PAM, cuentas puente)
+    if (!c.propietario || String(c.propietario).trim() === '') continue
+
+    // Filtro por estado: S/SQ = vigente ; Q = termino ; P y N/N-DICOM quedan fuera de Cobranza
+    const est = String(c.estado || '').toUpperCase().trim()
+    let grupo = null
+    if (est === 'S' || est === 'SQ') grupo = 'vigente'
+    else if (est === 'Q') grupo = 'termino'
+    else continue   // P, N, N-DICOM y cualquier otro -> fuera
+
     filas.push({
+      grupo,
       idadmon,
       propietario: c.propietario || null,
       inmueble: c.inmueble || null,
@@ -147,24 +162,30 @@ export async function GET(req) {
   }
 
   // Orden: morosos de mayor a menor deuda; luego sobrepagos; al día al final.
+  const rankGrupo = { vigente: 0, termino: 1 }
   const rank = { moroso: 0, sobrepago: 1, al_dia: 2 }
   filas.sort((a, b) => {
+    if (rankGrupo[a.grupo] !== rankGrupo[b.grupo]) return rankGrupo[a.grupo] - rankGrupo[b.grupo]
     if (rank[a.clase] !== rank[b.clase]) return rank[a.clase] - rank[b.clase]
     if (a.clase === 'moroso') return b.deuda - a.deuda            // mayor deuda primero
     if (a.clase === 'sobrepago') return a.deuda - b.deuda          // mayor sobrepago (más negativo) primero
     return (a.idadmon || '').localeCompare(b.idadmon || '')
   })
 
-  const totalDeuda = filas.filter(f => f.clase === 'moroso').reduce((a, f) => a + f.deuda, 0)
+  const resumenDe = (g) => {
+    const sub = filas.filter(f => f.grupo === g)
+    return {
+      total: sub.length,
+      con_deuda: sub.filter(f => f.clase === 'moroso').length,
+      al_dia: sub.filter(f => f.clase === 'al_dia').length,
+      sobrepago: sub.filter(f => f.clase === 'sobrepago').length,
+      total_deuda: sub.filter(f => f.clase === 'moroso').reduce((a, f) => a + f.deuda, 0),
+    }
+  }
   return Response.json({
     ok: true,
     parametros: { umbral, ventanaDias, umbralSobrepago },
-    resumen: {
-      con_deuda: filas.filter(f => f.clase === 'moroso').length,
-      al_dia: filas.filter(f => f.clase === 'al_dia').length,
-      sobrepago: filas.filter(f => f.clase === 'sobrepago').length,
-      total_deuda: totalDeuda,
-    },
+    resumen: { vigente: resumenDe('vigente'), termino: resumenDe('termino') },
     filas,
   })
 }
