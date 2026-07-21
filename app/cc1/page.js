@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-07-21 · Filtro de Estado muestra el significado de cada código (S Activo, P Vacío, Q En término, SQ Activo c/aviso, N/N-DICOM Histórico)
 // VERSION: v3 · 2026-07-16 · LOG: "Vencido" ya no se muestra en términos cerrados (N/N-DICOM/N-Liquidacion) — un término cerrado no está vencido. Hereda v2 ("Calcular ajustes" solo Dirección/Legal/Administración)
 'use client'
 
@@ -287,6 +288,10 @@ function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const estados = ['S', 'P', 'Q', 'SQ', 'N', 'N-DICOM']
+  const estadoNombre = {
+    'S': 'Activo', 'P': 'Vacío', 'Q': 'En término', 'SQ': 'Activo con aviso de término',
+    'N': 'Histórico', 'N-DICOM': 'Histórico (DICOM)',
+  }
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
@@ -328,6 +333,7 @@ function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
               onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
               <input type="radio" readOnly checked={value === e} style={{ margin: 0 }} />
               <EstadoBadge estado={e} />
+              <span style={{ fontSize: 11, color: '#6B7280' }}>{estadoNombre[e]}</span>
             </div>
           ))}
           {value && (
