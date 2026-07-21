@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-07-21 · Todos los números (Cartola IDADMON y Tabla) en fuente monoespaciada; saldo de fila sin $ (fmtNum).
 // VERSION: v3 · 2026-07-21 · Cartola IDADMON: proporcional colapsado (details), números sin $ con separador de miles y fuente monoespaciada, más altura para movimientos (cabeceras ya sticky).
 // VERSION: v2 · 2026-07-20 · Aviso de proporcional: coteja el cargo contra datos_arriendos.proporcional (el dato con que se carga el inicio), no contra el recálculo. Recálculo de calendario queda como info. Tolerancia ±100; avisa si falta respaldo en LOG.
 
@@ -280,7 +281,7 @@ function TablaVista() {
         onBlurCapture={e => { e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent' }}
         style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, background: 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
     )
-    if (c.money) { const s = fmt(r[c.key]); return <span style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span style={estiloTexto(r, c)}>{r[c.key] ?? '—'}</span>
   }
 
@@ -679,7 +680,7 @@ function CartolaIdadmonVista() {
   )
 
   const cellMov = (r, c) => {
-    if (c.key === '_saldo') return <span style={{ fontWeight: 600, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{money(r._saldo)}</span>
+    if (c.key === '_saldo') return <span style={{ fontWeight: 600, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span>
     if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     if (c.key === 'comentarios') return <span style={{ fontWeight: filaEsBI(r) ? 700 : 400 }}>{r[c.key] ?? '—'}</span>
     if (c.key === 'calif') return <span style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>

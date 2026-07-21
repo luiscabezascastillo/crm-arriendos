@@ -1,3 +1,4 @@
+// VERSION: v14 · 2026-07-21 · Oculta columna IDADMON (idadmon2, vestigio sin uso); ensancha DISCRIMINADOR (conocimiento para discriminar). Números en fuente monoespaciada.
 // VERSION: v13 · 2026-07-19 · Fix dropdown filtro: pasa a position:fixed (coords al abrir) para
 //   escapar del scroll de la tabla (overflow:auto/maxHeight:72vh); antes quedaba atrapado y se salía
 //   por abajo. Altura acotada desde su posición hasta el borde inferior; botones siempre visibles.
@@ -92,8 +93,8 @@ const COLS = [
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
   { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
-  { key: 'idadmon2',               h: 'IDADMON',        w: 84,  align: 'left', filt: true },
-  { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 110, align: 'left', filt: true },
+  // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
+  { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
   { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
 ]
@@ -694,7 +695,7 @@ export default function BiVista() {
         </div>
       )
     }
-    if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    if (c.money) { const s = fmt(r[c.key]); return <span title={s || ''} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     return <span title={r[c.key] ?? ''}>{r[c.key] ?? '—'}</span>
   }
 
