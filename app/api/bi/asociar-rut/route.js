@@ -1,3 +1,7 @@
+// VERSION: v3 · 2026-07-21 · +RUT ahora PROPAGA a CUENTAS (opción B automática): además de asociar en
+//   bi_admon y marcar unique_concept, si el valor es un IDADMON válido corrige la fila ya volcada en
+//   `cuentas` (por calif = bi.reg) y marca el movimiento del BI como CORREGIDO. Si aún no está en cuentas
+//   (sigue en FALTA), no falla: se copiará luego con el idadmon correcto.
 // VERSION: v2 · 2026-07-15 · POST acepta `biId` opcional: además de asociar en bi_admon, rellena
 //   ese movimiento del BI (unique_concept = idadmon) SERVER-SIDE (service role). Así los usuarios
 //   sin escritura directa en `bi` (Anthony/Neika/Adalis/Fabiola) pueden identificar abonos. Aditivo:
@@ -91,12 +95,33 @@ export async function POST(req) {
     if (!r) return Response.json({ error: 'Valor no válido: si empieza por "A" debe ser Axxxxx (ej. A00819); si no, escribe un texto de identificación.' }, { status: 400 })
     const valor = r.valor   // IDADMON normalizado o texto libre, tal cual
 
-    // Rellena el movimiento del BI (marca unique_concept = valor) SERVER-SIDE.
-    // Con service role funciona aunque el usuario no tenga escritura directa en `bi`.
+    // Rellena el movimiento del BI y PROPAGA la corrección a CUENTAS (cartola).
+    // Con service role funciona aunque el usuario no tenga escritura directa en `bi`/`cuentas`.
+    const esIdadmonValido = /^A\d{5}$/.test(valor)   // solo A+5 dígitos toca cuentas (texto libre no)
     async function rellenarMovimiento() {
       if (biId == null) return { rellenado: false }
-      const { error } = await supaAdmin.from('bi').update({ unique_concept: valor }).eq('id', biId)
-      return error ? { rellenado: false, errorRelleno: error.message } : { rellenado: true }
+
+      // 1) Leer el reg del movimiento (es el puente con cuentas.calif)
+      const { data: mov, error: eMov } = await supaAdmin.from('bi').select('reg').eq('id', biId).single()
+      if (eMov) return { rellenado: false, errorRelleno: eMov.message }
+      const reg = mov?.reg != null && String(mov.reg).trim() !== '' ? String(mov.reg).trim() : null
+
+      // 2) Marcar el movimiento del BI: unique_concept + idadmon2 (espejo) + check2 = CORREGIDO
+      const patchBi = { unique_concept: valor }
+      if (esIdadmonValido) { patchBi.idadmon2 = valor; patchBi.check2_pasar_a_cartola = 'CORREGIDO' }
+      const { error: eBi } = await supaAdmin.from('bi').update(patchBi).eq('id', biId)
+      if (eBi) return { rellenado: false, errorRelleno: eBi.message }
+
+      // 3) Corregir la fila ya volcada en cuentas (calif = reg). Solo si es IDADMON válido y hay reg.
+      let cuentasCorregidas = 0
+      if (esIdadmonValido && reg) {
+        const { data: upd, error: eCu } = await supaAdmin
+          .from('cuentas').update({ idadmon: valor, updated_at: new Date().toISOString() })
+          .eq('calif', reg).select('id')
+        if (eCu) return { rellenado: true, cuentasCorregidas: 0, errorCuentas: eCu.message }
+        cuentasCorregidas = (upd || []).length
+      }
+      return { rellenado: true, cuentasCorregidas }
     }
 
     // ¿Ya existe esa pareja activa? No duplicar en bi_admon, pero SÍ rellenar el movimiento.
