@@ -1,4 +1,5 @@
 'use client';
+// VERSION: v2 · 2026-07-20 · Rol 'comercial' ve su bloque Ventas (Publicaciones/Requerimientos/Visitas/Calendario/Contactos); Cumpleaños y Edificios ocultos salvo permiso. Tirza fuera de DIRECCION_EMAILS para pruebas de espejo.
 // VERSION: v1 · 2026-07-19 · El menú "Propiedades" solo lo ve Dirección (esDireccion: rol direccion
 //   o email de dirección), además del permiso de proceso que ya existía. Resto del TopNav sin cambios.
 import { useState, useRef, useEffect } from 'react';
@@ -11,7 +12,7 @@ import { PROCESOS } from '../../../lib/procesos';
 const DIRECCION_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
-  'tirza.chavez@fondocapital.com',
+  // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Dirección.
 ];
 
 // --- Transición de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
@@ -33,12 +34,12 @@ const RUTAS = {
   '/propiedades':   INTERNOS,
   '/procesos/mi-portal': INTERNOS,
   // Bloque Ventas (solo rol 'ventas', interno):
-  '/publicaciones':  ['ventas'],
-  '/requerimientos': ['ventas'],
-  '/visitas':        ['ventas'],
-  '/calendario':     ['ventas'],
+  '/publicaciones':  ['ventas', 'comercial'],
+  '/requerimientos': ['ventas', 'comercial'],
+  '/visitas':        ['ventas', 'comercial'],
+  '/calendario':     ['ventas', 'comercial'],
   '/cumpleanos':     ['ventas'],
-  '/contactos':      ['ventas'],
+  '/contactos':      ['ventas', 'comercial'],
   '/edificios':      ['ventas'],
   // /admin (Config): NO se lista -> solo Dirección.
 };
@@ -313,14 +314,18 @@ export default function TopNav() {
             <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y órdenes</Link>
             <div style={s.dropDivider}/>
             <Link href="/calendario" style={s.dropItem} onClick={() => setVentasOpen(false)}>Calendario</Link>
+            {puede('/cumpleanos') && (
             <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumpleaños</Link>
+            )}
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Inventario</div>
             <Link href="/publicaciones" style={s.dropItem} onClick={() => setVentasOpen(false)}>Publicaciones</Link>
             {esDireccion && (
             <Link href="/canje" style={s.dropItem} onClick={() => setVentasOpen(false)}>Bolsa Inmobiliaria (Canje)</Link>
             )}
+            {puede('/edificios') && (
             <Link href="/edificios" style={s.dropItem} onClick={() => setVentasOpen(false)}>Edificios</Link>
+            )}
             <div style={s.dropDivider}/>
             <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>
             <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
