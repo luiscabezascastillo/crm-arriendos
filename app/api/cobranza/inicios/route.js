@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-07-21 · Cobranza · Inicios. Impago = deuda VIVA (saldo de hoy) > umbral; se elimina el
+//   saldo_en_ventana como criterio (daba falsos impagos en arranques ya regularizados). Se conserva la fecha del
+//   último inicio vencido solo como referencia informativa.
 // VERSION: v2 · 2026-07-21 · Cobranza · Inicios. Filtra por estado (S/SQ = vigente, Q = termino; P y N/N-DICOM fuera),
 //   excluye cuentas sin propietario/anómalas, y corrige el saldo_en_ventana (no arrastra cargos futuros).
 // VERSION: v1 · 2026-07-21 · Cobranza · Inicios. Calcula el saldo corrido (idéntico a la Cartola:
@@ -116,19 +119,13 @@ export async function GET(req) {
     if (iniciosVencidos.length === 0) continue  // todos sus inicios son futuros: aún no evaluable
 
     const ultimoInicio = iniciosVencidos[iniciosVencidos.length - 1]
-    const finVentana = ultimoInicio._f + ventanaMs
-
-    // Saldo al cierre de la ventana = suma de (cargo − abono) SOLO de los movimientos con fecha <= finVentana.
-    // Sumamos directamente (no leemos el saldo corrido global) para que ningún cargo futuro contamine el corte.
-    let saldoEnVentana = 0
-    for (const m of conSaldo) { if (m._f <= finVentana) saldoEnVentana += num(m.cargo) - num(m.abono) }
 
     // Deuda VIVA: saldo corrido hasta hoy (suma solo de movimientos con fecha <= hoy; excluye futuros).
+    // Es el criterio único: ¿debe dinero HOY? — mismo criterio que Cartolas.
     let saldoHoy = 0
     for (const m of conSaldo) { if (m._f <= hoy) saldoHoy += num(m.cargo) - num(m.abono) }
 
-    // Clasificación (detección con el saldo en ventana; importe con el saldo de hoy)
-    const impago = saldoEnVentana > umbral
+    // Clasificación por la deuda de hoy contra el umbral.
     let clase = 'al_dia'
     if (saldoHoy > umbral) clase = 'moroso'
     else if (saldoHoy < -umbralSobrepago) clase = 'sobrepago'
@@ -152,11 +149,9 @@ export async function GET(req) {
       inmueble: c.inmueble || null,
       arrendatario: c.arrendatario || null,
       estado: c.estado || null,
-      fecha_ultimo_inicio: ultimoInicio.fecha,
+      fecha_ultimo_inicio: ultimoInicio.fecha,   // referencia informativa (último cargo de inicio ya vencido)
       concepto_ultimo_inicio: ultimoInicio.concepto || null,
-      saldo_en_ventana: Math.round(saldoEnVentana),
-      deuda: Math.round(saldoHoy),      // deuda viva (saldo de hoy)
-      impago_inicio: impago,            // el arranque no cuadró en su ventana
+      deuda: Math.round(saldoHoy),      // deuda viva (saldo de hoy) — criterio único
       clase,                            // 'moroso' | 'al_dia' | 'sobrepago'
     })
   }
