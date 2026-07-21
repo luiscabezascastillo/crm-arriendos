@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · Resalta filas sin_cobrador (quien_cobra vacío en el LOG) con aviso para auditar.
 // VERSION: v1 · 2026-07-21 · Módulo Cobranza. Contenedor con pestañas (Cartolas · Servicios · Inicios · Bitácora).
 //   Inicios operativa (consume /api/cobranza/inicios): resumen, tabla ordenada mayor→menor, sin deuda en verde al
 //   final, sobrepago en negrita como "revisar", y toggles para mostrar/ocultar Vigentes (S/SQ) y En término (Q).
@@ -154,8 +155,9 @@ function Tabla({ filas }) {
             const esMoroso = f.clase === 'moroso'
             const esSobre = f.clase === 'sobrepago'
             const bg = f.clase === 'al_dia' ? C.verdeBg : (esSobre ? C.ambarBg : '#fff')
+            const avisoSinCobrador = f.sin_cobrador
             return (
-              <tr key={f.idadmon} style={{ background: bg }}>
+              <tr key={f.idadmon} style={{ background: bg, boxShadow: avisoSinCobrador ? `inset 3px 0 0 ${C.ambar}` : 'none' }}>
                 <td style={{ ...td, fontWeight: 600 }}>{f.idadmon}</td>
                 <td style={td}>
                   <div style={{ fontWeight: 600 }}>{f.propietario || '—'}</div>
@@ -172,6 +174,7 @@ function Tabla({ filas }) {
                   {esMoroso && <span style={{ color: C.rojo, fontWeight: 600 }}>Moroso</span>}
                   {f.clase === 'al_dia' && <span style={{ color: C.verde }}>Al día</span>}
                   {esSobre && <span style={{ color: C.ambar, fontWeight: 700 }}>Revisar · posible mala asignación</span>}
+                  {avisoSinCobrador && <div style={{ color: C.ambar, fontSize: 11, fontWeight: 600, marginTop: 2 }}>⚠ Falta «quién cobra» en el LOG</div>}
                 </td>
               </tr>
             )

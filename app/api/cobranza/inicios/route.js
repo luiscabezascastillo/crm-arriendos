@@ -1,3 +1,5 @@
+// VERSION: v4 · 2026-07-21 · Cobranza · Inicios. Excluye propietarios que cobran ellos mismos (quien_cobra = DUEÑO).
+//   Marca sin_cobrador=true las filas con quien_cobra vacío/null (S/SQ/Q) para auditar y corregir en el LOG.
 // VERSION: v3 · 2026-07-21 · Cobranza · Inicios. Impago = deuda VIVA (saldo de hoy) > umbral; se elimina el
 //   saldo_en_ventana como criterio (daba falsos impagos en arranques ya regularizados). Se conserva la fecha del
 //   último inicio vencido solo como referencia informativa.
@@ -87,7 +89,7 @@ export async function GET(req) {
   // 3) Datos de contrato para mostrar (propietario/inmueble/arrendatario/estado)
   const { data: contratos } = await admin
     .from('datos_arriendos')
-    .select('idadmon, propietario, inmueble, arrendatario, estado')
+    .select('idadmon, propietario, inmueble, arrendatario, estado, quien_cobra')
   const info = {}
   for (const c of (contratos || [])) info[c.idadmon] = c
 
@@ -142,8 +144,14 @@ export async function GET(req) {
     else if (est === 'Q') grupo = 'termino'
     else continue   // P, N, N-DICOM y cualquier otro -> fuera
 
+    // quien_cobra: FCR (lo gestiona la empresa) / DUEÑO (lo cobra el propietario -> fuera de Cobranza) / vacío (error de dato)
+    const quienCobra = String(c.quien_cobra || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+    if (quienCobra === 'DUENO') continue   // propietario autogestiona su cobro: FCR no lo controla aquí
+    const sinCobrador = quienCobra === ''  // S/SQ/Q sin quien_cobra definido: dejar pero señalar para auditar
+
     filas.push({
       grupo,
+      sin_cobrador: sinCobrador,
       idadmon,
       propietario: c.propietario || null,
       inmueble: c.inmueble || null,
