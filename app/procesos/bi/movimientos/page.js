@@ -1,3 +1,4 @@
+// VERSION: v15 · 2026-07-21 · Oculta LIQ. MES2; quita botón 'Corregir en CUENTAS' (obsoleto, +RUT corrige solo); columna +RUT (bi_admon) fija a la derecha (sticky) para verla sin scroll.
 // VERSION: v14 · 2026-07-21 · Oculta columna IDADMON (idadmon2, vestigio sin uso); ensancha DISCRIMINADOR (conocimiento para discriminar). Números en fuente monoespaciada.
 // VERSION: v13 · 2026-07-19 · Fix dropdown filtro: pasa a position:fixed (coords al abrir) para
 //   escapar del scroll de la tabla (overflow:auto/maxHeight:72vh); antes quedaba atrapado y se salía
@@ -92,7 +93,8 @@ const COLS = [
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 130, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
-  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
+  // LIQ. MES2 oculto de la vista (el dato sigue existiendo; no se edita a diario).
+  // { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
   // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
@@ -841,7 +843,6 @@ export default function BiVista() {
           {[
             ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
             ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido)', copiarFaltan],
-            ['Corregir en CUENTAS', 'Corrige en CUENTAS los marcados CORREGIR', null],
           ].map(([label, hint, accion], i) => {
             const habilitado = !!accion && !copiando && puedeEditar
             return (
@@ -865,7 +866,7 @@ export default function BiVista() {
             <thead>
               <tr style={{ background: '#F1EFE8' }}>
                 {COLS.map((c, i) => (
-                  <th key={i} style={{ padding: '6px 8px', textAlign: c.align, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap', minWidth: c.w, position: 'sticky', top: 0, background: '#F1EFE8', zIndex: 3, borderBottom: '0.5px solid #D3D1C7' }}>
+                  <th key={i} style={{ padding: '6px 8px', textAlign: c.align, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap', minWidth: c.w, position: 'sticky', top: 0, right: c.key === '_asociar' ? 0 : undefined, background: '#F1EFE8', zIndex: c.key === '_asociar' ? 5 : 3, borderBottom: '0.5px solid #D3D1C7', boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
                     {c.filt ? (
                       <ColFilterExcel
                         label={c.h} col={c.key} align={c.align === 'right' ? 'right' : 'left'}
@@ -891,7 +892,7 @@ export default function BiVista() {
                     // para poder leer lo que se corta. Columnas de botón/check no llevan.
                     const tdTitle = c.key.startsWith('_') ? undefined : (c.money ? (fmt(r[c.key]) || undefined) : (String(r[c.key] ?? '').trim() || undefined))
                     return (
-                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
+                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: c.key === '_asociar' ? '#fff' : bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis', position: c.key === '_asociar' ? 'sticky' : undefined, right: c.key === '_asociar' ? 0 : undefined, zIndex: c.key === '_asociar' ? 2 : undefined, boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
                       {cell(r, c)}
                     </td>
                     )
