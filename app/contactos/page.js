@@ -402,6 +402,12 @@ function ModalContacto({ contacto, onClose, onSaved }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function ContactosPage() {
   const router = useRouter()
+  // Quién mira: los comerciales ven SOLO lo suyo (sus clientes + los propietarios de sus
+  // publicaciones). Dirección/admin ven todos los contactos.
+  const { data: sesionPag } = useSession()
+  const miRol = sesionPag?.user?.role || null
+  const miNombre = (sesionPag?.user?.name || '').trim()
+  const soloMios = (miRol === 'comercial' || miRol === 'ventas') && !!miNombre
   const [contactos, setContactos] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -413,12 +419,29 @@ export default function ContactosPage() {
   const [fComercial, setFComercial] = useState(emptyF)
   const [fOrigen, setFOrigen] = useState(emptyF)
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { if (sesionPag !== undefined) cargar() }, [soloMios, miNombre])
 
-  function cargar() {
+  // Normaliza un nombre para comparar (sin tildes, sin dobles espacios, minúsculas).
+  const normNom = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ').trim().toLowerCase()
+
+  async function cargar() {
     setLoading(true)
-    supabase.from('contactos').select('*').eq('activo', true).order('nombre')
-      .then(({ data }) => { setContactos(data || []); setLoading(false) })
+    const { data } = await supabase.from('contactos').select('*').eq('activo', true).order('nombre')
+    let lista = data || []
+    if (soloMios) {
+      // Propietarios de MIS publicaciones (el propietario se guarda como texto en publicaciones).
+      const { data: pubs } = await supabase.from('publicaciones').select('propietario').eq('vendedor', miNombre)
+      const misPropietarios = new Set((pubs || []).map(p => normNom(p.propietario)).filter(Boolean))
+      lista = lista.filter(c => {
+        const esMiCliente = String(c.comercial_asignado || '').trim() === miNombre
+        const nombreCompleto = normNom([c.nombre, c.apellido].filter(Boolean).join(' '))
+        const esMiPropietario = nombreCompleto && misPropietarios.has(nombreCompleto)
+        return esMiCliente || esMiPropietario
+      })
+    }
+    setContactos(lista)
+    setLoading(false)
   }
 
   const unicos = (campo) => [...new Set(contactos.map(c => c[campo]).filter(Boolean))].sort()

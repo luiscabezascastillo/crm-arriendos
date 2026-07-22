@@ -1,5 +1,9 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · Al crear el contacto desde una orden de visita se graban ahora
+//   comercial_asignado (el comercial de la visita) y creado_por (email de quien la agenda),
+//   para que cada comercial pueda ver luego sus propios contactos.
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { supabase } from '../../lib/supabaseClient'
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const ESTADOS_VISITA = ['agendada', 'realizada', 'cancelada']
@@ -41,6 +45,8 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
   const [fecha, setFecha] = useState('')
   const [hora, setHora] = useState('')
   const [comercial, setComercial] = useState('')
+  const { data: sesion } = useSession()
+  const emailSesion = sesion?.user?.email || null
   const [estado, setEstado] = useState('agendada')
   const [notas, setNotas] = useState('')
   const [genOrden, setGenOrden] = useState(true)
@@ -101,6 +107,8 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
       nombre: partes.shift() || nom || null, apellido: partes.join(' ') || null,
       telefono: tel || null, email: mail || null,
       roles: ['comprador'], origen: 'orden_visita', activo: true,
+      comercial_asignado: comercial || null,   // el comercial de esta visita
+      creado_por: emailSesion,                 // quién lo dio de alta
     }).select('id').single()
     if (error) throw new Error('No se pudo crear el contacto: ' + error.message)
     return nuevo.id
