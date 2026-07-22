@@ -1,65 +1,55 @@
-// VERSION: v2 · 2026-07-21 · Al guardar (guardarEnDrive) persiste en Supabase: liquidacion_paola (resultado por
-//   contrato-mes) y paola_cartola_movimientos (abonos con su identificación). Upserts idempotentes por mes.
+// VERSION: v3 · 2026-07-22 · Ya NO lee Drive. Genera la liquidación desde el CRM
+//   (liquidacion_idadmon + datos_arriendos + ggcc_agua_luz) y recibe la cartola SUBIDA por la
+//   pantalla. Correcciones: RUT con cero a la izquierda, falta_mes puede ser negativo, cabecera
+//   de la cartola detectada por nombre de columna. SOLO LECTURA: no escribe en Supabase.
 import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
-import { google } from 'googleapis'
 
-const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
+const IDPROP_PAOLA = 'P001'
+const ESTADOS_LIQUIDABLES = ['S', 'SQ', 'P', 'Q']
 
-function getAuth() {
-  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}')
-  return new google.auth.GoogleAuth({
-    credentials,
-    scopes: [
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/drive.file',
-    ],
-  })
+// ── utilidades ───────────────────────────────────────────────────────────────
+
+// '2026-07' | '2607' → '2607'
+function aAamm(mes) {
+  const s = String(mes || '').trim()
+  if (/^\d{4}$/.test(s)) return s
+  const m = s.match(/^(\d{4})-(\d{2})$/)
+  if (m) return m[1].slice(2) + m[2]
+  throw new Error(`Mes no reconocido: "${mes}"`)
 }
 
-async function buscarArchivo(drive, prefijo) {
-  const res = await drive.files.list({
-    q: `'${FOLDER_ID}' in parents and name contains '${prefijo}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`,
-    fields: 'files(id, name)',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
-  return res.data.files?.[0] || null
+// Los importes de ggcc_agua_luz llegan como texto: "47.320", "$ 12.776", "", null.
+function aNumero(v) {
+  if (v === null || v === undefined || v === '') return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const limpio = String(v).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')
+  if (limpio === '' || limpio === '-') return null
+  const n = Number(limpio)
+  return Number.isFinite(n) ? n : null
 }
 
-async function descargarArchivo(drive, fileId) {
-  const res = await drive.files.get(
-    { fileId, alt: 'media', supportsAllDrives: true },
-    { responseType: 'arraybuffer' }
-  )
-  return Buffer.from(res.data)
-}
-
-async function subirADrive(drive, fileId, buffer) {
-  const { Readable } = await import('stream')
-  const stream = Readable.from(buffer)
-  await drive.files.update({
-    fileId,
-    media: {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      body: stream,
-    },
-    supportsAllDrives: true,
-  })
+// La cartola rellena los RUT a 10 dígitos con ceros: "026951793K" = 26.951.793-K.
+// Sin quitarlos NUNCA cruzan contra pagadores.rut_sin_puntos.
+function normalizarRut(v) {
+  if (!v) return ''
+  const s = String(v).toUpperCase().replace(/[^0-9K]/g, '')
+  if (!s) return ''
+  return s.replace(/^0+/, '')
 }
 
 function extraerRut(detalle) {
   const m = String(detalle || '').trim().match(/^(\d{7,10}[Kk]?)/)
-  return m ? m[1].toUpperCase() : ''
+  return m ? normalizarRut(m[1]) : ''
 }
 
-function normalizar(s) {
+function normalizarNombre(s) {
   return String(s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ').trim().toUpperCase()
     .replace(/^\d+[Kk]?\s*/, '')
-    .replace(/^TRANSF[\. ]+/, '')
+    .replace(/^TRANSF[. ]+/, '')
     .replace(/^DE\s+/, '')
 }
 
@@ -72,250 +62,298 @@ function similitud(a, b) {
   return comunes >= 2 ? (comunes / union) * 100 + 10 : (comunes / union) * 100
 }
 
-// GET — listar archivos disponibles en Drive
-export async function GET() {
-  try {
-    const auth = getAuth()
-    const drive = google.drive({ version: 'v3', auth })
-    const res = await drive.files.list({
-      q: `'${FOLDER_ID}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`,
-      fields: 'files(id, name, modifiedTime)',
-      orderBy: 'name desc',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
+// Orden natural: "dep 903A" antes que "dep 1003A", "est 42" antes que "est 101".
+function ordenNatural(a, b) {
+  const trozos = s => String(s || '').toLowerCase().split(/(\d+)/).filter(x => x !== '')
+  const ta = trozos(a), tb = trozos(b)
+  for (let i = 0; i < Math.max(ta.length, tb.length); i++) {
+    const x = ta[i], y = tb[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y)
+    if (nx && ny) { if (Number(x) !== Number(y)) return Number(x) - Number(y) }
+    else if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+function aFechaISO(v) {
+  if (!v) return null
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10)
+  const s = String(v).trim()
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (m) return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`
+  return null
+}
+
+// ── parseo de la cartola ─────────────────────────────────────────────────────
+// Localiza la cabecera por NOMBRE de columna en vez de por posición fija, para que dé el mismo
+// resultado tanto con el archivo suelto de la cartola como con la hoja incrustada en el Control.
+function parsearCartola(XLSX, buffer) {
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true })
+
+  const hoja = wb.SheetNames.find(n => /movimiento|cartola/i.test(n)) || wb.SheetNames[0]
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, defval: null, blankrows: true })
+
+  let filaCab = -1, cols = {}
+  for (let i = 0; i < Math.min(raw.length, 25); i++) {
+    const fila = (raw[i] || []).map(c => String(c || '').trim().toLowerCase())
+    const iFecha = fila.findIndex(c => c === 'fecha')
+    const iDet = fila.findIndex(c => c.startsWith('detalle'))
+    const iAbono = fila.findIndex(c => c.includes('abono'))
+    if (iFecha >= 0 && iDet >= 0 && iAbono >= 0) {
+      filaCab = i
+      cols = {
+        fecha: iFecha, detalle: iDet, abono: iAbono,
+        cargo: fila.findIndex(c => c.includes('cargo')),
+        nota: fila.findIndex(c => c.includes('saldo')),
+      }
+      break
+    }
+  }
+  if (filaCab < 0) {
+    throw new Error('No se reconoce la cartola: no encuentro una cabecera con Fecha, Detalle y Monto abono.')
+  }
+
+  const abonos = []
+  for (let i = filaCab + 1; i < raw.length; i++) {
+    const fila = raw[i]
+    if (!fila || !fila[cols.fecha]) continue
+    const monto = aNumero(fila[cols.abono])
+    if (!monto || monto <= 10) continue   // los cargos (salidas) no son cobros
+    abonos.push({
+      fila: abonos.length,
+      fecha: fila[cols.fecha],
+      detalle: String(fila[cols.detalle] || ''),
+      monto,
+      rut: extraerRut(fila[cols.detalle]),
+      notaCartola: cols.nota >= 0 ? (fila[cols.nota] || null) : null,
     })
-    return NextResponse.json({ ok: true, files: res.data.files || [] })
+  }
+  return { hoja, abonos, cabeceraFila: filaCab + 1 }
+}
+
+// ── GET: estado del mes ──────────────────────────────────────────────────────
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const mes = searchParams.get('mes')
+    if (!mes) return NextResponse.json({ ok: true, congelado: false })
+    const aamm = aAamm(mes)
+    const { data } = await supabase
+      .from('paola_cierres').select('*').eq('mes', aamm).maybeSingle()
+    return NextResponse.json({ ok: true, mes: aamm, cierre: data || null, congelado: !!data?.congelado })
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
 
-// POST — procesar liquidación
+// ── POST: generar la liquidación ─────────────────────────────────────────────
 export async function POST(request) {
   try {
-    const { mes, controlId, cartolaId, guardarEnDrive, email } = await request.json()
-    const auth = getAuth()
-    const drive = google.drive({ version: 'v3', auth })
+    const { mes, cartolaBase64, email } = await request.json()
+    if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+    const aamm = aAamm(mes)
 
-    // Buscar archivos — por IDs específicos o por mes
-    let controlBuffer, cartolaBuffer, controlName, cartolaName
-    let controlFileId = controlId // guardamos el ID para poder sobreescribir
+    // 1. Base de CARTAS (foto del mes)
+    const { data: cartas, error: eCartas } = await supabase
+      .from('liquidacion_idadmon')
+      .select('idadmon, estado, inmueble, arrendatario, rut_arrendatario, fecha_inicio, a_cobrar')
+      .eq('mes', aamm).eq('idprop', IDPROP_PAOLA).in('estado', ESTADOS_LIQUIDABLES)
+    if (eCartas) throw new Error('CARTAS: ' + eCartas.message)
 
-    if (controlId && cartolaId) {
-      const [cb, lb] = await Promise.all([
-        descargarArchivo(drive, controlId),
-        descargarArchivo(drive, cartolaId),
-      ])
-      controlBuffer = cb; cartolaBuffer = lb
-    } else {
-      const prefijoMes = mes || new Date().toISOString().slice(0, 7)
-      const [controlFile, cartolaFile] = await Promise.all([
-        buscarArchivo(drive, `${prefijoMes}-Control`),
-        buscarArchivo(drive, `${prefijoMes}-Cartola`),
-      ])
-      if (!controlFile) return NextResponse.json({ error: `No se encontró Control para ${prefijoMes} en Drive` }, { status: 404 })
-      if (!cartolaFile) return NextResponse.json({ error: `No se encontró Cartola para ${prefijoMes} en Drive` }, { status: 404 })
-      controlName = controlFile.name; cartolaName = cartolaFile.name
-      controlFileId = controlFile.id
-      const [cb, lb] = await Promise.all([
-        descargarArchivo(drive, controlFile.id),
-        descargarArchivo(drive, cartolaFile.id),
-      ])
-      controlBuffer = cb; cartolaBuffer = lb
-    }
+    // 2. LOG en vivo: estado y termino_actual mandan sobre la foto, y de aquí salen las
+    //    vacantes nuevas que la foto todavía no conoce.
+    const { data: log, error: eLog } = await supabase
+      .from('datos_arriendos')
+      .select('idadmon, estado, inmueble, arrendatario, fecha_inicio, termino_actual')
+      .eq('idprop', IDPROP_PAOLA).in('estado', ESTADOS_LIQUIDABLES)
+    if (eLog) throw new Error('LOG: ' + eLog.message)
+    const logMap = {}
+    for (const r of log || []) logMap[r.idadmon] = r
 
-    // Parsear Excel
-    const XLSX = await import('xlsx')
-    const wbControl = XLSX.read(controlBuffer, { type: 'buffer', cellDates: true })
-    const hojaLiq = wbControl.SheetNames.find(n => n.toUpperCase().includes('LIQUIDACION')) || wbControl.SheetNames[0]
-    const rawLiq = XLSX.utils.sheet_to_json(wbControl.Sheets[hojaLiq], { header: 1, defval: null })
-    const wbCartola = XLSX.read(cartolaBuffer, { type: 'buffer', cellDates: true })
-    const rawCart = XLSX.utils.sheet_to_json(wbCartola.Sheets[wbCartola.SheetNames[0]], { header: 1, defval: null })
-
-    // Extraer contratos (fila 3+)
-    const contratos = []
-    for (let i = 3; i < rawLiq.length; i++) {
-      const row = rawLiq[i]
-      if (!row[1] || typeof row[1] !== 'string' || !row[1].startsWith('A')) break
-      contratos.push({
-        filaExcel: i + 1, idadmon: row[1],
-        propiedad: row[2] || '', arrendatario: row[5] || '',
-        aCobrar: row[7] || null,
+    // 3. Filas: las de CARTAS + las del LOG que la foto no traiga
+    const filas = []
+    const vistos = new Set()
+    for (const c of cartas || []) {
+      vistos.add(c.idadmon)
+      const l = logMap[c.idadmon] || {}
+      filas.push({
+        idadmon: c.idadmon,
+        estado: l.estado ?? c.estado ?? null,
+        propiedad: c.inmueble || l.inmueble || '',
+        comienzo: aFechaISO(c.fecha_inicio || l.fecha_inicio),
+        termino: aFechaISO(l.termino_actual),
+        arrendatario: c.arrendatario || '',
+        rut: c.rut_arrendatario || '',
+        aCobrar: c.a_cobrar != null ? Number(c.a_cobrar) : null,
+        enCartas: true,
       })
     }
+    for (const l of log || []) {
+      if (vistos.has(l.idadmon)) continue
+      filas.push({
+        idadmon: l.idadmon,
+        estado: l.estado ?? null,
+        propiedad: l.inmueble || '',
+        comienzo: aFechaISO(l.fecha_inicio),
+        termino: aFechaISO(l.termino_actual),
+        arrendatario: l.arrendatario || '',
+        rut: '',
+        aCobrar: null,
+        enCartas: false,       // ⚠ no está en la foto: CARTAS necesita resincronizar
+      })
+    }
+    for (const f of filas) {
+      f.vacante = (f.estado === 'P') || (!f.arrendatario && f.aCobrar == null)
+      if (f.vacante && !f.arrendatario) f.arrendatario = 'EN CAPTACION ARRENDATARIO'
+    }
+    filas.sort((a, b) => ordenNatural(a.propiedad, b.propiedad))
 
-    // Cuotas Supabase
-    const { data: supaData } = await supabase
-      .from('datos_arriendos').select('idadmon, cuota, unid')
-      .in('idadmon', contratos.map(c => c.idadmon))
-    const cuotaMap = {}
-    for (const r of supaData || []) cuotaMap[r.idadmon] = r
+    // 4. Servicios: el último dato disponible por contrato
+    const ids = filas.map(f => f.idadmon)
+    const { data: serv } = await supabase
+      .from('ggcc_agua_luz')
+      .select('idadmon, mes, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua')
+      .in('idadmon', ids)
+    const servMap = {}
+    for (const s of serv || []) {
+      const clave = String(s.aamm || s.mes || '')
+      const prev = servMap[s.idadmon]
+      if (!prev || clave > prev._clave) servMap[s.idadmon] = { ...s, _clave: clave }
+    }
 
-    // BD Pagadores Supabase
-    const { data: pagadoresDB } = await supabase.from('pagadores').select('*')
+    // 5. Cruce con la cartola (si se ha subido)
+    let abonos = [], infoCartola = null
+    if (cartolaBase64) {
+      const XLSX = await import('xlsx')
+      const buffer = Buffer.from(cartolaBase64, 'base64')
+      const p = parsearCartola(XLSX, buffer)
+      abonos = p.abonos
+      infoCartola = { hoja: p.hoja, movimientos: abonos.length }
+    }
+
+    const { data: pagadores } = await supabase.from('pagadores').select('*')
     const rutMap = {}
-    for (const p of pagadoresDB || []) {
-      if (p.rut_sin_puntos) rutMap[p.rut_sin_puntos.toUpperCase()] = p
+    for (const p of pagadores || []) {
+      const k = normalizarRut(p.rut_sin_puntos || p.rut_con_puntos)
+      if (k) rutMap[k] = p
     }
 
-    // Extraer abonos cartola
-    const abonos = []
-    for (let i = 3; i < rawCart.length; i++) {
-      const row = rawCart[i]
-      if (!row[0]) continue
-      const monto = Number(row[3] || 0)
-      if (monto > 10) abonos.push({ fila: abonos.length, fecha: row[0], detalle: String(row[1] || ''), monto, rut: extraerRut(row[1]) })
-    }
-
-    // Cruzar abonos con contratos
     const pagosMap = {}
     const sinIdentificar = []
-    const movimientosCartola = []   // TODOS los abonos con su identificación (para persistir la cartola)
+    const movimientos = []
 
     for (const abono of abonos) {
       let encontrado = null, confianza = null, metodo = null
 
-      // 1. Por RUT
       if (abono.rut && rutMap[abono.rut]) {
         const p = rutMap[abono.rut]
-        const ids = [p.idadmon1, p.idadmon2, p.idadmon3, p.idadmon4, p.idadmon5].filter(Boolean)
-        const posibles = ids.filter(id => contratos.find(c => c.idadmon === id))
-        if (posibles.length === 1) {
-          encontrado = posibles[0]; confianza = 'alta'; metodo = 'rut'
-        } else if (posibles.length > 1) {
+        const posibles = [p.idadmon1, p.idadmon2, p.idadmon3, p.idadmon4, p.idadmon5]
+          .filter(Boolean).filter(id => filas.some(f => f.idadmon === id))
+        if (posibles.length === 1) { encontrado = posibles[0]; confianza = 'alta'; metodo = 'rut' }
+        else if (posibles.length > 1) {
           const exacto = posibles.find(id => {
-            const c = contratos.find(c => c.idadmon === id)
-            const ac = cuotaMap[id]?.cuota || c?.aCobrar
-            return ac && Math.abs(Number(ac) - abono.monto) < 1000
+            const f = filas.find(f => f.idadmon === id)
+            return f?.aCobrar && Math.abs(f.aCobrar - abono.monto) < 1000
           })
           encontrado = exacto || posibles[0]
-          confianza = exacto ? 'media' : 'baja'; metodo = 'rut-multi'
+          confianza = exacto ? 'media' : 'baja'
+          metodo = 'rut-multi'
         }
       }
 
-      // 2. Por similitud nombre
       if (!encontrado) {
-        const detNorm = normalizar(abono.detalle)
-        let mejorScore = 0, mejorId = null
-        for (const c of contratos) {
-          const score = similitud(detNorm, normalizar(c.arrendatario))
-          if (score > mejorScore) { mejorScore = score; mejorId = c.idadmon }
+        const det = normalizarNombre(abono.detalle)
+        let mejor = 0, mejorId = null
+        for (const f of filas) {
+          if (f.vacante) continue
+          const s = similitud(det, normalizarNombre(f.arrendatario))
+          if (s > mejor) { mejor = s; mejorId = f.idadmon }
         }
-        if (mejorScore >= 65) {
-          encontrado = mejorId
-          confianza = mejorScore >= 85 ? 'alta' : 'media'; metodo = 'nombre'
-        }
+        if (mejor >= 65) { encontrado = mejorId; confianza = mejor >= 85 ? 'alta' : 'media'; metodo = 'nombre' }
       }
 
-      // 3. Por monto
       if (!encontrado) {
-        const porMonto = contratos.find(c => {
-          const ac = cuotaMap[c.idadmon]?.cuota || c.aCobrar
-          return ac && Math.abs(Number(ac) - abono.monto) < 500
-        })
+        const porMonto = filas.find(f => f.aCobrar && Math.abs(f.aCobrar - abono.monto) < 500)
         if (porMonto) { encontrado = porMonto.idadmon; confianza = 'sugerida'; metodo = 'monto' }
       }
 
       if (encontrado) {
-        if (!pagosMap[encontrado]) pagosMap[encontrado] = []
-        pagosMap[encontrado].push({ ...abono, confianza, metodo })
+        (pagosMap[encontrado] = pagosMap[encontrado] || []).push({ ...abono, confianza, metodo })
       } else {
         sinIdentificar.push(abono)
       }
-      movimientosCartola.push({
-        fila: abono.fila,
-        fecha: abono.fecha instanceof Date ? abono.fecha.toLocaleDateString('es-CL') : String(abono.fecha || ''),
+      movimientos.push({
+        fila: abono.fila, fecha: aFechaISO(abono.fecha) || String(abono.fecha || ''),
         detalle: abono.detalle, monto: abono.monto, rut_detectado: abono.rut || null,
-        idadmon: encontrado || null, confianza: confianza || null, metodo: metodo || null,
-        identificado: !!encontrado,
+        nota_cartola: abono.notaCartola || null,
+        idadmon: encontrado || null, confianza, metodo, identificado: !!encontrado,
       })
     }
 
-    // Resultado por contrato
-    const resultado = contratos.map(c => {
-      const supaInfo = cuotaMap[c.idadmon]
-      const aCobrar = supaInfo?.cuota || c.aCobrar || null
-      const pagos = pagosMap[c.idadmon] || []
-      const totalRecibido = pagos.reduce((s, p) => s + p.monto, 0)
-      const faltaMes = aCobrar ? Math.max(0, Number(aCobrar) - totalRecibido) : null
-      const fechas = pagos.map(p => p.fecha instanceof Date ? p.fecha.toLocaleDateString('es-CL') : String(p.fecha).slice(0, 10))
-      const confianza = pagos.length > 0
-        ? (pagos.every(p => p.confianza === 'alta') ? 'alta'
-          : pagos.every(p => p.confianza === 'sugerida') ? 'sugerida' : 'media')
-        : null
+    // 6. Campos manuales ya guardados (no se pierden al regenerar)
+    const { data: guardado } = await supabase
+      .from('liquidacion_paola').select('*').eq('mes', aamm)
+    const manualMap = {}
+    for (const g of guardado || []) manualMap[g.idadmon] = g
+
+    // 7. Montaje final
+    const resultado = filas.map(f => {
+      const pagos = pagosMap[f.idadmon] || []
+      const recibido = pagos.reduce((s, p) => s + p.monto, 0) || null
+      const s = servMap[f.idadmon] || {}
+      const m = manualMap[f.idadmon] || {}
+      const fechas = pagos.map(p => aFechaISO(p.fecha)).filter(Boolean).sort()
       return {
-        filaExcel: c.filaExcel, idadmon: c.idadmon,
-        propiedad: c.propiedad, arrendatario: c.arrendatario,
-        aCobrar: aCobrar ? Number(aCobrar) : null, unid: supaInfo?.unid || '',
-        recibido: totalRecibido || null, faltaMes, fechas, confianza, pagos,
+        ...f,
+        recibido,
+        // Puede salir NEGATIVO si pagaron de más. En el Excel es la fórmula =H-I.
+        faltaMes: f.aCobrar != null ? f.aCobrar - (recibido || 0) : null,
+        fechaPago: fechas.length ? fechas[fechas.length - 1] : null,
+        fechasPago: fechas,
+        confianza: pagos.length
+          ? (pagos.every(p => p.confianza === 'alta') ? 'alta'
+            : pagos.every(p => p.confianza === 'sugerida') ? 'sugerida' : 'media')
+          : null,
+        pagos,
+        deudaGgcc: aNumero(s.deuda_gastos_comunes),
+        deudaLuz: aNumero(s.deuda_vigente_electricidad),
+        deudaAgua: aNumero(s.deuda_vigente_agua),
+        serviciosAamm: s.aamm || s.mes || null,
+        multasDeudas: m.multas_deudas ?? null,
+        especial: m.especial ?? null,
+        cantidad: m.cantidad ?? null,
+        comentarios1: m.comentarios_1 ?? null,
+        comentarios2: m.comentarios_2 ?? null,
       }
     })
 
-    // Generar Excel de salida
-    const wbOut = XLSX.read(controlBuffer, { type: 'buffer', cellDates: true })
-    const wsOut = wbOut.Sheets[hojaLiq]
-    for (const r of resultado) {
-      const er = r.filaExcel - 1
-      if (r.aCobrar !== null) wsOut[XLSX.utils.encode_cell({ r: er, c: 7 })] = { v: r.aCobrar, t: 'n' }
-      if (r.recibido) wsOut[XLSX.utils.encode_cell({ r: er, c: 8 })] = { v: r.recibido, t: 'n' }
-      if (r.faltaMes !== null) wsOut[XLSX.utils.encode_cell({ r: er, c: 9 })] = { v: r.faltaMes, t: 'n' }
-      if (r.fechas.length > 0) wsOut[XLSX.utils.encode_cell({ r: er, c: 10 })] = { v: r.fechas.join(' / '), t: 's' }
-      if (r.pagos.length > 0) {
-        const det = r.pagos.map(p => `$${p.monto.toLocaleString('es-CL')} (${p.metodo}/${p.confianza})`).join(' + ')
-        wsOut[XLSX.utils.encode_cell({ r: er, c: 17 })] = { v: det, t: 's' }
-      }
-    }
-    const outBuffer = XLSX.write(wbOut, { type: 'buffer', bookType: 'xlsx' })
-
-    // Guardar en Drive si se solicita
-    let guardadoEnDrive = false
-    let guardadoEnSupabase = false
-    if (guardarEnDrive && controlFileId) {
-      await subirADrive(drive, controlFileId, outBuffer)
-      guardadoEnDrive = true
-
-      const mesGuardar = mes
-        || (controlName && (controlName.match(/(\d{4}-\d{2})/) || [])[1])
-        || (cartolaName && (cartolaName.match(/(\d{4}-\d{2})/) || [])[1])
-        || new Date().toISOString().slice(0, 7)
-      try {
-        const filasLiq = resultado.map(r => ({
-          mes: mesGuardar, idadmon: r.idadmon, propiedad: r.propiedad, arrendatario: r.arrendatario,
-          a_cobrar: r.aCobrar, unid: r.unid || null, recibido: r.recibido, falta_mes: r.faltaMes,
-          fechas_pago: (r.fechas && r.fechas.length) ? r.fechas.join(' / ') : null,
-          confianza: r.confianza || null, detalle_pagos: r.pagos || [],
-          generado_por: email || null, updated_at: new Date().toISOString(),
-        }))
-        await supabase.from('liquidacion_paola').delete().eq('mes', mesGuardar)
-        if (filasLiq.length) await supabase.from('liquidacion_paola').insert(filasLiq)
-
-        const filasCart = movimientosCartola.map(m => ({ mes: mesGuardar, ...m, updated_at: new Date().toISOString() }))
-        await supabase.from('paola_cartola_movimientos').delete().eq('mes', mesGuardar)
-        if (filasCart.length) await supabase.from('paola_cartola_movimientos').insert(filasCart)
-
-        guardadoEnSupabase = true
-      } catch (e) {
-        console.error('Persistencia Paola falló (Drive sí se guardó):', e)
-      }
-    }
+    const desincronizados = resultado.filter(r => !r.enCartas).map(r => r.idadmon)
 
     return NextResponse.json({
-      ok: true, mesLabel: hojaLiq, controlName, cartolaName,
-      guardadoEnDrive, guardadoEnSupabase,
+      ok: true, mes: aamm, generadoPor: email || null, cartola: infoCartola,
       resultado, sinIdentificar,
-      resumen: {
-        totalContratos: resultado.length,
-        identificados: resultado.filter(r => r.recibido).length,
-        sinPago: resultado.filter(r => !r.recibido).length,
-        sinIdentificar: sinIdentificar.length,
-        totalRecibido: resultado.reduce((s, r) => s + (r.recibido || 0), 0),
-        totalACobrar: resultado.reduce((s, r) => s + (r.aCobrar || 0), 0),
+      avisos: {
+        // Si hay filas que el LOG conoce y la foto no, CARTAS está desactualizada.
+        desincronizados,
+        resincronizarCartas: desincronizados.length > 0,
       },
-      excelBase64: outBuffer.toString('base64'),
+      resumen: {
+        totalFilas: resultado.length,
+        conImporte: resultado.filter(r => r.aCobrar != null).length,
+        vacantes: resultado.filter(r => r.vacante).length,
+        identificados: resultado.filter(r => r.recibido).length,
+        sinPago: resultado.filter(r => !r.recibido && !r.vacante).length,
+        sinIdentificar: sinIdentificar.length,
+        totalACobrar: resultado.reduce((s, r) => s + (r.aCobrar || 0), 0),
+        totalRecibido: resultado.reduce((s, r) => s + (r.recibido || 0), 0),
+      },
     })
-
   } catch (error) {
-    console.error('Error liquidacion-paola:', error)
+    console.error('Error liquidacion-paola v3:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
