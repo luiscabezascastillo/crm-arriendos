@@ -1,4 +1,4 @@
-// VERSION: v8 · 2026-07-13 · Vista SA: cargador de extracto (SheetJS + reconciliacion por posicion, folio siguiente para los nuevos).
+// VERSION: v9 · 2026-07-21 · Vista SA: cargador de extracto visible (subir / arrastrar / pegar).
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -350,9 +350,10 @@ export default function SaPage() {
           {/* BOTONES DE ACCIÓN (izquierda) */}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading}
-              title={canEdit ? 'Subir extracto del Santander (provisoria o mensual)' : 'Sin permiso para cargar'}
+              title={canEdit ? 'Subir, arrastrar o pegar el extracto del Santander (provisoria o mensual)' : 'Sin permiso para cargar'}
               style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar extracto'}</button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+            {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el archivo Excel del extracto</span>}
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
             <button disabled title="Por definir" style={{ fontSize: 12, padding: '8px 14px', borderRadius: 8, border: '0.5px dashed #D3D1C7', background: '#FAFAF7', color: '#B4B2A9', cursor: 'default' }}>· · ·</button>
           </div>
