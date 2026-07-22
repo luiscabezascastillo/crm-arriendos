@@ -1,4 +1,8 @@
-// VERSION: v13 · 2026-07-22 · Marcas de auditoría (tabla sa_marcas): el folio admite sufijo
+// VERSION: v14 · 2026-07-22 · BUG del filtro: al escribir en el buscador se acortaba la lista
+//   pero los valores ocultos seguían marcados, así que Aceptar concluía "están todos" y no
+//   filtraba nada. Ahora, como en Excel, escribir en el buscador deja marcados SOLO los
+//   resultados; al borrarlo se vuelven a marcar todos. Aceptar se desactiva si no hay ninguno.
+// v13 · Marcas de auditoría (tabla sa_marcas): el folio admite sufijo
 //   (1659A / 1659B), la fila se pinta del color indicado y un ⚠ muestra la nota al pasar el
 //   ratón. Los desgloses heredan el folio con su sufijo: 1659A-01.
 // v12 · Los filtros pasan a ser IGUALES A LOS DE EXCEL, en todas las
@@ -163,11 +167,23 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     setBusca('')
   }, [abierto]) // eslint-disable-line
 
+  const coincide = (k, t) => String(col.flabel(k)).toLowerCase().includes(t)
+
   const visibles = useMemo(() => {
     if (!busca) return valores
     const t = busca.toLowerCase()
-    return valores.filter(k => String(col.flabel(k)).toLowerCase().includes(t))
-  }, [valores, busca, col])
+    return valores.filter(k => coincide(k, t))
+  }, [valores, busca, col]) // eslint-disable-line
+
+  // Como Excel: al teclear en el buscador quedan marcados SOLO los resultados; al borrarlo,
+  // se vuelven a marcar todos. Sin esto, los valores ocultos seguían marcados y Aceptar
+  // entendía que no había filtro.
+  const cambiarBusca = (t) => {
+    setBusca(t)
+    if (!t) { setDraft(new Set(valores)); return }
+    const tl = t.toLowerCase()
+    setDraft(new Set(valores.filter(k => coincide(k, tl))))
+  }
 
   const marcadas = draft || new Set()
   const todasVisibles = visibles.length > 0 && visibles.every(k => marcadas.has(k))
@@ -281,12 +297,12 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
             </div>
 
             <div style={{ padding: '8px 8px 6px' }}>
-              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" autoFocus style={{ ...campo, marginBottom: 6 }} />
+              <input value={busca} onChange={e => cambiarBusca(e.target.value)} placeholder="Buscar…" autoFocus style={{ ...campo, marginBottom: 6 }} />
               <label style={{ ...casilla, fontWeight: 600, borderBottom: '0.5px solid #ECEAE3', paddingBottom: 5, marginBottom: 3 }}>
                 <input type="checkbox" checked={todasVisibles}
                   ref={el => { if (el) el.indeterminate = !todasVisibles && algunaVisible }}
                   onChange={() => alternarVarias(visibles, !todasVisibles)} />
-                <span>(Seleccionar todo)</span>
+                <span>{busca ? '(Seleccionar los resultados)' : '(Seleccionar todo)'}</span>
               </label>
 
               <div style={{ maxHeight: 210, overflowY: 'auto' }}>
@@ -345,7 +361,11 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
             </div>
 
             <div style={{ display: 'flex', gap: 6, padding: '8px', borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
-              <button onClick={aceptar} style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: 'none', background: '#1D9E75', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Aceptar</button>
+              <button onClick={aceptar} disabled={marcadas.size === 0}
+                title={marcadas.size === 0 ? 'Marca al menos un valor' : undefined}
+                style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: 'none', background: marcadas.size === 0 ? '#C9C7BF' : '#1D9E75', color: '#fff', fontWeight: 600, cursor: marcadas.size === 0 ? 'default' : 'pointer' }}>
+                Aceptar{marcadas.size && marcadas.size < valores.length ? ` (${marcadas.size})` : ''}
+              </button>
               <button onClick={() => setOpen(null)} style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
             </div>
           </div>
