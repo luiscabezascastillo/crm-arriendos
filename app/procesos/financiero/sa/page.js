@@ -1,4 +1,15 @@
-// VERSION: v10 · 2026-07-22 · Arreglos del filtro reportados por Karina:
+// VERSION: v12 · 2026-07-22 · Los filtros pasan a ser IGUALES A LOS DE EXCEL, en todas las
+//   columnas: lista de valores con casillas, buscador, (Seleccionar todo), ordenar de menor a
+//   mayor, borrar filtro, condiciones de número/fecha/texto, y Aceptar/Cancelar (no se aplica
+//   hasta Aceptar). La Fecha se despliega en árbol año › mes › día.
+// v11 · Segunda vuelta con Karina:
+//   · Filtro de MONTO (no existía): igual / mayor / menor / entre, sin signo, buscando también
+//     en las líneas de clasificación.
+//   · Filtro de FECHA por rango desde–hasta con atajos de mes (la lista no salía con >40 fechas).
+//   · Panel "Resumen por CCB" del periodo visible, con el texto del concepto único listo para
+//     copiar: COBROS CC1 … CC2 … CC3 … (total).
+//   · Botón para exportar a Excel exactamente lo filtrado, movimientos y líneas.
+// v10 · Arreglos del filtro reportados por Karina:
 //   · El texto busca también en las LÍNEAS de clasificación (CCB, cuentas, concepto), no solo en
 //     la descripción del movimiento. Si coincide el padre o cualquier línea, sale el grupo entero.
 //   · La fila de Apertura deja de colarse cuando hay un filtro activo.
@@ -15,6 +26,7 @@ import TopNav from '@/app/components/ui/TopNav'
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
 const EXT_PLANILLA = /\.(xlsx|xlsm|xls|csv)$/i
+const MES_LARGO = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 
 const ESTADO = {
   CUADRADO:       { bg: '#E1F5EE', color: '#085041', label: 'Cuadrado' },
@@ -68,14 +80,30 @@ async function parseCartola(file, XLSX) {
   return { nro_cartola: nroM ? Number(nroM[1]) : null, tipo, periodo, fecha_desde: desde, fecha_hasta: hasta, saldo_inicial, archivo: file.name, movimientos }
 }
 
+// Cada columna declara: cómo se pinta (get), qué clave usa el filtro (fkey), cómo se etiqueta
+// ese valor en la lista (flabel) y de qué tipo es, para ordenar la lista y ofrecer condiciones.
 const COLDEFS = [
-  { key: 'orden',        label: 'Folio',       w: '80px',  align: 'left',   get: m => (m.orden == null ? '' : String(m.orden)), filter: 'text' },
-  { key: 'fecha',        label: 'Fecha',       w: '92px',  align: 'left',   get: m => fmtFecha(m.fecha),                        filter: 'list' },
-  { key: 'descripcion',  label: 'Descripción', w: '1fr',   align: 'left',   get: m => m.descripcion || '',                      filter: 'text' },
-  { key: 'monto',        label: 'Monto',       w: '118px', align: 'right',  get: m => m.monto,                                  filter: null },
-  { key: 'saldo_calc',   label: 'Saldo',       w: '118px', align: 'right',  get: m => m.saldo_calc,                             filter: null },
-  { key: 'cargo_abono',  label: 'C/A',         w: '46px',  align: 'center', get: m => m.cargo_abono || '',                      filter: 'list' },
-  { key: 'estado_clasificacion', label: 'Estado', w: '116px', align: 'center', get: m => m.estado_clasificacion,               filter: 'list' },
+  { key: 'orden', label: 'Folio', w: '80px', align: 'left', tipo: 'num',
+    get: m => (m.orden == null ? '' : String(m.orden)),
+    fkey: m => (m.orden == null ? '' : String(m.orden)), flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', tipo: 'fecha',
+    get: m => fmtFecha(m.fecha),
+    fkey: m => String(m.fecha || '').slice(0, 10), flabel: k => (k === '' ? '(vacías)' : fmtFecha(k)) },
+  { key: 'descripcion', label: 'Descripción', w: '1fr', align: 'left', tipo: 'texto',
+    get: m => m.descripcion || '',
+    fkey: m => m.descripcion || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'monto', label: 'Monto', w: '118px', align: 'right', tipo: 'num',
+    get: m => m.monto,
+    fkey: m => String(m.monto ?? ''), flabel: k => (k === '' ? '(vacías)' : clp(Number(k))) },
+  { key: 'saldo_calc', label: 'Saldo', w: '118px', align: 'right', tipo: 'num',
+    get: m => m.saldo_calc,
+    fkey: m => String(m.saldo_calc ?? ''), flabel: k => (k === '' ? '(vacías)' : clp(Number(k))) },
+  { key: 'cargo_abono', label: 'C/A', w: '46px', align: 'center', tipo: 'texto',
+    get: m => m.cargo_abono || '',
+    fkey: m => m.cargo_abono || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'estado_clasificacion', label: 'Estado', w: '116px', align: 'center', tipo: 'texto',
+    get: m => m.estado_clasificacion,
+    fkey: m => m.estado_clasificacion || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO[k]?.label || k)) },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 const DGRID = '80px 76px 108px 1fr 90px 90px 26px'  // drawer: folio-sub · CCB · cantidad · concepto · cta1 · cta2 · x
@@ -93,53 +121,234 @@ function Card({ label, value, color }) {
   )
 }
 
-// --- Filtro tipo Excel en cabecera ---
-function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
-  const active = state && (state.text || (state.sel && state.sel.length))
-  const distinct = useMemo(() => {
-    if (col.filter !== 'list') return []
-    const s = new Set(); for (const m of movs) s.add(String(col.get(m)))
-    return Array.from(s).sort()
+// --- Filtro tipo Excel: lista de valores con casillas, buscador y Aceptar/Cancelar ---
+// state = { sel: null | string[], op, v1, v2 }   ·   sel = null significa "todos"
+export function filtroActivo(s) {
+  if (!s) return false
+  return !!(Array.isArray(s.sel) || (s.op && s.v1 !== '' && s.v1 != null))
+}
+
+const MESES_NOM = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrden }) {
+  const activo = filtroActivo(state)
+  const abierto = open === col.key
+
+  // Valores distintos de la columna, ordenados como corresponda al tipo.
+  const valores = useMemo(() => {
+    const s = new Set()
+    for (const m of movs) s.add(col.fkey(m))
+    const arr = Array.from(s)
+    if (col.tipo === 'num') arr.sort((a, b) => (Number(a) || 0) - (Number(b) || 0))
+    else arr.sort((a, b) => String(a).localeCompare(String(b)))
+    return arr
   }, [movs, col])
-  const s = state || { text: '', sel: [] }
-  const toggle = (v) => {
-    const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]
-    setState({ ...s, sel })
+
+  const [draft, setDraft] = useState(null)      // Set de claves marcadas
+  const [busca, setBusca] = useState('')
+  const [cond, setCond] = useState({ op: '', v1: '', v2: '' })
+  const [verCond, setVerCond] = useState(false)
+  const [abiertos, setAbiertos] = useState({})  // ramas desplegadas del árbol de fechas
+
+  useEffect(() => {
+    if (!abierto) return
+    setDraft(new Set(Array.isArray(state?.sel) ? state.sel : valores))
+    setCond({ op: state?.op || '', v1: state?.v1 ?? '', v2: state?.v2 ?? '' })
+    setVerCond(!!(state?.op && state?.v1 !== '' && state?.v1 != null))
+    setBusca('')
+  }, [abierto]) // eslint-disable-line
+
+  const visibles = useMemo(() => {
+    if (!busca) return valores
+    const t = busca.toLowerCase()
+    return valores.filter(k => String(col.flabel(k)).toLowerCase().includes(t))
+  }, [valores, busca, col])
+
+  const marcadas = draft || new Set()
+  const todasVisibles = visibles.length > 0 && visibles.every(k => marcadas.has(k))
+  const algunaVisible = visibles.some(k => marcadas.has(k))
+
+  const alternar = (k) => {
+    const n = new Set(marcadas)
+    n.has(k) ? n.delete(k) : n.add(k)
+    setDraft(n)
   }
+  const alternarVarias = (ks, poner) => {
+    const n = new Set(marcadas)
+    for (const k of ks) poner ? n.add(k) : n.delete(k)
+    setDraft(n)
+  }
+
+  // Árbol año › mes › día para las fechas, como el de Excel.
+  const arbol = useMemo(() => {
+    if (col.tipo !== 'fecha') return null
+    const t = {}
+    for (const k of visibles) {
+      if (!k) { (t['(vacías)'] = t['(vacías)'] || {})[''] = ['']; continue }
+      const [y, mm] = k.split('-')
+      t[y] = t[y] || {}
+      t[y][mm] = t[y][mm] || []
+      t[y][mm].push(k)
+    }
+    return t
+  }, [visibles, col])
+
+  const aceptar = () => {
+    const todas = valores.length > 0 && valores.every(k => marcadas.has(k))
+    const nuevo = { ...(todas ? {} : { sel: Array.from(marcadas) }) }
+    if (verCond && cond.op && cond.v1 !== '' && cond.v1 != null) Object.assign(nuevo, cond)
+    setState(Object.keys(nuevo).length ? nuevo : null)
+    setOpen(null)
+  }
+  const limpiar = () => { setState(null); setOpen(null) }
+
+  const campo = { width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box' }
+  const itemMenu = { display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '6px 4px', color: '#2C2C2A', fontFamily: 'inherit' }
+  const casilla = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', cursor: 'pointer' }
+
   return (
     <span style={{ position: 'relative', marginLeft: 4 }}>
-      <button onClick={(e) => { e.stopPropagation(); setOpen(open === col.key ? null : col.key) }}
-        title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>▼</button>
-      {open === col.key && (
+      <button onClick={(e) => { e.stopPropagation(); setOpen(abierto ? null : col.key) }}
+        title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: activo ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>
+        {activo ? '⏷' : '▼'}
+      </button>
+      {abierto && (
         <>
           <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 220, textAlign: 'left', fontWeight: 400 }}>
-            <input value={s.text} onChange={e => setState({ ...s, text: e.target.value })} placeholder="Contiene…" autoFocus
-              style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 8 }} />
-            {col.filter === 'list' && distinct.length <= 40 && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
-                  <button onClick={() => setState({ ...s, sel: distinct.slice() })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>Todos</button>
-                  <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 270, textAlign: 'left', fontWeight: 400, overflow: 'hidden' }}>
+
+            <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>
+                ↑ Ordenar de menor a mayor
+              </button>
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'desc' }); setOpen(null) }}>
+                ↓ Ordenar de mayor a menor
+              </button>
+              {orden?.key && (
+                <button style={{ ...itemMenu, color: '#888780' }} onClick={() => { setOrden(null); setOpen(null) }}>
+                  ↔ Quitar orden
+                </button>
+              )}
+            </div>
+
+            <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
+              <button style={{ ...itemMenu, color: activo ? '#0C447C' : '#B4B2A9', cursor: activo ? 'pointer' : 'default' }}
+                disabled={!activo} onClick={limpiar}>
+                ⌫ Borrar filtro de «{col.label}»
+              </button>
+              <button style={itemMenu} onClick={() => setVerCond(v => !v)}>
+                {verCond ? '▾' : '▸'} Filtros de {col.tipo === 'num' ? 'número' : col.tipo === 'fecha' ? 'fecha' : 'texto'}
+              </button>
+              {verCond && (
+                <div style={{ padding: '4px 2px 2px' }}>
+                  <select value={cond.op} onChange={e => setCond({ ...cond, op: e.target.value })} style={{ ...campo, marginBottom: 5 }}>
+                    <option value="">— sin condición —</option>
+                    {col.tipo === 'num' && <>
+                      <option value="=">Igual a</option>
+                      <option value=">">Mayor que</option>
+                      <option value="<">Menor que</option>
+                      <option value="entre">Entre</option>
+                    </>}
+                    {col.tipo === 'fecha' && <>
+                      <option value="desde">Es posterior o igual a</option>
+                      <option value="hasta">Es anterior o igual a</option>
+                      <option value="entre">Entre</option>
+                    </>}
+                    {col.tipo === 'texto' && <>
+                      <option value="contiene">Contiene</option>
+                      <option value="nocontiene">No contiene</option>
+                      <option value="empieza">Empieza por</option>
+                    </>}
+                  </select>
+                  {cond.op && (
+                    <input type={col.tipo === 'fecha' ? 'date' : col.tipo === 'num' ? 'number' : 'text'}
+                      value={cond.v1} onChange={e => setCond({ ...cond, v1: e.target.value })}
+                      placeholder="valor" style={{ ...campo, marginBottom: 5 }} />
+                  )}
+                  {cond.op === 'entre' && (
+                    <input type={col.tipo === 'fecha' ? 'date' : 'number'}
+                      value={cond.v2} onChange={e => setCond({ ...cond, v2: e.target.value })}
+                      placeholder="y" style={{ ...campo, marginBottom: 5 }} />
+                  )}
+                  {col.tipo === 'num' && <div style={{ fontSize: 10, color: '#B4B2A9' }}>Busca también en las líneas de clasificación.</div>}
                 </div>
-                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-                  {distinct.map(v => (
-                    <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : (ESTADO[v]?.label || v)}</span>
+              )}
+            </div>
+
+            <div style={{ padding: '8px 8px 6px' }}>
+              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" autoFocus style={{ ...campo, marginBottom: 6 }} />
+              <label style={{ ...casilla, fontWeight: 600, borderBottom: '0.5px solid #ECEAE3', paddingBottom: 5, marginBottom: 3 }}>
+                <input type="checkbox" checked={todasVisibles}
+                  ref={el => { if (el) el.indeterminate = !todasVisibles && algunaVisible }}
+                  onChange={() => alternarVarias(visibles, !todasVisibles)} />
+                <span>(Seleccionar todo)</span>
+              </label>
+
+              <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+                {visibles.length === 0 && <div style={{ fontSize: 12, color: '#B4B2A9', padding: '8px 0' }}>Sin resultados</div>}
+
+                {col.tipo === 'fecha' && arbol ? (
+                  Object.keys(arbol).sort().map(anio => {
+                    const meses = arbol[anio]
+                    const todasA = Object.values(meses).flat()
+                    const marcA = todasA.every(k => marcadas.has(k))
+                    return (
+                      <div key={anio}>
+                        <label style={casilla}>
+                          <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [anio]: !a[anio] })) }}
+                            style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[anio] ? '−' : '+'}</span>
+                          <input type="checkbox" checked={marcA}
+                            ref={el => { if (el) el.indeterminate = !marcA && todasA.some(k => marcadas.has(k)) }}
+                            onChange={() => alternarVarias(todasA, !marcA)} />
+                          <span>{anio}</span>
+                        </label>
+                        {abiertos[anio] && Object.keys(meses).sort().map(mm => {
+                          const dias = meses[mm]
+                          const marcM = dias.every(k => marcadas.has(k))
+                          const claveMes = anio + '-' + mm
+                          return (
+                            <div key={mm} style={{ paddingLeft: 16 }}>
+                              <label style={casilla}>
+                                <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [claveMes]: !a[claveMes] })) }}
+                                  style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[claveMes] ? '−' : '+'}</span>
+                                <input type="checkbox" checked={marcM}
+                                  ref={el => { if (el) el.indeterminate = !marcM && dias.some(k => marcadas.has(k)) }}
+                                  onChange={() => alternarVarias(dias, !marcM)} />
+                                <span>{MESES_NOM[Number(mm) - 1] || mm}</span>
+                              </label>
+                              {abiertos[claveMes] && dias.sort().map(k => (
+                                <label key={k} style={{ ...casilla, paddingLeft: 28 }}>
+                                  <input type="checkbox" checked={marcadas.has(k)} onChange={() => alternar(k)} />
+                                  <span>{k.slice(8, 10)}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                ) : (
+                  visibles.map(k => (
+                    <label key={k} style={casilla}>
+                      <input type="checkbox" checked={marcadas.has(k)} onChange={() => alternar(k)} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{col.flabel(k)}</span>
                     </label>
-                  ))}
-                </div>
-              </>
-            )}
-            {active ? <button onClick={() => { setState({ text: '', sel: [] }); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, padding: '8px', borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
+              <button onClick={aceptar} style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: 'none', background: '#1D9E75', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Aceptar</button>
+              <button onClick={() => setOpen(null)} style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
+            </div>
           </div>
         </>
       )}
     </span>
   )
 }
-
 export default function SaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -154,6 +363,9 @@ export default function SaPage() {
 
   const [filters, setFilters] = useState({})   // { colKey: {text, sel[]} }
   const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)      // { key, dir } — ordenación tipo Excel
+  const [verCCB, setVerCCB] = useState(false)
+  const [copiado, setCopiado] = useState(false)
 
   const [sel, setSel] = useState(null)
   const [lineas, setLineas] = useState([])
@@ -247,28 +459,143 @@ export default function SaPage() {
     return map
   }, [lineasByMov])
 
-  const hayFiltro = useMemo(
-    () => COLDEFS.some(c => { const f = filters[c.key]; return f && (f.text || (f.sel && f.sel.length)) }),
-    [filters]
-  )
+  const hayFiltro = useMemo(() => COLDEFS.some(c => filtroActivo(filters[c.key])), [filters])
+
+  const montosLineas = useMemo(() => {
+    const map = {}
+    for (const id of Object.keys(lineasByMov)) {
+      map[id] = (lineasByMov[id] || []).map(l => Math.abs(Number(l.monto) || 0))
+    }
+    return map
+  }, [lineasByMov])
 
   const movsFiltrados = useMemo(() => {
-    return movs.filter(m => {
+    const cumpleCond = (c, f, m) => {
+      if (!f.op || f.v1 === '' || f.v1 == null) return true
+
+      if (c.tipo === 'num') {
+        const a = Number(f.v1), b = Number(f.v2)
+        if (isNaN(a)) return true
+        // Sin signo, y mirando también las líneas: 60.000 encuentra el movimiento y su desglose.
+        const vals = [Math.abs(Number(m[c.key]) || 0), ...(c.key === 'monto' ? (montosLineas[m.id] || []) : [])]
+        return vals.some(v => {
+          if (f.op === '>') return v > a
+          if (f.op === '<') return v < a
+          if (f.op === 'entre') return !isNaN(b) ? (v >= Math.min(a, b) && v <= Math.max(a, b)) : v >= a
+          return Math.round(v) === Math.round(a)
+        })
+      }
+
+      if (c.tipo === 'fecha') {
+        const fi = String(m.fecha || '').slice(0, 10)
+        if (f.op === 'desde') return fi >= f.v1
+        if (f.op === 'hasta') return fi <= f.v1
+        if (f.op === 'entre') return f.v2 ? (fi >= f.v1 && fi <= f.v2) : fi >= f.v1
+        return true
+      }
+
+      const val = String(c.get(m) ?? '').toLowerCase()
+      const extra = c.key === 'descripcion' ? (textoLineas[m.id] || '') : ''
+      const t = String(f.v1).toLowerCase()
+      if (f.op === 'contiene') return val.includes(t) || extra.includes(t)
+      if (f.op === 'nocontiene') return !val.includes(t) && !extra.includes(t)
+      if (f.op === 'empieza') return val.startsWith(t)
+      return true
+    }
+
+    const out = movs.filter(m => {
       for (const c of COLDEFS) {
-        const f = filters[c.key]; if (!f) continue
-        const val = String(c.get(m) ?? '')
-        if (f.text) {
-          const t = f.text.toLowerCase()
-          // El movimiento y sus líneas se buscan juntos: basta con que coincida uno.
-          const enPadre = val.toLowerCase().includes(t)
-          const enLineas = c.key === 'descripcion' && (textoLineas[m.id] || '').includes(t)
-          if (!enPadre && !enLineas) return false
-        }
-        if (f.sel && f.sel.length && !f.sel.includes(val)) return false
+        const f = filters[c.key]; if (!filtroActivo(f)) continue
+        if (Array.isArray(f.sel) && !f.sel.includes(c.fkey(m))) return false
+        if (!cumpleCond(c, f, m)) return false
       }
       return true
     })
-  }, [movs, filters, textoLineas])
+
+    if (orden?.key) {
+      const c = COLDEFS.find(x => x.key === orden.key)
+      if (c) {
+        const signo = orden.dir === 'desc' ? -1 : 1
+        out.sort((a, b) => {
+          const va = c.fkey(a), vb = c.fkey(b)
+          if (c.tipo === 'num') return signo * ((Number(va) || 0) - (Number(vb) || 0))
+          return signo * String(va).localeCompare(String(vb))
+        })
+      }
+    }
+    return out
+  }, [movs, filters, textoLineas, montosLineas, orden])
+
+  // Resumen por Centro de Coste/Beneficio de lo que se está viendo.
+  const resumenCCB = useMemo(() => {
+    const acc = {}
+    for (const m of movsFiltrados) {
+      for (const l of (lineasByMov[m.id] || [])) {
+        const k = (l.ccb || '(sin CCB)').trim() || '(sin CCB)'
+        const v = Math.abs(Number(l.monto) || 0)
+        acc[k] = acc[k] || { ccb: k, cargos: 0, abonos: 0, n: 0 }
+        if (m.monto < 0) acc[k].cargos += v; else acc[k].abonos += v
+        acc[k].n++
+      }
+    }
+    return Object.values(acc)
+      .map(r => ({ ...r, neto: r.abonos - r.cargos }))
+      .sort((a, b) => a.ccb.localeCompare(b.ccb))
+  }, [movsFiltrados, lineasByMov])
+
+  // El texto que pide Karina: COBROS CC1, CC2 Y CC3 ENERO 2026 (11.731.510) CC1 … CC2 … CC3 …
+  const conceptoUnico = useMemo(() => {
+    const conCobro = resumenCCB.filter(r => r.abonos > 0)
+    if (!conCobro.length) return ''
+    const fechas = movsFiltrados.map(m => String(m.fecha || '').slice(0, 7)).filter(Boolean)
+    const meses = Array.from(new Set(fechas)).sort()
+    let periodo = ''
+    if (meses.length === 1) {
+      const [y, mm] = meses[0].split('-')
+      periodo = ` ${MES_LARGO[Number(mm) - 1]} ${y}`
+    } else if (meses.length > 1) {
+      periodo = ` ${meses[0]} a ${meses[meses.length - 1]}`
+    }
+    const total = conCobro.reduce((a, r) => a + r.abonos, 0)
+    const detalle = conCobro.map(r => `${r.ccb} ${clp(r.abonos)}`).join(', ')
+    return `COBROS ${conCobro.map(r => r.ccb).join(', ')}${periodo} (${clp(total)}) ${detalle}`
+  }, [resumenCCB, movsFiltrados])
+
+  const copiarConcepto = () => {
+    if (!conceptoUnico) return
+    navigator.clipboard?.writeText(conceptoUnico)
+      .then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1800) })
+      .catch(() => {})
+  }
+
+  // Exporta a Excel exactamente lo que se está viendo, con sus líneas debajo de cada movimiento.
+  const exportar = async () => {
+    const XLSX = await import('xlsx')
+    const filas = []
+    for (const m of movsFiltrados) {
+      filas.push({
+        Folio: m.orden ?? '', Fecha: fmtFecha(m.fecha), Tipo: 'MOVIMIENTO',
+        Descripcion: m.descripcion || '', CCB: '', Cuenta_1: '', Cuenta_2: '',
+        Monto: m.monto, 'C/A': m.cargo_abono || '', Estado: m.estado_clasificacion || '',
+      })
+      for (const l of (lineasByMov[m.id] || [])) {
+        filas.push({
+          Folio: subFolio(m.orden, l.sub_orden), Fecha: '', Tipo: 'LINEA',
+          Descripcion: l.concepto || '', CCB: l.ccb || '', Cuenta_1: l.cuenta_1 || '',
+          Cuenta_2: l.cuenta_2 || '', Monto: Math.abs(Number(l.monto) || 0), 'C/A': '', Estado: '',
+        })
+      }
+    }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Movimientos')
+    if (resumenCCB.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+        resumenCCB.map(r => ({ CCB: r.ccb, Lineas: r.n, Cargos: r.cargos, Abonos: r.abonos, Neto: r.neto }))
+      ), 'Resumen CCB')
+    }
+    const sello = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `SA-filtrado-${sello}.xlsx`)
+  }
 
   const totalFiltro = useMemo(() => {
     let cargos = 0, abonos = 0
@@ -421,13 +748,69 @@ export default function SaPage() {
           <Card label="Abonos" value={clp(resumen.abonos)} color="#085041" />
         </div>
 
+        {/* RESUMEN POR CCB + CONCEPTO ÚNICO */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setVerCCB(v => !v)}
+              style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: verCCB ? '#EEF3F8' : '#fff', cursor: 'pointer', color: '#0C447C', fontWeight: 600 }}>
+              {verCCB ? '▾' : '▸'} Resumen por CCB {resumenCCB.length ? `(${resumenCCB.length})` : ''}
+            </button>
+            <button onClick={exportar} disabled={!movsFiltrados.length}
+              style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: movsFiltrados.length ? 'pointer' : 'default', color: movsFiltrados.length ? '#2C2C2A' : '#B4B2A9' }}>
+              ⬇ Exportar lo filtrado a Excel
+            </button>
+          </div>
+
+          {verCCB && (
+            <div style={{ marginTop: 10, border: '0.5px solid #E0DED6', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+              {resumenCCB.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: '#888780' }}>
+                  No hay líneas clasificadas en lo que estás viendo.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '110px 90px 1fr 1fr 1fr', background: '#F1EFE9', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
+                    <div>CCB</div><div style={{ textAlign: 'right' }}>Líneas</div>
+                    <div style={{ textAlign: 'right' }}>Cargos</div>
+                    <div style={{ textAlign: 'right' }}>Abonos</div>
+                    <div style={{ textAlign: 'right' }}>Neto</div>
+                  </div>
+                  {resumenCCB.map(r => (
+                    <div key={r.ccb} style={{ display: 'grid', gridTemplateColumns: '110px 90px 1fr 1fr 1fr', padding: '7px 12px', fontSize: 12, borderTop: '0.5px solid #F0EFEA', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, color: '#0C447C' }}>{r.ccb}</div>
+                      <div style={{ textAlign: 'right', color: '#888780' }}>{r.n}</div>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#B23A3A' }}>{clp(r.cargos)}</div>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#085041' }}>{clp(r.abonos)}</div>
+                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{clp(r.neto)}</div>
+                    </div>
+                  ))}
+                  {conceptoUnico && (
+                    <div style={{ borderTop: '0.5px solid #E0DED6', background: '#F7F6F2', padding: '10px 12px' }}>
+                      <div style={{ fontSize: 11, color: '#888780', marginBottom: 5 }}>Concepto único (de los abonos de lo filtrado)</div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <code style={{ flex: '1 1 320px', fontSize: 12, background: '#fff', border: '0.5px solid #E0DED6', borderRadius: 6, padding: '7px 9px', color: '#2C2C2A' }}>{conceptoUnico}</code>
+                        <button onClick={copiarConcepto}
+                          style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: 'none', background: copiado ? '#1D9E75' : '#0C447C', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                          {copiado ? '✓ Copiado' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* TABLA */}
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: stickyTop + toolbarH, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
             {COLDEFS.map(c => (
               <div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}>
-                <span>{c.label}</span>
-                {c.filter && <HeaderFilter col={c} movs={movs} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}
+                <span>{c.label}{orden?.key === c.key ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}</span>
+                <HeaderFilter col={c} movs={movs} state={filters[c.key]}
+                  setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))}
+                  open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />
               </div>
             ))}
           </div>
@@ -493,7 +876,7 @@ export default function SaPage() {
                     color: totalFiltro.neto < 0 ? '#B23A3A' : '#085041' }}>{clp(totalFiltro.neto)}</div>
                   <div style={{ textAlign: 'right' }}>
                     {hayFiltro && (
-                      <button onClick={() => setFilters({})}
+                      <button onClick={() => { setFilters({}); setOrden(null) }}
                         style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6,
                           padding: '3px 8px', cursor: 'pointer', color: '#0C447C' }}>Limpiar filtros</button>
                     )}
