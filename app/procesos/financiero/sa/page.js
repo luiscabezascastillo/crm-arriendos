@@ -1,4 +1,7 @@
-// VERSION: v12 · 2026-07-22 · Los filtros pasan a ser IGUALES A LOS DE EXCEL, en todas las
+// VERSION: v13 · 2026-07-22 · Marcas de auditoría (tabla sa_marcas): el folio admite sufijo
+//   (1659A / 1659B), la fila se pinta del color indicado y un ⚠ muestra la nota al pasar el
+//   ratón. Los desgloses heredan el folio con su sufijo: 1659A-01.
+// v12 · Los filtros pasan a ser IGUALES A LOS DE EXCEL, en todas las
 //   columnas: lista de valores con casillas, buscador, (Seleccionar todo), ordenar de menor a
 //   mayor, borrar filtro, condiciones de número/fecha/texto, y Aceptar/Cancelar (no se aplica
 //   hasta Aceptar). La Fecha se despliega en árbol año › mes › día.
@@ -36,7 +39,9 @@ const ESTADO = {
 
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const fmtFecha = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
-const subFolio = (orden, sub) => `${orden ?? '·'}-${String(sub).padStart(2, '0')}`
+const subFolio = (folio, sub) => `${folio ?? '·'}-${String(sub).padStart(2, '0')}`
+// Folio tal como se ve: el número más el sufijo de la marca de auditoría, si la tiene.
+const folioVisible = (m) => (m?.orden == null ? null : `${m.orden}${m.sufijo_orden || ''}`)
 
 function fechaISO(v) {
   if (v == null || v === '') return null
@@ -85,7 +90,7 @@ async function parseCartola(file, XLSX) {
 const COLDEFS = [
   { key: 'orden', label: 'Folio', w: '80px', align: 'left', tipo: 'num',
     get: m => (m.orden == null ? '' : String(m.orden)),
-    fkey: m => (m.orden == null ? '' : String(m.orden)), flabel: k => (k === '' ? '(vacías)' : k) },
+    fkey: m => folioVisible(m) || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', tipo: 'fecha',
     get: m => fmtFecha(m.fecha),
     fkey: m => String(m.fecha || '').slice(0, 10), flabel: k => (k === '' ? '(vacías)' : fmtFecha(k)) },
@@ -426,7 +431,9 @@ export default function SaPage() {
     if (!url) return
     setLoading(true)
     fetch(url).then(r => r.json()).then(d => {
-      setMovs(d.movimientos || [])
+      const marcas = {}
+      for (const k of (d.marcas || [])) marcas[k.movimiento_id] = k
+      setMovs((d.movimientos || []).map(m => ({ ...m, ...(marcas[m.id] || {}) })))
       const map = {}
       for (const l of (d.lineas || [])) { (map[l.movimiento_id] = map[l.movimiento_id] || []).push(l) }
       setLineasByMov(map)
@@ -574,13 +581,13 @@ export default function SaPage() {
     const filas = []
     for (const m of movsFiltrados) {
       filas.push({
-        Folio: m.orden ?? '', Fecha: fmtFecha(m.fecha), Tipo: 'MOVIMIENTO',
+        Folio: folioVisible(m) ?? '', Fecha: fmtFecha(m.fecha), Tipo: 'MOVIMIENTO',
         Descripcion: m.descripcion || '', CCB: '', Cuenta_1: '', Cuenta_2: '',
         Monto: m.monto, 'C/A': m.cargo_abono || '', Estado: m.estado_clasificacion || '',
       })
       for (const l of (lineasByMov[m.id] || [])) {
         filas.push({
-          Folio: subFolio(m.orden, l.sub_orden), Fecha: '', Tipo: 'LINEA',
+          Folio: subFolio(folioVisible(m), l.sub_orden), Fecha: '', Tipo: 'LINEA',
           Descripcion: l.concepto || '', CCB: l.ccb || '', Cuenta_1: l.cuenta_1 || '',
           Cuenta_2: l.cuenta_2 || '', Monto: Math.abs(Number(l.monto) || 0), 'C/A': '', Estado: '',
         })
@@ -835,9 +842,15 @@ export default function SaPage() {
                 const desg = lineasByMov[m.id] || []
                 return (
                   <div key={m.id}>
-                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                      <div style={{ fontWeight: 600, color: '#0C447C' }}>{m.orden ?? '—'}</div>
+                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', background: m.color_fondo || '#fff' }}
+                      onMouseEnter={e => e.currentTarget.style.background = m.color_fondo ? '#FBD9B4' : '#FAFAF7'}
+                      onMouseLeave={e => e.currentTarget.style.background = m.color_fondo || '#fff'}>
+                      <div style={{ fontWeight: 600, color: '#0C447C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span>{folioVisible(m) ?? '—'}</span>
+                        {m.nota_auditoria && (
+                          <span title={m.nota_auditoria} style={{ cursor: 'help', color: '#B26B00', fontSize: 12 }}>⚠</span>
+                        )}
+                      </div>
                       <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(m.fecha)}</div>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
                       <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</div>
@@ -847,8 +860,8 @@ export default function SaPage() {
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
                     {desg.map((l, k) => (
-                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: '#FCFCFA', borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
-                        <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(m.orden, l.sub_orden)}</div>
+                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: m.color_fondo ? '#FEF1E2' : '#FCFCFA', borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
+                        <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(folioVisible(m), l.sub_orden)}</div>
                         <div />
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                           {l.ccb && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C', marginRight: 6 }}>{l.ccb}</span>}
@@ -925,7 +938,7 @@ export default function SaPage() {
                 {lineas.length === 0 && <div style={{ fontSize: 13, color: '#B4B2A9', padding: '8px 2px' }}>Sin líneas. {canEdit && 'Añade una para clasificar.'}</div>}
                 {lineas.map((l, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(sel.orden, i + 1)}</div>
+                    <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(folioVisible(sel), i + 1)}</div>
                     <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
                     <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
                     <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />

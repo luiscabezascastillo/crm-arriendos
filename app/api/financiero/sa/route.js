@@ -1,4 +1,8 @@
-// VERSION: v2 · 2026-07-13 · API SA. GET: cargas / movimientos (por cartola o TODAS) + sus líneas / líneas de un movimiento · PUT: guardar líneas.
+// VERSION: v3 · 2026-07-22 · Dos cambios:
+//   1) nextFolio ignoraba que el 99999 (comisiones de mantención del banco) es el máximo de la
+//      tabla, así que la siguiente carga habría empezado a numerar en 100000. Ahora se excluye.
+//   2) El GET devuelve además las MARCAS de auditoría (tabla sa_marcas): sufijo de folio, color
+//      de fila y nota. Va aparte para no tocar la vista vw_sa_movimientos.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
@@ -53,7 +57,18 @@ export async function GET(req) {
       if (e2) return Response.json({ error: e2.message }, { status: 500 })
       lineas = ls || []
     }
-    return Response.json({ movimientos: movs, lineas })
+
+    // Marcas de auditoría (sufijo de folio, color de fila, nota). Si la tabla aún no existe,
+    // se sigue sin ellas en vez de romper la pantalla.
+    let marcas = []
+    if (ids.length) {
+      const { data: mk } = await admin
+        .from('sa_marcas')
+        .select('movimiento_id, sufijo_orden, color_fondo, nota_auditoria')
+        .in('movimiento_id', ids)
+      marcas = mk || []
+    }
+    return Response.json({ movimientos: movs, lineas, marcas })
   }
 
   // Lista de cartolas para el selector
@@ -114,7 +129,11 @@ export async function POST(req) {
   const { data: cargaEx, error: e0 } = await admin.from('sa_cargas').select('id, tipo, n_movimientos').eq('nro_cartola', nro_cartola).maybeSingle()
   if (e0) return Response.json({ error: e0.message }, { status: 500 })
 
-  const { data: maxRow } = await admin.from('sa_movimientos').select('orden').not('orden', 'is', null).order('orden', { ascending: false }).limit(1).maybeSingle()
+  // OJO: el 99999 es el número especial de las comisiones de mantención del banco, no el último
+  // folio de la serie. Sin el .lt() la siguiente cartola empezaría a numerar en 100000.
+  const { data: maxRow } = await admin.from('sa_movimientos')
+    .select('orden').not('orden', 'is', null).lt('orden', 90000)
+    .order('orden', { ascending: false }).limit(1).maybeSingle()
   let nextFolio = maxRow?.orden || 1877   // el primero de 2026 será 1878
 
   const mkRow = (cargaId, m, i, folio) => ({
