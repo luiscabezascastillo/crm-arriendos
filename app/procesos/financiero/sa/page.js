@@ -1,4 +1,10 @@
-// VERSION: v15 · 2026-07-22 · Falta el equivalente a "Add current selection to filter" de Excel:
+// VERSION: v16 · 2026-07-22 · Filtros reescritos contra la especificación funcional:
+//   · Operadores completos — texto: contiene/no contiene/empieza/termina/igual/distinto ·
+//     número: = > < >= <= entre · fecha: hoy/ayer/esta semana/este mes/este año/desde/hasta/entre.
+//   · DOS condiciones por columna combinables con Y / O.
+//   · "Quitar todos los filtros" dentro del propio menú.
+//   · El icono de la columna filtrada se pinta en verde sólido.
+// v15 · "Add current selection to filter":
 //   con un filtro ya puesto, al buscar otro valor se puede SUMARLO al filtro en vez de
 //   sustituirlo. La casilla solo aparece cuando ya hay un filtro en esa columna.
 // v14 · BUG del filtro: al escribir en el buscador se acortaba la lista
@@ -37,6 +43,7 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
 const EXT_PLANILLA = /\.(xlsx|xlsm|xls|csv)$/i
 const MES_LARGO = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
+const MESES_NOM = MES_LARGO.map(m => m.toLowerCase())   // para el árbol de fechas del filtro
 
 const ESTADO = {
   CUADRADO:       { bg: '#E1F5EE', color: '#085041', label: 'Cuadrado' },
@@ -133,20 +140,87 @@ function Card({ label, value, color }) {
   )
 }
 
-// --- Filtro tipo Excel: lista de valores con casillas, buscador y Aceptar/Cancelar ---
-// state = { sel: null | string[], op, v1, v2 }   ·   sel = null significa "todos"
-export function filtroActivo(s) {
-  if (!s) return false
-  return !!(Array.isArray(s.sel) || (s.op && s.v1 !== '' && s.v1 != null))
+// ─── FILTRO TIPO EXCEL ──────────────────────────────────────────────────────
+// Estado por columna:
+//   { sel: string[] | undefined,          // valores marcados; ausente = todos
+//     c1: {op,v1,v2}, conector: 'Y'|'O', c2: {op,v1,v2} }
+// Se aplica: (sel) Y (c1 conector c2). Entre columnas distintas, siempre Y.
+
+const OPERADORES = {
+  texto: [['contiene','Contiene'], ['nocontiene','No contiene'], ['empieza','Empieza por'],
+          ['termina','Termina por'], ['igual','Igual a'], ['distinto','Distinto de']],
+  num:   [['=','Igual a'], ['>','Mayor que'], ['<','Menor que'], ['>=','Mayor o igual'],
+          ['<=','Menor o igual'], ['entre','Entre dos valores']],
+  fecha: [['hoy','Hoy'], ['ayer','Ayer'], ['semana','Esta semana'], ['mes','Este mes'],
+          ['anio','Este año'], ['desde','Desde'], ['hasta','Hasta'], ['entre','Entre dos fechas']],
+}
+const SIN_VALOR = new Set(['hoy', 'ayer', 'semana', 'mes', 'anio'])
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// Rango [desde, hasta] de los atajos de fecha, calculado sobre el día de hoy.
+function rangoAtajo(op) {
+  const h = new Date(); h.setHours(0, 0, 0, 0)
+  if (op === 'hoy') return [iso(h), iso(h)]
+  if (op === 'ayer') { const a = new Date(h); a.setDate(a.getDate() - 1); return [iso(a), iso(a)] }
+  if (op === 'semana') {
+    const d = new Date(h); const dow = (d.getDay() + 6) % 7   // lunes = 0
+    const lun = new Date(d); lun.setDate(d.getDate() - dow)
+    const dom = new Date(lun); dom.setDate(lun.getDate() + 6)
+    return [iso(lun), iso(dom)]
+  }
+  if (op === 'mes') return [iso(new Date(h.getFullYear(), h.getMonth(), 1)), iso(new Date(h.getFullYear(), h.getMonth() + 1, 0))]
+  if (op === 'anio') return [iso(new Date(h.getFullYear(), 0, 1)), iso(new Date(h.getFullYear(), 11, 31))]
+  return [null, null]
 }
 
-const MESES_NOM = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+const condPuesta = (c) => !!(c && c.op && (SIN_VALOR.has(c.op) || (c.v1 !== '' && c.v1 != null)))
 
-function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrden }) {
+export function filtroActivo(s) {
+  if (!s) return false
+  return Array.isArray(s.sel) || condPuesta(s.c1) || condPuesta(s.c2)
+}
+
+// Evalúa UNA condición. valores = los del movimiento (para monto incluye sus líneas).
+function cumple(col, cond, m, valores) {
+  if (!condPuesta(cond)) return null
+  const { op, v1, v2 } = cond
+
+  if (col.tipo === 'num') {
+    const a = Number(v1), b = Number(v2)
+    return valores.some(v => {
+      if (op === '>') return v > a
+      if (op === '<') return v < a
+      if (op === '>=') return v >= a
+      if (op === '<=') return v <= a
+      if (op === 'entre') return !isNaN(b) ? (v >= Math.min(a, b) && v <= Math.max(a, b)) : v >= a
+      return Math.round(v) === Math.round(a)
+    })
+  }
+
+  if (col.tipo === 'fecha') {
+    const f = String(m.fecha || '').slice(0, 10)
+    if (SIN_VALOR.has(op)) { const [d, h] = rangoAtajo(op); return f >= d && f <= h }
+    if (op === 'desde') return f >= v1
+    if (op === 'hasta') return f <= v1
+    if (op === 'entre') return v2 ? (f >= v1 && f <= v2) : f >= v1
+    return true
+  }
+
+  const val = String(valores[0] ?? '').toLowerCase()
+  const t = String(v1).toLowerCase()
+  if (op === 'contiene') return val.includes(t)
+  if (op === 'nocontiene') return !val.includes(t)
+  if (op === 'empieza') return val.startsWith(t)
+  if (op === 'termina') return val.endsWith(t)
+  if (op === 'igual') return val === t
+  if (op === 'distinto') return val !== t
+  return true
+}
+
+function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrden, limpiarTodo, hayAlguno }) {
   const activo = filtroActivo(state)
   const abierto = open === col.key
 
-  // Valores distintos de la columna, ordenados como corresponda al tipo.
   const valores = useMemo(() => {
     const s = new Set()
     for (const m of movs) s.add(col.fkey(m))
@@ -156,43 +230,39 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     return arr
   }, [movs, col])
 
-  const [draft, setDraft] = useState(null)      // Set de claves marcadas
+  const vacio = { op: '', v1: '', v2: '' }
+  const [draft, setDraft] = useState(null)
+  const [base, setBase] = useState(null)
   const [busca, setBusca] = useState('')
-  const [cond, setCond] = useState({ op: '', v1: '', v2: '' })
+  const [anadir, setAnadir] = useState(false)
+  const [c1, setC1] = useState(vacio)
+  const [c2, setC2] = useState(vacio)
+  const [conector, setConector] = useState('Y')
   const [verCond, setVerCond] = useState(false)
-  const [abiertos, setAbiertos] = useState({})  // ramas desplegadas del árbol de fechas
-  const [base, setBase] = useState(null)        // selección con la que se abrió el desplegable
-  const [anadir, setAnadir] = useState(false)   // "añadir la selección actual al filtro"
+  const [abiertos, setAbiertos] = useState({})
   const yaFiltrado = Array.isArray(state?.sel)
 
   useEffect(() => {
     if (!abierto) return
     const inicial = new Set(Array.isArray(state?.sel) ? state.sel : valores)
-    setDraft(inicial)
-    setBase(inicial)
-    setAnadir(false)
-    setCond({ op: state?.op || '', v1: state?.v1 ?? '', v2: state?.v2 ?? '' })
-    setVerCond(!!(state?.op && state?.v1 !== '' && state?.v1 != null))
-    setBusca('')
+    setDraft(inicial); setBase(inicial); setAnadir(false); setBusca('')
+    setC1(state?.c1 || vacio); setC2(state?.c2 || vacio); setConector(state?.conector || 'Y')
+    setVerCond(condPuesta(state?.c1) || condPuesta(state?.c2))
   }, [abierto]) // eslint-disable-line
 
   const coincide = (k, t) => String(col.flabel(k)).toLowerCase().includes(t)
-
   const visibles = useMemo(() => {
     if (!busca) return valores
     const t = busca.toLowerCase()
     return valores.filter(k => coincide(k, t))
   }, [valores, busca, col]) // eslint-disable-line
 
-  // Como Excel: al teclear en el buscador quedan marcados SOLO los resultados; al borrarlo,
-  // se vuelven a marcar todos. Sin esto, los valores ocultos seguían marcados y Aceptar
-  // entendía que no había filtro.
+  // Como Excel: al buscar quedan marcados solo los resultados (o se suman a lo ya filtrado).
   const recalcular = (t, sumar) => {
     if (!t) { setDraft(new Set(base || valores)); return }
     const tl = t.toLowerCase()
-    const encontrados = valores.filter(k => coincide(k, tl))
-    // Sumar = mantener lo que ya estaba filtrado y añadir lo nuevo (como Excel).
-    setDraft(sumar ? new Set([...(base || []), ...encontrados]) : new Set(encontrados))
+    const enc = valores.filter(k => coincide(k, tl))
+    setDraft(sumar ? new Set([...(base || []), ...enc]) : new Set(enc))
   }
   const cambiarBusca = (t) => { setBusca(t); recalcular(t, anadir) }
   const cambiarAnadir = (v) => { setAnadir(v); recalcular(busca, v) }
@@ -200,133 +270,112 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
   const marcadas = draft || new Set()
   const todasVisibles = visibles.length > 0 && visibles.every(k => marcadas.has(k))
   const algunaVisible = visibles.some(k => marcadas.has(k))
+  const alternar = (k) => { const n = new Set(marcadas); n.has(k) ? n.delete(k) : n.add(k); setDraft(n) }
+  const alternarVarias = (ks, poner) => { const n = new Set(marcadas); for (const k of ks) poner ? n.add(k) : n.delete(k); setDraft(n) }
 
-  const alternar = (k) => {
-    const n = new Set(marcadas)
-    n.has(k) ? n.delete(k) : n.add(k)
-    setDraft(n)
-  }
-  const alternarVarias = (ks, poner) => {
-    const n = new Set(marcadas)
-    for (const k of ks) poner ? n.add(k) : n.delete(k)
-    setDraft(n)
-  }
-
-  // Árbol año › mes › día para las fechas, como el de Excel.
   const arbol = useMemo(() => {
     if (col.tipo !== 'fecha') return null
     const t = {}
     for (const k of visibles) {
-      if (!k) { (t['(vacías)'] = t['(vacías)'] || {})[''] = ['']; continue }
+      if (!k) continue
       const [y, mm] = k.split('-')
-      t[y] = t[y] || {}
-      t[y][mm] = t[y][mm] || []
-      t[y][mm].push(k)
+      t[y] = t[y] || {}; t[y][mm] = t[y][mm] || []; t[y][mm].push(k)
     }
     return t
   }, [visibles, col])
 
   const aceptar = () => {
     const todas = valores.length > 0 && valores.every(k => marcadas.has(k))
-    const nuevo = { ...(todas ? {} : { sel: Array.from(marcadas) }) }
-    if (verCond && cond.op && cond.v1 !== '' && cond.v1 != null) Object.assign(nuevo, cond)
+    const nuevo = {}
+    if (!todas) nuevo.sel = Array.from(marcadas)
+    if (verCond && condPuesta(c1)) nuevo.c1 = c1
+    if (verCond && condPuesta(c2)) { nuevo.c2 = c2; nuevo.conector = conector }
     setState(Object.keys(nuevo).length ? nuevo : null)
     setOpen(null)
   }
-  const limpiar = () => { setState(null); setOpen(null) }
 
   const campo = { width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box' }
   const itemMenu = { display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '6px 4px', color: '#2C2C2A', fontFamily: 'inherit' }
   const casilla = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', cursor: 'pointer' }
+  const tipoTxt = col.tipo === 'num' ? 'número' : col.tipo === 'fecha' ? 'fecha' : 'texto'
+
+  const editorCond = (c, setC) => (
+    <>
+      <select value={c.op} onChange={e => setC({ ...c, op: e.target.value, v1: '', v2: '' })} style={{ ...campo, marginBottom: 5 }}>
+        <option value="">— sin condición —</option>
+        {OPERADORES[col.tipo].map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+      </select>
+      {c.op && !SIN_VALOR.has(c.op) && (
+        <input type={col.tipo === 'fecha' ? 'date' : col.tipo === 'num' ? 'number' : 'text'}
+          value={c.v1} onChange={e => setC({ ...c, v1: e.target.value })} placeholder="valor" style={{ ...campo, marginBottom: 5 }} />
+      )}
+      {c.op === 'entre' && (
+        <input type={col.tipo === 'fecha' ? 'date' : 'number'}
+          value={c.v2} onChange={e => setC({ ...c, v2: e.target.value })} placeholder="y" style={{ ...campo, marginBottom: 5 }} />
+      )}
+    </>
+  )
 
   return (
     <span style={{ position: 'relative', marginLeft: 4 }}>
       <button onClick={(e) => { e.stopPropagation(); setOpen(abierto ? null : col.key) }}
-        title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: activo ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>
-        {activo ? '⏷' : '▼'}
-      </button>
+        title={activo ? 'Filtro aplicado' : 'Filtrar'}
+        style={{ border: 'none', background: activo ? '#1D9E75' : 'transparent', borderRadius: 4, cursor: 'pointer', color: activo ? '#fff' : '#B4B2A9', fontSize: 11, padding: activo ? '0 3px' : 0 }}>▼</button>
       {abierto && (
         <>
           <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 270, textAlign: 'left', fontWeight: 400, overflow: 'hidden' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 272, textAlign: 'left', fontWeight: 400, overflow: 'hidden' }}>
 
             <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
-              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>
-                ↑ Ordenar de menor a mayor
-              </button>
-              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'desc' }); setOpen(null) }}>
-                ↓ Ordenar de mayor a menor
-              </button>
-              {orden?.key && (
-                <button style={{ ...itemMenu, color: '#888780' }} onClick={() => { setOrden(null); setOpen(null) }}>
-                  ↔ Quitar orden
-                </button>
-              )}
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>↑ Orden ascendente</button>
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'desc' }); setOpen(null) }}>↓ Orden descendente</button>
+              {orden?.key && <button style={{ ...itemMenu, color: '#888780' }} onClick={() => { setOrden(null); setOpen(null) }}>↔ Quitar orden</button>}
             </div>
 
             <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
               <button style={{ ...itemMenu, color: activo ? '#0C447C' : '#B4B2A9', cursor: activo ? 'pointer' : 'default' }}
-                disabled={!activo} onClick={limpiar}>
-                ⌫ Borrar filtro de «{col.label}»
-              </button>
-              <button style={itemMenu} onClick={() => setVerCond(v => !v)}>
-                {verCond ? '▾' : '▸'} Filtros de {col.tipo === 'num' ? 'número' : col.tipo === 'fecha' ? 'fecha' : 'texto'}
-              </button>
+                disabled={!activo} onClick={() => { setState(null); setOpen(null) }}>⌫ Borrar filtro de «{col.label}»</button>
+              <button style={{ ...itemMenu, color: hayAlguno ? '#B23A3A' : '#B4B2A9', cursor: hayAlguno ? 'pointer' : 'default' }}
+                disabled={!hayAlguno} onClick={() => { limpiarTodo(); setOpen(null) }}>⌦ Quitar todos los filtros</button>
+              <button style={itemMenu} onClick={() => setVerCond(v => !v)}>{verCond ? '▾' : '▸'} Filtros de {tipoTxt}</button>
               {verCond && (
                 <div style={{ padding: '4px 2px 2px' }}>
-                  <select value={cond.op} onChange={e => setCond({ ...cond, op: e.target.value })} style={{ ...campo, marginBottom: 5 }}>
-                    <option value="">— sin condición —</option>
-                    {col.tipo === 'num' && <>
-                      <option value="=">Igual a</option>
-                      <option value=">">Mayor que</option>
-                      <option value="<">Menor que</option>
-                      <option value="entre">Entre</option>
-                    </>}
-                    {col.tipo === 'fecha' && <>
-                      <option value="desde">Es posterior o igual a</option>
-                      <option value="hasta">Es anterior o igual a</option>
-                      <option value="entre">Entre</option>
-                    </>}
-                    {col.tipo === 'texto' && <>
-                      <option value="contiene">Contiene</option>
-                      <option value="nocontiene">No contiene</option>
-                      <option value="empieza">Empieza por</option>
-                    </>}
-                  </select>
-                  {cond.op && (
-                    <input type={col.tipo === 'fecha' ? 'date' : col.tipo === 'num' ? 'number' : 'text'}
-                      value={cond.v1} onChange={e => setCond({ ...cond, v1: e.target.value })}
-                      placeholder="valor" style={{ ...campo, marginBottom: 5 }} />
+                  {editorCond(c1, setC1)}
+                  {condPuesta(c1) && (
+                    <>
+                      <div style={{ display: 'flex', gap: 10, fontSize: 11, margin: '2px 0 6px' }}>
+                        {['Y', 'O'].map(k => (
+                          <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                            <input type="radio" checked={conector === k} onChange={() => setConector(k)} />{k}
+                          </label>
+                        ))}
+                      </div>
+                      {editorCond(c2, setC2)}
+                    </>
                   )}
-                  {cond.op === 'entre' && (
-                    <input type={col.tipo === 'fecha' ? 'date' : 'number'}
-                      value={cond.v2} onChange={e => setCond({ ...cond, v2: e.target.value })}
-                      placeholder="y" style={{ ...campo, marginBottom: 5 }} />
-                  )}
-                  {col.tipo === 'num' && <div style={{ fontSize: 10, color: '#B4B2A9' }}>Busca también en las líneas de clasificación.</div>}
+                  {col.key === 'monto' && <div style={{ fontSize: 10, color: '#B4B2A9' }}>Sin signo. Busca también en las líneas de clasificación.</div>}
                 </div>
               )}
             </div>
 
             <div style={{ padding: '8px 8px 6px' }}>
               <input value={busca} onChange={e => cambiarBusca(e.target.value)} placeholder="Buscar…" autoFocus style={{ ...campo, marginBottom: 6 }} />
-              <label style={{ ...casilla, fontWeight: 600, borderBottom: '0.5px solid #ECEAE3', paddingBottom: 5, marginBottom: 3 }}>
+              <label style={{ ...casilla, fontWeight: 600 }}>
                 <input type="checkbox" checked={todasVisibles}
                   ref={el => { if (el) el.indeterminate = !todasVisibles && algunaVisible }}
                   onChange={() => alternarVarias(visibles, !todasVisibles)} />
                 <span>{busca ? '(Seleccionar los resultados)' : '(Seleccionar todo)'}</span>
               </label>
-
               {yaFiltrado && busca && (
-                <label style={{ ...casilla, color: '#0C447C', paddingBottom: 5, marginBottom: 3, borderBottom: '0.5px solid #ECEAE3' }}>
+                <label style={{ ...casilla, color: '#0C447C' }}>
                   <input type="checkbox" checked={anadir} onChange={e => cambiarAnadir(e.target.checked)} />
                   <span>Añadir la selección actual al filtro</span>
                 </label>
               )}
+              <div style={{ borderBottom: '0.5px solid #ECEAE3', margin: '5px 0 3px' }} />
 
               <div style={{ maxHeight: 210, overflowY: 'auto' }}>
                 {visibles.length === 0 && <div style={{ fontSize: 12, color: '#B4B2A9', padding: '8px 0' }}>Sin resultados</div>}
-
                 {col.tipo === 'fecha' && arbol ? (
                   Object.keys(arbol).sort().map(anio => {
                     const meses = arbol[anio]
@@ -335,28 +384,24 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
                     return (
                       <div key={anio}>
                         <label style={casilla}>
-                          <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [anio]: !a[anio] })) }}
-                            style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[anio] ? '−' : '+'}</span>
+                          <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [anio]: !a[anio] })) }} style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[anio] ? '−' : '+'}</span>
                           <input type="checkbox" checked={marcA}
                             ref={el => { if (el) el.indeterminate = !marcA && todasA.some(k => marcadas.has(k)) }}
                             onChange={() => alternarVarias(todasA, !marcA)} />
                           <span>{anio}</span>
                         </label>
                         {abiertos[anio] && Object.keys(meses).sort().map(mm => {
-                          const dias = meses[mm]
-                          const marcM = dias.every(k => marcadas.has(k))
-                          const claveMes = anio + '-' + mm
+                          const dias = meses[mm]; const marcM = dias.every(k => marcadas.has(k)); const cm = anio + '-' + mm
                           return (
                             <div key={mm} style={{ paddingLeft: 16 }}>
                               <label style={casilla}>
-                                <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [claveMes]: !a[claveMes] })) }}
-                                  style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[claveMes] ? '−' : '+'}</span>
+                                <span onClick={e => { e.preventDefault(); setAbiertos(a => ({ ...a, [cm]: !a[cm] })) }} style={{ width: 12, cursor: 'pointer', color: '#888780' }}>{abiertos[cm] ? '−' : '+'}</span>
                                 <input type="checkbox" checked={marcM}
                                   ref={el => { if (el) el.indeterminate = !marcM && dias.some(k => marcadas.has(k)) }}
                                   onChange={() => alternarVarias(dias, !marcM)} />
                                 <span>{MESES_NOM[Number(mm) - 1] || mm}</span>
                               </label>
-                              {abiertos[claveMes] && dias.sort().map(k => (
+                              {abiertos[cm] && dias.slice().sort().map(k => (
                                 <label key={k} style={{ ...casilla, paddingLeft: 28 }}>
                                   <input type="checkbox" checked={marcadas.has(k)} onChange={() => alternar(k)} />
                                   <span>{k.slice(8, 10)}</span>
@@ -379,13 +424,12 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 6, padding: '8px', borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
+            <div style={{ display: 'flex', gap: 6, padding: 8, borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
               <button onClick={aceptar} disabled={marcadas.size === 0}
-                title={marcadas.size === 0 ? 'Marca al menos un valor' : undefined}
-                style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: 'none', background: marcadas.size === 0 ? '#C9C7BF' : '#1D9E75', color: '#fff', fontWeight: 600, cursor: marcadas.size === 0 ? 'default' : 'pointer' }}>
+                style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: 'none', background: marcadas.size === 0 ? '#C9C7BF' : '#1D9E75', color: '#fff', fontWeight: 600, cursor: marcadas.size === 0 ? 'default' : 'pointer' }}>
                 Aceptar{marcadas.size && marcadas.size < valores.length ? ` (${marcadas.size})` : ''}
               </button>
-              <button onClick={() => setOpen(null)} style={{ flex: 1, fontSize: 12, padding: '6px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={() => setOpen(null)} style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
             </div>
           </div>
         </>
@@ -506,6 +550,7 @@ export default function SaPage() {
   }, [lineasByMov])
 
   const hayFiltro = useMemo(() => COLDEFS.some(c => filtroActivo(filters[c.key])), [filters])
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
 
   const montosLineas = useMemo(() => {
     const map = {}
@@ -516,44 +561,26 @@ export default function SaPage() {
   }, [lineasByMov])
 
   const movsFiltrados = useMemo(() => {
-    const cumpleCond = (c, f, m) => {
-      if (!f.op || f.v1 === '' || f.v1 == null) return true
-
-      if (c.tipo === 'num') {
-        const a = Number(f.v1), b = Number(f.v2)
-        if (isNaN(a)) return true
-        // Sin signo, y mirando también las líneas: 60.000 encuentra el movimiento y su desglose.
-        const vals = [Math.abs(Number(m[c.key]) || 0), ...(c.key === 'monto' ? (montosLineas[m.id] || []) : [])]
-        return vals.some(v => {
-          if (f.op === '>') return v > a
-          if (f.op === '<') return v < a
-          if (f.op === 'entre') return !isNaN(b) ? (v >= Math.min(a, b) && v <= Math.max(a, b)) : v >= a
-          return Math.round(v) === Math.round(a)
-        })
-      }
-
-      if (c.tipo === 'fecha') {
-        const fi = String(m.fecha || '').slice(0, 10)
-        if (f.op === 'desde') return fi >= f.v1
-        if (f.op === 'hasta') return fi <= f.v1
-        if (f.op === 'entre') return f.v2 ? (fi >= f.v1 && fi <= f.v2) : fi >= f.v1
-        return true
-      }
-
-      const val = String(c.get(m) ?? '').toLowerCase()
-      const extra = c.key === 'descripcion' ? (textoLineas[m.id] || '') : ''
-      const t = String(f.v1).toLowerCase()
-      if (f.op === 'contiene') return val.includes(t) || extra.includes(t)
-      if (f.op === 'nocontiene') return !val.includes(t) && !extra.includes(t)
-      if (f.op === 'empieza') return val.startsWith(t)
-      return true
+    // Valores que se comparan en cada columna. En Monto se añaden los de las líneas de
+    // clasificación; en Descripción, su texto. Así el filtro ve el movimiento completo.
+    const valoresDe = (c, m) => {
+      if (c.tipo === 'num') return [Math.abs(Number(m[c.key]) || 0), ...(c.key === 'monto' ? (montosLineas[m.id] || []) : [])]
+      if (c.key === 'descripcion') return [String(c.get(m) ?? '') + ' ' + (textoLineas[m.id] || '')]
+      return [String(c.get(m) ?? '')]
     }
 
     const out = movs.filter(m => {
       for (const c of COLDEFS) {
-        const f = filters[c.key]; if (!filtroActivo(f)) continue
+        const f = filters[c.key]
+        if (!filtroActivo(f)) continue
         if (Array.isArray(f.sel) && !f.sel.includes(c.fkey(m))) return false
-        if (!cumpleCond(c, f, m)) return false
+
+        const vals = valoresDe(c, m)
+        const r1 = cumple(c, f.c1, m, vals)
+        const r2 = cumple(c, f.c2, m, vals)
+        if (r1 !== null && r2 !== null) { if (f.conector === 'O' ? !(r1 || r2) : !(r1 && r2)) return false }
+        else if (r1 !== null && !r1) return false
+        else if (r2 !== null && !r2) return false
       }
       return true
     })
@@ -856,7 +883,8 @@ export default function SaPage() {
                 <span>{c.label}{orden?.key === c.key ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}</span>
                 <HeaderFilter col={c} movs={movs} state={filters[c.key]}
                   setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))}
-                  open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />
+                  open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
+                  limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
               </div>
             ))}
           </div>
