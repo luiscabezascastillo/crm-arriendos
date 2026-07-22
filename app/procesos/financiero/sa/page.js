@@ -1,4 +1,7 @@
-// VERSION: v14 · 2026-07-22 · BUG del filtro: al escribir en el buscador se acortaba la lista
+// VERSION: v15 · 2026-07-22 · Falta el equivalente a "Add current selection to filter" de Excel:
+//   con un filtro ya puesto, al buscar otro valor se puede SUMARLO al filtro en vez de
+//   sustituirlo. La casilla solo aparece cuando ya hay un filtro en esa columna.
+// v14 · BUG del filtro: al escribir en el buscador se acortaba la lista
 //   pero los valores ocultos seguían marcados, así que Aceptar concluía "están todos" y no
 //   filtraba nada. Ahora, como en Excel, escribir en el buscador deja marcados SOLO los
 //   resultados; al borrarlo se vuelven a marcar todos. Aceptar se desactiva si no hay ninguno.
@@ -158,10 +161,16 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
   const [cond, setCond] = useState({ op: '', v1: '', v2: '' })
   const [verCond, setVerCond] = useState(false)
   const [abiertos, setAbiertos] = useState({})  // ramas desplegadas del árbol de fechas
+  const [base, setBase] = useState(null)        // selección con la que se abrió el desplegable
+  const [anadir, setAnadir] = useState(false)   // "añadir la selección actual al filtro"
+  const yaFiltrado = Array.isArray(state?.sel)
 
   useEffect(() => {
     if (!abierto) return
-    setDraft(new Set(Array.isArray(state?.sel) ? state.sel : valores))
+    const inicial = new Set(Array.isArray(state?.sel) ? state.sel : valores)
+    setDraft(inicial)
+    setBase(inicial)
+    setAnadir(false)
     setCond({ op: state?.op || '', v1: state?.v1 ?? '', v2: state?.v2 ?? '' })
     setVerCond(!!(state?.op && state?.v1 !== '' && state?.v1 != null))
     setBusca('')
@@ -178,12 +187,15 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
   // Como Excel: al teclear en el buscador quedan marcados SOLO los resultados; al borrarlo,
   // se vuelven a marcar todos. Sin esto, los valores ocultos seguían marcados y Aceptar
   // entendía que no había filtro.
-  const cambiarBusca = (t) => {
-    setBusca(t)
-    if (!t) { setDraft(new Set(valores)); return }
+  const recalcular = (t, sumar) => {
+    if (!t) { setDraft(new Set(base || valores)); return }
     const tl = t.toLowerCase()
-    setDraft(new Set(valores.filter(k => coincide(k, tl))))
+    const encontrados = valores.filter(k => coincide(k, tl))
+    // Sumar = mantener lo que ya estaba filtrado y añadir lo nuevo (como Excel).
+    setDraft(sumar ? new Set([...(base || []), ...encontrados]) : new Set(encontrados))
   }
+  const cambiarBusca = (t) => { setBusca(t); recalcular(t, anadir) }
+  const cambiarAnadir = (v) => { setAnadir(v); recalcular(busca, v) }
 
   const marcadas = draft || new Set()
   const todasVisibles = visibles.length > 0 && visibles.every(k => marcadas.has(k))
@@ -304,6 +316,13 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
                   onChange={() => alternarVarias(visibles, !todasVisibles)} />
                 <span>{busca ? '(Seleccionar los resultados)' : '(Seleccionar todo)'}</span>
               </label>
+
+              {yaFiltrado && busca && (
+                <label style={{ ...casilla, color: '#0C447C', paddingBottom: 5, marginBottom: 3, borderBottom: '0.5px solid #ECEAE3' }}>
+                  <input type="checkbox" checked={anadir} onChange={e => cambiarAnadir(e.target.checked)} />
+                  <span>Añadir la selección actual al filtro</span>
+                </label>
+              )}
 
               <div style={{ maxHeight: 210, overflowY: 'auto' }}>
                 {visibles.length === 0 && <div style={{ fontSize: 12, color: '#B4B2A9', padding: '8px 0' }}>Sin resultados</div>}
