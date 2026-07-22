@@ -1,4 +1,10 @@
-// VERSION: v9 · 2026-07-21 · Vista SA: cargador de extracto visible (subir / arrastrar / pegar).
+// VERSION: v10 · 2026-07-22 · Arreglos del filtro reportados por Karina:
+//   · El texto busca también en las LÍNEAS de clasificación (CCB, cuentas, concepto), no solo en
+//     la descripción del movimiento. Si coincide el padre o cualquier línea, sale el grupo entero.
+//   · La fila de Apertura deja de colarse cuando hay un filtro activo.
+//   · Pie con TOTALES de lo filtrado (movimientos, cargos, abonos y neto) + botón Limpiar filtros.
+//   · El Saldo se atenúa al filtrar, porque es un saldo corrido y deja de ser el de lo que se ve.
+//   · Solo se aceptan planillas: pegar una imagen ya no intenta cargarla, y el error va en español.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -8,6 +14,7 @@ import TopNav from '@/app/components/ui/TopNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
+const EXT_PLANILLA = /\.(xlsx|xlsm|xls|csv)$/i
 
 const ESTADO = {
   CUADRADO:       { bg: '#E1F5EE', color: '#085041', label: 'Cuadrado' },
@@ -229,17 +236,45 @@ export default function SaPage() {
     return r
   }, [movs])
 
+  // Texto buscable de las líneas de cada movimiento (CCB + cuentas + concepto).
+  const textoLineas = useMemo(() => {
+    const map = {}
+    for (const id of Object.keys(lineasByMov)) {
+      map[id] = (lineasByMov[id] || [])
+        .map(l => [l.ccb, l.cuenta_1, l.cuenta_2, l.concepto].filter(Boolean).join(' '))
+        .join(' ').toLowerCase()
+    }
+    return map
+  }, [lineasByMov])
+
+  const hayFiltro = useMemo(
+    () => COLDEFS.some(c => { const f = filters[c.key]; return f && (f.text || (f.sel && f.sel.length)) }),
+    [filters]
+  )
+
   const movsFiltrados = useMemo(() => {
     return movs.filter(m => {
       for (const c of COLDEFS) {
         const f = filters[c.key]; if (!f) continue
         const val = String(c.get(m) ?? '')
-        if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false
+        if (f.text) {
+          const t = f.text.toLowerCase()
+          // El movimiento y sus líneas se buscan juntos: basta con que coincida uno.
+          const enPadre = val.toLowerCase().includes(t)
+          const enLineas = c.key === 'descripcion' && (textoLineas[m.id] || '').includes(t)
+          if (!enPadre && !enLineas) return false
+        }
         if (f.sel && f.sel.length && !f.sel.includes(val)) return false
       }
       return true
     })
-  }, [movs, filters])
+  }, [movs, filters, textoLineas])
+
+  const totalFiltro = useMemo(() => {
+    let cargos = 0, abonos = 0
+    for (const m of movsFiltrados) { if (m.monto < 0) cargos += m.monto; else abonos += m.monto }
+    return { n: movsFiltrados.length, cargos, abonos, neto: cargos + abonos }
+  }, [movsFiltrados])
 
   const apertura = useMemo(() => {
     if (modo === 'cartola') {
@@ -283,6 +318,10 @@ export default function SaPage() {
   const handleFile = async (file) => {
     if (!file) return
     if (!canEdit) { setUploadMsg({ error: 'No tienes permiso para cargar.' }); return }
+    if (!EXT_PLANILLA.test(file.name || '')) {
+      setUploadMsg({ error: `«${file.name}» no es una planilla. Sube el extracto del Santander en .xlsx, .xls o .csv. (Si has pegado una imagen sin querer, no pasa nada: no se ha cargado.)` })
+      return
+    }
     setUploading(true); setUploadMsg(null)
     try {
       const XLSX = await import('xlsx')
@@ -297,7 +336,13 @@ export default function SaPage() {
       setUploadMsg({ text: `Cartola ${d.nro_cartola} (${tag}): ${d.nuevos} nuevo(s), ${d.existentes} ya estaban, ${d.total} en total${cf}.` })
       fetch('/api/financiero/sa').then(r => r.json()).then(x => setCargas(x.cargas || [])).catch(() => {})
       cargar()
-    } catch (err) { setUploadMsg({ error: String(err?.message || err) }) }
+    } catch (err) {
+      const bruto = String(err?.message || err)
+      const amable = /not a spreadsheet|Unsupported file|zip|Corrupted/i.test(bruto)
+        ? 'No he podido leer el archivo como planilla. Comprueba que es el extracto del Santander en .xlsx.'
+        : bruto
+      setUploadMsg({ error: amable })
+    }
     finally { setUploading(false) }
   }
   handleFileRef.current = handleFile
@@ -307,7 +352,8 @@ export default function SaPage() {
     const over = (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); setDragOver(true) } }
     const leave = (e) => { if (e.clientX <= 0 && e.clientY <= 0) setDragOver(false) }
     const drop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f) handleFileRef.current?.(f) }
-    const paste = (e) => { const f = e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); handleFileRef.current?.(f) } }
+    // Solo se reacciona al pegar si es una planilla: pegar una captura no debe intentar cargarla.
+    const paste = (e) => { const f = e.clipboardData?.files?.[0]; if (f && EXT_PLANILLA.test(f.name || '')) { e.preventDefault(); handleFileRef.current?.(f) } }
     window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop); window.addEventListener('paste', paste)
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); window.removeEventListener('paste', paste) }
   }, [])
@@ -390,7 +436,7 @@ export default function SaPage() {
             <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
           ) : (
             <>
-              {apertura && (
+              {apertura && !hayFiltro && (
                 <div style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 12, background: '#F3F7FB', borderBottom: '0.5px solid #E7EDF3', alignItems: 'center', color: '#0C447C' }}>
                   <div style={{ fontWeight: 600 }}>—</div>
                   <div />
@@ -412,7 +458,8 @@ export default function SaPage() {
                       <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(m.fecha)}</div>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
                       <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</div>
-                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(m.saldo_calc)}</div>
+                      <div title={hayFiltro ? 'El saldo es corrido sobre TODOS los movimientos, no sobre el filtro' : undefined}
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: hayFiltro ? '#D3D1C7' : '#888780' }}>{clp(m.saldo_calc)}</div>
                       <div style={{ textAlign: 'center', color: '#888780', fontSize: 12 }}>{m.cargo_abono || '—'}</div>
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
@@ -431,9 +478,38 @@ export default function SaPage() {
                   </div>
                 )
               })}
+
+              {/* TOTALES de lo que se está viendo — es lo que permite cuadrar contra el Excel */}
+              {movsFiltrados.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: GRID, padding: '10px 12px', fontSize: 12,
+                  background: hayFiltro ? '#FFF8E7' : '#F7F6F2', borderTop: '1px solid #E0DED6', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 700, color: '#2C2C2A' }}>Total</div>
+                  <div style={{ color: '#888780', fontSize: 11 }}>{totalFiltro.n} mov.</div>
+                  <div style={{ color: '#888780', fontSize: 11 }}>
+                    Cargos {clp(totalFiltro.cargos)} · Abonos {clp(totalFiltro.abonos)}
+                    {hayFiltro && <span style={{ color: '#B26B00', marginLeft: 8 }}>· filtro activo</span>}
+                  </div>
+                  <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+                    color: totalFiltro.neto < 0 ? '#B23A3A' : '#085041' }}>{clp(totalFiltro.neto)}</div>
+                  <div style={{ textAlign: 'right' }}>
+                    {hayFiltro && (
+                      <button onClick={() => setFilters({})}
+                        style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6,
+                          padding: '3px 8px', cursor: 'pointer', color: '#0C447C' }}>Limpiar filtros</button>
+                    )}
+                  </div>
+                  <div /><div />
+                </div>
+              )}
             </>
           )}
         </div>
+        {hayFiltro && (
+          <div style={{ fontSize: 11, color: '#B26B00', marginTop: 8 }}>
+            Con el filtro activo la columna <strong>Saldo</strong> se atenúa: es el saldo corrido de la cartola
+            entera, no el de lo que estás viendo. Para cuadrar, usa el total de la fila de abajo.
+          </div>
+        )}
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>
           {modo === 'cartola' && cargaActual ? `Cartola ${cargaActual.nro_cartola} · ${fmtFecha(cargaActual.fecha_desde)} a ${fmtFecha(cargaActual.fecha_hasta)}  ·  ` : (modo === 'continua' ? 'Vista continua (todos los meses)  ·  ' : '')}
           {movsFiltrados.length} de {movs.length} movimientos. Pincha uno para clasificar o editar su desglose.
