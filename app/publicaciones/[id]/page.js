@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v4 · 2026-07-21 · Cierra el hueco: el rol 'comercial' ya no puede editar Vendedor/Captador
+//   (podía ponerse como captador y así ver cualquier propietario). Solo Dirección los cambia.
 // VERSION: v3 · 2026-07-21 · Los datos del propietario (y cambiar propietario) solo los ve quien CAPTÓ
 //   la propiedad; a los demás comerciales se les muestra un aviso. Dirección/admin ven todo.
 // VERSION: v2 · 2026-07-21 · FIX ficha: el bloque 'Datos del propietario' mostraba `vendedor` bajo la
@@ -28,6 +30,10 @@ const MENU = ['Resumen', 'Editar', 'Imágenes', 'Documentos', 'Estado', 'Bitáco
 
 // ── SECCIÓN EDITAR ──
 function SeccionEditar({ pub, id, onGuardado, edificio }) {
+  // El rol 'comercial' NO puede tocar Vendedor/Captador: si pudiera ponerse como captador,
+  // se saltaría la restricción de ver los datos del propietario.
+  const { data: sesEdit } = useSession()
+  const esComercialEdit = sesEdit?.user?.role === 'comercial'
   const [form, setForm] = React.useState({
     ...pub,
     titulo:       pub.titulo       || '',
@@ -321,8 +327,14 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
         {inp('Orientación', 'orientacion', 'text', ['','Norte','Sur','Oriente','Poniente','Nororiente','Norponiente','Suroriente','Surponiente'])}
 
         {sec('Gestion interna', '#7c2d12')}
-        {inp('Vendedor', 'vendedor', 'text', ['', ...usuarios])}
-        {inp('Captador', 'captador', 'text', ['', ...usuarios])}
+        {!esComercialEdit && inp('Vendedor', 'vendedor', 'text', ['', ...usuarios])}
+        {!esComercialEdit && inp('Captador', 'captador', 'text', ['', ...usuarios])}
+        {esComercialEdit && (
+          <div style={{ gridColumn:'1 / -1', fontSize:12, color:'var(--gray-500)' }}>
+            Vendedor: <b>{pub.vendedor || '—'}</b> · Captador: <b>{pub.captador || '—'}</b>
+            <span style={{ marginLeft:8 }}>(solo Dirección puede cambiarlos)</span>
+          </div>
+        )}
         {sec('Atributos Portal Inmobiliario', '#0891b2')}
         {inp('Piso', 'unit_floor')}
         <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
