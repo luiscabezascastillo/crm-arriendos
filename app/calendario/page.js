@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · Los roles comerciales (comercial, ventas) entran y trabajan aquí, viendo SOLO sus visitas.
+//   Antes solo Dirección/admin: al resto lo expulsaba y acababa en la pantalla de login.
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -6,6 +8,20 @@ import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+// Roles que USAN esta pantalla como herramienta de trabajo (entran y gestionan lo suyo).
+const ROLES_COMERCIAL = ['comercial', 'ventas']
+// Puente email -> nombre del comercial (los datos guardan el NOMBRE en visitas.comercial).
+const COMERCIAL_POR_EMAIL = {
+  'lorena.sanmartin@fondocapital.com': 'Lorena',
+  'tirza.chavez@fondocapital.com':     'Tirza',
+  'neika.duque@fondocapital.com':      'Neika',
+}
+const nombreComercial = (em) => {
+  if (!em) return ''
+  if (COMERCIAL_POR_EMAIL[em]) return COMERCIAL_POR_EMAIL[em]
+  const p = String(em).split('@')[0].split('.')[0]
+  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''
+}
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const COLOR = { agendada: '#7c3aed', realizada: '#16a34a', cancelada: '#dc2626' }
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
@@ -21,6 +37,8 @@ export default function CalendarioPage() {
   const email = session?.user?.email
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // acceso + acción
+  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todo (Dirección)
 
   const [visitas, setVisitas] = useState([])
   const [cumples, setCumples] = useState([])
@@ -30,8 +48,8 @@ export default function CalendarioPage() {
   const [cursor, setCursor] = useState({ y: t0.getFullYear(), m: t0.getMonth() })
   const [sel, setSel] = useState(hoyStr())
 
-  useEffect(() => { if (status === 'authenticated' && !esAdmin) router.replace('/') }, [status, esAdmin, router])
-  useEffect(() => { if (esAdmin) { cargar(); cargarCumples() } }, [esAdmin])
+  useEffect(() => { if (status === 'authenticated' && !puedeUsar) router.replace('/') }, [status, puedeUsar, router])
+  useEffect(() => { if (puedeUsar) { cargar(); cargarCumples() } }, [puedeUsar])
 
   async function cargar() {
     setLoading(true)
@@ -84,7 +102,10 @@ export default function CalendarioPage() {
     else alert(j.error || 'No se pudo enviar el saludo.')
   }
 
-  const filtradas = useMemo(() => fComercial ? visitas.filter(v => v.comercial === fComercial) : visitas, [visitas, fComercial])
+  const filtradas = useMemo(() => {
+    const mias = miNombre ? visitas.filter(v => String(v.comercial || '') === miNombre) : visitas
+    return fComercial ? mias.filter(v => v.comercial === fComercial) : mias
+  }, [visitas, miNombre, fComercial])
   const porDia = useMemo(() => {
     const m = {}
     filtradas.forEach(v => { if (v.fecha) (m[v.fecha] = m[v.fecha] || []).push(v) })
@@ -122,7 +143,7 @@ export default function CalendarioPage() {
   const selLabel = selRaw.charAt(0).toUpperCase() + selRaw.slice(1)
 
   if (status === 'loading') return <div style={{ minHeight: '100vh' }}><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></div>
-  if (status === 'authenticated' && !esAdmin) return null
+  if (status === 'authenticated' && !puedeUsar) return null
 
   const input = { padding: '8px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', background: '#fff' }
   const navBtn = { padding: '6px 11px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' }

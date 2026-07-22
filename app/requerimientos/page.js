@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · Los comerciales (roles comercial/ventas) entran y trabajan aquí, viendo
+//   SOLO sus propios requerimientos. Dirección/admin ven todos. Antes solo entraba Dirección.
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -8,6 +10,20 @@ import { buscarMatches } from '../../lib/matching.js'
 import ZonaModal from '../components/ZonaModal'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+// Roles que usan esta pantalla como herramienta de trabajo (entran y gestionan lo suyo).
+const ROLES_COMERCIAL = ['comercial', 'ventas']
+// Puente email -> nombre del comercial (los datos guardan el NOMBRE en requerimientos.vendedor).
+const COMERCIAL_POR_EMAIL = {
+  'lorena.sanmartin@fondocapital.com': 'Lorena',
+  'tirza.chavez@fondocapital.com':     'Tirza',
+  'neika.duque@fondocapital.com':      'Neika',
+}
+const nombreComercial = (em) => {
+  if (!em) return ''
+  if (COMERCIAL_POR_EMAIL[em]) return COMERCIAL_POR_EMAIL[em]
+  const p = String(em).split('@')[0].split('.')[0]
+  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''
+}
 
 const TIPOS = ['Departamento', 'Casa', 'Oficina', 'Local', 'Terreno', 'Parcela', 'Bodega', 'Industrial']
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
@@ -88,6 +104,8 @@ export default function RequerimientosPage() {
   const email = session?.user?.email
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // entrar y actuar
+  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todos (Dirección)
 
   const [reqs, setReqs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -124,12 +142,12 @@ export default function RequerimientosPage() {
   const [pubSearch, setPubSearch] = useState('')     // búsqueda manual de cualquier propiedad activa
 
   useEffect(() => {
-    if (status === 'authenticated' && !esAdmin) router.replace('/')
-  }, [status, esAdmin, router])
+    if (status === 'authenticated' && !puedeUsar) router.replace('/')
+  }, [status, puedeUsar, router])
 
   useEffect(() => {
-    if (esAdmin) { cargar(); cargarVisitas() }
-  }, [esAdmin])
+    if (puedeUsar) { cargar(); cargarVisitas() }
+  }, [puedeUsar])
 
   // al entrar al pipeline, cargar la cartera para poder contar matches por tarjeta
   useEffect(() => {
@@ -142,7 +160,9 @@ export default function RequerimientosPage() {
       .from('requerimientos')
       .select('*')
       .order('created_at', { ascending: false })
-    if (!error) setReqs(data || [])
+    // Comercial/ventas: solo sus requerimientos. Dirección (miNombre = '') ve todos.
+    const lista = data || []
+    if (!error) setReqs(miNombre ? lista.filter(r => String(r.vendedor || '') === miNombre) : lista)
     setLoading(false)
   }
 
@@ -586,7 +606,7 @@ export default function RequerimientosPage() {
   }, [agendando, cartera])
 
   if (status === 'loading') return <div style={{ padding: 40, color: '#888' }}>Cargando…</div>
-  if (status === 'authenticated' && !esAdmin) return null
+  if (status === 'authenticated' && !puedeUsar) return null
 
   // estilos breves
   const input = { padding: '8px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }

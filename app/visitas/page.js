@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · Los comerciales (roles comercial/ventas) entran y trabajan aquí, viendo
+//   SOLO sus propias visitas. Dirección/admin ven todas. Antes solo entraba Dirección (el resto acababa en el login).
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -12,6 +14,21 @@ const supabase = createClient(
 )
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+// Roles que usan esta pantalla como herramienta de trabajo (entran y gestionan lo suyo).
+const ROLES_COMERCIAL = ['comercial', 'ventas']
+// Puente email -> nombre del comercial (los datos guardan el NOMBRE en visitas.comercial).
+const COMERCIAL_POR_EMAIL = {
+  'lorena.sanmartin@fondocapital.com': 'Lorena',
+  'tirza.chavez@fondocapital.com':     'Tirza',
+  'neika.duque@fondocapital.com':      'Neika',
+}
+// Si el email no está en el mapa, se deduce del propio correo (nombre.apellido@ -> Nombre).
+const nombreComercial = (em) => {
+  if (!em) return ''
+  if (COMERCIAL_POR_EMAIL[em]) return COMERCIAL_POR_EMAIL[em]
+  const p = String(em).split('@')[0].split('.')[0]
+  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''
+}
 const OPTS_VENDEDOR = ['Alberto', 'Adalis', 'Fabiola', 'Lorena', 'Pedro', 'Neika', 'Tirza', 'Karina']
 const ESTADOS_VISITA = ['agendada', 'realizada', 'cancelada']
 const COLOR_ESTADO_VISITA = { agendada: '#7c3aed', realizada: '#16a34a', cancelada: '#dc2626' }
@@ -28,6 +45,8 @@ export default function VisitasPage() {
   const email = session?.user?.email
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // entrar y actuar
+  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todas (Dirección)
 
   const [visitas, setVisitas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -38,10 +57,10 @@ export default function VisitasPage() {
   const [nuevaOpen, setNuevaOpen] = useState(false)
 
   useEffect(() => {
-    if (status === 'authenticated' && !esAdmin) router.replace('/')
-  }, [status, esAdmin, router])
+    if (status === 'authenticated' && !puedeUsar) router.replace('/')
+  }, [status, puedeUsar, router])
 
-  useEffect(() => { if (esAdmin) cargar() }, [esAdmin])
+  useEffect(() => { if (puedeUsar) cargar() }, [puedeUsar])
 
   async function cargar() {
     setLoading(true)
@@ -85,6 +104,7 @@ export default function VisitasPage() {
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase()
     return visitas.filter(v => {
+      if (miNombre && String(v.comercial || '') !== miNombre) return false   // comercial: solo sus visitas
       if (fComercial && v.comercial !== fComercial) return false
       if (fEstado && v.estado !== fEstado) return false
       const orden = (v.ordenes_visita || [])[0]
@@ -97,10 +117,10 @@ export default function VisitasPage() {
       }
       return true
     })
-  }, [visitas, fComercial, fEstado, fOrden, busca])
+  }, [visitas, miNombre, fComercial, fEstado, fOrden, busca])
 
   if (status === 'loading') return <div style={{ minHeight: '100vh' }}><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></div>
-  if (status === 'authenticated' && !esAdmin) return null
+  if (status === 'authenticated' && !puedeUsar) return null
 
   const input = { padding: '8px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', background: '#fff' }
   const th = { padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: .5 }
