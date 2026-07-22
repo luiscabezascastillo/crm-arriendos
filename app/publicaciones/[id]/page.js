@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-07-21 · FIX ficha: el bloque 'Datos del propietario' mostraba `vendedor` bajo la
+//   etiqueta 'Captador'. Ahora Captador = captador y se añade 'Comercial' = vendedor (son datos distintos).
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -1124,7 +1126,7 @@ async function subirImagen(file) {
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Datos del propietario</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
-                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Captador',pub.vendedor||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
+                {[['Propietario',pub.propietario||'—'],['Teléfono',pub.telefono||'—'],['Email',pub.email||'—'],['Captador',pub.captador||'—'],['Comercial',pub.vendedor||'—'],['IDADMON',pub.idadmon||'—']].map(([l,v]) => (
                   <div key={l}><div style={{ fontSize:10, color:'var(--gray-400)', marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:'var(--gray-800)', fontWeight:500 }}>{v}</div></div>
                 ))}
               </div>
