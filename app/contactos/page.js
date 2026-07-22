@@ -430,8 +430,8 @@ export default function ContactosPage() {
     const { data } = await supabase.from('contactos').select('*').eq('activo', true).order('nombre')
     let lista = data || []
     if (soloMios) {
-      // Propietarios de MIS publicaciones (el propietario se guarda como texto en publicaciones).
-      const { data: pubs } = await supabase.from('publicaciones').select('propietario').eq('vendedor', miNombre)
+      // Propietarios de las publicaciones que YO CAPTÉ (captador), no las que solo gestiono como vendedor.
+      const { data: pubs } = await supabase.from('publicaciones').select('propietario').eq('captador', miNombre)
       const misPropietarios = new Set((pubs || []).map(p => normNom(p.propietario)).filter(Boolean))
       lista = lista.filter(c => {
         const esMiCliente = String(c.comercial_asignado || '').trim() === miNombre

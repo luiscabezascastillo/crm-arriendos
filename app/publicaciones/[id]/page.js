@@ -1,9 +1,12 @@
 'use client'
+// VERSION: v3 · 2026-07-21 · Los datos del propietario (y cambiar propietario) solo los ve quien CAPTÓ
+//   la propiedad; a los demás comerciales se les muestra un aviso. Dirección/admin ven todo.
 // VERSION: v2 · 2026-07-21 · FIX ficha: el bloque 'Datos del propietario' mostraba `vendedor` bajo la
 //   etiqueta 'Captador'. Ahora Captador = captador y se añade 'Comercial' = vendedor (son datos distintos).
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { supabase } from '../../../lib/supabaseClient'
 import  TopNav  from '../../components/ui/TopNav'
 import { COMUNAS_LISTA, regionDeComuna } from '../../../lib/comunas.js'
@@ -420,6 +423,11 @@ function SeccionEditar({ pub, id, onGuardado, edificio }) {
 export default function FichaPage() {
   const { id } = useParams()
   const router = useRouter()
+  // Los datos del propietario solo los ve quien CAPTÓ la propiedad (y Dirección/admin).
+  const { data: sesionFicha } = useSession()
+  const miRolFicha = sesionFicha?.user?.role || null
+  const miNombreFicha = (sesionFicha?.user?.name || '').trim()
+  const esComercialFicha = miRolFicha === 'comercial' || miRolFicha === 'ventas'
   const [pub, setPub] = useState(null)
   const [loading, setLoading] = useState(true)
   const [valorUF, setValorUF] = useState(null)
@@ -1122,7 +1130,16 @@ async function subirImagen(file) {
           )}
 
           {/* PROPIETARIO */}
-          {seccion === 'Propietario' && (
+          {seccion === 'Propietario' && esComercialFicha && String(pub.captador || '').trim() !== miNombreFicha && (
+            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
+              <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Datos del propietario</div>
+              <div style={{ fontSize:13, color:'var(--gray-500)' }}>
+                Los datos del propietario solo están disponibles para quien captó la propiedad.
+              </div>
+            </div>
+          )}
+
+          {seccion === 'Propietario' && !(esComercialFicha && String(pub.captador || '').trim() !== miNombreFicha) && (
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12 }}>Datos del propietario</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
