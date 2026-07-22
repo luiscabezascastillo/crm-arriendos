@@ -105,7 +105,7 @@ export default function RequerimientosPage() {
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
   const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // entrar y actuar
-  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todos (Dirección)
+  const miNombre = rol === 'comercial' ? nombreComercial(email) : ''   // 'ventas' y Dirección ven todo        // '' = ve todos (Dirección)
 
   const [reqs, setReqs] = useState([])
   const [loading, setLoading] = useState(true)

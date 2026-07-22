@@ -188,7 +188,7 @@ export default function PublicacionesPage() {
   const { data: session, status } = useSession()
   const miRol = session?.user?.role || null
   const miNombre = (session?.user?.name || '').trim()
-  const soloMias = miRol === 'comercial' || miRol === 'ventas'
+  const soloMias = miRol === 'comercial'   // 'ventas' (interno) ve todas
   const sesionLista = status !== 'loading'
   const [vista, setVista] = useState('tabla')
   const [modo, setModo] = useState('activas') // 'activas' | 'historicas'

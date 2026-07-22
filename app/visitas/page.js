@@ -46,7 +46,7 @@ export default function VisitasPage() {
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
   const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // entrar y actuar
-  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todas (Dirección)
+  const miNombre = rol === 'comercial' ? nombreComercial(email) : ''   // 'ventas' y Dirección ven todo        // '' = ve todas (Dirección)
 
   const [visitas, setVisitas] = useState([])
   const [loading, setLoading] = useState(true)

@@ -407,7 +407,7 @@ export default function ContactosPage() {
   const { data: sesionPag } = useSession()
   const miRol = sesionPag?.user?.role || null
   const miNombre = (sesionPag?.user?.name || '').trim()
-  const soloMios = (miRol === 'comercial' || miRol === 'ventas') && !!miNombre
+  const soloMios = miRol === 'comercial' && !!miNombre   // 'ventas' (interno) ve todo
   const [contactos, setContactos] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')

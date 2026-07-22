@@ -38,7 +38,7 @@ export default function CalendarioPage() {
   const rol = session?.user?.role
   const esAdmin = rol === 'admin' || DIRECCION_EMAILS.includes(email)
   const puedeUsar = esAdmin || ROLES_COMERCIAL.includes(rol)   // acceso + acción
-  const miNombre = esAdmin ? '' : nombreComercial(email)        // '' = ve todo (Dirección)
+  const miNombre = rol === 'comercial' ? nombreComercial(email) : ''   // 'ventas' y Dirección ven todo        // '' = ve todo (Dirección)
 
   const [visitas, setVisitas] = useState([])
   const [cumples, setCumples] = useState([])

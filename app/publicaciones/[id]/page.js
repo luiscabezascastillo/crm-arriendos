@@ -427,7 +427,7 @@ export default function FichaPage() {
   const { data: sesionFicha } = useSession()
   const miRolFicha = sesionFicha?.user?.role || null
   const miNombreFicha = (sesionFicha?.user?.name || '').trim()
-  const esComercialFicha = miRolFicha === 'comercial' || miRolFicha === 'ventas'
+  const esComercialFicha = miRolFicha === 'comercial'   // 'ventas' (interno) ve todo
   const [pub, setPub] = useState(null)
   const [loading, setLoading] = useState(true)
   const [valorUF, setValorUF] = useState(null)
