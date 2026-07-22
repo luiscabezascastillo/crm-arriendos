@@ -1,4 +1,8 @@
-// VERSION: v5 · 2026-07-22 · Cruce reescrito sobre el BUSCADOR (pagadores_idadmon):
+// VERSION: v6 · 2026-07-22 · Añade la acción "excel": genera el Control con lib/paolaExcel y lo
+//   guarda en la carpeta de Drive P001 PAOLA con la nomenclatura de la carpeta
+//   ("2026-07-Control Jul 2026.xlsx"), creándolo o sobrescribiéndolo. Recupera el ámbito
+//   drive.file, necesario para escribir. Requiere: npm i exceljs
+// v5 · Cruce sobre el BUSCADOR (pagadores_idadmon):
 //   1) nota manual de la cartola (col. de Adalis) · 2) buscador por clave · 3) ambiguos por
 //   importe · 4) no_es_renta se aparta · 5) nombre parecido = SUGERENCIA, no asigna.
 //   Eliminado el nivel por importe suelto (repartía ingresos ajenos de Paola).
@@ -6,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
 import { google } from 'googleapis'
+import { generarExcelPaola, nombreArchivo } from '../../../lib/paolaExcel'
 
 const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
 const IDPROP_PAOLA = 'P001'
@@ -17,13 +22,43 @@ const UMBRAL_NOMBRE = 65
 // ── Drive ────────────────────────────────────────────────────────────────────
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}')
-  return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/drive.readonly'] })
+  return new google.auth.GoogleAuth({
+    credentials,
+    scopes: [
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.file',   // necesario para guardar el Control
+    ],
+  })
 }
 
 async function descargarDeDrive(fileId) {
   const drive = google.drive({ version: 'v3', auth: getAuth() })
   const res = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' })
   return Buffer.from(res.data)
+}
+
+// Crea el archivo en la carpeta, o sobrescribe el que ya exista con ese nombre.
+async function subirADrive(nombre, buffer) {
+  const drive = google.drive({ version: 'v3', auth: getAuth() })
+  const { Readable } = await import('stream')
+  const media = {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    body: Readable.from(buffer),
+  }
+  const existe = await drive.files.list({
+    q: `'${FOLDER_ID}' in parents and name = '${nombre.replace(/'/g, "\\'")}' and trashed = false`,
+    fields: 'files(id, name)', supportsAllDrives: true, includeItemsFromAllDrives: true,
+  })
+  const previo = existe.data.files?.[0]
+  if (previo) {
+    await drive.files.update({ fileId: previo.id, media, supportsAllDrives: true })
+    return { id: previo.id, nombre, accion: 'sobrescrito' }
+  }
+  const creado = await drive.files.create({
+    requestBody: { name: nombre, parents: [FOLDER_ID] },
+    media, fields: 'id, name', supportsAllDrives: true,
+  })
+  return { id: creado.data.id, nombre, accion: 'creado' }
 }
 
 // ── utilidades ───────────────────────────────────────────────────────────────
@@ -216,6 +251,34 @@ export async function POST(request) {
       const { error } = await supabase.from('pagadores_idadmon').insert(fila)
       if (error && !String(error.message).includes('duplicate')) throw new Error(error.message)
       return NextResponse.json({ ok: true, guardado: fila })
+    }
+
+    // ── acción: generar el Excel (y guardarlo en Drive si se pide) ──────────
+    if (body.accion === 'excel') {
+      const { mes, filas, guardarEnDrive, sufijo, email } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      if (!Array.isArray(filas) || filas.length === 0) {
+        return NextResponse.json({ error: 'No hay filas que volcar: procesa la liquidación primero' }, { status: 400 })
+      }
+      // El mes congelado no se sobrescribe.
+      const { data: cierre } = await supabase
+        .from('paola_cierres').select('congelado').eq('mes', aAamm(mes)).maybeSingle()
+      if (cierre?.congelado && guardarEnDrive) {
+        return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
+      }
+
+      const buffer = await generarExcelPaola({ mes, filas })
+      const nombre = nombreArchivo(mes, 'Control', sufijo || '')
+
+      let drive = null, errorDrive = null
+      if (guardarEnDrive) {
+        try { drive = await subirADrive(nombre, buffer) }
+        catch (e) { errorDrive = e.message }
+      }
+      return NextResponse.json({
+        ok: true, nombre, drive, errorDrive, generadoPor: email || null,
+        excelBase64: buffer.toString('base64'),
+      })
     }
 
     // ── acción por defecto: generar ─────────────────────────────────────────

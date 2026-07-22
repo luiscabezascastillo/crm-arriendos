@@ -1,4 +1,6 @@
-// VERSION: v5 · 2026-07-22 · Cruce sobre el BUSCADOR. Nueva pestaña "No es renta" (ingresos de
+// VERSION: v6 · 2026-07-22 · Botones para generar el Control: descargarlo o guardarlo en la
+//   carpeta de Drive P001 PAOLA con la nomenclatura de siempre.
+// v5 · Cruce sobre el BUSCADOR. Nueva pestaña "No es renta" (ingresos de
 //   Paola ajenos al arriendo) y, en "Sin identificar", un desplegable por abono para asignarlo a
 //   un contrato o marcarlo como no-renta: esa confirmación alimenta el buscador.
 'use client'
@@ -39,6 +41,8 @@ export default function LiquidacionPaolaPage() {
   const [abierta, setAbierta] = useState(null)
   const [eleccion, setEleccion] = useState({})
   const [confirmando, setConfirmando] = useState(null)
+  const [generando, setGenerando] = useState(false)
+  const [avisoExcel, setAvisoExcel] = useState(null)
 
   useEffect(() => {
     const h = new Date()
@@ -120,6 +124,38 @@ export default function LiquidacionPaolaPage() {
       setError('Error de conexión: ' + e.message)
     }
     setConfirmando(null)
+  }
+
+  // El Excel se arma con lo que hay en pantalla: lo que ves es lo que sale.
+  async function generarExcel(guardarEnDrive) {
+    if (!datos?.resultado?.length) return
+    setGenerando(true); setError(null); setAvisoExcel(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: datos.resultado }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setError(d.error || 'No se pudo generar el Excel'); setGenerando(false); return }
+
+      if (!guardarEnDrive) {
+        const bytes = Uint8Array.from(atob(d.excelBase64), c => c.charCodeAt(0))
+        const url = URL.createObjectURL(new Blob([bytes], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }))
+        const a = document.createElement('a')
+        a.href = url; a.download = d.nombre; a.click()
+        URL.revokeObjectURL(url)
+        setAvisoExcel(`Descargado ${d.nombre}`)
+      } else if (d.drive) {
+        setAvisoExcel(`${d.drive.accion === 'creado' ? 'Creado' : 'Sobrescrito'} en Drive: ${d.nombre}`)
+      } else {
+        setError(`No se pudo guardar en Drive: ${d.errorDrive || 'motivo desconocido'}`)
+      }
+    } catch (e) {
+      setError('Error de conexión: ' + e.message)
+    }
+    setGenerando(false)
   }
 
   const badge = c => {
@@ -254,6 +290,28 @@ export default function LiquidacionPaolaPage() {
                   <div style={{ fontSize: 17, fontWeight: 600, color: k.color || 'var(--gray-800)' }}>{k.value}</div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <button onClick={() => generarExcel(false)} disabled={generando}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                  color: 'white', border: 'none', borderRadius: 8,
+                  background: generando ? 'var(--gray-300)' : '#1a56db',
+                  cursor: generando ? 'default' : 'pointer',
+                }}>
+                {generando ? 'Generando…' : '⬇ Descargar Control'}
+              </button>
+              <button onClick={() => generarExcel(true)} disabled={generando}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                  color: 'white', border: 'none', borderRadius: 8,
+                  background: generando ? 'var(--gray-300)' : '#16a34a',
+                  cursor: generando ? 'default' : 'pointer',
+                }}>
+                {generando ? 'Guardando…' : '☁ Guardar en Drive'}
+              </button>
+              {avisoExcel && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500 }}>✓ {avisoExcel}</span>}
             </div>
 
             {datos.cartola && (
