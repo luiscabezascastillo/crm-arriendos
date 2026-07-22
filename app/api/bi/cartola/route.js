@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-07-21 · El check2 'FALTA' se pone solo en los ABONOS. Antes se marcaba todo,
+//   y los cargos se quedaban en FALTA para siempre (nunca pasan a cuentas), ensuciando la lista.
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
@@ -107,7 +109,11 @@ export async function POST(req) {
       return {
         fecha: m.fecha, detalle_movimiento: m.detalle, n_doc: String(m.ndoc),
         cargos: iTxt(m.cargo), abonos: iTxt(m.abono), saldos: iTxt(m.saldo),
-        check1: String(c1), check2_pasar_a_cartola: 'FALTA', reg: null,
+        check1: String(c1),
+        // Solo los ABONOS quedan pendientes de pasar a la cartola. Los cargos (comisiones, pagos
+        // del banco, etc.) no van a cuentas, así que entran sin marca para no ensuciar los FALTA.
+        // Excepción histórica: las REVERSAS sí deben pasarse; se marcan a mano (son muy pocas).
+        check2_pasar_a_cartola: m.abono > 0 ? 'FALTA' : null, reg: null,
         unique_concept: s.sug, idadmon2: s.sug, comentarios: s.nota || null,
         mes: aammDe(m.fecha), updated_at: ahora,
       }
