@@ -1,11 +1,19 @@
 'use client'
+// VERSION: v5 · 2026-07-23 · Estabilidad:
+//   · loadMore() se protegía con un estado (loadingMore) que es asíncrono, así que un scroll
+//     rápido disparaba N consultas idénticas antes de que React actualizara el flag: las mismas
+//     50 filas se añadían N veces y la tabla crecía sin control hasta tumbar la pestaña.
+//     Ahora el candado es un ref (síncrono) + deduplicado por id + tope de filas en memoria.
+//   · Cartola por IDADMON: avisa del estado P (antes solo Q y N) y deja ver siempre lo que haya
+//     en CUENTAS aunque el contrato no tenga todavía datos de INICIOS.
+//   · Un error de pintado ya no deja la pantalla en blanco: se muestra el motivo.
 // VERSION: v4 · 2026-07-21 · Todos los números (Cartola IDADMON y Tabla) en fuente monoespaciada; saldo de fila sin $ (fmtNum).
 // VERSION: v3 · 2026-07-21 · Cartola IDADMON: proporcional colapsado (details), números sin $ con separador de miles y fuente monoespaciada, más altura para movimientos (cabeceras ya sticky).
 // VERSION: v2 · 2026-07-20 · Aviso de proporcional: coteja el cargo contra datos_arriendos.proporcional (el dato con que se carga el inicio), no contra el recálculo. Recálculo de calendario queda como info. Tolerancia ±100; avisa si falta respaldo en LOG.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
@@ -13,6 +21,7 @@ const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
 const money = (v) => { const n = num(v); return n ? '$' + n.toLocaleString('es-CL') : '$0' }
 const LIMITE = 50
+const MAX_FILAS = 3000   // techo de filas en memoria; evita que la pestaña se quede sin RAM
 
 const EDITABLES = ['idadmon', 'concepto', 'comentarios', 'calif', 'estado']
 
@@ -41,6 +50,32 @@ const fechaOrden = (s) => {
   return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1])
 }
 
+/* Red de seguridad: si algo revienta al pintar, se muestra el motivo en vez de dejar la
+   pantalla en blanco. Sin esto, un dato inesperado tumba la vista entera sin decir por qué. */
+class Salvavidas extends Component {
+  constructor(props) { super(props); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  componentDidCatch(err, info) { console.error('Cartolas · error al pintar:', err, info) }
+  render() {
+    if (!this.state.err) return this.props.children
+    return (
+      <div style={{ margin: '20px auto', maxWidth: 720, padding: 20, borderRadius: 10, background: '#FDECEC', border: '0.5px solid #F1B0B0' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#9B1C1C', marginBottom: 6 }}>No se ha podido mostrar esta vista</div>
+        <div style={{ fontSize: 13, color: '#5F5E5A', marginBottom: 12 }}>
+          El resto de la página sigue funcionando. Copia este mensaje y pásalo a soporte:
+        </div>
+        <pre style={{ fontSize: 11, background: '#fff', padding: 10, borderRadius: 6, overflow: 'auto', margin: 0, color: '#9B1C1C' }}>
+          {String(this.state.err?.message || this.state.err)}
+        </pre>
+        <button onClick={() => this.setState({ err: null })}
+          style={{ marginTop: 12, fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+          Reintentar
+        </button>
+      </div>
+    )
+  }
+}
+
 export default function CartolasPage() {
   const [vista, setVista] = useState('tabla')   // 'tabla' | 'idadmon'
   return (
@@ -62,7 +97,9 @@ export default function CartolasPage() {
           ))}
         </div>
       </div>
-      {vista === 'tabla' ? <TablaVista /> : <CartolaIdadmonVista />}
+      <Salvavidas key={vista}>
+        {vista === 'tabla' ? <TablaVista /> : <CartolaIdadmonVista />}
+      </Salvavidas>
     </>
   )
 }
@@ -98,6 +135,7 @@ function TablaVista() {
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
+  const cargando = useRef(false)   // candado SÍNCRONO: el estado llega tarde y deja pasar N llamadas
 
   const rol = session?.user?.role
   const puedeEditar = rol === 'direccion' || rol === 'finanzas'
@@ -122,6 +160,7 @@ function TablaVista() {
   }
 
   const fetchInitial = async (fActuales = filtros) => {
+    cargando.current = false
     setRefreshing(true); setError(null); setNoMore(false)
     const { data, error } = await buildQuery(fActuales).order('id', { ascending: false }).limit(LIMITE)
     if (error) { setError(error.message); setRefreshing(false); setLoading(false); return }
@@ -134,21 +173,34 @@ function TablaVista() {
   useEffect(() => { fetchInitial({}) }, [])
 
   const loadMore = async () => {
-    if (loadingMore || noMore || loading || rows.length === 0) return
+    // El candado va en un ref, no en el estado: setLoadingMore no surte efecto hasta el siguiente
+    // render, y mientras tanto el scroll dispara decenas de llamadas con el mismo minId.
+    if (cargando.current || noMore || loading || rows.length === 0) return
+    if (rows.length >= MAX_FILAS) { setNoMore(true); return }
+    cargando.current = true
     setLoadingMore(true)
-    const minId = rows[0].id
-    const el = scrollRef.current
-    const prevH = el ? el.scrollHeight : 0
-    const prevT = el ? el.scrollTop : 0
-    const { data, error } = await buildQuery(filtros).lt('id', minId).order('id', { ascending: false }).limit(LIMITE)
-    if (error) { setError(error.message); setLoadingMore(false); return }
-    const nuevos = (data || []).reverse()
-    if (nuevos.length > 0) {
-      pendingAdjust.current = { prevH, prevT }
-      setRows(rs => [...nuevos, ...rs])
+    try {
+      const minId = rows[0].id
+      const el = scrollRef.current
+      const prevH = el ? el.scrollHeight : 0
+      const prevT = el ? el.scrollTop : 0
+      const { data, error } = await buildQuery(filtros).lt('id', minId).order('id', { ascending: false }).limit(LIMITE)
+      if (error) { setError(error.message); return }
+      const nuevos = (data || []).reverse()
+      if (nuevos.length > 0) {
+        pendingAdjust.current = { prevH, prevT }
+        setRows(rs => {
+          // Deduplicar por id: si alguna llamada se coló, no se repiten filas.
+          const vistos = new Set(rs.map(r => r.id))
+          const limpios = nuevos.filter(r => !vistos.has(r.id))
+          return limpios.length ? [...limpios, ...rs] : rs
+        })
+      }
+      if ((data || []).length < LIMITE) setNoMore(true)
+    } finally {
+      cargando.current = false
+      setLoadingMore(false)
     }
-    if ((data || []).length < LIMITE) setNoMore(true)
-    setLoadingMore(false)
   }
 
   useEffect(() => {
@@ -598,9 +650,10 @@ function CartolaIdadmonVista() {
 
   const buscar = async () => {
     const id = idInput.trim().toUpperCase()
-    if (!id) return
+    if (!id || buscando) return
     setBuscando(true); setError(null); setAviso(null); setConsultado(true)
     setFicha(null); setMovs([]); setUfMesInicio(null)
+    try {
 
     // 1) ficha en datos_arriendos (idadmon es único -> una fila)
     const { data: da, error: e1 } = await supabase
@@ -614,7 +667,8 @@ function CartolaIdadmonVista() {
     if (f) {
       const est = String(f.estado || '').trim().toUpperCase()
       if (est === 'Q') setAviso('Este IDADMON está en ESTADO Q (TÉRMINO).')
-      else if (est === 'N') setAviso('Este IDADMON está en ESTADO N (HISTÓRICO).')
+      else if (est === 'N' || est === 'N-DICOM') setAviso('Este IDADMON está en ESTADO N (HISTÓRICO).')
+      else if (est === 'P') setAviso('Este IDADMON está en ESTADO P (EN INICIO). Los cargos de inicio —garantía, comisión y proporcional— se generan cuando Anthony activa el contrato (P→S). Abajo se muestra lo que ya haya en CUENTAS: los abonos sí se pueden registrar estando en P.')
 
       // UF del mes de inicio (origen: indices_mensuales, día 1 del mes de inicio)
       // Solo se necesita si el contrato es UF y no hay condición especial.
@@ -634,6 +688,7 @@ function CartolaIdadmonVista() {
       .from('cuentas')
       .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes')
       .eq('idadmon', id)
+      .limit(2000)
     if (e2) { setError('Error leyendo movimientos: ' + e2.message); setBuscando(false); return }
 
     // ordenar por fecha real ascendente (fecha es texto dd/mm/aaaa); empate -> por id
@@ -649,7 +704,11 @@ function CartolaIdadmonVista() {
       return { ...m, _saldo: saldo }
     })
     setMovs(conSaldo)
-    setBuscando(false)
+    } catch (err) {
+      setError('No se pudo cargar la cuenta: ' + (err?.message || String(err)))
+    } finally {
+      setBuscando(false)
+    }
   }
 
   const onKey = (e) => { if (e.key === 'Enter') buscar() }
