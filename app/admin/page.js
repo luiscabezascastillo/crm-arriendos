@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v5 · 2026-07-23 · CONDICIONES: rejilla de 13 columnas, ESPECIAL PRIMEROS MESES como cabecera sobre Meses/Cantidad,
+//   fondo salmon como la plantilla LOG 2.0.7, y Paga aseo (SI/NO) junto a Multas. LB acepta bg/txt/cols (cols estaba ignorado).
 // VERSION: v4 · 2026-07-16 · Si se llega al ADMIN desde el panel de término (?volver=termino), el
 //   enlace de salir vuelve al término (/procesos/terminos/IDADMON) en vez de a /cc1, y muestra
 //   "← Término". Hereda v3 (Término actual en Datos adicionales) y v2 (comentario en cambio de estado).
@@ -36,6 +38,10 @@ const cell = {
   fontSize: 11,
   fontFamily: 'inherit',
 }
+// Salmón de la plantilla LOG 2.0.7: NUEVO FINAL y el bloque ESPECIAL PRIMEROS MESES
+const SAL_BG = '#FBE2D5'
+const SAL_TXT = '#8A3B12'
+
 const labelCell = {
   ...cell,
   background: C.labelBg,
@@ -225,12 +231,14 @@ function SH({ children, cols, bg }) {
 }
 
 /* ── Etiqueta ── */
-function LB({ children, width, right }) {
+function LB({ children, width, right, bg, txt, cols }) {
   return (
-    <td style={{
+    <td colSpan={cols} style={{
       ...labelCell,
       width: width,
       textAlign: right ? 'right' : 'left',
+      ...(bg ? { background: bg } : {}),
+      ...(txt ? { color: txt } : {}),
     }}>{children}</td>
   )
 }
@@ -1675,6 +1683,9 @@ function AdminContent() {
             </tr>
 
             {/* ══ CONDICIONES ══ */}
+            {/* Rejilla: col 1 = etiqueta CONDICIONES · cols 2-14 = 13 columnas de contenido.
+                El bloque de cols 12-14 replica el recuadro salmón de la plantilla LOG 2.0.7:
+                ESPECIAL PRIMEROS MESES como cabecera, con Meses / Cantidad / Especial debajo. */}
             <tr>
               <td style={{ ...labelCell, verticalAlign: 'middle' }} rowSpan={5}>CONDICIONES</td>
               <LB>Garantía</LB>
@@ -1683,10 +1694,9 @@ function AdminContent() {
               <td style={inputCell}><IC name="quien_tiene_garantia" value={form.quien_tiene_garantia} onChange={handleChange} readOnly={roLog} /></td>
               <LB>Extensión</LB>
               <td style={inputCell}><IC name="comentar_renovacion" value={form.comentar_renovacion} onChange={handleChange} readOnly={roLog} /></td>
-              <LB>Nuevo final</LB>
-              <td colSpan={2} style={inputCell}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog} type="date" bold /></td>
-              <LB>Especial primeros meses</LB>
-              <td colSpan={3} style={inputCell}><IC name="especial_a" value={form.especial_a} onChange={handleChange} readOnly={roLog} /></td>
+              <LB bg={SAL_BG} txt={SAL_TXT}>Nuevo final</LB>
+              <td colSpan={2} style={{ ...inputCell, background: SAL_BG }}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog} type="date" bold /></td>
+              <td colSpan={3} style={{ ...labelCell, background: SAL_BG, color: SAL_TXT, textAlign: 'center', fontWeight: 700 }}>ESPECIAL PRIMEROS MESES</td>
             </tr>
             <tr>
               <LB>Plazo 1</LB>
@@ -1697,9 +1707,9 @@ function AdminContent() {
               <td style={inputCell}><IC name="fecha2" value={form.fecha2} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 2</LB>
               <td style={inputCell}><IC name="cuota2" value={form.cuota2} onChange={handleChange} readOnly={roLog} type="number" /></td>
-              <LB>Meses</LB>
-              <td style={inputCell}><IC name="meses" value={form.meses} onChange={handleChange} readOnly={roLog} type="number" /></td>
-              <td colSpan={3} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <td colSpan={2} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <LB bg={SAL_BG} txt={SAL_TXT}>Meses</LB>
+              <td colSpan={2} style={inputCell}><IC name="meses" value={form.meses} onChange={handleChange} readOnly={roLog} type="number" /></td>
             </tr>
             <tr>
               <LB>Plazo 3</LB>
@@ -1710,16 +1720,20 @@ function AdminContent() {
               <td style={inputCell}><IC name="fecha4" value={form.fecha4} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB>Cantidad 4</LB>
               <td style={inputCell}><IC name="cuota4" value={form.cuota4} onChange={handleChange} readOnly={roLog} type="number" /></td>
-              <LB>Cantidad</LB>
-              <td style={inputCell}><IC name="cantidad" value={form.cantidad} onChange={handleChange} readOnly={roLog} type="number" bold /></td>
-              <td colSpan={3} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <td colSpan={2} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <LB bg={SAL_BG} txt={SAL_TXT}>Cantidad</LB>
+              <td colSpan={2} style={inputCell}><IC name="cantidad" value={form.cantidad} onChange={handleChange} readOnly={roLog} type="number" bold /></td>
             </tr>
             <tr>
-              <LB cols={4}>Cláusula aceleración</LB>
-              <td colSpan={4} style={inputCell}><IC name="tipo_aceleracion" value={form.tipo_aceleracion} onChange={handleChange} readOnly={roLog} /></td>
+              <LB>Cláusula aceleración</LB>
+              <td colSpan={3} style={inputCell}><IC name="tipo_aceleracion" value={form.tipo_aceleracion} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Multas</LB>
               <td style={inputCell}><IC name="multa_diaria" value={form.multa_diaria} onChange={handleChange} readOnly={roLog} type="number" /></td>
-              <td colSpan={4} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <LB right>Paga aseo</LB>
+              <td style={inputCell}><SC name="aseo1" value={form.aseo1} onChange={handleChange} readOnly={roLog} options={['SI', 'NO']} /></td>
+              <td colSpan={2} style={{ ...inputCell, background: C.rowAlt }}></td>
+              <LB>Especial</LB>
+              <td colSpan={2} style={inputCell}><IC name="especial_a" value={form.especial_a} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
             <tr>
               <td colSpan={13} style={{ ...inputCell, background: '#fff', border: `1px solid ${C.border}` }}>
