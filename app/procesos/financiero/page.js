@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-07-23 · Nombres cortos (la descripción de debajo ya explica qué hace cada
+//   una). Fuera «Internacional». Nuevas: DJ 1835 y CONTAB, sin ruta todavía, así que se pintan
+//   apagadas y no navegan a ninguna parte en vez de llevar a un 404.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -6,41 +9,46 @@ import { useEffect, useState } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 
 const SUBPROCESOS = [
-  { icon: '🧾', titulo: 'Cargar Ventas mes con CCB',                 desc: 'Importar las ventas del mes y asignar Centro de Coste/Beneficio', cadencia: 'mensual', href: '/procesos/financiero/ventas' },
-  { icon: '📥', titulo: 'Cargar Compras mes con CCB',                desc: 'Importar las compras del mes y asignar CCB',                     cadencia: 'mensual', href: '/procesos/financiero/compras' },
-  { icon: '👤', titulo: 'Cargar Boletas honorarios con CCB',         desc: 'Boletas de honorarios del mes con su CCB',                       cadencia: 'mensual', href: '/procesos/financiero/honorarios' },
-  { icon: '💰', titulo: 'Cargar Remuneraciones con CCB',             desc: 'Remuneraciones del mes con CCB asignado',                        cadencia: 'mensual', href: '/procesos/financiero/remuneraciones' },
-  { icon: '🏦', titulo: 'Cargar SA con CCB',                         desc: 'Movimientos del Banco Santander con CCB',                        cadencia: 'semanal', href: '/procesos/financiero/sa' },
-  { icon: '🪙', titulo: 'Cargar Caja Chica con CCB',                 desc: 'Movimientos de caja chica con CCB',                              cadencia: 'mensual', href: '/procesos/financiero/caja-chica' },
-  { icon: '🌐', titulo: 'Cargar Global 66 con CCB',                  desc: 'Movimientos de la cuenta Global 66 con CCB',                     cadencia: 'mensual', href: '/procesos/financiero/global66' },
-  { icon: '🏛️', titulo: 'Cargar Internacional con CCB',             desc: 'Movimientos del Banco Internacional con CCB',                    cadencia: 'mensual', href: '/procesos/financiero/internacional' },
-  { icon: '📤', titulo: 'Cargar liquidaciones en Portal Propietarios', desc: 'Subir las liquidaciones de propietarios al Portal',             cadencia: 'mensual', href: '/procesos/financiero/liquidaciones-portal', muted: true },
-  { icon: '📋', titulo: 'Cargar datos SII (F29 y similares)',        desc: 'Cargar F29 y declaraciones del SII',                             cadencia: 'mensual', href: '/procesos/financiero/sii' },
+  { icon: '🧾', titulo: 'Ventas',         desc: 'Importar las ventas del mes y asignar Centro de Coste/Beneficio', cadencia: 'mensual', href: '/procesos/financiero/ventas' },
+  { icon: '📥', titulo: 'Compras',        desc: 'Importar las compras del mes y asignar CCB',                      cadencia: 'mensual', href: '/procesos/financiero/compras' },
+  { icon: '👤', titulo: 'Honorarios',     desc: 'Boletas de honorarios del mes con su CCB',                        cadencia: 'mensual', href: '/procesos/financiero/honorarios' },
+  { icon: '💰', titulo: 'Remuneraciones', desc: 'Remuneraciones del mes con CCB asignado',                         cadencia: 'mensual', href: '/procesos/financiero/remuneraciones' },
+  { icon: '🪙', titulo: 'Caja Chica',     desc: 'Movimientos de caja chica con CCB',                               cadencia: 'mensual', href: '/procesos/financiero/caja-chica' },
+  { icon: '🏦', titulo: 'B. Santander',   desc: 'Movimientos del Banco Santander con CCB',                         cadencia: 'semanal', href: '/procesos/financiero/sa' },
+  { icon: '📋', titulo: 'SII',            desc: 'Cargar F29 y declaraciones del SII',                              cadencia: 'mensual', href: '/procesos/financiero/sii' },
+  { icon: '🌐', titulo: 'Global',         desc: 'Movimientos de la cuenta Global 66 con CCB',                      cadencia: 'mensual', href: '/procesos/financiero/global66' },
+  // ⚠ Sin ruta todavía: se pintan apagadas y no navegan.
+  { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: null, muted: true },
+  { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: null, muted: true },
+  { icon: '📤', titulo: 'Cargar liquidaciones en Portal Propietarios', desc: 'Subir las liquidaciones de propietarios al Portal',   cadencia: 'mensual', href: '/procesos/financiero/liquidaciones-portal', muted: true },
 ]
 
 const CAD_BADGE = {
   mensual: { bg: '#E6F1FB', color: '#0C447C' },
   semanal: { bg: '#E1F5EE', color: '#085041' },
+  anual:   { bg: '#FAEEDA', color: '#633806' },
 }
 
 function SubCard({ sub, onClick, isMobile }) {
   const badge = CAD_BADGE[sub.cadencia] || CAD_BADGE.mensual
   const muted = sub.muted
+  const activo = !!sub.href
   return (
-    <div onClick={() => onClick(sub.href)}
+    <div onClick={() => activo && onClick(sub.href)}
+      title={activo ? undefined : 'Todavía no está disponible'}
       style={{
         background: muted ? '#F0EFEA' : '#fff',
         border: '0.5px solid #B4B2A9',
         borderLeft: muted ? '3px solid #B4B2A9' : '3px solid #1D9E75',
         borderRadius: '0 10px 10px 0',
         padding: isMobile ? '12px 13px' : '13px 15px',
-        cursor: 'pointer',
+        cursor: activo ? 'pointer' : 'default',
         transition: 'border-color 0.15s',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = '#888780' }}
+      onMouseEnter={e => { if (activo) e.currentTarget.style.borderColor = '#888780' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = '#B4B2A9' }}>
       <span style={{ fontSize: 22, flexShrink: 0, opacity: muted ? 0.6 : 1 }}>{sub.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -50,7 +58,9 @@ function SubCard({ sub, onClick, isMobile }) {
         </div>
         <div style={{ fontSize: 12, color: '#888780', marginTop: 3, lineHeight: 1.4 }}>{sub.desc}</div>
       </div>
-      <span style={{ fontSize: 16, color: '#B4B2A9', flexShrink: 0 }}>→</span>
+      <span style={{ fontSize: activo ? 16 : 10, color: '#B4B2A9', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {activo ? '→' : 'pronto'}
+      </span>
     </div>
   )
 }
