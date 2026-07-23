@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v2 · 2026-07-23 · La rejilla de tarjetas pasa a lista de FILAS de exactamente dos
+//   líneas, ordenadas alfabéticamente por título. Los 16 procesos caben de un vistazo.
+//   Line 1: acceso · título · frecuencia · responsable · participa · encargada/o
+//   Line 2: descripción · etapas · proceso conectado  (recortada con … si no cabe)
+//   AGRUPAR_POR_PRODUCCION arriba: false = una sola lista A-Z · true = producción aparte.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -27,6 +32,12 @@ const PART_CHIP = { bg: '#F1EFE8', color: '#888780' }
 // Fondo suave para las tarjetas en producción
 const PROD_BG = '#F2FBF7'
 
+// false → una sola lista alfabética con los 16 · true → «ya en producción» en su propio bloque
+const AGRUPAR_POR_PRODUCCION = false
+
+// Alfabético por título, respetando acentos y mayúsculas del español
+const porTitulo = (a, b) => String(a.titulo || '').localeCompare(String(b.titulo || ''), 'es', { sensitivity: 'base' })
+
 
 const ROL_COLORS = {
   responsable: { bg: '#E1F5EE', color: '#085041' },
@@ -38,24 +49,6 @@ const ROL_COLORS = {
 const NOMBRE_BADGE    = { bg: '#E1F5EE', color: '#085041' }
 const DIRECCION_BADGE = { bg: '#FAEEDA', color: '#633806' }
 
-function Chips({ proceso }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 8 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>
-        {proceso.responsable}
-      </span>
-      {proceso.participa && proceso.participa.length > 0 && (
-        <>
-          <span style={{ fontSize: 9, color: '#B4B2A9' }}>participa</span>
-          {proceso.participa.map((d, i) => (
-            <span key={i} style={{ fontSize: 9, fontWeight: 500, padding: '1px 7px', borderRadius: 20, background: PART_CHIP.bg, color: PART_CHIP.color }}>{d}</span>
-          ))}
-        </>
-      )}
-    </div>
-  )
-}
-
 function FrecBadge({ frecuencia }) {
   if (!frecuencia) return null
   return (
@@ -65,124 +58,84 @@ function FrecBadge({ frecuencia }) {
   )
 }
 
-function ProcesCard({ proceso, permiso, responsablePersona, onClick, expanded, onToggle, isMobile, esProduccion }) {
+/* Una fila = exactamente DOS líneas. La segunda se recorta con … antes que saltar a una tercera,
+   así la altura es siempre la misma y los 16 procesos se recorren de un vistazo. */
+function ProcesoFila({ proceso, permiso, responsablePersona, onClick, isMobile, esProduccion }) {
   const tiene = !!permiso
   const nombreResp = responsablePersona?.nombre
-  const personaColor = responsablePersona?.esDireccion ? DIRECCION_BADGE : NOMBRE_BADGE
+  const etapas = (proceso.etapas || []).join(' › ')
+  const linea2 = [proceso.descripcion, etapas].filter(Boolean).join('  ·  ')
 
-  if (isMobile) {
-    return (
-      <div style={{
-        background: esProduccion ? PROD_BG : '#fff',
-        border: `0.5px solid ${tiene ? '#B4B2A9' : '#D3D1C7'}`,
-        borderLeft: `3px solid ${tiene ? '#1D9E75' : '#D3D1C7'}`,
-        borderRadius: '0 10px 10px 0',
-        marginBottom: 6,
-        opacity: tiene ? 1 : 0.5,
-      }}>
-        <div onClick={() => tiene ? onToggle() : null}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', cursor: tiene ? 'pointer' : 'default' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {!tiene && <span style={{ fontSize: 13 }}>🔒</span>}
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{proceso.titulo}</span>
-            <FrecBadge frecuencia={proceso.frecuencia} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>{proceso.responsable}</span>
-            {tiene && <span style={{ fontSize: 10, color: '#888' }}>{expanded ? '▲' : '▼'}</span>}
-          </div>
-        </div>
-        {expanded && tiene && (
-          <div style={{ padding: '0 12px 10px', borderTop: '0.5px solid #F0EEE8' }}>
-            <div style={{ fontSize: 12, color: '#5F5E5A', margin: '6px 0 8px' }}>{proceso.descripcion}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {proceso.etapas.map((e, i) => (
-                <span key={i} style={{ fontSize: 11, background: '#F1EFE8', color: '#5F5E5A', padding: '2px 8px', borderRadius: 20 }}>{e}</span>
-              ))}
-            </div>
-            <Chips proceso={proceso} />
-            {nombreResp && <div style={{ fontSize: 10, color: '#B4B2A9', marginTop: 4 }}>Encargada/o: {nombreResp}</div>}
-            {proceso.conecta && <div style={{ fontSize: 11, color: '#1D9E75', marginTop: 6 }}>↳ {proceso.conecta}</div>}
-            {proceso.links ? (
-              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {proceso.links.map((l, i) => (
-                  <button key={i} onClick={() => onClick({ href: l.href }, true)}
-                    style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '1px solid #D3D1C7', background: i === 0 ? '#1D9E75' : '#fff', color: i === 0 ? '#fff' : '#374151', cursor: 'pointer', textAlign: 'left' }}>
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-            ) : proceso.href ? (
-              <button onClick={() => onClick(proceso, true)}
-                style={{ marginTop: 8, fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
-                Abrir →
-              </button>
-            ) : null}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Desktop
   return (
-    <div onClick={() => !proceso.links && onClick(proceso, tiene)}
+    <div
+      onClick={() => !proceso.links && onClick(proceso, tiene)}
+      title={tiene ? linea2 : `Sin acceso a ${proceso.titulo}`}
       style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) auto',
+        gap: isMobile ? 2 : 12,
+        alignItems: 'center',
         background: esProduccion ? PROD_BG : '#fff',
-        border: `0.5px solid ${tiene ? '#B4B2A9' : '#D3D1C7'}`,
+        border: `0.5px solid ${tiene ? '#B4B2A9' : '#E0DED6'}`,
         borderLeft: `3px solid ${tiene ? '#1D9E75' : '#D3D1C7'}`,
-        borderRadius: '0 10px 10px 0',
-        padding: '11px 13px',
+        borderRadius: '0 8px 8px 0',
+        padding: isMobile ? '8px 10px' : '8px 12px',
+        marginBottom: 4,
         cursor: proceso.links ? 'default' : (tiene ? 'pointer' : 'default'),
-        opacity: tiene ? 1 : 0.5,
-        transition: 'border-color 0.15s',
-        position: 'relative',
+        opacity: tiene ? 1 : 0.55,
+        transition: 'border-color .15s, background .15s',
       }}
       onMouseEnter={e => { if (tiene) e.currentTarget.style.borderColor = '#888780' }}
       onMouseLeave={e => { if (tiene) e.currentTarget.style.borderColor = '#B4B2A9' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 6 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>
-          {!tiene && <span style={{ fontSize: 13 }}>🔒</span>}
-          {proceso.titulo}
+
+      <div style={{ minWidth: 0 }}>
+        {/* LÍNEA 1 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {!tiene && <span style={{ fontSize: 11, flexShrink: 0 }}>🔒</span>}
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {proceso.titulo}
+          </span>
           <FrecBadge frecuencia={proceso.frecuencia} />
-        </span>
-        <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>
+          {proceso.conecta && tiene && (
+            <span style={{ fontSize: 10, color: '#1D9E75', whiteSpace: 'nowrap', flexShrink: 0 }}>↳ {proceso.conecta}</span>
+          )}
+        </div>
+
+        {/* LÍNEA 2 — nunca salta a una tercera */}
+        <div style={{
+          fontSize: 11, color: tiene ? '#888780' : '#B4B2A9', lineHeight: 1.45, marginTop: 1,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {linea2}
+        </div>
+      </div>
+
+      {/* DERECHA — responsable, participantes y encargada/o */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+        marginTop: isMobile ? 5 : 0, flexWrap: isMobile ? 'wrap' : 'nowrap',
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', background: RESP_CHIP.bg, color: RESP_CHIP.color }}>
           {proceso.responsable}
         </span>
-      </div>
-      <div style={{ fontSize: 11, color: '#888780', marginBottom: 6, lineHeight: 1.4 }}>{proceso.descripcion}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-        {proceso.etapas.map((e, i) => (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <span style={{ fontSize: 10, color: tiene ? '#5F5E5A' : '#B4B2A9' }}>{e}</span>
-            {i < proceso.etapas.length - 1 && <span style={{ fontSize: 9, color: '#D3D1C7' }}>›</span>}
+        {!isMobile && proceso.participa?.length > 0 && (
+          <span style={{ fontSize: 9, color: '#B4B2A9', whiteSpace: 'nowrap' }} title={'Participa: ' + proceso.participa.join(', ')}>
+            +{proceso.participa.length}
           </span>
-        ))}
+        )}
+        {nombreResp && (
+          <span style={{ fontSize: 10, color: '#B4B2A9', whiteSpace: 'nowrap' }}>{nombreResp}</span>
+        )}
+        {proceso.links && tiene && (
+          <span style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+            {proceso.links.map((l, i) => (
+              l.href
+                ? <a key={i} href={l.href} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid #D3D1C7', background: i === 0 ? '#E1F5EE' : '#F9FAFB', color: i === 0 ? '#085041' : '#374151', textDecoration: 'none', whiteSpace: 'nowrap' }}>{l.label}</a>
+                : <span key={i} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px dashed #D3D1C7', background: '#F9FAFB', color: '#B4B2A9', whiteSpace: 'nowrap' }}>{l.label}</span>
+            ))}
+          </span>
+        )}
       </div>
-      <Chips proceso={proceso} />
-      {nombreResp && <div style={{ fontSize: 10, color: '#B4B2A9', marginTop: 4 }}>Encargada/o: {nombreResp}</div>}
-      {proceso.conecta && tiene && <div style={{ marginTop: 6, fontSize: 10, color: '#1D9E75' }}>↳ {proceso.conecta}</div>}
-      {/* Links múltiples para Servicios */}
-      {proceso.links && tiene && (
-        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }} onClick={e => e.stopPropagation()}>
-          {proceso.links.map((l, i) => (
-            l.href ? (
-              <a key={i} href={l.href}
-                style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid #D3D1C7',
-                  background: i === 0 ? '#E1F5EE' : '#F9FAFB', color: i === 0 ? '#085041' : '#374151',
-                  textDecoration: 'none', fontWeight: i === 0 ? 600 : 400 }}>
-                {l.label}
-              </a>
-            ) : (
-              <span key={i}
-                style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px dashed #D3D1C7',
-                  background: '#F9FAFB', color: '#B4B2A9', cursor: 'default' }}>
-                {l.label}
-              </span>
-            )
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -194,7 +147,6 @@ export default function ProcesosPage() {
   const [responsables, setResponsables] = useState({})
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
-  const [expanded, setExpanded] = useState(null)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -263,19 +215,17 @@ export default function ProcesosPage() {
     </div>
   )
 
-  const renderGrid = (lista, cols, esProduccion = false) => (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${cols}, 1fr)`, gap: isMobile ? 0 : 10, marginBottom: 8 }}>
-      {lista.map(p => (
-        <ProcesCard
+  const renderLista = (lista, esProduccion = false) => (
+    <div style={{ marginBottom: 8 }}>
+      {[...lista].sort(porTitulo).map(p => (
+        <ProcesoFila
           key={p.key}
           proceso={p}
           permiso={permisos[p.key]}
           responsablePersona={responsables[p.key]}
           onClick={handleClick}
-          expanded={expanded === p.key}
-          onToggle={() => setExpanded(expanded === p.key ? null : p.key)}
           isMobile={isMobile}
-          esProduccion={esProduccion}
+          esProduccion={esProduccion ?? !!p.produccion}
         />
       ))}
     </div>
@@ -310,32 +260,44 @@ export default function ProcesosPage() {
           </span>
           <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: RESP_CHIP.bg, color: RESP_CHIP.color }}>responsable</span>
           <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 20, background: PART_CHIP.bg, color: PART_CHIP.color }}>participa</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: PROD_BG, border: '0.5px solid #B4B2A9', display: 'inline-block' }}></span> Ya en producción
+          </span>
           <span style={{ fontSize: 9, color: '#B4B2A9' }}>· la etiqueta junto al título es la frecuencia (Mensual / Semanal / Puntual)</span>
         </div>
 
-        {/* FRANJA: PROCESOS YA EN PRODUCCIÓN */}
-        {(() => {
-          const enProd = PROCESOS.filter(p => p.produccion)
-          if (!enProd.length) return null
-          const dispProd = enProd.filter(p => permisos[p.key]).length
-          return (
-            <div style={{ marginBottom: 6 }}>
-              {sectionLabel('PROCESOS YA EN PRODUCCIÓN', dispProd, enProd.length, { bg: '#E1F5EE', color: '#085041' })}
-              {renderGrid(enProd, 3, true)}
-            </div>
-          )
-        })()}
-
-        {/* TODOS LOS PROCESOS (no-producción) EN UNA SOLA REJILLA, sin cabeceras de depto */}
-        {(() => {
-          const resto = PROCESOS.filter(p => !p.produccion)
-          if (!resto.length) return null
-          return (
-            <div style={{ marginTop: 14 }}>
-              {renderGrid(resto, 3)}
-            </div>
-          )
-        })()}
+        {/* LISTA ALFABÉTICA */}
+        {AGRUPAR_POR_PRODUCCION ? (
+          <>
+            {(() => {
+              const enProd = PROCESOS.filter(p => p.produccion)
+              if (!enProd.length) return null
+              const dispProd = enProd.filter(p => permisos[p.key]).length
+              return (
+                <div style={{ marginBottom: 6 }}>
+                  {sectionLabel('PROCESOS YA EN PRODUCCIÓN', dispProd, enProd.length, { bg: '#E1F5EE', color: '#085041' })}
+                  {renderLista(enProd, true)}
+                </div>
+              )
+            })()}
+            {(() => {
+              const resto = PROCESOS.filter(p => !p.produccion)
+              if (!resto.length) return null
+              const dispResto = resto.filter(p => permisos[p.key]).length
+              return (
+                <div style={{ marginTop: 14 }}>
+                  {sectionLabel('EN PREPARACIÓN', dispResto, resto.length, { bg: '#F1EFE8', color: '#5F5E5A' })}
+                  {renderLista(resto, false)}
+                </div>
+              )
+            })()}
+          </>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            {sectionLabel('TODOS LOS PROCESOS · A-Z', totalDisponibles, PROCESOS.length, { bg: '#E1F5EE', color: '#085041' })}
+            {renderLista(PROCESOS, null)}
+          </div>
+        )}
 
       </div>
 
