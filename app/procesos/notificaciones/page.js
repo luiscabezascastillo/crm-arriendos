@@ -1,5 +1,6 @@
 'use client'
-// VERSION: v2 · 2026-07-23 · mes por defecto = liquidación en curso (regla día 23), marca "presente", botón Índices UF/IPC y aviso si falta cargarlos
+// VERSION: v3 · 2026-07-23 · boton 'Calcular reajustes': calcula el reajuste del mes desde los indices (UF/IPC) y lo guarda en los contratos, con revision previa
+// VERSION: v2 · 2026-07-23 · mes por defecto = liquidacion en curso (regla dia 23), marca 'presente', boton Indices UF/IPC y aviso si faltan
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -283,6 +284,41 @@ export default function NotificacionesPage() {
   const mesEnCurso = useMemo(() => mesLiquidacionEnCurso(), [])
   // ¿El mes de liquidación en curso ya tiene UF cargada? Si no, no se puede procesar.
   const faltaIndiceEnCurso = !loading && !indices.some((i) => i.mes === mesEnCurso && i.valor_uf != null)
+
+  // ── Reajustes del mes ──────────────────────────────────────────────────
+  // Los contratos guardan el importe del reajuste en cantidad_reajusteN. Si no
+  // está calculado, la notificación sale con la renta antigua. Este bloque lo
+  // calcula desde los índices (UF/IPC) y lo guarda, previa revisión.
+  const [reajOpen, setReajOpen] = useState(false)
+  const [reajData, setReajData] = useState(null)     // respuesta del endpoint
+  const [reajBusy, setReajBusy] = useState(false)
+  const [reajMsg, setReajMsg] = useState(null)
+
+  async function reajustesCargar(aplicar) {
+    setReajBusy(true); setReajMsg(null)
+    try {
+      const res = await fetch('/api/procesos/notificaciones/calcular-reajustes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes: mesSel, aplicar: aplicar === true }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setReajMsg('⚠ ' + (j.error || `HTTP ${res.status}`)); setReajData(null) }
+      else {
+        setReajData(j)
+        if (j.aplicado) {
+          setReajMsg(`✅ Guardados ${j.escritas} reajuste${j.escritas === 1 ? '' : 's'}. Recargando importes…`)
+          await cargarNoti(mesSel)
+          const { data: arr } = await supabase.from('datos_arriendos')
+            .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+            .eq('estado', 'S')
+          if (arr) setContratos(arr)
+        }
+      }
+    } catch (e) { setReajMsg('⚠ Error de red: ' + (e.message || e)); setReajData(null) }
+    finally { setReajBusy(false) }
+  }
+
+  function abrirReajustes() { setReajData(null); setReajMsg(null); setReajOpen(true); reajustesCargar(false) }
 
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
@@ -676,6 +712,98 @@ export default function NotificacionesPage() {
   return (
     <>
       <TopNav />
+      {reajOpen && (
+        <div onClick={() => !reajBusy && setReajOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: 22, width: '100%', maxWidth: 1040, maxHeight: '86vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#1a1a2e', marginBottom: 4 }}>
+              ⚙ Reajustes de renta · {mesLabel(mesSel)}
+            </div>
+            <div style={{ fontSize: 12.5, color: '#6B7280', marginBottom: 14 }}>
+              Contratos cuyo reajuste vence este mes. El importe se calcula desde los índices ya cargados y se guarda en el contrato, que es de donde sale el importe a pagar de la notificación.
+            </div>
+
+            {reajMsg && (
+              <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600, padding: '9px 13px', borderRadius: 8,
+                background: reajMsg.startsWith('⚠') ? '#FEF2F2' : '#F0FDF4',
+                color: reajMsg.startsWith('⚠') ? '#B91C1C' : '#166534',
+                border: '1px solid ' + (reajMsg.startsWith('⚠') ? '#FECACA' : '#BBF7D0') }}>{reajMsg}</div>
+            )}
+
+            {reajBusy && !reajData && <div style={{ padding: 24, color: '#9CA3AF', fontSize: 13 }}>Calculando…</div>}
+
+            {reajData && (
+              <>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {[
+                    ['Vencen este mes', reajData.resumen.total, '#EEF2FF', '#3730A3'],
+                    ['Se van a actualizar', reajData.resumen.a_cambiar, '#F5F3FF', '#5B21B6'],
+                    ['Ya correctos', reajData.resumen.ya_correctos, '#F0FDF4', '#166534'],
+                    ['Sin índice aplicable', reajData.resumen.sin_indice, '#F9FAFB', '#6B7280'],
+                  ].map(([t, v, bg, col]) => (
+                    <div key={t} style={{ background: bg, color: col, borderRadius: 9, padding: '8px 14px', fontSize: 12 }}>
+                      {t}<div style={{ fontSize: 18, fontWeight: 700 }}>{v}</div>
+                    </div>
+                  ))}
+                  <div style={{ background: '#FFFBEB', color: '#92400E', borderRadius: 9, padding: '8px 14px', fontSize: 12 }}>
+                    Subida total del mes<div style={{ fontSize: 18, fontWeight: 700 }}>${fmtMiles(reajData.resumen.suma_reajustes)}</div>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #E5E7EB', borderRadius: 9, overflow: 'auto', maxHeight: '44vh' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {['IDADMON', 'Propietario', 'Arrendatario', 'Revisión', 'Renta vigente', 'Índice', 'Reajuste', 'Renta nueva'].map((h, i) => (
+                          <th key={h} style={{ position: 'sticky', top: 0, background: '#F3F4F6', padding: '7px 9px', fontSize: 11, fontWeight: 700, color: '#374151', textAlign: i >= 4 ? 'right' : 'left', whiteSpace: 'nowrap', borderBottom: '2px solid #E5E7EB' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reajData.filas.map(f => (
+                        <tr key={f.idadmon} style={{ background: f.motivo ? '#FAFAFA' : (f.cambia ? '#FEFCE8' : '#fff') }}>
+                          <td style={{ padding: '6px 9px', fontWeight: 600, borderBottom: '1px solid #F3F4F6' }}>{f.idadmon}</td>
+                          <td style={{ padding: '6px 9px', borderBottom: '1px solid #F3F4F6', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.propietario}</td>
+                          <td style={{ padding: '6px 9px', borderBottom: '1px solid #F3F4F6', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.arrendatario}</td>
+                          <td style={{ padding: '6px 9px', borderBottom: '1px solid #F3F4F6', color: '#6B7280', whiteSpace: 'nowrap' }}>{f.revision}</td>
+                          <td style={{ padding: '6px 9px', textAlign: 'right', borderBottom: '1px solid #F3F4F6' }}>${fmtMiles(f.renta_vigente)}</td>
+                          <td style={{ padding: '6px 9px', textAlign: 'right', borderBottom: '1px solid #F3F4F6', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                            {f.indice == null ? '—' : (f.indice * 100).toFixed(3).replace('.', ',') + ' %'}
+                          </td>
+                          <td style={{ padding: '6px 9px', textAlign: 'right', borderBottom: '1px solid #F3F4F6', fontWeight: 700, color: f.cambia ? '#92400E' : '#9CA3AF' }}>
+                            {f.motivo ? '—' : '$' + fmtMiles(f.propuesto)}
+                            {f.cambia && f.actual > 0 && <span style={{ fontWeight: 400, color: '#9CA3AF' }}> (antes ${fmtMiles(f.actual)})</span>}
+                          </td>
+                          <td style={{ padding: '6px 9px', textAlign: 'right', borderBottom: '1px solid #F3F4F6', fontWeight: 600 }}>
+                            {f.renta_nueva == null ? <span title={f.motivo} style={{ color: '#9CA3AF' }}>no aplica</span> : '$' + fmtMiles(f.renta_nueva)}
+                          </td>
+                        </tr>
+                      ))}
+                      {reajData.filas.length === 0 && (
+                        <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>Ningún contrato tiene reajuste este mes.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <button onClick={() => setReajOpen(false)} disabled={reajBusy}
+                style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cerrar
+              </button>
+              {reajData && !reajData.aplicado && reajData.resumen.a_cambiar > 0 && (
+                <button onClick={() => reajustesCargar(true)} disabled={reajBusy}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {reajBusy ? 'Guardando…' : `Aplicar ${reajData.resumen.a_cambiar} reajuste${reajData.resumen.a_cambiar === 1 ? '' : 's'}`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ maxWidth: 1360, margin: '0 auto', padding: '20px 24px 90px' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
@@ -724,6 +852,12 @@ export default function NotificacionesPage() {
               background: faltaIndiceEnCurso ? '#FFFBEB' : '#fff',
               color: faltaIndiceEnCurso ? '#92400E' : '#4B5563' }}>
             📊 Índices UF / IPC
+          </button>
+          <button onClick={abrirReajustes} disabled={!mesSel}
+            title="Calcula el reajuste de renta que toca este mes y lo guarda en los contratos"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+              border: '1px solid #6D28D9', background: '#F5F3FF', color: '#5B21B6' }}>
+            ⚙ Calcular reajustes
           </button>
           <button onClick={seleccionarPendientes} disabled={kpis.pendientes === 0}
             title="Marca todos los pendientes de la vista filtrada"
