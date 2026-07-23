@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v6 · 2026-07-23 · LA CAUSA REAL: fmtNum() se usaba en la columna Saldo de la Cartola
+//   por IDADMON pero NUNCA se definió (se coló en la v4 del 21/07). Cualquier IDADMON con
+//   movimientos reventaba al pintar. Definida aquí. El salvavidas de la v5 se queda como red.
 // VERSION: v5 · 2026-07-23 · Estabilidad:
 //   · loadMore() se protegía con un estado (loadingMore) que es asíncrono, así que un scroll
 //     rápido disparaba N consultas idénticas antes de que React actualizara el flag: las mismas
@@ -20,6 +23,9 @@ import TopNav from '@/app/components/ui/TopNav'
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
 const money = (v) => { const n = num(v); return n ? '$' + n.toLocaleString('es-CL') : '$0' }
+// Número con separador de miles y SIN símbolo de moneda. Se usa en la columna Saldo de la
+// cartola por IDADMON: ahí el 0 sí debe verse, así que no se devuelve cadena vacía.
+const fmtNum = (v) => num(v).toLocaleString('es-CL')
 const LIMITE = 50
 const MAX_FILAS = 3000   // techo de filas en memoria; evita que la pestaña se quede sin RAM
 
