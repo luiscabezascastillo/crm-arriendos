@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v2 · 2026-07-23 · Nombres cortos (la descripción de debajo ya explica qué hace cada
-//   una). Fuera «Internacional». Nuevas: DJ 1835 y CONTAB, sin ruta todavía, así que se pintan
-//   apagadas y no navegan a ninguna parte en vez de llevar a un 404.
+// VERSION: v3 · 2026-07-23 · Fuera «Cargar liquidaciones en Portal Propietarios».
+// v2 · Nombres cortos (la descripción de debajo ya explica qué hace cada una). Fuera
+//   «Internacional». Nuevas: DJ 1835 y CONTAB, sin ruta todavía, así que se pintan apagadas
+//   y no navegan a ninguna parte en vez de llevar a un 404.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -20,7 +21,6 @@ const SUBPROCESOS = [
   // ⚠ Sin ruta todavía: se pintan apagadas y no navegan.
   { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: null, muted: true },
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: null, muted: true },
-  { icon: '📤', titulo: 'Cargar liquidaciones en Portal Propietarios', desc: 'Subir las liquidaciones de propietarios al Portal',   cadencia: 'mensual', href: '/procesos/financiero/liquidaciones-portal', muted: true },
 ]
 
 const CAD_BADGE = {
