@@ -1,4 +1,4 @@
-// VERSION: v16 · 2026-07-22 · Filtros reescritos contra la especificación funcional:
+// VERSION: v17 · 2026-07-23 · Acepta el extracto semanal («Consulta de movimientos»): columnas por nombre, orden invertido, saldo inicial deducido y cartola resuelta por mes.
 //   · Operadores completos — texto: contiene/no contiene/empieza/termina/igual/distinto ·
 //     número: = > < >= <= entre · fecha: hoy/ayer/esta semana/este mes/este año/desde/hasta/entre.
 //   · DOS condiciones por columna combinables con Y / O.
@@ -75,12 +75,22 @@ async function parseCartola(file, XLSX) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false })
   let hi = -1
   for (let i = 0; i < rows.length; i++) { if (rows[i] && String(rows[i][0]).trim().toUpperCase() === 'MONTO') { hi = i; break } }
-  if (hi < 0) throw new Error('No encontré la cabecera (columna MONTO). ¿Es un extracto del Santander?')
+  if (hi < 0) throw new Error('No encontré la cabecera (columna MONTO). ¿Es un archivo del Santander?')
+  // Las columnas se localizan POR NOMBRE: cambian de sitio según el formato.
+  // Cartola mensual/provisoria: FECHA va en la 3 y CARGO/ABONO en la 7.
+  // Consulta de movimientos (extracto semanal): FECHA en la 2, SALDO en la 3, CARGO/ABONO en la 6.
+  const H = Array.from(rows[hi] || [], c => String(c == null ? '' : c).trim().toUpperCase())
+  const col = (...subs) => { for (let i = 0; i < H.length; i++) { if (subs.every(s => H[i].includes(s))) return i } return -1 }
+  const C = { monto: col('MONTO'), desc: col('DESCRIPCI'), fecha: col('FECHA'), saldo: col('SALDO'),
+              ndoc: col('DOCUMENTO'), suc: col('SUCURSAL'), ca: col('CARGO') }
+  if (C.fecha < 0) throw new Error('No encontré la columna FECHA en el archivo.')
   const flat = rows.slice(0, hi + 1).map(r => (r || []).map(c => c == null ? '' : String(c)).join('  ')).join('  ')
   const nroM = flat.match(/N[uú]mero cartola:\s*(\d+)/i)
+  const nroFile = (file.name || '').match(/-(\d{4})-\d{8}/)   // CartolaProvisoria-00008848470-0047-20260713.xlsx
   const desde = fechaISO((flat.match(/Fecha desde:\s*([\d/]+)/i) || [])[1])
   const hasta = fechaISO((flat.match(/Fecha hasta:\s*([\d/]+)/i) || [])[1])
-  const tipo = (/provisori/i.test(flat) || /provisori/i.test(file.name)) ? 'provisoria' : 'definitiva'
+  const esConsulta = /Consulta de movimientos/i.test(flat)
+  const tipo = (esConsulta || /provisori/i.test(flat) || /provisori/i.test(file.name || '')) ? 'provisoria' : 'definitiva'
   let saldo_inicial = null
   for (let i = 0; i < hi; i++) {
     const r = rows[i] || []
@@ -90,13 +100,24 @@ async function parseCartola(file, XLSX) {
   const movimientos = []
   for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i] || []
-    const monto = Number(r[0]); const f = fechaISO(r[3])
-    if (r[0] == null || r[0] === '' || isNaN(monto) || !f) continue   // excluye saldos diarios y filas sin fecha
-    const ca = String(r[7] == null ? '' : r[7]).trim().toUpperCase().slice(0, 1)
-    movimientos.push({ fecha: f, monto: Math.round(monto), descripcion: cellStr(r[1]), n_documento: cellStr(r[4]), sucursal: cellStr(r[5]), cargo_abono: (ca === 'C' || ca === 'A') ? ca : null })
+    const monto = Number(r[C.monto]); const f = fechaISO(r[C.fecha])
+    if (r[C.monto] == null || r[C.monto] === '' || isNaN(monto) || !f) continue   // excluye saldos diarios y filas sin fecha
+    const ca = String(C.ca >= 0 ? (r[C.ca] == null ? '' : r[C.ca]) : '').trim().toUpperCase().slice(0, 1)
+    movimientos.push({ fecha: f, monto: Math.round(monto), descripcion: cellStr(r[C.desc]),
+      n_documento: C.ndoc >= 0 ? cellStr(r[C.ndoc]) : null, sucursal: C.suc >= 0 ? cellStr(r[C.suc]) : null,
+      cargo_abono: (ca === 'C' || ca === 'A') ? ca : null,
+      saldo: (C.saldo >= 0 && r[C.saldo] != null && r[C.saldo] !== '' && !isNaN(Number(r[C.saldo]))) ? Math.round(Number(r[C.saldo])) : null })
   }
-  const periodo = hasta ? hasta.slice(0, 7) : (desde ? desde.slice(0, 7) : null)
-  return { nro_cartola: nroM ? Number(nroM[1]) : null, tipo, periodo, fecha_desde: desde, fecha_hasta: hasta, saldo_inicial, archivo: file.name, movimientos }
+  // El extracto semanal llega del más reciente al más antiguo. Hay que darle la vuelta:
+  // el servidor reconcilia por posición, así que el orden tiene que ser el del banco.
+  if (movimientos.length > 1 && movimientos[0].fecha > movimientos[movimientos.length - 1].fecha) movimientos.reverse()
+  // El extracto no trae saldo inicial: se deduce del primer movimiento (su saldo menos su monto).
+  if (saldo_inicial == null && movimientos.length && movimientos[0].saldo != null) saldo_inicial = movimientos[0].saldo - movimientos[0].monto
+  // El periodo sale del primer movimiento (más fiable que «Fecha desde», que suele caer en el mes anterior).
+  const meses = Array.from(new Set(movimientos.map(m => m.fecha.slice(0, 7)))).sort()
+  const periodo = meses[0] || (hasta ? hasta.slice(0, 7) : (desde ? desde.slice(0, 7) : null))
+  return { nro_cartola: nroM ? Number(nroM[1]) : (nroFile ? Number(nroFile[1]) : null), tipo, periodo,
+    fecha_desde: desde, fecha_hasta: hasta, saldo_inicial, archivo: file.name, movimientos, meses }
 }
 
 // Cada columna declara: cómo se pinta (get), qué clave usa el filtro (fkey), cómo se etiqueta
@@ -726,7 +747,16 @@ export default function SaPage() {
     try {
       const XLSX = await import('xlsx')
       const payload = await parseCartola(file, XLSX)
-      if (!payload.nro_cartola) { setUploadMsg({ error: 'No pude leer el número de cartola del archivo.' }); return }
+      // El extracto semanal no trae número de cartola: se deduce del periodo.
+      // Si ya existe la cartola de ese mes se recarga sobre ella (conserva folios y clasificación).
+      if (!payload.nro_cartola && payload.periodo) {
+        const delMes = cargas.find(c => c.periodo === payload.periodo)
+        payload.nro_cartola = delMes ? delMes.nro_cartola : (Math.max(0, ...cargas.map(c => Number(c.nro_cartola) || 0)) + 1)
+      }
+      if (!payload.nro_cartola) { setUploadMsg({ error: 'No pude identificar de qué mes es el archivo (no trae número de cartola ni fechas).' }); return }
+      if (payload.meses && payload.meses.length > 1) {
+        setUploadMsg({ error: `El archivo mezcla movimientos de ${payload.meses.join(' y ')}. Descarga el extracto dentro de un mismo mes (del día 1 a hoy).` }); return
+      }
       if (!payload.movimientos.length) { setUploadMsg({ error: 'No encontré movimientos en el archivo.' }); return }
       const res = await fetch('/api/financiero/sa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await res.json()
