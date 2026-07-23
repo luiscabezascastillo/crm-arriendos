@@ -1,4 +1,8 @@
 'use client';
+// VERSION: v4 · 2026-07-23 · Botón "Direccion" partido: el texto va a /direccion y la ▾ abre un
+//   dropdown con las operaciones propias de Dirección (Control de Asistencia, Tareas, Valoraciones,
+//   Budget y Problemas pendientes de crear, Reparar inicios). Mismo patrón que el botón "Procesos".
+//   Sin cambios en gates ni en el resto del menú.
 // VERSION: v3 · 2026-07-21 · Dropdown de 'Procesos en producción' ordenado alfabéticamente por título.
 // VERSION: v2 · 2026-07-20 · Rol 'comercial' ve su bloque Ventas (Publicaciones/Requerimientos/Visitas/Calendario/Contactos); Cumpleaños y Edificios ocultos salvo permiso. Tirza fuera de DIRECCION_EMAILS para pruebas de espejo.
 // VERSION: v1 · 2026-07-19 · El menú "Propiedades" solo lo ve Dirección (esDireccion: rol direccion
@@ -66,12 +70,14 @@ export default function TopNav() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const [fcrOpen, setFcrOpen] = useState(false);
+  const [direccionOpen, setDireccionOpen] = useState(false);
   const [propiedadesOpen, setPropiedadesOpen] = useState(false);
   const [procesosOpen, setProcesosOpen] = useState(false);
   const [ventasOpen, setVentasOpen] = useState(false);
   const [ayudaOpen, setAyudaOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const fcrRef = useRef(null);
+  const direccionRef = useRef(null);
   const propiedadesRef = useRef(null);
   const procesosRef = useRef(null);
   const ventasRef = useRef(null);
@@ -90,6 +96,7 @@ export default function TopNav() {
   useEffect(() => {
     function handleClick(e) {
       if (fcrRef.current && !fcrRef.current.contains(e.target)) setFcrOpen(false);
+      if (direccionRef.current && !direccionRef.current.contains(e.target)) setDireccionOpen(false);
       if (propiedadesRef.current && !propiedadesRef.current.contains(e.target)) setPropiedadesOpen(false);
       if (procesosRef.current && !procesosRef.current.contains(e.target)) setProcesosOpen(false);
       if (ventasRef.current && !ventasRef.current.contains(e.target)) setVentasOpen(false);
@@ -194,6 +201,7 @@ export default function TopNav() {
     signout: { fontSize: 11, color: '#aaa', background: 'none', border: '1px solid #E8E6E0', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' },
   };
 
+  const direccionActive = isActive('/direccion');
   const propiedadesActive = isActive('/propiedades');
   const procesosActive = isActive('/procesos') || isActive('/cc1') || isActive('/op');
   const ventasActive = isActive('/requerimientos') || isActive('/visitas') || isActive('/calendario')
@@ -227,9 +235,60 @@ export default function TopNav() {
         )}
       </div>
 
-      {/* Dirección — panel propio, por rol 'direccion' (o email de respaldo) */}
+      {/* Dirección — botón partido: el texto va a /direccion; la ▾ abre las operaciones
+          propias de Dirección. Visible por rol 'direccion' (o email de respaldo). */}
       {esDireccion && (
-        <Link href="/direccion" style={s.linkDir(isActive('/direccion'))}>Direccion</Link>
+      <div ref={direccionRef} style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 6,
+          background: direccionActive ? '#1a1a2e' : '#F0EEE8' }}>
+          <Link href="/direccion" onClick={() => setDireccionOpen(false)}
+            style={{ ...s.linkDir(direccionActive), background: 'transparent', paddingRight: 4 }}>
+            Direccion
+          </Link>
+          <button aria-label="Operaciones de Direccion"
+            onClick={() => { setDireccionOpen(v => !v); setPropiedadesOpen(false); setProcesosOpen(false); setVentasOpen(false); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px 6px 2px',
+              color: direccionActive ? '#fff' : '#1a1a2e', display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 9, opacity: 0.6, transition: 'transform 0.15s',
+              transform: direccionOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+          </button>
+        </div>
+        {direccionOpen && (
+          <div style={s.dropdown}>
+            <div style={s.dropLabel}>Operaciones de Direccion</div>
+            <Link href="/direccion/control-asistencia" style={s.dropItem} onClick={() => setDireccionOpen(false)}
+              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              Control de Asistencia
+            </Link>
+            <span style={s.dropItemSoon}>Budget · pronto</span>
+            <span style={s.dropItemSoon}>Problemas · pronto</span>
+            <div style={s.dropDivider} />
+            <Link href="/direccion/tareas" style={s.dropItem} onClick={() => setDireccionOpen(false)}
+              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              Tareas del equipo
+            </Link>
+            <Link href="/direccion/valoraciones" style={s.dropItem} onClick={() => setDireccionOpen(false)}
+              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              Valoraciones
+            </Link>
+            <div style={s.dropDivider} />
+            <div style={s.dropLabel}>Herramientas</div>
+            <Link href="/direccion/reparar-inicios" style={s.dropItem} onClick={() => setDireccionOpen(false)}
+              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              Reparar inicios
+            </Link>
+            <div style={s.dropDivider} />
+            <Link href="/direccion" onClick={() => setDireccionOpen(false)}
+              style={{ ...s.dropItem, color: '#185FA5', fontWeight: 600 }}>
+              Ver panel de Direccion →
+            </Link>
+          </div>
+        )}
+      </div>
       )}
 
       {/* Panel — dashboard operativo */}
