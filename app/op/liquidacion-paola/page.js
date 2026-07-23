@@ -1,4 +1,7 @@
-// VERSION: v6 · 2026-07-22 · Botones para generar el Control: descargarlo o guardarlo en la
+// VERSION: v7 · 2026-07-23 · Panel de ayuda desplegable «Cómo se hace», colgado en la propia
+//   pantalla. Distingue lo que hace el CRM de lo que sigue siendo manual, para no mandar a
+//   Administración a botones que aún no existen. Se recuerda plegado/desplegado por sesión.
+// v6 · Botones para generar el Control: descargarlo o guardarlo en la
 //   carpeta de Drive P001 PAOLA con la nomenclatura de siempre.
 // v5 · Cruce sobre el BUSCADOR. Nueva pestaña "No es renta" (ingresos de
 //   Paola ajenos al arriendo) y, en "Sin identificar", un desplegable por abono para asignarlo a
@@ -43,6 +46,7 @@ export default function LiquidacionPaolaPage() {
   const [confirmando, setConfirmando] = useState(null)
   const [generando, setGenerando] = useState(false)
   const [avisoExcel, setAvisoExcel] = useState(null)
+  const [ayuda, setAyuda] = useState(false)
 
   useEffect(() => {
     const h = new Date()
@@ -183,6 +187,90 @@ export default function LiquidacionPaolaPage() {
       </div>
 
       <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+
+        {/* AYUDA — plegada por defecto: quien ya sabe no la ve, quien duda la tiene a mano */}
+        <div style={{ marginBottom: 20 }}>
+          <button onClick={() => setAyuda(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+              padding: '11px 16px', fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
+              color: ayuda ? '#c2410c' : 'var(--gray-700)',
+              background: ayuda ? '#fff7ed' : 'var(--surface)',
+              border: `1px solid ${ayuda ? '#fdba74' : 'var(--border)'}`,
+              borderRadius: ayuda ? '12px 12px 0 0' : 12, cursor: 'pointer',
+            }}>
+            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{ayuda ? '▾' : '▸'}</span>
+            Cómo se hace la liquidación de Paola
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: 'var(--gray-400)' }}>
+              {ayuda ? 'ocultar' : '9 pasos · 2 min de lectura'}
+            </span>
+          </button>
+
+          {ayuda && (
+            <div style={{ border: '1px solid #fdba74', borderTop: 'none', borderRadius: '0 0 12px 12px', background: 'var(--surface)', padding: '18px 20px 20px' }}>
+
+              {/* Qué hace el CRM y qué no: lo primero, para no crear expectativas falsas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+                {[
+                  { t: 'Lo hace el CRM', c: '#16a34a', bg: '#f0fdf4', items: [
+                    'Traer los contratos y lo que hay que cobrar',
+                    'Cruzar los pagos de la cartola con cada arrendatario',
+                    'Traer las deudas de gastos comunes, luz y agua',
+                    'Generar el Excel con el formato de siempre',
+                  ] },
+                  { t: 'Lo seguís haciendo vosotras', c: '#c2410c', bg: '#fff7ed', items: [
+                    'Decidir si un importe es correcto',
+                    'Confirmar los pagos que no reconoce',
+                    'Multas, Especial, Cantidad y los Comentarios',
+                    'Enviárselo a Paola',
+                  ] },
+                ].map((b, i) => (
+                  <div key={i} style={{ background: b.bg, borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: b.c, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 7 }}>{b.t}</div>
+                    {b.items.map((x, j) => (
+                      <div key={j} style={{ fontSize: 12, color: 'var(--gray-700)', padding: '2px 0' }}>· {x}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              {[
+                { n: 1, t: 'Poner al día CARTAS', d: 'Entrad en CARTAS y pulsad Resincronizar. Trabaja con una foto de los contratos tomada a principios de mes: si ha entrado o terminado un arriendo, no lo sabe. Si os lo saltáis, esta pantalla os avisará con un recuadro amarillo.' },
+                { n: 2, t: 'Dejar la cartola en su carpeta', d: 'En 6.VIPS › P001 PAOLA, con el nombre de siempre: «2026-08-Cartola Ago 2026.xlsx». Si se llama así, aparece aquí sola y basta con pulsar.' },
+                { n: 3, t: 'Elegir el mes', d: 'La cartola encontrada en Drive sale marcada con un ✓ verde. Si preferís otra, se puede arrastrar o buscar en el ordenador.' },
+                { n: 4, t: 'Procesar liquidación', d: 'Tarda unos segundos. Arriba aparece el resumen; abajo, una línea que compara el total de la cartola con lo reconocido como renta. La diferencia son los ingresos de Paola que no son arriendo.' },
+                { n: 5, t: 'Resolver «Sin identificar»', d: 'Cada pago trae el motivo por el que no se ha reconocido y un desplegable para asignarlo a un contrato o marcarlo como «No es renta». Al confirmar queda guardado: el mes que viene ese pagador ya sale identificado solo. Y si en la cartola anotáis la propiedad a mano (Dpto 903-A, Est 40), el CRM lo lee y lo asigna sin preguntar.', clave: true },
+                { n: 6, t: 'Mirar «A revisar»', d: 'Son filas donde ha entrado más dinero del que se debía, casi siempre porque se ha asignado un pago ajeno. Pinchad la fila para ver los pagos concretos con su fecha y su glosa.' },
+                { n: 7, t: 'Comprobar tres cosas a mano', d: 'Contratos que terminan a mitad de mes (el CRM cobra el mes entero, el proporcional lo ajustáis vosotras) · arriendos nuevos que Anthony aún no ha dado de alta · y A00810, que sale 263.900 cuando vosotras cobráis 260.000.' },
+                { n: 8, t: 'Generar el Excel', d: 'Descargar Control lo baja al ordenador; Guardar en Drive lo deja en la carpeta de Paola. Sale con el formato de siempre: mismas columnas, vacantes en marrón, totales y la fórmula de FALTA DEL MES.' },
+                { n: 9, t: 'Rellenar lo manual y enviar', d: 'Sobre el Excel descargado: MULTAS/DEUDAS, Especial, Cantidad y COMENTARIOS 1 y 2. Y a Paola por correo, como siempre. Esto es temporal: estamos preparando que esas columnas se escriban aquí y queden guardadas.' },
+              ].map(s => (
+                <div key={s.n} style={{ display: 'flex', gap: 12, padding: '9px 0', borderTop: s.n === 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                  <div style={{
+                    flexShrink: 0, width: 22, height: 22, borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: s.clave ? '#c2410c' : 'var(--gray-100)', color: s.clave ? '#fff' : 'var(--gray-500)',
+                  }}>{s.n}</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-900)', marginBottom: 2 }}>{s.t}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-600)', lineHeight: 1.5 }}>{s.d}</div>
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ marginTop: 16, padding: '11px 14px', background: 'var(--gray-50)', borderRadius: 10, fontSize: 12, color: 'var(--gray-600)', lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--gray-800)' }}>Las versiones.</strong> La primera debería salir como
+                máximo 3 días después de que llegue la cartola; a partir de ahí, según entren pagos, se manda otra.
+                Estamos preparando que el CRM guarde cada versión con su fecha y lo que cambió, y que lo que pase al
+                mes siguiente quede escrito en la última: qué queda pendiente, de quién y por cuánto.
+                <br />
+                <span style={{ color: 'var(--gray-500)' }}>
+                  Si algo no cuadra, avisad con el IDADMON y la columna — con eso se localiza enseguida.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>
