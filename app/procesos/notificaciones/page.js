@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-07-23 · mes por defecto = liquidación en curso (regla día 23), marca "presente", botón Índices UF/IPC y aviso si falta cargarlos
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -13,6 +14,14 @@ import TopNav from '@/app/components/ui/TopNav'
 //   comentario (col W): nota informativa, no afecta al envío.
 //   Regla: SOLO se envía si hay email y control_envio está vacío.
 // ════════════════════════════════════════════════════════════════════════
+// Mes de liquidación en curso según la fecha de hoy.
+// El ciclo abre el día 23 del mes anterior: 23/07/2026 – 22/08/2026 -> AGOSTO 2026.
+function mesLiquidacionEnCurso(hoy = new Date()) {
+  const y = hoy.getFullYear(), m = hoy.getMonth() + 1
+  const t = y * 12 + (m - 1) + (hoy.getDate() >= 23 ? 1 : 0)
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}-01`
+}
+
 const ENDPOINT_ENVIO = '/api/procesos/notificaciones/enviar'
 const ENDPOINT_PREVIEW = '/api/procesos/notificaciones/preview'
 const CC_ENVIO = 'administracion@fondocapital.com'
@@ -243,9 +252,14 @@ export default function NotificacionesPage() {
           .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
           .eq('estado', 'S'),
       ])
-      const idxList = idx || []
+      const idxList = (idx || []).map(i => ({ ...i, mes: String(i.mes).slice(0, 10) }))
       setIndices(idxList)
-      if (idxList.length) setMesSel(idxList[0].mes)
+      if (idxList.length) {
+        // Por defecto, el mes de liquidación en curso. Si aún no está cargado en
+        // indices_mensuales, se cae al más reciente disponible.
+        const enCurso = mesLiquidacionEnCurso()
+        setMesSel(idxList.some(i => i.mes === enCurso) ? enCurso : idxList[0].mes)
+      }
       setContratos(arr || [])
       setLoading(false)
     }
@@ -266,6 +280,9 @@ export default function NotificacionesPage() {
   useEffect(() => { cargarNoti(mesSel) }, [mesSel])
 
   const idxMes = useMemo(() => indices.find((i) => i.mes === mesSel) || null, [indices, mesSel])
+  const mesEnCurso = useMemo(() => mesLiquidacionEnCurso(), [])
+  // ¿El mes de liquidación en curso ya tiene UF cargada? Si no, no se puede procesar.
+  const faltaIndiceEnCurso = !loading && !indices.some((i) => i.mes === mesEnCurso && i.valor_uf != null)
 
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
@@ -672,12 +689,27 @@ export default function NotificacionesPage() {
           Importe a pagar del mes por contrato activo (estado S). Selecciona y envía el recordatorio de pago.
         </div>
 
+        {faltaIndiceEnCurso && (
+          <div style={{ marginBottom: 14, padding: '11px 15px', borderRadius: 9, background: '#FFFBEB', border: '1px solid #FDE68A',
+            fontSize: 13, color: '#92400E', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span>⚠ <b>{mesLabel(mesEnCurso)}</b> todavía no tiene cargados la UF ni los IPC, así que no aparece en el desplegable y no se puede procesar.</span>
+            <button onClick={() => router.push('/procesos/indices')}
+              style={{ fontSize: 12, fontWeight: 700, padding: '6px 13px', borderRadius: 7, border: 'none', background: '#D97706', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+              Cargar índices de {mesLabel(mesEnCurso)}
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Mes a procesar</label>
             <select value={mesSel} onChange={(e) => { setMesSel(e.target.value); limpiarSeleccion() }}
               style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', fontSize: 13, color: '#2C2C2A', fontFamily: 'inherit', cursor: 'pointer' }}>
-              {indices.map((i) => (<option key={i.mes} value={i.mes}>{mesLabel(i.mes)}</option>))}
+              {indices.map((i) => (
+                <option key={i.mes} value={i.mes}>
+                  {mesLabel(i.mes)}{i.mes === mesEnCurso ? ' · presente' : ''}
+                </option>
+              ))}
             </select>
           </div>
           {idxMes && (
@@ -685,6 +717,14 @@ export default function NotificacionesPage() {
               Valor UF {mesLabel(mesSel)}: ${fmtMiles(idxMes.valor_uf)}
             </div>
           )}
+          <button onClick={() => router.push('/procesos/indices')}
+            title="Cargar o consultar los valores de UF e IPC de cada mes"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+              border: '1px solid ' + (faltaIndiceEnCurso ? '#F59E0B' : '#D3D1C7'),
+              background: faltaIndiceEnCurso ? '#FFFBEB' : '#fff',
+              color: faltaIndiceEnCurso ? '#92400E' : '#4B5563' }}>
+            📊 Índices UF / IPC
+          </button>
           <button onClick={seleccionarPendientes} disabled={kpis.pendientes === 0}
             title="Marca todos los pendientes de la vista filtrada"
             style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8,
