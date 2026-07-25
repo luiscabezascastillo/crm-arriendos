@@ -1,9 +1,6 @@
 'use client'
-// VERSION: v4 · 2026-07-25 · Activada la tarjeta DJ 1835 (ya tiene pantalla en /procesos/financiero/dj1835).
-// v3 · Fuera «Cargar liquidaciones en Portal Propietarios».
-// v2 · Nombres cortos (la descripción de debajo ya explica qué hace cada una). Fuera
-//   «Internacional». Nuevas: DJ 1835 y CONTAB, sin ruta todavía, así que se pintan apagadas
-//   y no navegan a ninguna parte en vez de llevar a un 404.
+// VERSION: v5 · 2026-07-25 · Activada la tarjeta CONTAB (pantalla en /procesos/financiero/contab).
+// v4 · Activada la tarjeta DJ 1835.
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -20,8 +17,7 @@ const SUBPROCESOS = [
   { icon: '📋', titulo: 'SII',            desc: 'Cargar F29 y declaraciones del SII',                              cadencia: 'mensual', href: '/procesos/financiero/sii' },
   { icon: '🌐', titulo: 'Global',         desc: 'Movimientos de la cuenta Global 66 con CCB',                      cadencia: 'mensual', href: '/procesos/financiero/global66' },
   { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: '/procesos/financiero/dj1835' },
-  // ⚠ Sin ruta todavía: se pinta apagada y no navega.
-  { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: null, muted: true },
+  { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: '/procesos/financiero/contab' },
 ]
 
 const CAD_BADGE = {
@@ -97,8 +93,6 @@ export default function FinancieroPage() {
     <>
       <TopNav />
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: isMobile ? '16px 14px 40px' : '20px 24px 40px' }}>
-
-        {/* CABECERA */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
           <div>
             <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Financiero</h1>
@@ -109,14 +103,11 @@ export default function FinancieroPage() {
             ← Procesos
           </button>
         </div>
-
-        {/* SUBPROCESOS */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
           {SUBPROCESOS.map((s, i) => (
             <SubCard key={i} sub={s} onClick={go} isMobile={isMobile} />
           ))}
         </div>
-
       </div>
     </>
   )
