@@ -1,5 +1,6 @@
 'use client'
-// VERSION: v3 · 2026-07-23 · Fuera «Cargar liquidaciones en Portal Propietarios».
+// VERSION: v4 · 2026-07-25 · Activada la tarjeta DJ 1835 (ya tiene pantalla en /procesos/financiero/dj1835).
+// v3 · Fuera «Cargar liquidaciones en Portal Propietarios».
 // v2 · Nombres cortos (la descripción de debajo ya explica qué hace cada una). Fuera
 //   «Internacional». Nuevas: DJ 1835 y CONTAB, sin ruta todavía, así que se pintan apagadas
 //   y no navegan a ninguna parte en vez de llevar a un 404.
@@ -18,8 +19,8 @@ const SUBPROCESOS = [
   { icon: '🏦', titulo: 'B. Santander',   desc: 'Movimientos del Banco Santander con CCB',                         cadencia: 'semanal', href: '/procesos/financiero/sa' },
   { icon: '📋', titulo: 'SII',            desc: 'Cargar F29 y declaraciones del SII',                              cadencia: 'mensual', href: '/procesos/financiero/sii' },
   { icon: '🌐', titulo: 'Global',         desc: 'Movimientos de la cuenta Global 66 con CCB',                      cadencia: 'mensual', href: '/procesos/financiero/global66' },
-  // ⚠ Sin ruta todavía: se pintan apagadas y no navegan.
-  { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: null, muted: true },
+  { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: '/procesos/financiero/dj1835' },
+  // ⚠ Sin ruta todavía: se pinta apagada y no navega.
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: null, muted: true },
 ]
 
