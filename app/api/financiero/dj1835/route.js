@@ -43,6 +43,7 @@ export async function GET(req) {
       .from('vw_dj1835')
       .select(COLS)
       .eq('anio', anio)
+      .eq('declarable', true)
       .order('propietario', { ascending: true })
       .order('inmueble', { ascending: true })
     if (error) return Response.json({ error: error.message }, { status: 500 })

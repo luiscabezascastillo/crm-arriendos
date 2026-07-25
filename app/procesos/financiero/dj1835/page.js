@@ -94,7 +94,6 @@ export default function DJ1835Page() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [vista, setVista] = useState('LEGIBLE') // LEGIBLE | SII | CSV | LINEAS
-  const [soloDeclarables, setSoloDeclarables] = useState(true)
   const [congelando, setCongelando] = useState(false)
 
   useEffect(() => {
@@ -141,20 +140,17 @@ export default function DJ1835Page() {
   useEffect(() => { if (anioSel) recargar() }, [anioSel])
 
   // ------- derivados -------
-  const declarables = useMemo(() => lineas.filter(l => l.declarable), [lineas])
-  const noDeclarables = useMemo(() => lineas.filter(l => !l.declarable), [lineas])
-  const visibles = useMemo(
-    () => (soloDeclarables ? declarables : lineas),
-    [soloDeclarables, declarables, lineas]
-  )
+  // El endpoint ya devuelve SOLO declarables. Todas las líneas van a la DJ.
+  const declarables = lineas
+  const visibles = lineas
 
   const totales = useMemo(() => {
-    const n = declarables.length
-    const monto = declarables.reduce((s, l) => s + (Number(l.monto_anual) || 0), 0)
-    const sinComuna = declarables.filter(l => l.falta_comuna).length
-    const sinRutProp = declarables.filter(l => l.falta_rut_propietario).length
-    return { n, monto, sinComuna, sinRutProp, noDecl: noDeclarables.length }
-  }, [declarables, noDeclarables])
+    const n = lineas.length
+    const monto = lineas.reduce((s, l) => s + (Number(l.monto_anual) || 0), 0)
+    const sinComuna = lineas.filter(l => l.falta_comuna).length
+    const sinRutProp = lineas.filter(l => l.falta_rut_propietario).length
+    return { n, monto, sinComuna, sinRutProp }
+  }, [lineas])
 
   const congelado = !!cargaAnio?.congelado
 
@@ -248,13 +244,12 @@ export default function DJ1835Page() {
 
         {/* Totales */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-          <Tarjeta label="Casos declarables" valor={totales.n} sub={`${anioSel || ''}`} />
+          <Tarjeta label="Casos a declarar" valor={totales.n} sub={`arriendos ${anioSel || ''}`} />
           <Tarjeta label="Monto arriendo anual" valor={clp(totales.monto)} acento />
-          <Tarjeta label="No declarables" valor={totales.noDecl} sub="sin arriendo real" tenue />
           <Tarjeta
             label="Datos faltantes"
             valor={totales.sinComuna + totales.sinRutProp}
-            sub={(totales.sinComuna + totales.sinRutProp) ? `${totales.sinComuna} comuna · ${totales.sinRutProp} RUT dueño` : 'ninguno'}
+            sub={(totales.sinComuna + totales.sinRutProp) ? `${totales.sinComuna} comuna · ${totales.sinRutProp} RUT dueño` : 'todo completo'}
             alerta={(totales.sinComuna + totales.sinRutProp) > 0}
           />
         </div>
@@ -268,10 +263,6 @@ export default function DJ1835Page() {
 
           <div style={{ flex: 1 }} />
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: TENUE }}>
-            <input type="checkbox" checked={soloDeclarables} onChange={e => setSoloDeclarables(e.target.checked)} />
-            Solo declarables
-          </label>
           <button onClick={descargarCSV} style={btnPrimario}>Descargar .csv</button>
           {puedeEditar && !congelado && (
             <button onClick={congelar} disabled={congelando} style={btnSecundario}>
@@ -286,15 +277,9 @@ export default function DJ1835Page() {
         ) : (
           <div style={{ overflowX: 'auto', border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
             {vista === 'LEGIBLE' && <TablaLegible filas={visibles} />}
-            {vista === 'SII' && <TablaSII filas={soloDeclarables ? declarables : declarables} />}
+            {vista === 'SII' && <TablaSII filas={declarables} />}
             {vista === 'CSV' && <TablaCSV filas={declarables} />}
             {vista === 'LINEAS' && <TablaLineas filas={declarables} />}
-          </div>
-        )}
-
-        {vista !== 'LEGIBLE' && (
-          <div style={{ fontSize: 12, color: TENUE, marginTop: 8 }}>
-            Las vistas de formato SII solo incluyen líneas declarables ({totales.n}).
           </div>
         )}
       </div>
@@ -354,7 +339,7 @@ function TablaLegible({ filas }) {
       </thead>
       <tbody>
         {filas.map((f, i) => (
-          <tr key={f.idadmon + i} style={{ background: f.declarable ? '#fff' : '#FBFBF9' }}>
+          <tr key={f.idadmon + i}>
             <td style={td}>{f.idadmon}</td>
             <td style={{ ...td, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.inmueble}</td>
             <td style={td}>
@@ -372,13 +357,11 @@ function TablaLegible({ filas }) {
               {MESES.map(m => f[m] ? 'A' : '·').join('')}
             </td>
             <td style={td}>
-              {f.declarable
-                ? (f.falta_comuna || f.falta_rut_propietario
-                    ? <span style={{ color: AMBAR }}>
-                        faltan datos{f.falta_comuna ? ' · comuna' : ''}{f.falta_rut_propietario ? ' · RUT dueño' : ''}
-                      </span>
-                    : <span style={{ color: VERDE }}>ok</span>)
-                : <span style={{ color: TENUE }}>no se declara · {f.motivo_no_declarable}</span>}
+              {(f.falta_comuna || f.falta_rut_propietario)
+                ? <span style={{ color: AMBAR }}>
+                    faltan datos{f.falta_comuna ? ' · comuna' : ''}{f.falta_rut_propietario ? ' · RUT dueño' : ''}
+                  </span>
+                : <span style={{ color: VERDE }}>ok</span>}
             </td>
           </tr>
         ))}
