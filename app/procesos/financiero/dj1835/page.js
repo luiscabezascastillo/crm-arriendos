@@ -34,6 +34,10 @@ const AMBAR = '#9A6E00'
 
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 
+// Roles que el SII observó en la DJ 2025 (R450/V390): rol mal formado.
+// Se marcan en pantalla para revisarlos. Corregir el rol en el origen los limpia.
+const ROLES_OBSERVADOS = { 'A00695': '590-574', 'A00684': '1756-2' }
+
 // ---------- transformaciones de formato ----------
 function partirRol(rol) {
   if (!rol) return { manzana: '', predio: '' }
@@ -209,18 +213,25 @@ export default function DJ1835Page() {
           </div>
 
           {/* Selector de año */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, color: TENUE }}>Año</span>
-            <select
-              value={anioSel || ''}
-              onChange={e => setAnioSel(Number(e.target.value))}
-              style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDE}`, fontSize: 15, fontWeight: 600, color: VERDE, background: '#fff' }}
-            >
-              {anios.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-            {congelado && (
-              <span style={{ padding: '4px 10px', borderRadius: 999, background: VERDE_CLARO, color: VERDE, fontSize: 12, fontWeight: 600 }}>
-                Congelado
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, color: TENUE }}>Año de los arriendos</span>
+              <select
+                value={anioSel || ''}
+                onChange={e => setAnioSel(Number(e.target.value))}
+                style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDE}`, fontSize: 15, fontWeight: 600, color: VERDE, background: '#fff' }}
+              >
+                {anios.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+              {congelado && (
+                <span style={{ padding: '4px 10px', borderRadius: 999, background: VERDE_CLARO, color: VERDE, fontSize: 12, fontWeight: 600 }}>
+                  Congelado
+                </span>
+              )}
+            </div>
+            {anioSel && (
+              <span style={{ fontSize: 12, color: TENUE }}>
+                Arriendos {anioSel} → se declara en el Año Tributario {anioSel + 1}
               </span>
             )}
           </div>
@@ -346,7 +357,12 @@ function TablaLegible({ filas }) {
           <tr key={f.idadmon + i} style={{ background: f.declarable ? '#fff' : '#FBFBF9' }}>
             <td style={td}>{f.idadmon}</td>
             <td style={{ ...td, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.inmueble}</td>
-            <td style={td}>{f.rol}</td>
+            <td style={td}>
+              {f.rol}
+              {ROLES_OBSERVADOS[f.idadmon] && (
+                <span title="El SII observó este rol (R450/V390). Revisar formato." style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 6, background: ROJO_BG, color: ROJO, fontSize: 11, fontWeight: 600 }}>observado</span>
+              )}
+            </td>
             <td style={td}>{f.comuna_nombre || '—'} <span style={{ color: TENUE }}>{f.comuna_sii}</span></td>
             <td style={{ ...td, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.propietario}</td>
             <td style={{ ...td, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.arrendatario || <span style={{ color: TENUE }}>(extranjero)</span>}</td>
@@ -358,9 +374,11 @@ function TablaLegible({ filas }) {
             <td style={td}>
               {f.declarable
                 ? (f.falta_comuna || f.falta_rut_propietario
-                    ? <span style={{ color: AMBAR }}>faltan datos</span>
+                    ? <span style={{ color: AMBAR }}>
+                        faltan datos{f.falta_comuna ? ' · comuna' : ''}{f.falta_rut_propietario ? ' · RUT dueño' : ''}
+                      </span>
                     : <span style={{ color: VERDE }}>ok</span>)
-                : <span style={{ color: TENUE }}>{f.motivo_no_declarable}</span>}
+                : <span style={{ color: TENUE }}>no se declara · {f.motivo_no_declarable}</span>}
             </td>
           </tr>
         ))}
