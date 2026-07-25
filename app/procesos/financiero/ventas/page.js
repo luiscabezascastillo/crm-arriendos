@@ -1,4 +1,4 @@
-// VERSION: v1 · 2026-07-13 · Vista Ventas (Financiero): continua/mensual, recientes abajo, cabecera+barra fijas, filtros Excel, cargar mes, CCB editable.
+// VERSION: v2 · 2026-07-25 · Vista Ventas: + boton "Generar contabilidad" del mes (llama al endpoint CONTAB).
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -127,6 +127,8 @@ export default function VentasPage() {
   const [modo, setModo] = useState('continua')
   const [meses, setMeses] = useState([])
   const [mesSel, setMesSel] = useState(null)
+  const [generandoContab, setGenerandoContab] = useState(false)
+  const [contabMsg, setContabMsg] = useState(null)
   const [ventas, setVentas] = useState([])
   const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({})
@@ -142,6 +144,29 @@ export default function VentasPage() {
   const fileRef = useRef(null); const handleFileRef = useRef(null)
 
   const canEdit = EDITORES.includes(session?.user?.email)
+
+  // Genera los comprobantes contables de ventas del mes seleccionado.
+  // Llama al MISMO endpoint que usa CONTAB (una sola verdad).
+  const generarContab = async () => {
+    if (!canEdit || generandoContab || !mesSel) return
+    setGenerandoContab(true); setContabMsg(null)
+    try {
+      const r = await fetch('/api/financiero/contab', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origen: 'ventas', periodo: mesSel }),
+      })
+      const j = await r.json()
+      if (j.error) { setContabMsg({ error: j.error }); return }
+      const n = (j.resultado || []).length
+      const nOk = (j.resultado || []).filter(x => x.r_cuadra).length
+      setContabMsg({
+        error: j.todos_cuadran ? null : `Generados ${n}, pero ${n - nOk} no cuadran. Revisar en CONTAB.`,
+        text: `${n} comprobante(s) de ventas generados para ${mesLabel(mesSel)}, todos cuadran ✓. Ya están en CONTAB.`,
+      })
+    } catch (e) {
+      setContabMsg({ error: 'No se pudo generar la contabilidad.' })
+    } finally { setGenerandoContab(false) }
+  }
   const contentRef = useRef(null)
   const toolbarRef = useRef(null)
   const wantScroll = useRef(false)
@@ -273,9 +298,15 @@ export default function VentasPage() {
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Ventas mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar ventas del mes'}</button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+            {modo === 'mensual' && mesSel && (
+              <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
+            )}
           </div>
           {uploadMsg && (
             <div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: uploadMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${uploadMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: uploadMsg.error ? '#B23A3A' : '#085041' }}>{uploadMsg.error || uploadMsg.text}</div>
+          )}
+          {contabMsg && (
+            <div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: contabMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${contabMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: contabMsg.error ? '#B23A3A' : '#085041' }}>{contabMsg.error || contabMsg.text}</div>
           )}
         </div>
 
