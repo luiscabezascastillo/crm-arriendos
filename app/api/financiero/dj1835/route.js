@@ -48,6 +48,16 @@ export async function GET(req) {
       .order('inmueble', { ascending: true })
     if (error) return Response.json({ error: error.message }, { status: 500 })
 
+    // Pendientes de rol: se arrendaron (monto > 0) pero no tienen rol válido.
+    // No se pueden declarar hasta localizar el rol en inmuebles.
+    const { data: pendientesRol } = await admin
+      .from('vw_dj1835')
+      .select('idadmon, rol, propietario, inmueble, monto_anual, meses_arrendados')
+      .eq('anio', anio)
+      .eq('falta_rol', true)
+      .gt('monto_anual', 0)
+      .order('monto_anual', { ascending: false })
+
     // Estado de la carga (¿congelado?) de ese año
     const { data: carga } = await admin
       .from('dj1835_cargas')
@@ -55,7 +65,7 @@ export async function GET(req) {
       .eq('anio', anio)
       .maybeSingle()
 
-    return Response.json({ lineas: lineas || [], carga: carga || null })
+    return Response.json({ lineas: lineas || [], pendientesRol: pendientesRol || [], carga: carga || null })
   }
 
   // Lista de años disponibles en la vista + estado de carga de cada uno
