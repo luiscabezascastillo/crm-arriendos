@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-07-26 · Caja Chica: barra FinancieroNav + offset sticky acumulado (suma todas las barras superiores).
 // VERSION: v2 · 2026-07-14 · Caja Chica: orden por nº de fila (saldo corrido correcto) + resalte de saltos de saldo.
 'use client'
 
@@ -5,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -115,7 +117,27 @@ export default function CajaChicaPage() {
   const contentRef = useRef(null); const toolbarRef = useRef(null); const wantScroll = useRef(false); const handleFileRef = useRef(null)
   const [stickyTop, setStickyTop] = useState(0); const [toolbarH, setToolbarH] = useState(0)
 
-  useEffect(() => { const medir = () => { const prev = contentRef.current?.previousElementSibling; if (prev) { const pos = window.getComputedStyle(prev).position; setStickyTop((pos === 'fixed' || pos === 'sticky') ? Math.round(prev.getBoundingClientRect().height) : 0) } }; medir(); window.addEventListener('resize', medir); const t = setTimeout(medir, 300); return () => { window.removeEventListener('resize', medir); clearTimeout(t) } }, [status])
+  // Offset de la cabecera pegajosa. Recorre TODOS los hermanos anteriores al contenido
+  // (TopNav + FinancieroNav) y suma los que sean sticky/fixed. Antes miraba solo el hermano
+  // inmediato: con una sola barra bastaba, pero al añadir FinancieroNav la cabecera se pegaba
+  // a la altura de la nav y se metía por debajo del TopNav. Se salta el overlay de arrastre
+  // (data-overlay), que es fixed a pantalla completa y falsearía la suma.
+  useEffect(() => {
+    const medir = () => {
+      let top = 0
+      let el = contentRef.current?.previousElementSibling
+      while (el) {
+        if (!el.dataset?.overlay) {
+          const pos = window.getComputedStyle(el).position
+          if (pos === 'fixed' || pos === 'sticky') top += Math.round(el.getBoundingClientRect().height)
+        }
+        el = el.previousElementSibling
+      }
+      setStickyTop(top)
+    }
+    medir(); window.addEventListener('resize', medir); const t = setTimeout(medir, 300)
+    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
+  }, [status, isMobile])
   useEffect(() => { const m = () => { if (toolbarRef.current) setToolbarH(Math.round(toolbarRef.current.getBoundingClientRect().height)) }; m(); window.addEventListener('resize', m); const t = setTimeout(m, 350); return () => { window.removeEventListener('resize', m); clearTimeout(t) } }, [status, modo, isMobile, uploadMsg])
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
@@ -194,14 +216,15 @@ export default function CajaChicaPage() {
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); window.removeEventListener('paste', paste) }
   }, [])
 
-  if (status === 'loading') return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div></>)
+  if (status === 'loading') return (<><TopNav /><FinancieroNav activo="caja-chica" /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div></>)
   const inp = { fontSize: 13, padding: '7px 9px', borderRadius: 7, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', width: '100%' }
 
   return (
     <>
       <TopNav />
+      <FinancieroNav activo="caja-chica" />
       {dragOver && canEdit && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div data-overlay="1" style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ background: '#fff', padding: '16px 26px', borderRadius: 12, fontSize: 15, fontWeight: 700, color: '#085041', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}>⬆ Suelta el archivo para cargar</div>
         </div>
       )}

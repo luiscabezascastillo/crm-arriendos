@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-07-26 · Remuneraciones: barra FinancieroNav bajo el TopNav.
 // VERSION: v1 · 2026-07-23 · Pantalla de Remuneraciones (financiero).
 //   · Selector de meses + vista continua de todo el año.
 //   · Totales del periodo y resumen por CCB.
@@ -15,6 +16,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo, Fragment } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -240,6 +242,7 @@ export default function RemuneracionesPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
+      <FinancieroNav activo="remuneraciones" />
 
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px' }}>
 
