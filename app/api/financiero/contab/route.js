@@ -33,48 +33,67 @@ export async function GET(req) {
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const periodo = searchParams.get('periodo')
+  const periodo = searchParams.get('periodo')     // 'AAAA-MM' (un mes)
+  const anio = searchParams.get('anio')            // 'AAAA' (año completo)
   const exportar = searchParams.get('export')
   const preview = searchParams.get('preview')
 
-  // Previsualización: filas planas A-K (con descripción de cuenta), sin trocear
-  if (preview && periodo) {
-    const filas = await filasNubox(periodo)
+  // rango de periodos según alcance: un mes, o todos los del año con datos
+  const periodosRango = async () => {
+    if (periodo) return [periodo]
+    if (anio) {
+      const { data } = await admin
+        .from('contab_comprobantes').select('periodo')
+        .gte('periodo', `${anio}-01`).lte('periodo', `${anio}-12`)
+      return [...new Set((data || []).map(p => p.periodo))].sort()
+    }
+    return []
+  }
+
+  // Previsualización: filas planas A-K, ordenadas por fecha (asientos enteros)
+  if (preview) {
+    const periodos = await periodosRango()
+    if (!periodos.length) return Response.json({ error: 'No hay comprobantes en el alcance elegido.' }, { status: 200 })
+    const filas = await filasNubox(periodos, true)  // true = ordenar por fecha
     const totDebe = filas.reduce((s, f) => s + (Number(f.debe) || 0), 0)
     const totHaber = filas.reduce((s, f) => s + (Number(f.haber) || 0), 0)
     return Response.json({
-      periodo, filas,
+      alcance: periodo ? periodo : `${anio} (${periodos.length} meses)`,
+      periodos, filas,
       total_debe: totDebe, total_haber: totHaber,
-      cuadra: Math.abs(totDebe - totHaber) < 1,
-      n_lineas: filas.length,
+      cuadra: Math.abs(totDebe - totHaber) < 1, n_lineas: filas.length,
     })
   }
 
-  // Exportación a Nubox: filas planas A-J, troceadas en bloques <5000
-  if (exportar === 'nubox' && periodo) {
-    const filas = await filasNubox(periodo)
+  // Exportación a Nubox: filas ordenadas por fecha, troceadas en bloques <5000
+  if (exportar === 'nubox') {
+    const periodos = await periodosRango()
+    if (!periodos.length) return Response.json({ error: 'No hay comprobantes para exportar.' }, { status: 200 })
+    const filas = await filasNubox(periodos, true)
     const bloques = trocear(filas, LIMITE_NUBOX)
-    return Response.json({ periodo, total_filas: filas.length, n_bloques: bloques.length, bloques })
+    return Response.json({ alcance: periodo || anio, total_filas: filas.length, n_bloques: bloques.length, bloques })
   }
 
-  // Comprobantes de un periodo + cuadre por origen
-  if (periodo) {
-    const { data: comp, error } = await admin
+  // Comprobantes de un periodo (mes) o de un año + cuadre por origen
+  if (periodo || anio) {
+    let q = admin
       .from('vw_contab_cuadre')
       .select('id, origen, periodo, fecha, glosa, ccb, estado, n_lineas, total_debe, total_haber, descuadre, cuadra')
-      .eq('periodo', periodo)
-      .order('origen', { ascending: true })
-      .order('ccb', { ascending: true })
+    if (periodo) q = q.eq('periodo', periodo)
+    else q = q.gte('periodo', `${anio}-01`).lte('periodo', `${anio}-12`)
+    const { data: comp, error } = await q
+      .order('periodo', { ascending: true }).order('origen', { ascending: true }).order('ccb', { ascending: true })
     if (error) return Response.json({ error: error.message }, { status: 500 })
 
-    // resumen por origen
     const porOrigen = {}
     for (const c of (comp || [])) {
-      const o = porOrigen[c.origen] ||= { origen: c.origen, n_comp: 0, debe: 0, haber: 0, todos_cuadran: true }
+      const o = porOrigen[c.origen] ||= { origen: c.origen, n_comp: 0, debe: 0, haber: 0, todos_cuadran: true, meses: new Set() }
       o.n_comp++; o.debe += Number(c.total_debe) || 0; o.haber += Number(c.total_haber) || 0
+      o.meses.add(c.periodo)
       if (!c.cuadra) o.todos_cuadran = false
     }
-    return Response.json({ periodo, comprobantes: comp || [], resumen: Object.values(porOrigen), origenes: Object.keys(GENERADORES) })
+    const resumen = Object.values(porOrigen).map(o => ({ ...o, n_meses: o.meses.size, meses: undefined }))
+    return Response.json({ alcance: periodo || anio, comprobantes: comp || [], resumen, origenes: Object.keys(GENERADORES) })
   }
 
   // Sin periodo: lista de periodos con comprobantes + orígenes disponibles
@@ -106,16 +125,27 @@ export async function POST(req) {
   return Response.json({ ok: true, origen, periodo, resultado: data || [], todos_cuadran: cuadran })
 }
 
-// Construye las filas planas formato Nubox (A-J) + descripción de cuenta (K).
-async function filasNubox(periodo) {
+// Construye filas planas Nubox (A-K) de uno o varios periodos.
+// Si ordenarFecha, los comprobantes se ordenan por fecha de cabecera (asientos enteros).
+async function filasNubox(periodos, ordenarFecha = false) {
+  const lista = Array.isArray(periodos) ? periodos : [periodos]
   const { data: comps } = await admin
     .from('contab_comprobantes')
-    .select('id, tipo, fecha, glosa, orden, origen')
-    .eq('periodo', periodo)
-    .order('origen', { ascending: true })
-    .order('orden', { ascending: true })
-    .order('id', { ascending: true })
+    .select('id, tipo, fecha, glosa, orden, origen, ccb, periodo')
+    .in('periodo', lista)
   if (!comps?.length) return []
+
+  // ordenar comprobantes: por fecha (y luego origen/id) o por origen/orden
+  comps.sort((a, b) => {
+    if (ordenarFecha) {
+      if (a.fecha !== b.fecha) return a.fecha < b.fecha ? -1 : 1
+      if (a.origen !== b.origen) return a.origen < b.origen ? -1 : 1
+      return a.id - b.id
+    }
+    if (a.origen !== b.origen) return a.origen < b.origen ? -1 : 1
+    if (a.orden !== b.orden) return a.orden - b.orden
+    return a.id - b.id
+  })
 
   const ids = comps.map(c => c.id)
   const { data: lineas } = await admin
@@ -125,7 +155,6 @@ async function filasNubox(periodo) {
     .order('sub_orden', { ascending: true })
     .order('id', { ascending: true })
 
-  // descripciones de cuenta desde el plan (para la columna K)
   const { data: plan } = await admin
     .from('contab_plan_cuentas').select('codigo, descripcion')
   const descCuenta = {}
@@ -141,9 +170,12 @@ async function filasNubox(periodo) {
       const cabecera = i === 0
       filas.push({
         comp_id: c.id,
+        origen: c.origen,               // para filtros
+        periodo: c.periodo,
         numero: cabecera ? 0 : '',
         tipo: cabecera ? c.tipo : '',
         fecha: cabecera ? c.fecha : '',
+        fecha_orden: c.fecha,           // fecha del asiento en todas sus líneas (para filtrar/ordenar)
         glosa: cabecera ? c.glosa : '',
         cuenta: l.cuenta,
         glosa_detalle: l.glosa_detalle || '',
@@ -151,7 +183,7 @@ async function filasNubox(periodo) {
         sucursal: '',
         debe: Number(l.debe) || 0,
         haber: Number(l.haber) || 0,
-        desc_cuenta: descCuenta[l.cuenta] || '',   // columna K
+        desc_cuenta: descCuenta[l.cuenta] || '',
       })
     })
   }
