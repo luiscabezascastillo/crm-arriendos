@@ -1,3 +1,14 @@
+// VERSION: v6 · 2026-07-26 · Compras: carga directa de los CSV del Registro de Compras del SII.
+//   · Acepta RCV_COMPRA_REGISTRO_<rut>_<AAAAMM>_<tipo>.csv ademas del Excel de siempre.
+//   · tipo_doc y periodo salen del NOMBRE del archivo, no de los datos:
+//       - la columna "Tipo Compra" del CSV vale siempre "Del Giro" y NO es un tipo de
+//         documento (de ahi las 29 filas historicas con tipo_doc = 'Del Giro');
+//       - la fecha del documento no marca el periodo tributario: en el registro de
+//         junio hay facturas fechadas en mayo.
+//   · Captura los impuestos adicionales (Codigo/Valor Otro Impuesto, p.ej. cod. 28
+//     combustibles) que hasta ahora se perdian: total = exento + neto + iva + otro.
+//   · Sube ccb y cuenta vacios: los completa Karina (o la memoria por RUT).
+//   · La deduplicacion la hace el endpoint (devuelve nuevas/duplicadas/total).
 // VERSION: v5 · 2026-07-26 · Compras: aviso de arrastrar/pegar + cabecera FinancieroHeader.
 //   El soporte de arrastrar y pegar YA existia (dragover/drop/paste + overlay), pero no se
 //   anunciaba en ningun sitio, asi que nadie lo usaba. Solo faltaba decirlo.
@@ -30,6 +41,79 @@ function fechaISO(v) {
   let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/); if (m) return `${m[3]}-${m[2]}-${m[1]}`
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`
   return null
+}
+
+// Parte una linea de CSV con ; respetando comillas.
+function partirCSV(linea) {
+  const out = []; let cur = ''; let q = false
+  for (let i = 0; i < linea.length; i++) {
+    const ch = linea[i]
+    if (ch === '"') { if (q && linea[i + 1] === '"') { cur += '"'; i++ } else q = !q }
+    else if (ch === ';' && !q) { out.push(cur); cur = '' }
+    else cur += ch
+  }
+  out.push(cur); return out
+}
+
+// Lee un CSV del Registro de Compras del SII: RCV_COMPRA_REGISTRO_<rut>_<AAAAMM>_<tipo>.csv
+// El tipo de documento (33 factura, 34 exenta, 61 nota de credito) y el periodo
+// tributario van en el NOMBRE del archivo. No lo renombres al descargarlo.
+async function parseComprasSII(file) {
+  if (/RCV[_ ]?VENTA/i.test(file.name)) {
+    throw new Error('Este es el registro de VENTAS del SII. Subelo en la pantalla de Ventas.')
+  }
+  const m = file.name.match(/_(\d{6})_(\d{2,3})(?!\d)/)
+  if (!m) throw new Error('El nombre no tiene el formato del SII (…_AAAAMM_TIPO.csv). Descargalo otra vez sin renombrarlo.')
+  const periodo = m[1]
+  const tipoDoc = String(Number(m[2]))
+  const mes = periodo.slice(0, 4) + '-' + periodo.slice(4)
+
+  const texto = (await file.text()).replace(/^\uFEFF/, '')
+  const lineas = texto.split(/\r?\n/).filter(l => l.trim() !== '')
+  if (lineas.length < 2) throw new Error('El archivo no tiene filas de datos.')
+
+  const H = partirCSV(lineas[0]).map(h => h.trim().toUpperCase())
+  const exact = (n) => H.indexOf(n)
+  const has = (...subs) => H.findIndex(h => subs.every(s => h.includes(s)))
+  const pick = (nombre, ...subs) => { const i = exact(nombre); return i >= 0 ? i : has(...subs) }
+  const C = {
+    folio:  pick('FOLIO', 'FOLIO'),
+    rut:    pick('RUT PROVEEDOR', 'RUT'),
+    prov:   pick('RAZON SOCIAL', 'RAZON'),
+    fecha:  pick('FECHA DOCTO', 'FECHA', 'DOCTO'),
+    exento: pick('MONTO EXENTO', 'EXENTO'),
+    neto:   pick('MONTO NETO', 'MONTO', 'NETO'),
+    iva:    pick('MONTO IVA RECUPERABLE', 'IVA', 'RECUPERABLE'),
+    total:  pick('MONTO TOTAL', 'MONTO', 'TOTAL'),
+    otroV:  pick('VALOR OTRO IMPUESTO', 'VALOR', 'OTRO'),
+    otroC:  pick('CODIGO OTRO IMPUESTO', 'CODIGO', 'OTRO'),
+  }
+  if (C.folio < 0 || C.rut < 0) throw new Error('No encontre las columnas Folio / RUT Proveedor. ¿Es el Registro de Compras del SII?')
+
+  const g = (r, i) => (i >= 0 && i < r.length) ? r[i] : ''
+  const num = (v) => { const t = String(v == null ? '' : v).trim(); if (!t) return 0; const n = Number(t.replace(/\./g, '').replace(',', '.')); return isNaN(n) ? 0 : Math.round(n) }
+  const txt = (v) => { const t = String(v == null ? '' : v).trim(); return t === '' ? null : t }
+
+  const compras = []
+  let saltadas = 0
+  for (let i = 1; i < lineas.length; i++) {
+    const r = partirCSV(lineas[i]).slice(0, H.length)
+    const folio = num(g(r, C.folio))
+    const rut = txt(g(r, C.rut))
+    const fecha = fechaISO(g(r, C.fecha))
+    if (!folio || !rut || !fecha) { saltadas++; continue }
+    compras.push({
+      folio, tipo_doc: tipoDoc, fecha, rut,
+      proveedor: txt(g(r, C.prov)),
+      ccb: null, cuenta: null, pagado_por: null,
+      exento: num(g(r, C.exento)), neto: num(g(r, C.neto)),
+      iva: num(g(r, C.iva)), total: num(g(r, C.total)),
+      otro_impuesto: num(g(r, C.otroV)), cod_otro_impuesto: txt(g(r, C.otroC)),
+      estado: null, glosa: null, mes,
+    })
+  }
+  if (!compras.length) throw new Error('No pude leer ninguna fila valida del CSV.')
+  return { archivo: file.name, compras, mes, tipoDoc, saltadas }
 }
 
 // Lee un Libro de Compra (formato SII completo o mensual). Cabecera detectada dinámicamente, mapeo por nombre.
@@ -173,13 +257,21 @@ const wantScroll = useRef(false)
     if (!canEdit) { setUploadMsg({ error: 'No tienes permiso para cargar.' }); return }
     setUploading(true); setUploadMsg(null)
     try {
-      const XLSX = await import('xlsx')
-      const { compras: parsed, archivo } = await parseCompras(file, XLSX)
+      let parsed, archivo, extra = ''
+      if (/\.csv$/i.test(file.name)) {
+        const r = await parseComprasSII(file)
+        parsed = r.compras; archivo = r.archivo
+        extra = ` · SII tipo ${r.tipoDoc}, periodo ${r.mes}` + (r.saltadas ? `, ${r.saltadas} fila(s) ilegible(s)` : '')
+      } else {
+        const XLSX = await import('xlsx')
+        const r = await parseCompras(file, XLSX)
+        parsed = r.compras; archivo = r.archivo
+      }
       if (!parsed.length) { setUploadMsg({ error: 'No encontré compras en el archivo.' }); return }
       const res = await fetch('/api/financiero/compras', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ compras: parsed, archivo }) })
       const d = await res.json()
       if (!res.ok) { setUploadMsg({ error: d.error || 'No se pudo cargar.' }); return }
-      setUploadMsg({ text: `${d.nuevas} compra(s) nueva(s), ${d.duplicadas} ya estaban, ${d.total} en el archivo.` })
+      setUploadMsg({ text: `${d.nuevas} compra(s) nueva(s), ${d.duplicadas} ya estaban, ${d.total} en el archivo.` + extra })
       fetch('/api/financiero/compras').then(r => r.json()).then(x => setMeses(x.meses || [])).catch(() => {})
       cargar()
     } catch (err) { setUploadMsg({ error: String(err?.message || err) }) } finally { setUploading(false) }
@@ -225,9 +317,9 @@ const wantScroll = useRef(false)
           )}
         </>}
         acciones={<>
-          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir, arrastrar o pegar un Libro de Compra mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar compras del mes'}</button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
-          {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel de compras</span>}
+          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Excel del Libro de Compra, o CSV del Registro de Compras del SII (RCV_COMPRA_...)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar compras del mes'}</button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFileInput} style={{ display: 'none' }} />
+          {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel, o los CSV del SII (uno por tipo)</span>}
         </>}
         metricas={[
           { label: 'Compras', valor: resumen.n },
