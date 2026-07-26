@@ -54,9 +54,11 @@ export default function ContabPage() {
   const [comprobantes, setComprobantes] = useState([])
   const [resumen, setResumen] = useState([])
   const [cargando, setCargando] = useState(false)
-  const [generando, setGenerando] = useState(null) // id del origen que se está generando
+  const [generando, setGenerando] = useState(null)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
+  const [preview, setPreview] = useState(null)   // {filas, total_debe, total_haber, cuadra}
+  const [cargandoPreview, setCargandoPreview] = useState(false)
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/') }, [status, router])
 
@@ -104,13 +106,25 @@ export default function ContabPage() {
     } finally { setGenerando(null) }
   }
 
+  const previsualizar = async () => {
+    setCargandoPreview(true); setAviso(null)
+    try {
+      const r = await fetch(`/api/financiero/contab?preview=1&periodo=${periodo}`)
+      const j = await r.json()
+      if (j.error) { setAviso({ tipo: 'error', txt: j.error }); return }
+      if (!j.filas?.length) { setAviso({ tipo: 'error', txt: 'No hay comprobantes para previsualizar.' }); return }
+      setPreview(j)
+    } catch (e) {
+      setAviso({ tipo: 'error', txt: 'No se pudo previsualizar.' })
+    } finally { setCargandoPreview(false) }
+  }
+
   const exportarNubox = async () => {
     try {
       const r = await fetch(`/api/financiero/contab?export=nubox&periodo=${periodo}`)
       const j = await r.json()
       if (j.error) { setAviso({ tipo: 'error', txt: j.error }); return }
       if (!j.bloques?.length) { setAviso({ tipo: 'error', txt: 'No hay comprobantes para exportar.' }); return }
-      // un archivo por bloque
       j.bloques.forEach((bloque, i) => {
         const cab = ['Número', 'Tipo', 'Fecha', 'Glosa', 'Cuenta Detalle', 'Glosa Detalle', 'Centro Costo', 'Sucursal', 'Debe', 'Haber']
         const filas = bloque.map(f => [
@@ -209,8 +223,8 @@ export default function ContabPage() {
               {' '}<span style={{ color: totalGeneral.todos ? VERDE : ROJO }}>{totalGeneral.todos ? 'todos cuadran ✓' : 'hay descuadres ✗'}</span>
             </div>
             <div style={{ flex: 1 }} />
-            <button onClick={exportarNubox} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-              Exportar a Nubox
+            <button onClick={previsualizar} disabled={cargandoPreview} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: cargandoPreview ? 0.6 : 1 }}>
+              {cargandoPreview ? 'Preparando…' : 'Previsualizar Nubox'}
             </button>
           </div>
         )}
@@ -253,6 +267,77 @@ export default function ContabPage() {
           </div>
         )}
       </div>
+
+      {/* ---- Vista de previsualización Nubox ---- */}
+      {preview && (
+        <PreviewNubox
+          preview={preview}
+          periodo={periodo}
+          onCerrar={() => setPreview(null)}
+          onExportar={exportarNubox}
+        />
+      )}
+    </div>
+  )
+}
+
+// Vista previa estilo Nubox: A-K con colores, antes de exportar.
+function PreviewNubox({ preview, periodo, onCerrar, onExportar }) {
+  const { filas, total_debe, total_haber, cuadra, n_lineas } = preview
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', flexDirection: 'column', padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 12, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        {/* Cabecera de la previsualización */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: `1px solid ${BORDE}`, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#1A1A17' }}>Previsualización Nubox · {periodo}</div>
+            <div style={{ fontSize: 13, color: TENUE }}>
+              {n_lineas} líneas · debe {clp(total_debe)} · haber {clp(total_haber)}{' '}
+              <span style={{ color: cuadra ? VERDE : ROJO, fontWeight: 600 }}>{cuadra ? 'cuadra ✓' : 'descuadre ✗'}</span>
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onExportar} disabled={!cuadra} title={cuadra ? 'Exportar el archivo Nubox' : 'No cuadra: revisa antes de exportar'} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: cuadra ? VERDE : '#B4B2A9', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cuadra ? 'pointer' : 'default' }}>
+            Exportar a Nubox
+          </button>
+          <button onClick={onCerrar} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${BORDE}`, background: '#fff', color: '#1A1A17', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cerrar</button>
+        </div>
+
+        {/* Tabla estilo Nubox */}
+        <div style={{ overflow: 'auto', flex: 1 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+              <tr>
+                <th style={thN}>Número</th>
+                <th style={thM}>Tipo</th><th style={thM}>Fecha</th><th style={thM}>Glosa</th>
+                <th style={thV}>Cuenta</th><th style={thV}>Glosa Detalle</th><th style={thV}>Centro Costo</th>
+                <th style={thV}>Sucursal</th><th style={{ ...thV, textAlign: 'right' }}>Debe</th><th style={{ ...thV, textAlign: 'right' }}>Haber</th>
+                <th style={thK}>Descripción cuenta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((f, i) => {
+                const esCab = f.numero === 0 || f.numero === '0'
+                return (
+                  <tr key={i} style={{ borderTop: esCab ? `2px solid ${BORDE}` : 'none' }}>
+                    <td style={tdN}>{esCab ? 0 : ''}</td>
+                    <td style={tdM}>{f.tipo}</td>
+                    <td style={tdM}>{f.fecha ? fechaCL(f.fecha) : ''}</td>
+                    <td style={{ ...tdM, fontWeight: esCab ? 600 : 400 }}>{f.glosa}</td>
+                    <td style={tdV}>{f.cuenta}</td>
+                    <td style={tdV}>{f.glosa_detalle}</td>
+                    <td style={tdV}>{f.centro_costo}</td>
+                    <td style={tdV}>{f.sucursal}</td>
+                    <td style={{ ...tdV, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{f.debe ? clp(f.debe) : ''}</td>
+                    <td style={{ ...tdV, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{f.haber ? clp(f.haber) : ''}</td>
+                    <td style={tdK}>{f.desc_cuenta}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
@@ -266,3 +351,19 @@ function fechaCL(f) {
 
 const th = { textAlign: 'left', padding: '10px 12px', fontSize: 12, fontWeight: 600, color: TENUE, borderBottom: `1px solid ${BORDE}`, whiteSpace: 'nowrap', background: '#FBFBF9' }
 const td = { padding: '9px 12px', fontSize: 13, color: '#1A1A17', borderBottom: `1px solid ${BORDE}`, whiteSpace: 'nowrap' }
+
+// Colores de la previsualización Nubox
+const MORADO = '#EEEBF7'      // B,C,D fondo morado suave
+const MORADO_TH = '#E0DAF0'
+const VERDE_BG = '#E6F4EA'    // E-J fondo verde
+const VERDE_TH = '#D3EAD9'
+const celdaBase = { padding: '5px 9px', borderBottom: '1px solid #EDEDEA', borderRight: '1px solid #EDEDEA', whiteSpace: 'nowrap' }
+const thBase = { padding: '7px 9px', fontSize: 11, fontWeight: 700, color: '#2C2C2A', borderBottom: '1px solid #D3D1C7', borderRight: '1px solid #D3D1C7', whiteSpace: 'nowrap', textAlign: 'left' }
+const thN = { ...thBase, background: '#F0EFEA' }
+const tdN = { ...celdaBase, background: '#FBFBF9', color: TENUE, textAlign: 'right' }
+const thM = { ...thBase, background: MORADO_TH }
+const tdM = { ...celdaBase, background: MORADO }
+const thV = { ...thBase, background: VERDE_TH }
+const tdV = { ...celdaBase, background: VERDE_BG }
+const thK = { ...thBase, background: '#F0EFEA' }
+const tdK = { ...celdaBase, background: '#fff', color: '#555' }

@@ -35,11 +35,24 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url)
   const periodo = searchParams.get('periodo')
   const exportar = searchParams.get('export')
+  const preview = searchParams.get('preview')
+
+  // Previsualización: filas planas A-K (con descripción de cuenta), sin trocear
+  if (preview && periodo) {
+    const filas = await filasNubox(periodo)
+    const totDebe = filas.reduce((s, f) => s + (Number(f.debe) || 0), 0)
+    const totHaber = filas.reduce((s, f) => s + (Number(f.haber) || 0), 0)
+    return Response.json({
+      periodo, filas,
+      total_debe: totDebe, total_haber: totHaber,
+      cuadra: Math.abs(totDebe - totHaber) < 1,
+      n_lineas: filas.length,
+    })
+  }
 
   // Exportación a Nubox: filas planas A-J, troceadas en bloques <5000
   if (exportar === 'nubox' && periodo) {
     const filas = await filasNubox(periodo)
-    // trocear en bloques respetando que un comprobante no se parta
     const bloques = trocear(filas, LIMITE_NUBOX)
     return Response.json({ periodo, total_filas: filas.length, n_bloques: bloques.length, bloques })
   }
@@ -93,7 +106,7 @@ export async function POST(req) {
   return Response.json({ ok: true, origen, periodo, resultado: data || [], todos_cuadran: cuadran })
 }
 
-// Construye las filas planas formato Nubox (A-J) de un periodo, todos los orígenes.
+// Construye las filas planas formato Nubox (A-J) + descripción de cuenta (K).
 async function filasNubox(periodo) {
   const { data: comps } = await admin
     .from('contab_comprobantes')
@@ -112,6 +125,12 @@ async function filasNubox(periodo) {
     .order('sub_orden', { ascending: true })
     .order('id', { ascending: true })
 
+  // descripciones de cuenta desde el plan (para la columna K)
+  const { data: plan } = await admin
+    .from('contab_plan_cuentas').select('codigo, descripcion')
+  const descCuenta = {}
+  for (const p of (plan || [])) descCuenta[p.codigo] = p.descripcion
+
   const porComp = {}
   for (const l of (lineas || [])) (porComp[l.comprobante_id] ||= []).push(l)
 
@@ -121,8 +140,8 @@ async function filasNubox(periodo) {
     ls.forEach((l, i) => {
       const cabecera = i === 0
       filas.push({
-        comp_id: c.id,               // para no partir el comprobante al trocear
-        numero: cabecera ? 0 : '',   // Número=0 solo primera línea; Nubox renumera
+        comp_id: c.id,
+        numero: cabecera ? 0 : '',
         tipo: cabecera ? c.tipo : '',
         fecha: cabecera ? c.fecha : '',
         glosa: cabecera ? c.glosa : '',
@@ -132,6 +151,7 @@ async function filasNubox(periodo) {
         sucursal: '',
         debe: Number(l.debe) || 0,
         haber: Number(l.haber) || 0,
+        desc_cuenta: descCuenta[l.cuenta] || '',   // columna K
       })
     })
   }
