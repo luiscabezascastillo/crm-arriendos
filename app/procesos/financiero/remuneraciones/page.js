@@ -1,3 +1,8 @@
+// VERSION: v4 · 2026-07-26 · Remuneraciones: los años salen del CALENDARIO, no de los datos.
+//   La v3 sacaba la lista de años de las cargas existentes, asi que 2026 no aparecia
+//   por no tener ningun libro: justo el año que interesa y justo donde el aviso de
+//   "meses sin cargar" tiene sentido. Ahora van del primer año con datos hasta el
+//   año en curso, haya o no libros, y un año entero vacio se ve como tal.
 // VERSION: v3 · 2026-07-26 · Remuneraciones: selector de periodo compacto.
 //   Antes: una tira con un boton por mes cargado (13 con 2025) mas un candado repetido
 //   en cada uno. No escalaba (con 2026 serian 25), los meses cambiaban de sitio segun
@@ -137,13 +142,20 @@ export default function RemuneracionesPage() {
     [cargas, cargaSel]
   )
   // Años disponibles y mapa mes -> carga, para la rejilla de 12 posiciones fijas.
+  // Los años vienen del calendario: del primero con datos hasta el actual, aunque
+  // esten vacios. Si dependieran de las cargas, un año sin libros seria invisible.
   const anios = useMemo(() => {
-    const s = new Set(cargas.map(c => anioDe(c.periodo)))
-    return Array.from(s).sort((a, b) => b - a)
+    const hoy = new Date().getFullYear()
+    const conDatos = cargas.map(c => anioDe(c.periodo))
+    const desde = conDatos.length ? Math.min(...conDatos, hoy) : hoy
+    const out = []
+    for (let a = hoy; a >= desde; a--) out.push(a)
+    return out
   }, [cargas])
 
   const anioActivo = anioVista != null ? anioVista
     : (cargaSel !== 'TODAS' && cargaActual ? anioDe(cargaActual.periodo) : (anios[0] || new Date().getFullYear()))
+  const anioVacio = cargas.every(c => anioDe(c.periodo) !== anioActivo)
 
   const porMes = useMemo(() => {
     const m = {}
@@ -346,6 +358,11 @@ export default function RemuneracionesPage() {
                   ))}
                 </div>
 
+                {anioVacio && (
+                  <div style={{ fontSize: 11, color: '#9A6E00', background: '#FDF6E3', border: '1px solid #EFE0B8', borderRadius: 8, padding: '6px 9px', marginBottom: 8 }}>
+                    Sin ningún libro cargado en {anioActivo}.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
                   {MESES_CORTOS.map((nombre, i) => {
                     const c = porMes[i + 1]
