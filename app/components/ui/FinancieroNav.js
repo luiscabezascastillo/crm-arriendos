@@ -1,11 +1,20 @@
-// VERSION: v1 · 2026-07-26 · Subnavegación de Financiero.
+// VERSION: v2 · 2026-07-26 · FinancieroNav: se pega DEBAJO del TopNav (top medido, no 0).
+//   El v1 usaba top: 0, que es la misma coordenada a la que ya esta clavado el TopNav:
+//   al hacer scroll la barra se metia detras (el TopNav tiene mas z-index) y desaparecia
+//   en TODAS las pantallas financieras. Ahora mide la altura de las barras superiores
+//   pegajosas y se coloca justo debajo. Sin numeros fijos: si el TopNav cambia de alto
+//   (movil, wrap, menu desplegado) se recalcula solo via ResizeObserver.
+//
 // Barra de pestañas (icono + texto) que va bajo el TopNav en todas las
 // pantallas financieras. Resalta la activa; las sin ruta se ven en gris.
 // Uso: <FinancieroNav activo="ventas" />  (el 'activo' = id del módulo actual)
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+
+// useLayoutEffect avisa en SSR; en servidor cae a useEffect.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 
 const MODULOS = [
   { id: 'ventas',         icon: '🧾', label: 'Ventas',      href: '/procesos/financiero/ventas' },
@@ -27,7 +36,9 @@ const TENUE = '#888780'
 
 export default function FinancieroNav({ activo }) {
   const router = useRouter()
+  const ref = useRef(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [top, setTop] = useState(0)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -35,9 +46,43 @@ export default function FinancieroNav({ activo }) {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Suma la altura de TODOS los hermanos anteriores que sean sticky/fixed
+  // (normalmente solo el TopNav) y se pega justo debajo.
+  useIsoLayoutEffect(() => {
+    const medir = () => {
+      let alto = 0
+      let el = ref.current?.previousElementSibling
+      while (el) {
+        const pos = window.getComputedStyle(el).position
+        if (pos === 'sticky' || pos === 'fixed') {
+          alto += Math.round(el.getBoundingClientRect().height)
+        }
+        el = el.previousElementSibling
+      }
+      setTop(alto)
+    }
+
+    medir()
+    window.addEventListener('resize', medir)
+    const t = setTimeout(medir, 300)   // por si las fuentes recolocan el TopNav
+
+    let ro = null
+    const prev = ref.current?.previousElementSibling
+    if (prev && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(medir)
+      ro.observe(prev)
+    }
+
+    return () => {
+      window.removeEventListener('resize', medir)
+      clearTimeout(t)
+      if (ro) ro.disconnect()
+    }
+  }, [])
+
   return (
-    <div style={{
-      position: 'sticky', top: 0, zIndex: 30, background: '#fff',
+    <div ref={ref} style={{
+      position: 'sticky', top, zIndex: 20, background: '#fff',
       borderBottom: `1px solid ${BORDE}`, overflowX: 'auto',
     }}>
       <div style={{
