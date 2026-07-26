@@ -1,10 +1,7 @@
-// VERSION: v6 · 2026-07-26 · Ventas: arreglado el tope de 1000 filas + filtros estilo Excel.
-//   · PROBLEMA: en modo Continua se pedia ?todas=1 y Supabase devuelve como maximo
-//     1000 filas por peticion. Con mas de 1000 ventas solo llegaban las 1000 MAS
-//     ANTIGUAS, asi que 2026 no aparecia ni subiendo ni bajando: no salia de la base.
-//   · APAÑO (sin tocar el endpoint): en Continua se pide MES A MES en paralelo y se
-//     concatena. Cada mes esta muy por debajo de 1000, asi que no hay recorte.
-//     El arreglo de fondo es paginar con .range() en app/api/financiero/ventas/route.js.
+// VERSION: v7 · 2026-07-26 · Ventas: filtros estilo Excel. Vuelve a una sola peticion.
+//   · El tope de 1000 filas de Supabase esta resuelto EN EL ENDPOINT (route.js v2,
+//     lectura paginada con .range()). La v6 lo esquivaba pidiendo mes a mes desde el
+//     navegador, pero no servia: la lista de meses tambien venia recortada.
 //   · Filtros de cabecera estilo Excel: ordenar A-Z / Z-A, buscador sobre la LISTA de
 //     valores, recuento por valor y sin el tope de 40 distintos.
 //   · Orden por defecto: fecha ascendente con scroll al fondo (lo reciente abajo).
@@ -216,32 +213,16 @@ export default function VentasPage() {
     fetch('/api/financiero/ventas').then(r => r.json()).then(d => { const l = d.meses || []; setMeses(l); if (l.length && mesSel == null) setMesSel(l[0].mes) }).catch(() => {})
   }, [status]) // eslint-disable-line
 
-  // Supabase devuelve 1000 filas como maximo por peticion. En Continua se pide
-  // MES A MES en paralelo y se concatena, para que no falten los meses recientes.
-  const cargar = async () => {
+  const cargar = () => {
+    const url = modo === 'continua' ? '/api/financiero/ventas?todas=1' : (mesSel ? `/api/financiero/ventas?mes=${mesSel}` : null)
+    if (!url) return
     setLoading(true)
-    try {
-      let filas = []
-      if (modo === 'continua') {
-        let lista = meses
-        if (!lista.length) {
-          const d0 = await fetch('/api/financiero/ventas').then(r => r.json()).catch(() => ({}))
-          lista = d0.meses || []
-          if (lista.length) setMeses(lista)
-        }
-        const partes = await Promise.all(lista.map(m =>
-          fetch(`/api/financiero/ventas?mes=${m.mes}`).then(r => r.json()).then(d => d.ventas || []).catch(() => [])
-        ))
-        filas = partes.flat()
-      } else if (mesSel) {
-        const d = await fetch(`/api/financiero/ventas?mes=${mesSel}`).then(r => r.json()).catch(() => ({}))
-        filas = d.ventas || []
-      }
-      setVentas(filas)
+    fetch(url).then(r => r.json()).then(d => {
+      setVentas(d.ventas || [])
       if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) }
-    } finally { setLoading(false) }
+    }).finally(() => setLoading(false))
   }
-  useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status, meses.length]) // eslint-disable-line
+  useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
   const resumen = useMemo(() => {
     const r = { n: ventas.length, neto: 0, iva: 0, total: 0, revisar: 0 }

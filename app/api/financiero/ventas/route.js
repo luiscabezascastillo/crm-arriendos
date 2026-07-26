@@ -1,3 +1,12 @@
+// VERSION: v2 · 2026-07-26 · API Ventas: lectura PAGINADA. Supabase (PostgREST) devuelve
+//   como maximo 1000 filas por peticion. Las dos lecturas del GET no paginaban:
+//     1) la de ventas -> con mas de 1000 registros solo llegaban las 1000 mas antiguas,
+//        asi que 2026 no salia de la base de datos;
+//     2) la de meses  -> se calculaba contando filas en memoria sobre esas mismas 1000,
+//        de modo que el selector "mensual" ni siquiera sabia que 2026 existia.
+//   Ahora ambas leen por bloques de 1000 con .range() hasta agotar los datos.
+//   El orden lleva 'id' como desempate: sin un orden estable, paginar puede repetir
+//   o saltarse filas entre bloques.
 // VERSION: v1 · 2026-07-13 · API Ventas (Financiero). GET: meses / ventas (por mes o todas) · PUT: editar venta · POST: cargar ventas del mes.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
@@ -12,6 +21,24 @@ const admin = createClient(
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const COLS = 'id, folio, tipo_doc, fecha, ccb, idadmon, rut, receptor, neto, iva, total, revision, glosa, mes'
 
+const PAGINA = 1000
+const TOPE = 200000   // cortafuegos por si algo se descontrola
+
+// Lee en bloques hasta que un bloque venga incompleto.
+// Recibe una FUNCION que construye la consulta: los query builders de Supabase
+// son de un solo uso, hay que rehacerlos en cada vuelta.
+async function leerTodo(construir) {
+  const filas = []
+  for (let desde = 0; desde < TOPE; desde += PAGINA) {
+    const { data, error } = await construir().range(desde, desde + PAGINA - 1)
+    if (error) throw new Error(error.message)
+    const lote = data || []
+    filas.push(...lote)
+    if (lote.length < PAGINA) break
+  }
+  return filas
+}
+
 export async function GET(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -21,22 +48,31 @@ export async function GET(req) {
   const mes = searchParams.get('mes')
   const todas = searchParams.get('todas')
 
-  if (mes || todas) {
-    let q = admin.from('ventas').select(COLS)
-    if (mes) q = q.eq('mes', mes)
-    q = q.order('fecha', { ascending: true }).order('folio', { ascending: true })
-    const { data, error } = await q
-    if (error) return Response.json({ error: error.message }, { status: 500 })
-    return Response.json({ ventas: data })
-  }
+  try {
+    if (mes || todas) {
+      const ventas = await leerTodo(() => {
+        let q = admin.from('ventas').select(COLS)
+        if (mes) q = q.eq('mes', mes)
+        return q.order('fecha', { ascending: true })
+                .order('folio', { ascending: true })
+                .order('id', { ascending: true })
+      })
+      return Response.json({ ventas, total: ventas.length })
+    }
 
-  // Lista de meses (para el selector "mensual")
-  const { data, error } = await admin.from('ventas').select('mes')
-  if (error) return Response.json({ error: error.message }, { status: 500 })
-  const counts = {}
-  for (const r of (data || [])) { if (r.mes) counts[r.mes] = (counts[r.mes] || 0) + 1 }
-  const meses = Object.entries(counts).map(([mes, n]) => ({ mes, n })).sort((a, b) => b.mes.localeCompare(a.mes))
-  return Response.json({ meses })
+    // Lista de meses (para el selector "mensual"), tambien paginada.
+    const filas = await leerTodo(() =>
+      admin.from('ventas').select('mes').order('id', { ascending: true })
+    )
+    const counts = {}
+    for (const r of filas) { if (r.mes) counts[r.mes] = (counts[r.mes] || 0) + 1 }
+    const meses = Object.entries(counts)
+      .map(([mes, n]) => ({ mes, n }))
+      .sort((a, b) => b.mes.localeCompare(a.mes))
+    return Response.json({ meses, total: filas.length })
+  } catch (e) {
+    return Response.json({ error: String(e?.message || e) }, { status: 500 })
+  }
 }
 
 export async function PUT(req) {
@@ -88,8 +124,14 @@ export async function POST(req) {
   }
   if (!rows.length) return Response.json({ error: 'No hay ventas válidas (con folio y fecha)' }, { status: 400 })
 
-  const { data, error } = await admin.from('ventas').upsert(rows, { onConflict: 'tipo_doc,folio', ignoreDuplicates: true }).select('id')
-  if (error) return Response.json({ error: error.message }, { status: 500 })
-  const nuevas = (data || []).length
+  // El upsert tambien puede pasarse de 1000 filas: se manda por lotes.
+  let nuevas = 0
+  for (let i = 0; i < rows.length; i += PAGINA) {
+    const lote = rows.slice(i, i + PAGINA)
+    const { data, error } = await admin.from('ventas')
+      .upsert(lote, { onConflict: 'tipo_doc,folio', ignoreDuplicates: true }).select('id')
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    nuevas += (data || []).length
+  }
   return Response.json({ ok: true, nuevas, duplicadas: rows.length - nuevas, total: rows.length })
 }
