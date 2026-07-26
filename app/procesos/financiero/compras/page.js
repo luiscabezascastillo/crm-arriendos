@@ -1,6 +1,7 @@
-// VERSION: v7 · 2026-07-26 · Compras: orden por columna (lo ultimo arriba) + filtros estilo Excel.
-//   · La lista sale ordenada por fecha DESCENDENTE: lo recien cargado, arriba del todo.
-//     Antes iba ascendente y hacia scroll automatico al fondo para enseñar lo nuevo.
+// VERSION: v8 · 2026-07-26 · Compras: orden por columna + filtros estilo Excel.
+//   · Orden por defecto ASCENDENTE por fecha, con scroll automatico al fondo: lo mas
+//     reciente queda a la vista abajo y se sube para ver lo antiguo. (La v7 lo puso al
+//     reves por error; se revierte.)
 //   · Cabecera clicable para ordenar, con indicador de sentido.
 //   · Filtro de columna estilo Excel: ordenar A-Z / Z-A, buscador que filtra la LISTA
 //     de valores (no las filas), recuento por valor y sin el tope de 40 distintos que
@@ -268,8 +269,8 @@ export default function ComprasPage() {
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
-  // Por defecto, lo mas reciente arriba: al cargar un mes nuevo se ve enseguida.
-  const [orden, setOrden] = useState({ key: 'fecha', dir: 'desc' })
+  // Lo mas reciente ABAJO y scroll al fondo: se ve lo ultimo y se sube para lo antiguo.
+  const [orden, setOrden] = useState({ key: 'fecha', dir: 'asc' })
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
   const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null); const handleFileRef = useRef(null)
   const canEdit = EDITORES.includes(session?.user?.email)
@@ -284,7 +285,7 @@ const wantScroll = useRef(false)
     const url = modo === 'continua' ? '/api/financiero/compras?todas=1' : (mesSel ? `/api/financiero/compras?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: 0, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
