@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-07-26 · Compras: aviso de arrastrar/pegar + cabecera FinancieroHeader.
+//   El soporte de arrastrar y pegar YA existia (dragover/drop/paste + overlay), pero no se
+//   anunciaba en ningun sitio, asi que nadie lo usaba. Solo faltaba decirlo.
 // VERSION: v4 · 2026-07-26 · Compras: cabecera compartida FinancieroHeader (3 lineas, fija).
 //   El offset pegajoso lo calcula el componente (TopNav + FinancieroNav). Antes esta
 //   pagina media solo el hermano inmediato y la cabecera se escondia tras el TopNav.
@@ -222,8 +225,9 @@ const wantScroll = useRef(false)
           )}
         </>}
         acciones={<>
-          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Compra mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar compras del mes'}</button>
+          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir, arrastrar o pegar un Libro de Compra mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar compras del mes'}</button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+          {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel de compras</span>}
         </>}
         metricas={[
           { label: 'Compras', valor: resumen.n },

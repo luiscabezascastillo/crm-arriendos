@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-07-26 · Vista Ventas: aviso de arrastrar/pegar + cabecera FinancieroHeader.
+//   El soporte de arrastrar y pegar YA existia (dragover/drop/paste + overlay), pero no se
+//   anunciaba en ningun sitio, asi que nadie lo usaba. Solo faltaba decirlo.
 // VERSION: v4 · 2026-07-26 · Vista Ventas: cabecera compartida FinancieroHeader (3 lineas, fija).
 //   · El offset pegajoso lo calcula ahora el componente (sumando TopNav + FinancieroNav),
 //     en vez del previousElementSibling de esta pagina, que solo medi­a la barra inmediata
@@ -284,8 +287,9 @@ export default function VentasPage() {
           )}
         </>}
         acciones={<>
-          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Ventas mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar ventas del mes'}</button>
+          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir, arrastrar o pegar un Libro de Ventas mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar ventas del mes'}</button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+          {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel de ventas</span>}
           {modo === 'mensual' && mesSel && (
             <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
           )}
