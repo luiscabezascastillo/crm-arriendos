@@ -1,4 +1,4 @@
-// VERSION: v17 · 2026-07-23 · Acepta el extracto semanal («Consulta de movimientos»): columnas por nombre, orden invertido, saldo inicial deducido y cartola resuelta por mes.
+// VERSION: v18 · 2026-07-26 · SA: + barra FinancieroNav. (resto igual que v17)
 //   · Operadores completos — texto: contiene/no contiene/empieza/termina/igual/distinto ·
 //     número: = > < >= <= entre · fecha: hoy/ayer/esta semana/este mes/este año/desde/hasta/entre.
 //   · DOS condiciones por columna combinables con Y / O.
@@ -38,6 +38,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -795,6 +796,7 @@ export default function SaPage() {
   return (
     <>
       <TopNav />
+      <FinancieroNav activo="sa" />
       {dragOver && canEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ background: '#fff', padding: '16px 26px', borderRadius: 12, fontSize: 15, fontWeight: 700, color: '#085041', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}>⬆ Suelta el archivo para cargar</div>

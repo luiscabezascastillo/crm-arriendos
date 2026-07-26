@@ -11,6 +11,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
@@ -154,6 +155,7 @@ export default function ContabPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
+      <FinancieroNav activo="contab" />
       <div style={{ maxWidth: 1300, margin: '0 auto', padding: '24px 20px 80px' }}>
 
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
