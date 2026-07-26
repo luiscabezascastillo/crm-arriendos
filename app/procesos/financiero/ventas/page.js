@@ -1,4 +1,9 @@
-// VERSION: v3 · 2026-07-26 · Vista Ventas: + barra FinancieroNav.
+// VERSION: v4 · 2026-07-26 · Vista Ventas: cabecera compartida FinancieroHeader (3 lineas, fija).
+//   · El offset pegajoso lo calcula ahora el componente (sumando TopNav + FinancieroNav),
+//     en vez del previousElementSibling de esta pagina, que solo medi­a la barra inmediata
+//     y hacia que la cabecera se escondiese detras del TopNav.
+//   · Titulo+subtitulo en una linea, botones en otra, totales como chips en la tercera.
+//   · Fuera el boton "← Financiero": ya esta en FinancieroNav.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -6,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -168,22 +174,9 @@ export default function VentasPage() {
       setContabMsg({ error: 'No se pudo generar la contabilidad.' })
     } finally { setGenerandoContab(false) }
   }
-  const contentRef = useRef(null)
-  const toolbarRef = useRef(null)
   const wantScroll = useRef(false)
-  const [stickyTop, setStickyTop] = useState(0)
-  const [toolbarH, setToolbarH] = useState(0)
-
-  useEffect(() => {
-    const medir = () => { const prev = contentRef.current?.previousElementSibling; if (prev) { const pos = window.getComputedStyle(prev).position; setStickyTop((pos === 'fixed' || pos === 'sticky') ? Math.round(prev.getBoundingClientRect().height) : 0) } }
-    medir(); window.addEventListener('resize', medir); const t = setTimeout(medir, 300)
-    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
-  }, [status])
-  useEffect(() => {
-    const m = () => { if (toolbarRef.current) setToolbarH(Math.round(toolbarRef.current.getBoundingClientRect().height)) }
-    m(); window.addEventListener('resize', m); const t = setTimeout(m, 350)
-    return () => { window.removeEventListener('resize', m); clearTimeout(t) }
-  }, [status, modo, isMobile, uploadMsg])
+  // Donde debe pegarse la cabecera de la tabla: lo calcula FinancieroHeader.
+  const [topTabla, setTopTabla] = useState(0)
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -270,60 +263,55 @@ export default function VentasPage() {
       <TopNav />
       <FinancieroNav activo="ventas" />
       {dragOver && canEdit && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div data-overlay="1" style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ background: '#fff', padding: '16px 26px', borderRadius: 12, fontSize: 15, fontWeight: 700, color: '#085041', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}>⬆ Suelta el archivo para cargar</div>
         </div>
       )}
-      <div ref={contentRef} style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 8px 40px' : '20px 24px 48px' }}>
-
-        {/* TOOLBAR FIJA */}
-        <div ref={toolbarRef} style={{ position: 'sticky', top: stickyTop, zIndex: 18, background: '#fff', paddingTop: 6, paddingBottom: 10, marginBottom: 8, borderBottom: '0.5px solid #ECEAE3' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div>
-              <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Ventas</h1>
-              <div style={{ fontSize: 12, color: '#888780' }}>Ventas del mes con Centro de Coste/Beneficio</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', border: '0.5px solid #D3D1C7', borderRadius: 8, overflow: 'hidden' }}>
-                {[['continua', 'Continua'], ['mensual', 'Mensual']].map(([v, lbl]) => (
-                  <button key={v} onClick={() => setModo(v)} style={{ fontSize: 12, padding: '7px 12px', border: 'none', cursor: 'pointer', background: modo === v ? '#1D9E75' : '#fff', color: modo === v ? '#fff' : '#2C2C2A', fontWeight: modo === v ? 600 : 400 }}>{lbl}</button>
-                ))}
-              </div>
-              {modo === 'mensual' && (
-                <select value={mesSel || ''} onChange={e => setMesSel(e.target.value)} style={{ fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#2C2C2A' }}>
-                  {meses.map(m => <option key={m.mes} value={m.mes}>{mesLabel(m.mes)} ({m.n})</option>)}
-                </select>
-              )}
-              <button onClick={() => router.push('/procesos/financiero')} style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Financiero</button>
-            </div>
+      <FinancieroHeader
+        titulo="Ventas"
+        subtitulo="Ventas del mes con Centro de Coste/Beneficio"
+        onOffset={setTopTabla}
+        derecha={<>
+          <div style={{ display: 'flex', border: '0.5px solid #D3D1C7', borderRadius: 8, overflow: 'hidden' }}>
+            {[['continua', 'Continua'], ['mensual', 'Mensual']].map(([v, lbl]) => (
+              <button key={v} onClick={() => setModo(v)} style={{ fontSize: 12, padding: '7px 12px', border: 'none', cursor: 'pointer', background: modo === v ? '#1D9E75' : '#fff', color: modo === v ? '#fff' : '#2C2C2A', fontWeight: modo === v ? 600 : 400 }}>{lbl}</button>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Ventas mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar ventas del mes'}</button>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
-            {modo === 'mensual' && mesSel && (
-              <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
-            )}
-          </div>
+          {modo === 'mensual' && (
+            <select value={mesSel || ''} onChange={e => setMesSel(e.target.value)} style={{ fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#2C2C2A' }}>
+              {meses.map(m => <option key={m.mes} value={m.mes}>{mesLabel(m.mes)} ({m.n})</option>)}
+            </select>
+          )}
+        </>}
+        acciones={<>
+          <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir un Libro de Ventas mensual' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar ventas del mes'}</button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+          {modo === 'mensual' && mesSel && (
+            <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
+          )}
+        </>}
+        metricas={[
+          { label: 'Ventas', valor: resumen.n },
+          { label: 'Neto', valor: clp(resumen.neto) },
+          { label: 'IVA', valor: clp(resumen.iva) },
+          { label: 'Total', valor: clp(resumen.total), color: '#085041' },
+          { label: 'Sin CCB', valor: resumen.revisar, color: resumen.revisar ? '#B23A3A' : '#888780' },
+        ]}
+        mensajes={<>
           {uploadMsg && (
-            <div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: uploadMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${uploadMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: uploadMsg.error ? '#B23A3A' : '#085041' }}>{uploadMsg.error || uploadMsg.text}</div>
+            <div style={{ marginBottom: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: uploadMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${uploadMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: uploadMsg.error ? '#B23A3A' : '#085041' }}>{uploadMsg.error || uploadMsg.text}</div>
           )}
           {contabMsg && (
-            <div style={{ marginTop: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: contabMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${contabMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: contabMsg.error ? '#B23A3A' : '#085041' }}>{contabMsg.error || contabMsg.text}</div>
+            <div style={{ marginBottom: 8, fontSize: 12, padding: '8px 12px', borderRadius: 8, background: contabMsg.error ? '#FBE9E7' : '#F3FBF8', border: `0.5px solid ${contabMsg.error ? '#F0C9C2' : '#CDEBDF'}`, color: contabMsg.error ? '#B23A3A' : '#085041' }}>{contabMsg.error || contabMsg.text}</div>
           )}
-        </div>
+        </>}
+      />
 
-        {/* RESUMEN */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          <Card label="Ventas" value={resumen.n} />
-          <Card label="Neto" value={clp(resumen.neto)} />
-          <Card label="IVA" value={clp(resumen.iva)} />
-          <Card label="Total" value={clp(resumen.total)} color="#085041" />
-          <Card label="Sin CCB" value={resumen.revisar} color={resumen.revisar ? '#B23A3A' : '#888780'} />
-        </div>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '12px 8px 40px' : '14px 24px 48px' }}>
 
         {/* TABLA */}
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
-          <div style={{ position: 'sticky', top: stickyTop + toolbarH, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
+          <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
             {COLDEFS.map(c => (
               <div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}>
                 <span>{c.label}</span>
