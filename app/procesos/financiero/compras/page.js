@@ -1,3 +1,10 @@
+// VERSION: v7 · 2026-07-26 · Compras: orden por columna (lo ultimo arriba) + filtros estilo Excel.
+//   · La lista sale ordenada por fecha DESCENDENTE: lo recien cargado, arriba del todo.
+//     Antes iba ascendente y hacia scroll automatico al fondo para enseñar lo nuevo.
+//   · Cabecera clicable para ordenar, con indicador de sentido.
+//   · Filtro de columna estilo Excel: ordenar A-Z / Z-A, buscador que filtra la LISTA
+//     de valores (no las filas), recuento por valor y sin el tope de 40 distintos que
+//     hacia desaparecer la lista en Proveedor.
 // VERSION: v6 · 2026-07-26 · Compras: carga directa de los CSV del Registro de Compras del SII.
 //   · Acepta RCV_COMPRA_REGISTRO_<rut>_<AAAAMM>_<tipo>.csv ademas del Excel de siempre.
 //   · tipo_doc y periodo salen del NOMBRE del archivo, no de los datos:
@@ -186,28 +193,68 @@ function Card({ label, value, color }) {
     <div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
 }
 
-function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
+function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrden }) {
   const active = state && (state.text || (state.sel && state.sel.length))
-  const distinct = useMemo(() => { if (col.filter !== 'list') return []; const s = new Set(); for (const m of movs) s.add(String(col.get(m))); return Array.from(s).sort() }, [movs, col])
   const s = state || { text: '', sel: [] }
+  const [busca, setBusca] = useState('')
+
+  // valores distintos CON RECUENTO (como Excel)
+  const distinct = useMemo(() => {
+    const m = new Map()
+    for (const v of movs) { const k = String(col.get(v) ?? ''); m.set(k, (m.get(k) || 0) + 1) }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }))
+  }, [movs, col])
+
+  // el buscador filtra la LISTA de valores, no las filas
+  const visibles = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return q ? distinct.filter(([v]) => v.toLowerCase().includes(q)) : distinct
+  }, [distinct, busca])
+
   const toggle = (v) => { const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]; setState({ ...s, sel }) }
+  const ordenar = (dir) => { setOrden({ key: col.key, dir }); setOpen(null) }
+  const esFecha = col.key === 'fecha'
+  const esNum = ['neto', 'iva', 'total', 'folio'].includes(col.key)
+  const asc = esFecha ? 'Más antiguas primero' : esNum ? 'Menor a mayor' : 'A → Z'
+  const desc = esFecha ? 'Más recientes primero' : esNum ? 'Mayor a menor' : 'Z → A'
+  const activoOrden = orden && orden.key === col.key
+
   return (
     <span style={{ position: 'relative', marginLeft: 4 }}>
-      <button onClick={(e) => { e.stopPropagation(); setOpen(open === col.key ? null : col.key) }} title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>▼</button>
+      <button onClick={(e) => { e.stopPropagation(); setBusca(''); setOpen(open === col.key ? null : col.key) }} title="Ordenar y filtrar"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : (activoOrden ? '#0C447C' : '#B4B2A9'), fontSize: 11, padding: 0 }}>
+        {activoOrden ? (orden.dir === 'desc' ? '▼' : '▲') : '▼'}
+      </button>
       {open === col.key && (<>
         <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 220, textAlign: 'left', fontWeight: 400 }}>
-          <input value={s.text} onChange={e => setState({ ...s, text: e.target.value })} placeholder="Contiene…" autoFocus style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 8 }} />
-          {col.filter === 'list' && distinct.length <= 40 && (<>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
-              <button onClick={() => setState({ ...s, sel: distinct.slice() })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>Todos</button>
-              <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
-            </div>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-              {distinct.map(v => (<label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
-                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span></label>))}
-            </div></>)}
-          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
+        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 250, textAlign: 'left', fontWeight: 400 }}>
+
+          <button onClick={() => ordenar('asc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'asc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↑ {asc}</button>
+          <button onClick={() => ordenar('desc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'desc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↓ {desc}</button>
+          <div style={{ borderTop: '0.5px solid #ECEAE3', margin: '8px 0' }} />
+
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar en la lista…" autoFocus
+            style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 6 }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
+            <button onClick={() => setState({ ...s, sel: visibles.map(([v]) => v) })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>
+              Marcar {busca ? `los ${visibles.length} visibles` : 'todos'}
+            </button>
+            <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
+          </div>
+
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {visibles.length === 0 && <div style={{ fontSize: 11, color: '#B4B2A9', padding: '6px 0' }}>Sin coincidencias</div>}
+            {visibles.slice(0, 400).map(([v, n]) => (
+              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span>
+                <span style={{ fontSize: 10, color: '#B4B2A9' }}>{n}</span>
+              </label>))}
+            {visibles.length > 400 && <div style={{ fontSize: 10, color: '#B4B2A9', padding: '4px 0' }}>…y {visibles.length - 400} más. Afina la búsqueda.</div>}
+          </div>
+
+          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setBusca(''); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
         </div></>)}
     </span>
   )
@@ -221,6 +268,8 @@ export default function ComprasPage() {
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
+  // Por defecto, lo mas reciente arriba: al cargar un mes nuevo se ve enseguida.
+  const [orden, setOrden] = useState({ key: 'fecha', dir: 'desc' })
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
   const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null); const handleFileRef = useRef(null)
   const canEdit = EDITORES.includes(session?.user?.email)
@@ -235,12 +284,30 @@ const wantScroll = useRef(false)
     const url = modo === 'continua' ? '/api/financiero/compras?todas=1' : (mesSel ? `/api/financiero/compras?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: 0, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
   const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++ } return r }, [compras])
+  const valOrden = (c, v) => {
+    if (c.key === 'fecha') return v.fecha || ''
+    if (['neto', 'iva', 'total', 'folio'].includes(c.key)) return Number(v[c.key] ?? 0)
+    return String(c.get(v) ?? '').toLowerCase()
+  }
   const comprasFiltradas = useMemo(() => compras.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [compras, filters])
+
+  const comprasVista = useMemo(() => {
+    const c = COLDEFS.find(x => x.key === orden.key)
+    if (!c) return comprasFiltradas
+    const arr = comprasFiltradas.slice()
+    arr.sort((a, b) => {
+      const va = valOrden(c, a), vb = valOrden(c, b)
+      let r = va < vb ? -1 : va > vb ? 1 : 0
+      if (r === 0) r = (Number(a.folio) || 0) - (Number(b.folio) || 0)
+      return orden.dir === 'desc' ? -r : r
+    })
+    return arr
+  }, [comprasFiltradas, orden]) // eslint-disable-line
 
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', pagado_por: v.pagado_por || '', estado: v.estado || '', glosa: v.glosa || '' }) }
   const cerrar = () => { setSel(null) }
@@ -340,11 +407,11 @@ const wantScroll = useRef(false)
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={compras} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={compras} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
-          ) : comprasFiltradas.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin compras para este filtro.</div>
-          ) : comprasFiltradas.map(v => (
+          ) : comprasVista.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin compras para este filtro.</div>
+          ) : comprasVista.map(v => (
             <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
@@ -362,7 +429,7 @@ const wantScroll = useRef(false)
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las compras  ·  ' : '')}{comprasFiltradas.length} de {compras.length} compras. Pincha una para revisar/editar.</div>
+        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las compras  ·  ' : '')}{comprasVista.length} de {compras.length} compras. Pincha una para revisar/editar.</div>
       </div>
 
       {sel && (<>
