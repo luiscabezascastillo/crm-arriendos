@@ -372,8 +372,8 @@ const td = { padding: '9px 12px', fontSize: 13, color: '#1A1A17', borderBottom: 
 const MORADO = '#EEEBF7', MORADO_TH = '#E0DAF0', VERDE_BG = '#E6F4EA', VERDE_TH = '#D3EAD9'
 const celdaBase = { padding: '5px 9px', borderBottom: '1px solid #EDEDEA', borderRight: '1px solid #EDEDEA', whiteSpace: 'nowrap', verticalAlign: 'top' }
 const thBase = { padding: '6px 9px', fontSize: 11, fontWeight: 700, color: '#2C2C2A', borderBottom: '1px solid #D3D1C7', borderRight: '1px solid #D3D1C7', whiteSpace: 'nowrap', textAlign: 'left', verticalAlign: 'top' }
-const thN = { ...thBase, background: '#F0EFEA' }
-const tdN = { ...celdaBase, background: '#FBFBF9', color: TENUE, textAlign: 'right' }
+const thN = { ...thBase, background: MORADO_TH }
+const tdN = { ...celdaBase, background: MORADO, color: '#2C2C2A', textAlign: 'right' }
 const thM = { ...thBase, background: MORADO_TH }
 const tdM = { ...celdaBase, background: MORADO }
 const thV = { ...thBase, background: VERDE_TH }
