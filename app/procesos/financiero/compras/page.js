@@ -1,4 +1,4 @@
-// VERSION: v1 · 2026-07-13 · Vista Compras (Financiero): continua/mensual, recientes abajo, barra+cabecera fijas, filtros Excel, cargar mes, CCB editable.
+// VERSION: v2 · 2026-07-25 · Vista Compras: + columna Estado (Clasificada/Sin clasificar) y contador, al estilo SA.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -61,6 +61,15 @@ async function parseCompras(file, XLSX) {
   return { archivo: file.name, compras }
 }
 
+// Estado de clasificación de una compra, deducido del campo 'cuenta'
+// (mismo criterio que el generador de CONTAB): clasificada si 'cuenta'
+// empieza por un código de gasto NNNN-NN. Si no, sin clasificar.
+function estaClasificada(v) {
+  const c = (v.cuenta || '').trim()
+  if (!c) return false
+  return /^\d{4}-\d{2}/.test(c)
+}
+
 const COLDEFS = [
   { key: 'folio', label: 'Folio', w: '82px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
@@ -70,6 +79,7 @@ const COLDEFS = [
   { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
   { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
   { key: 'total', label: 'Total', w: '112px', align: 'right', get: v => v.total, filter: null },
+  { key: 'estado_clas', label: 'Estado', w: '110px', align: 'left', get: v => estaClasificada(v) ? 'Clasificada' : 'Sin clasificar', filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -138,7 +148,7 @@ export default function ComprasPage() {
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
-  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++ } return r }, [compras])
+  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++ } return r }, [compras])
   const comprasFiltradas = useMemo(() => compras.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [compras, filters])
 
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', pagado_por: v.pagado_por || '', estado: v.estado || '', glosa: v.glosa || '' }) }
@@ -218,6 +228,7 @@ export default function ComprasPage() {
           <Card label="IVA" value={clp(resumen.iva)} />
           <Card label="Total" value={clp(resumen.total)} color="#B23A3A" />
           <Card label="Sin CCB" value={resumen.revisar} color={resumen.revisar ? '#B23A3A' : '#888780'} />
+          <Card label="Sin clasificar" value={resumen.sinClas} color={resumen.sinClas ? '#9A6E00' : '#888780'} />
         </div>
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
@@ -236,6 +247,11 @@ export default function ComprasPage() {
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.neto)}</div>
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.iva)}</div>
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{clp(v.total)}</div>
+              <div>
+                {estaClasificada(v)
+                  ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#E1F5EE', color: '#085041' }}>Clasificada</span>
+                  : <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#FDF6E3', color: '#9A6E00' }}>Sin clasificar</span>}
+              </div>
             </div>
           ))}
         </div>
