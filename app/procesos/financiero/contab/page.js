@@ -25,7 +25,7 @@ const clp = (n) => (n == null || n === '' ? '' : Number(n).toLocaleString('es-CL
 
 const ORIGENES = [
   { id: 'ventas',     nombre: 'Ventas',       desc: 'Ingresos por CCB (bruto/neto/IVA)', activo: true },
-  { id: 'compras',    nombre: 'Compras',      desc: 'Gastos y crédito fiscal',           activo: false },
+  { id: 'compras',    nombre: 'Compras',      desc: 'Gastos por naturaleza + IVA crédito', activo: true },
   { id: 'honorarios', nombre: 'Honorarios',   desc: 'Boletas de honorarios',             activo: false },
   { id: 'sa',         nombre: 'B. Santander', desc: 'Movimientos Santander (propio)',    activo: false },
   { id: 'caja_chica', nombre: 'Caja Chica',   desc: 'Movimientos de caja chica',         activo: false },

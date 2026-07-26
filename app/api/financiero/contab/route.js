@@ -21,7 +21,7 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 // Orígenes disponibles y su función generadora. Se van añadiendo aquí.
 const GENERADORES = {
   ventas: 'contab_generar_ventas',
-  // compras: 'contab_generar_compras',   (pendiente)
+  compras: 'contab_generar_compras',
   // sa:      'contab_generar_sa',         (pendiente)
 }
 
