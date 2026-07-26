@@ -1,3 +1,16 @@
+// VERSION: v3 · 2026-07-26 · Remuneraciones: selector de periodo compacto.
+//   Antes: una tira con un boton por mes cargado (13 con 2025) mas un candado repetido
+//   en cada uno. No escalaba (con 2026 serian 25), los meses cambiaban de sitio segun
+//   que hubiera cargado, y ocupaba una banda entera para algo que se usa UNA vez por
+//   sesion: eliges mes y trabajas dentro media hora.
+//   Ahora: una sola linea  ‹ Junio 2026 ›  con flechas para el salto habitual (mes
+//   anterior / siguiente) y un desplegable con la rejilla de 12 posiciones FIJAS por
+//   año, que solo ocupa sitio cuando se abre. El candado sube al año.
+//   "Que meses faltan" deja de ser navegacion y pasa a ser un aviso: chip ambar.
+//   Arranca en el ultimo mes con datos.
+//   NOTA: el estado "faltan aportes" solo se conoce del mes cargado (llega por linea
+//   en falta_previred). Para pintarlo en la rejilla de todos los meses, el endpoint
+//   tendria que devolver ese resumen junto a las cargas.
 // VERSION: v2 · 2026-07-26 · Remuneraciones: barra FinancieroNav bajo el TopNav.
 // VERSION: v1 · 2026-07-23 · Pantalla de Remuneraciones (financiero).
 //   · Selector de meses + vista continua de todo el año.
@@ -45,6 +58,11 @@ const mesCorto = (iso) => {
   return `${MES_LARGO[Number(m) - 1].slice(0, 3)} ${y.slice(2)}`
 }
 
+const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+const MESES_LARGOS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const anioDe = (periodo) => Number(String(periodo).slice(0, 4))
+const mesDe = (periodo) => Number(String(periodo).slice(5, 7))
+
 export default function RemuneracionesPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -62,6 +80,8 @@ export default function RemuneracionesPage() {
   const [editando, setEditando] = useState(null)   // { linea_id, filas: [] }
   const [guardando, setGuardando] = useState(false)
   const [verResumen, setVerResumen] = useState(false)
+  const [selAbierto, setSelAbierto] = useState(false)
+  const [anioVista, setAnioVista] = useState(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
@@ -116,6 +136,42 @@ export default function RemuneracionesPage() {
     () => cargas.find(c => c.id === cargaSel) || null,
     [cargas, cargaSel]
   )
+  // Años disponibles y mapa mes -> carga, para la rejilla de 12 posiciones fijas.
+  const anios = useMemo(() => {
+    const s = new Set(cargas.map(c => anioDe(c.periodo)))
+    return Array.from(s).sort((a, b) => b - a)
+  }, [cargas])
+
+  const anioActivo = anioVista != null ? anioVista
+    : (cargaSel !== 'TODAS' && cargaActual ? anioDe(cargaActual.periodo) : (anios[0] || new Date().getFullYear()))
+
+  const porMes = useMemo(() => {
+    const m = {}
+    for (const c of cargas) if (anioDe(c.periodo) === anioActivo) m[mesDe(c.periodo)] = c
+    return m
+  }, [cargas, anioActivo])
+
+  const sinCargar = useMemo(() => {
+    const hoy = new Date()
+    const tope = anioActivo === hoy.getFullYear() ? hoy.getMonth() + 1 : 12
+    let n = 0
+    for (let i = 1; i <= tope; i++) if (!porMes[i]) n++
+    return n
+  }, [porMes, anioActivo])
+
+  const anioCerrado = useMemo(() => {
+    const ls = cargas.filter(c => anioDe(c.periodo) === anioActivo)
+    return ls.length > 0 && ls.every(c => c.congelado)
+  }, [cargas, anioActivo])
+
+  // Orden cronologico para las flechas: el salto habitual es mes anterior / siguiente.
+  const ordenadas = useMemo(
+    () => cargas.slice().sort((a, b) => String(a.periodo).localeCompare(String(b.periodo))),
+    [cargas]
+  )
+  const idx = ordenadas.findIndex(c => c.id === cargaSel)
+  const irA = (c) => { if (!c) return; setCargaSel(c.id); setAnioVista(anioDe(c.periodo)); setSelAbierto(false); setExpandida(null); setEditando(null); setAviso(null) }
+
   const congelado = cargaSel === 'TODAS'
     ? cargas.every(c => c.congelado)
     : !!cargaActual?.congelado
@@ -253,40 +309,80 @@ export default function RemuneracionesPage() {
               Libro de remuneraciones y reparto por Centro de Coste/Beneficio
             </p>
           </div>
-          <button
-            onClick={() => router.push('/procesos/financiero')}
-            style={btnSecundario}
-          >← Financiero</button>
         </div>
 
-        {/* Selector de meses */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-          {cargas.map(c => (
-            <button
-              key={c.id}
-              onClick={() => { setCargaSel(c.id); setExpandida(null); setEditando(null); setAviso(null) }}
-              style={{
-                ...pill,
-                background: cargaSel === c.id ? VERDE : '#FFF',
-                color: cargaSel === c.id ? '#FFF' : '#3A3A38',
-                borderColor: cargaSel === c.id ? VERDE : BORDE,
-              }}
-              title={c.congelado ? 'Mes congelado' : undefined}
-            >
-              {mesCorto(c.periodo)}{c.congelado ? ' 🔒' : ''}
+        {/* Selector de periodo: una linea. La rejilla se despliega solo si hace falta. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', paddingBottom: 12, marginBottom: 14, borderBottom: `1px solid ${BORDE}` }}>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+            <button aria-label="Mes anterior" disabled={idx <= 0}
+              onClick={() => irA(ordenadas[idx - 1])}
+              style={{ ...pill, padding: '6px 10px', opacity: idx <= 0 ? 0.35 : 1, cursor: idx <= 0 ? 'default' : 'pointer' }}>‹</button>
+
+            <button onClick={() => setSelAbierto(v => !v)}
+              style={{ ...pill, padding: '6px 14px', fontWeight: 600, minWidth: 150 }}>
+              {cargaSel === 'TODAS'
+                ? `Todo ${anioActivo}`
+                : (cargaActual ? `${MESES_LARGOS[mesDe(cargaActual.periodo) - 1]} ${anioDe(cargaActual.periodo)}` : 'Sin datos')}
+              <span style={{ marginLeft: 8, color: TENUE, fontSize: 11 }}>▾</span>
             </button>
-          ))}
-          {cargas.length > 0 && (
-            <button
-              onClick={() => { setCargaSel('TODAS'); setExpandida(null); setEditando(null); setAviso(null) }}
-              style={{
-                ...pill,
-                background: cargaSel === 'TODAS' ? VERDE : '#FFF',
-                color: cargaSel === 'TODAS' ? '#FFF' : '#3A3A38',
-                borderColor: cargaSel === 'TODAS' ? VERDE : BORDE,
-              }}
-            >Todo el año</button>
-          )}
+
+            <button aria-label="Mes siguiente" disabled={idx < 0 || idx >= ordenadas.length - 1}
+              onClick={() => irA(ordenadas[idx + 1])}
+              style={{ ...pill, padding: '6px 10px', opacity: (idx < 0 || idx >= ordenadas.length - 1) ? 0.35 : 1, cursor: (idx < 0 || idx >= ordenadas.length - 1) ? 'default' : 'pointer' }}>›</button>
+
+            {selAbierto && (<>
+              <div onClick={() => setSelAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div style={{ position: 'absolute', top: 40, left: 0, zIndex: 41, background: '#fff', border: `1px solid ${BORDE}`, borderRadius: 10, boxShadow: '0 8px 26px rgba(0,0,0,0.14)', padding: 12, width: 340 }}>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                  {anios.map(a => (
+                    <button key={a} onClick={() => setAnioVista(a)}
+                      style={{ ...pill, padding: '5px 13px', fontWeight: a === anioActivo ? 600 : 400,
+                        background: a === anioActivo ? VERDE : '#fff', color: a === anioActivo ? '#fff' : '#3A3A38',
+                        borderColor: a === anioActivo ? VERDE : BORDE }}>
+                      {a}{anioCerrado && a === anioActivo ? ' 🔒' : ''}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  {MESES_CORTOS.map((nombre, i) => {
+                    const c = porMes[i + 1]
+                    const activo = c && c.id === cargaSel
+                    return (
+                      <button key={nombre} disabled={!c} onClick={() => irA(c)} title={c ? undefined : 'Sin libro cargado'}
+                        style={{ ...pill, padding: '7px 0', textAlign: 'center', fontSize: 12,
+                          fontWeight: activo ? 600 : 400,
+                          background: activo ? VERDE : (c ? '#fff' : '#F7F6F2'),
+                          color: activo ? '#fff' : (c ? '#3A3A38' : '#B4B2A9'),
+                          borderColor: activo ? VERDE : BORDE,
+                          cursor: c ? 'pointer' : 'default' }}>
+                        {nombre}
+                      </button>
+                    )
+                  })}
+                </div>
+
+              </div>
+            </>)}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {sinCargar > 0 && (
+              <button onClick={() => setSelAbierto(true)}
+                title="Meses del año sin libro de remuneraciones cargado"
+                style={{ ...pill, padding: '5px 12px', fontSize: 12, background: '#FDF6E3', color: '#9A6E00', borderColor: '#EFE0B8' }}>
+                ⚠ {sinCargar} {sinCargar === 1 ? 'mes sin cargar' : 'meses sin cargar'}
+              </button>
+            )}
+            <button onClick={() => { setCargaSel('TODAS'); setExpandida(null); setEditando(null); setAviso(null) }}
+              style={{ ...pill, padding: '6px 13px', fontSize: 13,
+                background: cargaSel === 'TODAS' ? VERDE : '#fff', color: cargaSel === 'TODAS' ? '#fff' : '#3A3A38',
+                borderColor: cargaSel === 'TODAS' ? VERDE : BORDE }}>
+              Todo el año
+            </button>
+          </div>
         </div>
 
         {error && (
