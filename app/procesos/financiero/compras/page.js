@@ -1,3 +1,9 @@
+// VERSION: v12 · 2026-07-27 · Compras: facturas RECHAZADAS (que no son de FCR).
+//   Fondo rojo tenue, importes tachados y chip "No es de FCR" con el motivo.
+//   Se quedan en la lista A PROPOSITO: existen en el registro del SII, y si
+//   desaparecieran, el cuadre mensual contra el SII no daria nunca.
+//   Los totales de la cabecera son los de FCR (sin las rechazadas) y al lado se
+//   indica el total del SII (con ellas), que es contra el que se cuadra.
 // VERSION: v11 · 2026-07-27 · Compras: el panel de edicion va POR ENCIMA de las barras.
 //   Se abria en top:0 con zIndex 41, pero el TopNav y FinancieroNav van por encima y le
 //   tapaban las primeras lineas: RUT, proveedor, importe y neto. Es decir, se ocultaba
@@ -186,6 +192,8 @@ async function parseCompras(file, XLSX) {
 // Estado de clasificación de una compra, deducido del campo 'cuenta'
 // (mismo criterio que el generador de CONTAB): clasificada si 'cuenta'
 // empieza por un código de gasto NNNN-NN. Si no, sin clasificar.
+const esRechazada = (v) => String(v?.estado || '').toUpperCase() === 'RECHAZADA'
+
 function estaClasificada(v) {
   const c = (v.cuenta || '').trim()
   if (!c) return false
@@ -201,7 +209,7 @@ const COLDEFS = [
   { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
   { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
   { key: 'total', label: 'Total', w: '112px', align: 'right', get: v => v.total, filter: null },
-  { key: 'estado_clas', label: 'Estado', w: '110px', align: 'left', get: v => estaClasificada(v) ? 'Clasificada' : 'Sin clasificar', filter: 'list' },
+  { key: 'estado_clas', label: 'Estado', w: '124px', align: 'left', get: v => esRechazada(v) ? 'No es de FCR' : (estaClasificada(v) ? 'Clasificada' : 'Sin clasificar'), filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -311,7 +319,7 @@ const wantScroll = useRef(false)
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
-  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0, auto: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++; if (v.origen_clasificacion === 'auto') r.auto++ } return r }, [compras])
+  const resumen = useMemo(() => { const r = { n: 0, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0, auto: 0, rech: 0, totalRech: 0, totalSii: 0 }; for (const v of compras) { r.totalSii += v.total || 0; if (esRechazada(v)) { r.rech++; r.totalRech += v.total || 0; continue } r.n++; r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++; if (v.origen_clasificacion === 'auto') r.auto++ } return r }, [compras])
   const valOrden = (c, v) => {
     if (c.key === 'fecha') return v.fecha || ''
     if (['neto', 'iva', 'total', 'folio'].includes(c.key)) return Number(v[c.key] ?? 0)
@@ -452,6 +460,8 @@ const wantScroll = useRef(false)
           { label: 'Sin CCB', valor: resumen.revisar, color: resumen.revisar ? '#B23A3A' : '#888780' },
           { label: 'Sin clasificar', valor: resumen.sinClas, color: resumen.sinClas ? '#9A6E00' : '#888780' },
           { label: 'Sugeridas sin revisar', valor: resumen.auto, color: resumen.auto ? '#9A6E00' : '#888780' },
+          ...(resumen.rech ? [{ label: 'No son de FCR', valor: `${resumen.rech} · ${clp(resumen.totalRech)}`, color: '#B23A3A' }] : []),
+          ...(resumen.rech ? [{ label: 'Total según SII', valor: clp(resumen.totalSii), color: '#888780' }] : []),
         ]}
         mensajes={<>
           {uploadMsg && (
@@ -469,7 +479,11 @@ const wantScroll = useRef(false)
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
           ) : comprasVista.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin compras para este filtro.</div>
           ) : comprasVista.map(v => (
-            <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+            <div key={v.id} onClick={() => abrir(v)}
+              title={esRechazada(v) ? (v.glosa || 'No es de FCR · se conserva para cuadrar con el SII') : undefined}
+              style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: esRechazada(v) ? '#9C6B66' : '#2C2C2A', background: esRechazada(v) ? '#FBE9E7' : '#fff', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.background = esRechazada(v) ? '#F7DEDB' : '#FAFAF7'}
+              onMouseLeave={e => e.currentTarget.style.background = esRechazada(v) ? '#FBE9E7' : '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.proveedor || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
@@ -480,17 +494,28 @@ const wantScroll = useRef(false)
                 )}
               </div>
               <div style={{ fontSize: 12, color: '#888780' }}>{v.pagado_por || '—'}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.neto)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.iva)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{clp(v.total)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.neto)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.iva)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.total)}</div>
               <div>
-                {estaClasificada(v)
-                  ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#E1F5EE', color: '#085041' }}>Clasificada</span>
-                  : <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#FDF6E3', color: '#9A6E00' }}>Sin clasificar</span>}
+                {esRechazada(v)
+                  ? <span title={v.glosa || undefined} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#F7DEDB', color: '#B23A3A', border: '0.5px solid #F0C9C2' }}>No es de FCR</span>
+                  : estaClasificada(v)
+                    ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#E1F5EE', color: '#085041' }}>Clasificada</span>
+                    : <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#FDF6E3', color: '#9A6E00' }}>Sin clasificar</span>}
               </div>
             </div>
           ))}
         </div>
+        {resumen.rech > 0 && (
+          <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, padding: '9px 12px', borderRadius: 8, background: '#FBE9E7', border: '0.5px solid #F0C9C2', color: '#8C4A44' }}>
+            <strong style={{ color: '#B23A3A' }}>Las {resumen.rech} filas en rojo no son de FCR</strong> y <strong>no entran en la contabilidad</strong>:
+            ni en el gasto, ni en el IVA, ni en CONTAB. Se conservan a propósito porque el SII sí las tiene
+            en el Registro de Compras; si desaparecieran, el cuadre mensual contra el SII no daría nunca.
+            Por eso arriba se ven dos cifras: el <strong>Total</strong> es el de FCR y el
+            <strong> Total según SII</strong> incluye estas {clp(resumen.totalRech)}.
+          </div>
+        )}
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las compras  ·  ' : '')}{comprasVista.length} de {compras.length} compras. Pincha una para revisar/editar.</div>
       </div>
 
