@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v4 · 2026-07-28 · La columna COMUNIC. marcaba AJUSTE a TODO contrato de tipo IPC/pesos,
+//   aunque su reajuste no fuera de este mes. Ahora AJUSTE solo cuando el reajuste VIGENTE del mes
+//   tiene fecha dentro del propio mes procesado (usa ajusteVigente, que ya existía). El resto: —.
 // VERSION: v3 · 2026-07-23 · boton 'Calcular reajustes': calcula el reajuste del mes desde los indices (UF/IPC) y lo guarda en los contratos, con revision previa
 // VERSION: v2 · 2026-07-23 · mes por defecto = liquidacion en curso (regla dia 23), marca 'presente', boton Indices UF/IPC y aviso si faltan
 
@@ -74,13 +77,17 @@ function ajusteVigente(c, mes) {
     }
   }
   if (mejorFecha === null) return null
-  return { tipo: c.revision || '', monto: Math.round(mejorMonto) }
+  return { tipo: c.revision || '', monto: Math.round(mejorMonto), fecha: mejorFecha }
 }
-function tipoComunicacion(c) {
+// La comunicación depende de si HAY un reajuste con fecha DENTRO del mes procesado, no solo del
+// tipo de contrato. 'av' es el ajuste vigente ya calculado (ajusteVigente); 'mes' es 'YYYY-MM-01'.
+function tipoComunicacion(c, av, mes) {
   if (esUF(c.revision)) return 'UF'
   const r = (c.revision || '').trim().toUpperCase()
   if (r === 'FIJO' || r === '') return 'vacío'
-  return 'AJUSTE'
+  // Es un contrato con reajuste, pero solo se comunica AJUSTE si el reajuste es de ESTE mes.
+  if (av && mes && String(av.fecha || '').slice(0, 7) === String(mes).slice(0, 7)) return 'AJUSTE'
+  return 'sin-cambio'   // tiene reajustes, pero ninguno cae este mes
 }
 // ¿El texto del control parece una fecha/timestamp ISO? ('2026-06-26 17:33:11' o ISO)
 function esFechaIso(s) {
@@ -323,7 +330,8 @@ export default function NotificacionesPage() {
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
       const apagarCalc = calcularApagar(c)
-      const tipoCom = tipoComunicacion(c)
+      const av = ajusteVigente(c, mesSel)
+      const tipoCom = tipoComunicacion(c, av, mesSel)
       const noti = notiMap.get(c.idadmon)
       const tieneEmail = splitEmails(c.mail_arrendatario).length > 0
       const tieneArr = !!(c.arrendatario && c.arrendatario.trim())
@@ -340,7 +348,6 @@ export default function NotificacionesPage() {
       else if (control !== '') { envioEstado = ENVIO.BLOQUEADO; sendable = false }
       else { envioEstado = ENVIO.PENDIENTE; sendable = true }
 
-      const av = ajusteVigente(c, mesSel)
       return {
         ...c, apagar, apagarCalc, tieneOverride, tipoCom, envioEstado, sendable,
         control,                                   // texto de la columna C (fecha o motivo)
@@ -413,9 +420,11 @@ export default function NotificacionesPage() {
   const kpis = useMemo(() => {
     const total = filas.length
     const nUF = filas.filter((f) => esUF(f.revision)).length
+    // CON AJUSTE = solo los que reajustan ESTE mes (tipoCom AJUSTE), no todos los de pesos.
+    const conAjuste = filas.filter((f) => f.tipoCom === 'AJUSTE').length
     const totalCobrar = filas.reduce((s, f) => s + (f.apagar || 0), 0)
     const pendientes = filas.filter((f) => f.sendable).length
-    return { total, nUF, conAjuste: total - nUF, totalCobrar, pendientes }
+    return { total, nUF, conAjuste, totalCobrar, pendientes }
   }, [filas])
 
   const idsSendablesVisibles = useMemo(() => filas.filter((f) => f.sendable).map((f) => f.idadmon), [filas])
@@ -949,7 +958,7 @@ export default function NotificacionesPage() {
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: c.tieneOverride ? '#1a56db' : '#2C2C2A', textAlign: 'right' }}
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
                       ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom === 'AJUSTE' || c.tipoCom === 'UF' ? c.tipoCom : '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
                   </tr>
                 )
