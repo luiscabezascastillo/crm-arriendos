@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-07-28 · Botón "Comentarios" en la barra del LOG → /cc1/comentarios.
+//   Visible para todos los que ven el LOG (no solo editores): cualquiera puede añadir hechos
+//   del mes por contrato. Editar/borrar: cada uno lo suyo; Dirección (admin) todo.
 // VERSION: v4 · 2026-07-21 · Filtro de Estado muestra el significado de cada código (S Activo, P Vacío, Q En término, SQ Activo c/aviso, N/N-DICOM Histórico)
 // VERSION: v3 · 2026-07-16 · LOG: "Vencido" ya no se muestra en términos cerrados (N/N-DICOM/N-Liquidacion) — un término cerrado no está vencido. Hereda v2 ("Calcular ajustes" solo Dirección/Legal/Administración)
 'use client'
@@ -350,6 +353,7 @@ function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
 }
 
 const Ico = {
+  comment: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   edit:  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   users: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></svg>,
   home:  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
@@ -583,6 +587,7 @@ export default function CC1Page() {
         </div>
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
+        <ActionBtn label="Comentarios"                bg="#7c3aed" icon={Ico.comment} onClick={() => router.push('/cc1/comentarios')} />
         {puedeEditar && (
           <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
         )}
