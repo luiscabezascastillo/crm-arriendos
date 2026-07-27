@@ -1,3 +1,6 @@
+// VERSION: v22 · 2026-07-27 · SA: el buscador de cuentas pasa a componente compartido.
+//   Compras necesita exactamente la misma ayuda, asi que CuentaSelector vive ahora en
+//   components/ui y lo usan las dos pantallas. Comportamiento identico al v21.
 // VERSION: v21 · 2026-07-27 · SA: ayuda para clasificar (buscador de cuentas + memoria).
 //   · Cuenta 1 deja de ser un campo a ciegas: buscador sobre el plan de cuentas, por
 //     codigo o por texto. Nadie tiene que recordar 181 codigos, y evita repetir el
@@ -62,6 +65,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
+import CuentaSelector from '@/app/components/ui/CuentaSelector'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -488,64 +492,6 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     </span>
   )
 }
-// Buscador sobre el plan de cuentas: acepta codigo o texto.
-function CuentaInput({ valor, plan, disabled, onChange, sugerida, planMap }) {
-  const [abierto, setAbierto] = useState(false)
-  const [q, setQ] = useState('')
-  const ref = useRef(null)
-
-  const opciones = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    if (!t) return plan.slice(0, 60)
-    return plan.filter(c =>
-      c.codigo.toLowerCase().includes(t) || (c.descripcion || '').toLowerCase().includes(t)
-    ).slice(0, 60)
-  }, [q, plan])
-
-  const desc = planMap[String(valor || '').trim()]
-  const elegir = (c) => { onChange(c.codigo); setAbierto(false); setQ('') }
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        value={abierto ? q : (valor || '')}
-        disabled={disabled}
-        placeholder="código o texto"
-        title={desc || undefined}
-        onFocus={() => { if (!disabled) { setAbierto(true); setQ('') } }}
-        onChange={e => { setQ(e.target.value); onChange(e.target.value); if (!abierto) setAbierto(true) }}
-        onKeyDown={e => {
-          if (e.key === 'Escape') { setAbierto(false) }
-          if (e.key === 'Enter' && opciones.length === 1) { e.preventDefault(); elegir(opciones[0]) }
-        }}
-        style={{ width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: disabled ? '#F7F6F2' : '#fff' }}
-      />
-      {!abierto && sugerida && !String(valor || '').trim() && (
-        <button onClick={() => onChange(sugerida)} disabled={disabled}
-          title={`Sugerido por el histórico: ${planMap[sugerida] || sugerida}`}
-          style={{ position: 'absolute', right: 3, top: 3, fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '0.5px solid #CDEBDF', background: '#F3FBF8', color: '#085041', cursor: 'pointer' }}>
-          {sugerida}
-        </button>
-      )}
-      {abierto && (<>
-        <div onClick={() => setAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 9100 }} />
-        <div style={{ position: 'absolute', top: 30, left: 0, zIndex: 9101, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 22px rgba(0,0,0,0.16)', width: 330, maxHeight: 260, overflowY: 'auto' }}>
-          {opciones.length === 0 && <div style={{ fontSize: 11, color: '#B4B2A9', padding: 10 }}>Ninguna cuenta casa con «{q}»</div>}
-          {opciones.map(c => (
-            <div key={c.codigo} onMouseDown={(e) => { e.preventDefault(); elegir(c) }}
-              style={{ padding: '6px 9px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid #F3F2ED', display: 'flex', gap: 8 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
-              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-              <span style={{ fontWeight: 600, color: '#085041', minWidth: 76 }}>{c.codigo}</span>
-              <span style={{ color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.descripcion}</span>
-            </div>
-          ))}
-        </div>
-      </>)}
-    </div>
-  )
-}
-
 export default function SaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -1143,8 +1089,9 @@ const wantScroll = useRef(false)
                     <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
                     <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
                     <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
-                    <CuentaInput valor={l.cuenta_1} plan={plan} planMap={planMap} disabled={!canEdit}
-                      sugerida={memoSel?.unica || null}
+                    <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
+                      sugerida={memoSel?.unica || null} formato="codigo"
+                      estilo={{ width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: !canEdit ? '#F7F6F2' : '#fff' }}
                       onChange={v => setLinea(i, 'cuenta_1', v)} />
                     <input value={l.cuenta_2 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_2', e.target.value)} style={inp} />
                     {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}

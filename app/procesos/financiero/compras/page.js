@@ -1,3 +1,17 @@
+// VERSION: v10 · 2026-07-27 · Compras: se crea el componente CuentaSelector, que faltaba.
+//   La v9 lo importaba de @/app/components/ui/CuentaSelector, pero ese archivo no
+//   existia: la pantalla habria reventado al abrir el panel. esbuild no lo detecta
+//   porque solo valida sintaxis, no si el modulo existe.
+//   Se marca ademas en ambar lo que puso la maquina (origen_clasificacion = 'auto'),
+//   con un contador en la cabecera, para que las sugerencias no se cuelen sin revisar.
+// VERSION: v9 · 2026-07-27 · Compras: buscador del plan de cuentas y sugerencia por RUT.
+//   · El campo Cuenta deja de pedir el codigo de memoria: buscador por codigo o texto,
+//     el mismo componente que usa SA (CuentaSelector).
+//   · Sugerencia por RUT calculada en la pagina desde el historico ya cargado, con el
+//     mismo criterio que la memoria de la base: solo si el proveedor es UNANIME y hay
+//     al menos 2 antecedentes. Un clic la acepta; nunca se rellena sola aqui.
+//   · El plan sale del endpoint si lo devuelve (campo 'plan'); si no, se reconstruye
+//     con las cuentas ya usadas en el historico, para que el buscador sirva igualmente.
 // VERSION: v8 · 2026-07-26 · Compras: orden por columna + filtros estilo Excel.
 //   · Orden por defecto ASCENDENTE por fecha, con scroll automatico al fondo: lo mas
 //     reciente queda a la vista abajo y se sube para ver lo antiguo. (La v7 lo puso al
@@ -33,6 +47,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
+import CuentaSelector from '@/app/components/ui/CuentaSelector'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -175,7 +190,7 @@ const COLDEFS = [
   { key: 'folio', label: 'Folio', w: '82px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
   { key: 'proveedor', label: 'Proveedor', w: '1fr', align: 'left', get: v => v.proveedor || '', filter: 'text' },
-  { key: 'ccb', label: 'CCB', w: '74px', align: 'left', get: v => v.ccb || '', filter: 'list' },
+  { key: 'ccb', label: 'CCB', w: '86px', align: 'left', get: v => v.ccb || '', filter: 'list' },
   { key: 'pagado_por', label: 'Pagado', w: '72px', align: 'left', get: v => v.pagado_por || '', filter: 'list' },
   { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
   { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
@@ -268,6 +283,7 @@ export default function ComprasPage() {
   const [modo, setModo] = useState('continua')
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
+  const [planApi, setPlanApi] = useState([])
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
   // Lo mas reciente ABAJO y scroll al fondo: se ve lo ultimo y se sube para lo antiguo.
   const [orden, setOrden] = useState({ key: 'fecha', dir: 'asc' })
@@ -285,11 +301,11 @@ const wantScroll = useRef(false)
     const url = modo === 'continua' ? '/api/financiero/compras?todas=1' : (mesSel ? `/api/financiero/compras?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (d.plan) setPlanApi(d.plan); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
-  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++ } return r }, [compras])
+  const resumen = useMemo(() => { const r = { n: compras.length, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0, auto: 0 }; for (const v of compras) { r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++; if (v.origen_clasificacion === 'auto') r.auto++ } return r }, [compras])
   const valOrden = (c, v) => {
     if (c.key === 'fecha') return v.fecha || ''
     if (['neto', 'iva', 'total', 'folio'].includes(c.key)) return Number(v[c.key] ?? 0)
@@ -309,6 +325,39 @@ const wantScroll = useRef(false)
     })
     return arr
   }, [comprasFiltradas, orden]) // eslint-disable-line
+
+  // Plan de cuentas: lo que devuelva el endpoint y, si no lo devuelve, las cuentas que
+  // ya se usan en el historico. Asi el buscador sirve desde el primer dia.
+  const plan = useMemo(() => {
+    if (planApi.length) return planApi
+    const m = new Map()
+    for (const c of compras) {
+      const t = String(c.cuenta || '').trim()
+      const mm = t.match(/^([0-9]{4}-[0-9]{2})\s*(.*)$/)
+      if (mm && !m.has(mm[1])) m.set(mm[1], mm[2] || '')
+    }
+    return Array.from(m.entries()).map(([codigo, descripcion]) => ({ codigo, descripcion }))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo))
+  }, [planApi, compras])
+
+  // Memoria por RUT: mismo criterio que la de la base (unanime y >= 2 antecedentes).
+  const memoriaRut = useMemo(() => {
+    const acc = {}
+    for (const c of compras) {
+      const rut = String(c.rut || '').trim()
+      const cod = String(c.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}/)
+      if (!rut || !cod) continue
+      const e = acc[rut] || (acc[rut] = { ctas: {}, n: 0 })
+      e.ctas[cod[0]] = (e.ctas[cod[0]] || 0) + 1
+      e.n++
+    }
+    const out = {}
+    for (const [rut, e] of Object.entries(acc)) {
+      const pares = Object.entries(e.ctas)
+      if (pares.length === 1 && e.n >= 2) out[rut] = pares[0][0]
+    }
+    return out
+  }, [compras])
 
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', pagado_por: v.pagado_por || '', estado: v.estado || '', glosa: v.glosa || '' }) }
   const cerrar = () => { setSel(null) }
@@ -396,6 +445,7 @@ const wantScroll = useRef(false)
           { label: 'Total', valor: clp(resumen.total), color: '#B23A3A' },
           { label: 'Sin CCB', valor: resumen.revisar, color: resumen.revisar ? '#B23A3A' : '#888780' },
           { label: 'Sin clasificar', valor: resumen.sinClas, color: resumen.sinClas ? '#9A6E00' : '#888780' },
+          { label: 'Sugeridas sin revisar', valor: resumen.auto, color: resumen.auto ? '#9A6E00' : '#888780' },
         ]}
         mensajes={<>
           {uploadMsg && (
@@ -417,7 +467,12 @@ const wantScroll = useRef(false)
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.proveedor || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
-              <div><CcbChip ccb={v.ccb} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <CcbChip ccb={v.ccb} />
+                {v.origen_clasificacion === 'auto' && (
+                  <span title="Lo puso la memoria por RUT · pendiente de revisar" style={{ color: '#9A6E00', fontSize: 13, lineHeight: 1 }}>•</span>
+                )}
+              </div>
               <div style={{ fontSize: 12, color: '#888780' }}>{v.pagado_por || '—'}</div>
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.neto)}</div>
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780' }}>{clp(v.iva)}</div>
@@ -452,7 +507,19 @@ const wantScroll = useRef(false)
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={{ fontSize: 12, color: '#888780' }}>CCB<input list="ccb-list-c" value={edit.ccb} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, ccb: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12, color: '#888780' }}>Pagado por<input list="pag-list-c" value={edit.pagado_por} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, pagado_por: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta<input value={edit.cuenta} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, cuenta: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta
+              <div style={{ marginTop: 4 }}>
+                <CuentaSelector
+                  valor={edit.cuenta}
+                  plan={plan}
+                  disabled={!canEdit}
+                  formato="codigo+desc"
+                  sugerida={sel ? (memoriaRut[String(sel.rut || '').trim()] || null) : null}
+                  onChange={v => setEdit(x => ({ ...x, cuenta: v }))}
+                  estilo={{ ...inp, width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+            </label>
             <label style={{ fontSize: 12, color: '#888780' }}>Estado<input value={edit.estado} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, estado: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12, color: '#888780' }}>Glosa<input value={edit.glosa} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, glosa: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <datalist id="ccb-list-c">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
