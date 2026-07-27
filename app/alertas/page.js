@@ -1,0 +1,204 @@
+// VERSION: v1 · 2026-07-28 · Pantalla propia de Alertas (/alertas) para Karina, Alberto y Luis.
+//   Tareas urgentes generadas por el CRM y fechas clave. Cada alerta se puede POSPONER (nueva
+//   fecha + motivo) o RESOLVER. Lee/escribe la tabla `alertas`, filtrada por para_email.
+//   El semáforo del botón del TopNav se calcula igual: rojo pendiente · ámbar pospuesta · verde.
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../../lib/supabaseClient'
+import TopNav from '../components/ui/TopNav'
+
+const ALERTAS_EMAILS = [
+  'karina.morales@fondocapital.com',
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+]
+
+const fmtFecha = (d) => {
+  if (!d) return ''
+  const x = new Date(d)
+  if (isNaN(x)) return ''
+  return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${x.getFullYear()}`
+}
+const hoyISO = () => new Date().toISOString().slice(0, 10)
+
+export default function AlertasPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const email = session?.user?.email || ''
+  const puede = ALERTAS_EMAILS.includes(email)
+
+  const [alertas, setAlertas] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [verResueltas, setVerResueltas] = useState(false)
+  const [posponiendo, setPosponiendo] = useState(null)
+  const [posFecha, setPosFecha] = useState('')
+  const [posMotivo, setPosMotivo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!session) { router.replace('/panel'); return }
+    if (!puede) { router.replace('/procesos/mi-portal'); return }
+    cargar()
+    // eslint-disable-next-line
+  }, [status, session])
+
+  const cargar = async () => {
+    setCargando(true)
+    const { data } = await supabase.from('alertas').select('*')
+      .eq('para_email', email)
+      .order('fecha_resolver', { ascending: true, nullsFirst: false })
+      .order('fecha', { ascending: true })
+    setAlertas(data || [])
+    setCargando(false)
+  }
+
+  const abrirPosponer = (a) => {
+    setPosponiendo(a)
+    setPosFecha(a.fecha_pospuesta || a.fecha_resolver || '')
+    setPosMotivo(a.motivo_pospuesta || '')
+  }
+  const guardarPosponer = async () => {
+    if (!posponiendo || !posFecha || guardando) return
+    setGuardando(true)
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'pospuesta', fecha_pospuesta: posFecha, motivo_pospuesta: posMotivo || null })
+      .eq('id', posponiendo.id)
+    setGuardando(false)
+    if (!error) { setPosponiendo(null); cargar() }
+  }
+  const resolver = async (a) => {
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'resuelta', resuelta_at: new Date().toISOString(), resuelta_por: email })
+      .eq('id', a.id)
+    if (!error) cargar()
+  }
+  const reabrir = async (a) => {
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'pendiente', resuelta_at: null, resuelta_por: null })
+      .eq('id', a.id)
+    if (!error) cargar()
+  }
+
+  const visibles = alertas.filter(a => verResueltas ? true : a.estado !== 'resuelta')
+  const nPend = alertas.filter(a => a.estado === 'pendiente').length
+  const nPosp = alertas.filter(a => a.estado === 'pospuesta').length
+  const color = nPend > 0 ? '#DC2626' : nPosp > 0 ? '#D97706' : '#16A34A'
+
+  const th = { textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.03em', borderBottom: '1px solid #E5E3DC' }
+  const td = { padding: '10px 12px', fontSize: 13, color: '#333', borderBottom: '1px solid #F0EEE8', verticalAlign: 'top' }
+
+  return (
+    <>
+      <TopNav />
+      <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          <span style={{ width: 14, height: 14, borderRadius: '50%', background: color, display: 'inline-block' }} />
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#2C2C2A' }}>Alertas</h1>
+        </div>
+        <div style={{ fontSize: 13, color: '#999', marginBottom: 20 }}>
+          {nPend} sin gestionar · {nPosp} pospuesta(s). Tareas urgentes generadas por el sistema y fechas clave a atender.
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button onClick={() => setVerResueltas(v => !v)}
+            style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: verResueltas ? '#EEF3F8' : '#fff', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {verResueltas ? 'Ocultar resueltas' : 'Ver resueltas'}
+          </button>
+        </div>
+
+        {cargando ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Cargando…</div>
+        ) : visibles.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 14, background: '#FAFAF7', borderRadius: 12 }}>
+            No hay alertas{verResueltas ? '' : ' pendientes'}. Todo al día 🎉
+          </div>
+        ) : (
+          <div style={{ border: '1px solid #E5E3DC', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ background: '#FAFAF7' }}>
+                <th style={th}>Tema</th>
+                <th style={th}>Fecha</th>
+                <th style={th}>A resolver</th>
+                <th style={th}>Motivo aplazamiento</th>
+                <th style={th}>Estado</th>
+                <th style={th}></th>
+              </tr></thead>
+              <tbody>
+                {visibles.map(a => {
+                  const resuelta = a.estado === 'resuelta'
+                  const pospuesta = a.estado === 'pospuesta'
+                  const objetivo = a.fecha_pospuesta || a.fecha_resolver
+                  const vencida = objetivo && !resuelta && objetivo < hoyISO()
+                  return (
+                    <tr key={a.id} style={{ opacity: resuelta ? 0.55 : 1 }}>
+                      <td style={td}>
+                        <div style={{ fontWeight: 500, color: '#2C2C2A' }}>{a.tema}</div>
+                        {a.ref_idadmon && <div style={{ fontSize: 11, color: '#aaa' }}>{a.ref_idadmon}{a.origen ? ' · ' + a.origen : ''}</div>}
+                        {a.cuerpo && <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{a.cuerpo}</div>}
+                      </td>
+                      <td style={td}>{fmtFecha(a.fecha)}</td>
+                      <td style={{ ...td, color: vencida ? '#B23A3A' : '#444', fontWeight: vencida ? 700 : 400 }}>
+                        {fmtFecha(objetivo) || '—'}{pospuesta && <span style={{ fontSize: 10, color: '#0C447C', marginLeft: 4 }}>(pospuesta)</span>}
+                      </td>
+                      <td style={{ ...td, fontSize: 12, color: '#666' }}>{a.motivo_pospuesta || '—'}</td>
+                      <td style={td}>
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
+                          background: resuelta ? '#E1F5EE' : pospuesta ? '#EEF3F8' : '#FEF3E2',
+                          color: resuelta ? '#085041' : pospuesta ? '#0C447C' : '#92400E' }}>
+                          {resuelta ? 'Resuelta' : pospuesta ? 'Pospuesta' : 'Pendiente'}
+                        </span>
+                      </td>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                        {resuelta ? (
+                          <button onClick={() => reabrir(a)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Reabrir</button>
+                        ) : (
+                          <span style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => abrirPosponer(a)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: '#fff', color: '#0C447C', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Posponer</button>
+                            <button onClick={() => resolver(a)} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Resolver</button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal posponer */}
+      {posponiendo && (
+        <div onClick={() => setPosponiendo(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(480px, 100%)', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>Posponer alerta</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: '#2C2C2A' }}>{posponiendo.tema}</div>
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Nueva fecha para resolverla</label>
+            <input type="date" value={posFecha} onChange={e => setPosFecha(e.target.value)}
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 14 }} />
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Motivo del aplazamiento</label>
+            <textarea value={posMotivo} onChange={e => setPosMotivo(e.target.value)} rows={3}
+              placeholder="Ej.: se retrasa la factura al mes siguiente para posponer el IVA"
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 18, resize: 'vertical' }} />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setPosponiendo(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={guardarPosponer} disabled={!posFecha || guardando}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: posFecha ? '#0C447C' : '#C9C7BF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: posFecha ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                {guardando ? 'Guardando…' : 'Posponer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

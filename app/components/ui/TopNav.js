@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v5 · 2026-07-28 · Botón "Alertas" (Karina, Alberto, Luis) entre Ayuda y Mis tareas, con
+//   SEMÁFORO según las alertas propias (para_email): rojo si hay alguna pendiente sin gestionar,
+//   ámbar si todas las abiertas están pospuestas (gestionadas), verde si no queda ninguna abierta.
 // VERSION: v4 · 2026-07-23 · Botón "Direccion" partido: el texto va a /direccion y la ▾ abre un
 //   dropdown con las operaciones propias de Dirección (Control de Asistencia, Tareas, Valoraciones,
 //   Budget y Problemas pendientes de crear, Reparar inicios). Mismo patrón que el botón "Procesos".
@@ -18,6 +21,13 @@ const DIRECCION_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
   // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Dirección.
+];
+
+// Quién ve el botón de Alertas.
+const ALERTAS_EMAILS = [
+  'karina.morales@fondocapital.com',
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
 ];
 
 // --- Transición de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
@@ -68,6 +78,7 @@ const WORKSPACES = {
 
 export default function TopNav() {
   const { data: session } = useSession();
+  const [alertaSem, setAlertaSem] = useState({ color: null, n: 0 });
   const pathname = usePathname();
   const [fcrOpen, setFcrOpen] = useState(false);
   const [direccionOpen, setDireccionOpen] = useState(false);
@@ -92,6 +103,27 @@ export default function TopNav() {
     supabase.from('proceso_permisos').select('proceso').eq('email', session.user.email).eq('activo', true)
       .then(({ data }) => { if (data) setProcKeys(new Set(data.map(r => r.proceso))); });
   }, [session?.user?.email]);
+
+  // Semáforo de Alertas: rojo si hay alguna 'pendiente'; si no, ámbar si hay 'pospuesta';
+  // si no queda ninguna abierta, verde. Solo para quien ve el botón.
+  const puedeAlertas = ALERTAS_EMAILS.includes(session?.user?.email);
+  useEffect(() => {
+    if (!puedeAlertas || !session?.user?.email) return;
+    let vivo = true;
+    const calc = () => {
+      supabase.from('alertas').select('estado').eq('para_email', session.user.email)
+        .then(({ data }) => {
+          if (!vivo || !data) return;
+          const pend = data.filter(a => a.estado === 'pendiente').length;
+          const posp = data.filter(a => a.estado === 'pospuesta').length;
+          const color = pend > 0 ? '#DC2626' : posp > 0 ? '#D97706' : '#16A34A';
+          setAlertaSem({ color, n: pend + posp });
+        });
+    };
+    calc();
+    const t = setInterval(calc, 60000);   // refresca cada minuto
+    return () => { vivo = false; clearInterval(t); };
+  }, [puedeAlertas, session?.user?.email, pathname]);
 
   useEffect(() => {
     function handleClick(e) {
@@ -434,6 +466,25 @@ export default function TopNav() {
           </div>
         )}
       </div>
+
+      {/* Alertas — semáforo según las alertas propias (rojo/ámbar/verde) */}
+      {puedeAlertas && (
+        <Link href="/alertas" style={s.infoLink(isActive('/alertas'))}
+          title={alertaSem.color === '#DC2626' ? 'Tienes alertas sin gestionar'
+               : alertaSem.color === '#D97706' ? 'Alertas pospuestas pendientes de resolver'
+               : 'Sin alertas abiertas'}>
+          <span style={{
+            width: 9, height: 9, borderRadius: '50%',
+            background: alertaSem.color || '#C9C7BF',
+            boxShadow: alertaSem.color === '#DC2626' ? '0 0 0 3px rgba(220,38,38,0.18)' : 'none',
+            display: 'inline-block', flexShrink: 0,
+          }} />
+          Alertas
+          {alertaSem.n > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: alertaSem.color, marginLeft: 1 }}>{alertaSem.n}</span>
+          )}
+        </Link>
+      )}
 
       {/* Mis tareas */}
       {puede('/procesos/mi-portal') && (
