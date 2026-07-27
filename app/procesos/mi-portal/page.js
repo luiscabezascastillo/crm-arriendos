@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v3 · 2026-07-28 · Tarjeta "Alertas" en Mi Portal para Karina, Alberto y Luis: tareas
+//   urgentes generadas por el CRM (p.ej. facturar al pasar P→S) y fechas clave. Cada alerta se
+//   puede POSPONER (nueva fecha + motivo) o RESOLVER. Lee/escribe la tabla `alertas` (individual
+//   por para_email). El enganche automático (que el disparo P→S cree la alerta) va aparte.
 // VERSION: v2 · 2026-07-13 · app/procesos/mi-portal/page.js — FIX imports que rompían el build:
 //   '../../lib/supabaseClient' → '../../../lib/supabaseClient' (lib está en la raíz, sube 3), y
 //   '../components/ui/TopNav' → '@/app/components/ui/TopNav' (alias, como terminos/page.js).
@@ -11,6 +15,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const ALERTAS_EMAILS = ['karina.morales@fondocapital.com', 'alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 const PRIORIDAD_COLOR = { ALTA: '#dc2626', MEDIA: '#d97706', BAJA: '#16a34a' }
 const ESTADO_COLOR = {
@@ -98,6 +103,63 @@ export default function MiPortalPage() {
   const [creandoTarea, setCreandoTarea] = useState(false)
   const [guardandoTarea, setGuardandoTarea] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // ── Alertas ──
+  const [alertas, setAlertas] = useState([])
+  const [verResueltas, setVerResueltas] = useState(false)
+  const [posponiendo, setPosponiendo] = useState(null)   // alerta en el modal de posponer
+  const [posFecha, setPosFecha] = useState('')
+  const [posMotivo, setPosMotivo] = useState('')
+  const [guardandoAlerta, setGuardandoAlerta] = useState(false)
+  const puedeAlertas = session?.user?.email && ALERTAS_EMAILS.includes(session.user.email)
+
+  const cargarAlertas = async (mail) => {
+    if (!mail) return
+    const { data, error } = await supabase
+      .from('alertas')
+      .select('*')
+      .eq('para_email', mail)
+      .order('fecha_resolver', { ascending: true, nullsFirst: false })
+      .order('fecha', { ascending: true })
+    if (!error) setAlertas(data || [])
+  }
+
+  useEffect(() => {
+    if (puedeAlertas && emailActivo) cargarAlertas(emailActivo)
+  }, [puedeAlertas, emailActivo])
+
+  const abrirPosponer = (a) => {
+    setPosponiendo(a)
+    setPosFecha(a.fecha_pospuesta || a.fecha_resolver || '')
+    setPosMotivo(a.motivo_pospuesta || '')
+  }
+
+  const guardarPosponer = async () => {
+    if (!posponiendo || !posFecha || guardandoAlerta) return
+    setGuardandoAlerta(true)
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'pospuesta', fecha_pospuesta: posFecha, motivo_pospuesta: posMotivo || null })
+      .eq('id', posponiendo.id)
+    setGuardandoAlerta(false)
+    if (!error) { setPosponiendo(null); cargarAlertas(emailActivo) }
+  }
+
+  const resolverAlerta = async (a) => {
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'resuelta', resuelta_at: new Date().toISOString(), resuelta_por: session?.user?.email })
+      .eq('id', a.id)
+    if (!error) cargarAlertas(emailActivo)
+  }
+
+  const reabrirAlerta = async (a) => {
+    const { error } = await supabase.from('alertas')
+      .update({ estado: 'pendiente', resuelta_at: null, resuelta_por: null })
+      .eq('id', a.id)
+    if (!error) cargarAlertas(emailActivo)
+  }
+
+  const alertasVisibles = (alertas || []).filter(a => verResueltas ? true : a.estado !== 'resuelta')
+  const nPendientes = (alertas || []).filter(a => a.estado !== 'resuelta').length
 
   // Permiso de acceso + redirección de externos a su portal
   useEffect(() => {
@@ -387,6 +449,75 @@ export default function MiPortalPage() {
                   </table>
                 )}
               </div>
+
+              {/* ALERTAS — tareas urgentes generadas por el CRM y fechas clave */}
+              {puedeAlertas && (
+                <div style={{ ...card, gridColumn: '1 / -1' }}>
+                  <div style={cardHead}>
+                    <span>🔔 Alertas</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <button onClick={() => setVerResueltas(v => !v)}
+                        style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: verResueltas ? '#EEF3F8' : '#fff', color: 'var(--gray-600)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {verResueltas ? 'Ocultar resueltas' : 'Ver resueltas'}
+                      </button>
+                      <span style={{ color: nPendientes ? '#d97706' : 'var(--gray-400)', fontWeight: nPendientes ? 700 : 400 }}>{nPendientes} pendiente(s)</span>
+                    </span>
+                  </div>
+                  {alertasVisibles.length === 0 ? (
+                    <div style={{ padding: 18, fontSize: 13, color: 'var(--gray-400)' }}>Sin alertas{verResueltas ? '' : ' pendientes'}.</div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr style={{ background: 'var(--gray-50)' }}>
+                        <th style={th}>Tema</th>
+                        <th style={th}>Fecha</th>
+                        <th style={th}>A resolver</th>
+                        <th style={th}>Motivo aplazamiento</th>
+                        <th style={th}>Estado</th>
+                        <th style={th}></th>
+                      </tr></thead>
+                      <tbody>
+                        {alertasVisibles.map(a => {
+                          const resuelta = a.estado === 'resuelta'
+                          const pospuesta = a.estado === 'pospuesta'
+                          const objetivo = a.fecha_pospuesta || a.fecha_resolver
+                          const vencida = objetivo && !resuelta && objetivo < new Date().toISOString().slice(0, 10)
+                          return (
+                            <tr key={a.id} style={{ opacity: resuelta ? 0.55 : 1 }}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 500, color: 'var(--gray-800)' }}>{a.tema}</div>
+                                {a.ref_idadmon && <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{a.ref_idadmon}{a.origen ? ' · ' + a.origen : ''}</div>}
+                                {a.cuerpo && <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 2 }}>{a.cuerpo}</div>}
+                              </td>
+                              <td style={td}>{fmtFecha(a.fecha)}</td>
+                              <td style={{ ...td, color: vencida ? '#B23A3A' : 'var(--gray-700)', fontWeight: vencida ? 700 : 400 }}>
+                                {fmtFecha(objetivo) || '—'}{pospuesta && <span style={{ fontSize: 10, color: '#0C447C', marginLeft: 4 }}>(pospuesta)</span>}
+                              </td>
+                              <td style={{ ...td, fontSize: 12, color: 'var(--gray-500)' }}>{a.motivo_pospuesta || '—'}</td>
+                              <td style={td}>
+                                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6,
+                                  background: resuelta ? '#E1F5EE' : pospuesta ? '#EEF3F8' : '#FEF3E2',
+                                  color: resuelta ? '#085041' : pospuesta ? '#0C447C' : '#92400E' }}>
+                                  {resuelta ? 'Resuelta' : pospuesta ? 'Pospuesta' : 'Pendiente'}
+                                </span>
+                              </td>
+                              <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                                {resuelta ? (
+                                  <button onClick={() => reabrirAlerta(a)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--gray-600)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Reabrir</button>
+                                ) : (
+                                  <span style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => abrirPosponer(a)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #D3D1C7', background: '#fff', color: '#0C447C', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Posponer</button>
+                                    <button onClick={() => resolverAlerta(a)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Resolver</button>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ZONA DE INFORMACIÓN PERSONAL */}
@@ -469,6 +600,33 @@ export default function MiPortalPage() {
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
               <button onClick={guardarTarea} disabled={guardandoTarea}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{guardandoTarea ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {posponiendo && (
+        <div onClick={() => setPosponiendo(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(480px, 100%)', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 4 }}>Posponer alerta</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: 'var(--gray-900)' }}>{posponiendo.tema}</div>
+
+            <label style={{ fontSize: 12, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>Nueva fecha para resolverla</label>
+            <input type="date" value={posFecha} onChange={e => setPosFecha(e.target.value)}
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 14 }} />
+
+            <label style={{ fontSize: 12, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>Motivo del aplazamiento</label>
+            <textarea value={posMotivo} onChange={e => setPosMotivo(e.target.value)} rows={3}
+              placeholder="Ej.: se retrasa la factura al mes siguiente para posponer el IVA"
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 18, resize: 'vertical' }} />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setPosponiendo(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--gray-600)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={guardarPosponer} disabled={!posFecha || guardandoAlerta}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: posFecha ? '#0C447C' : '#C9C7BF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: posFecha ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                {guardandoAlerta ? 'Guardando…' : 'Posponer'}
+              </button>
             </div>
           </div>
         </div>
