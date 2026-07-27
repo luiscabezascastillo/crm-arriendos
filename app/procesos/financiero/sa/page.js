@@ -1,3 +1,21 @@
+// VERSION: v21 · 2026-07-27 · SA: ayuda para clasificar (buscador de cuentas + memoria).
+//   · Cuenta 1 deja de ser un campo a ciegas: buscador sobre el plan de cuentas, por
+//     codigo o por texto. Nadie tiene que recordar 181 codigos, y evita repetir el
+//     1103-01 por 1101-03 que costo 42 millones de descuadre.
+//   · Memoria por DESCRIPCION del movimiento (un apunte de banco no tiene RUT):
+//       - patron unanime  -> se sugiere la cuenta con un clic;
+//       - desglose repetido (PREVIRED son 6 lineas fijas, el SII 4) -> boton para
+//         copiar el desglose entero del movimiento anterior igual;
+//       - "TRANSF. SIN INFORMACION" (50 lineas, 3 cuentas) NO sugiere nada: una
+//         sugerencia mala en el patron mas frecuente enseña a desconfiar de todas.
+//   · El plan de cuentas llega del endpoint (route.js v4).
+// VERSION: v20 · 2026-07-27 · SA: el panel de clasificacion se pone POR ENCIMA de las barras.
+//   El panel se abre en top:0 con zIndex 41, pero el TopNav va por encima y le tapaba
+//   las dos primeras lineas: folio, fecha y DESCRIPCION del movimiento. Es decir, se
+//   ocultaba justo lo que hace falta para saber que se esta clasificando.
+//   Ademas el fondo oscurecido tampoco cubria las barras, asi que la navegacion seguia
+//   clicable durante la edicion: un clic en otra pestaña y se pierde lo escrito.
+//   Un panel de edicion es modal: mientras esta abierto, va encima de todo.
 // VERSION: v19 · 2026-07-26 · SA · Banco Santander: cabecera compartida FinancieroHeader (3 lineas, fija).
 //   El offset pegajoso lo calcula el componente (TopNav + FinancieroNav). Antes esta
 //   pagina media solo el hermano inmediato y la cabecera se escondia tras el TopNav.
@@ -152,6 +170,12 @@ const COLDEFS = [
     fkey: m => m.estado_clasificacion || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO[k]?.label || k)) },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
+// Quita los numeros largos de cuenta para que "0768287120 Transf. SIN INFORMACION" y
+// "0217103770 Transf a CABEZAS JIMENO" no cuenten como patrones distintos.
+const patronDe = (d) => String(d || '').toUpperCase().replace(/[0-9]{6,}/g, '').replace(/\s+/g, ' ').trim()
+// Patrones donde el banco no dice nada: no se sugiere.
+const PATRON_MUDO = /TRANSF\.? SIN INFORMACION/
+
 const DGRID = '80px 76px 108px 1fr 90px 90px 26px'  // drawer: folio-sub · CCB · cantidad · concepto · cta1 · cta2 · x
 
 function Chip({ estado }) {
@@ -464,6 +488,64 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     </span>
   )
 }
+// Buscador sobre el plan de cuentas: acepta codigo o texto.
+function CuentaInput({ valor, plan, disabled, onChange, sugerida, planMap }) {
+  const [abierto, setAbierto] = useState(false)
+  const [q, setQ] = useState('')
+  const ref = useRef(null)
+
+  const opciones = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return plan.slice(0, 60)
+    return plan.filter(c =>
+      c.codigo.toLowerCase().includes(t) || (c.descripcion || '').toLowerCase().includes(t)
+    ).slice(0, 60)
+  }, [q, plan])
+
+  const desc = planMap[String(valor || '').trim()]
+  const elegir = (c) => { onChange(c.codigo); setAbierto(false); setQ('') }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        value={abierto ? q : (valor || '')}
+        disabled={disabled}
+        placeholder="código o texto"
+        title={desc || undefined}
+        onFocus={() => { if (!disabled) { setAbierto(true); setQ('') } }}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); if (!abierto) setAbierto(true) }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setAbierto(false) }
+          if (e.key === 'Enter' && opciones.length === 1) { e.preventDefault(); elegir(opciones[0]) }
+        }}
+        style={{ width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: disabled ? '#F7F6F2' : '#fff' }}
+      />
+      {!abierto && sugerida && !String(valor || '').trim() && (
+        <button onClick={() => onChange(sugerida)} disabled={disabled}
+          title={`Sugerido por el histórico: ${planMap[sugerida] || sugerida}`}
+          style={{ position: 'absolute', right: 3, top: 3, fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '0.5px solid #CDEBDF', background: '#F3FBF8', color: '#085041', cursor: 'pointer' }}>
+          {sugerida}
+        </button>
+      )}
+      {abierto && (<>
+        <div onClick={() => setAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 9100 }} />
+        <div style={{ position: 'absolute', top: 30, left: 0, zIndex: 9101, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 22px rgba(0,0,0,0.16)', width: 330, maxHeight: 260, overflowY: 'auto' }}>
+          {opciones.length === 0 && <div style={{ fontSize: 11, color: '#B4B2A9', padding: 10 }}>Ninguna cuenta casa con «{q}»</div>}
+          {opciones.map(c => (
+            <div key={c.codigo} onMouseDown={(e) => { e.preventDefault(); elegir(c) }}
+              style={{ padding: '6px 9px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid #F3F2ED', display: 'flex', gap: 8 }}
+              onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              <span style={{ fontWeight: 600, color: '#085041', minWidth: 76 }}>{c.codigo}</span>
+              <span style={{ color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.descripcion}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+    </div>
+  )
+}
+
 export default function SaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -474,6 +556,7 @@ export default function SaPage() {
   const [cargaId, setCargaId] = useState(null)
   const [movs, setMovs] = useState([])
   const [lineasByMov, setLineasByMov] = useState({})
+  const [plan, setPlan] = useState([])
   const [loading, setLoading] = useState(false)
 
   const [filters, setFilters] = useState({})   // { colKey: {text, sel[]} }
@@ -523,6 +606,7 @@ const wantScroll = useRef(false)
       const map = {}
       for (const l of (d.lineas || [])) { (map[l.movimiento_id] = map[l.movimiento_id] || []).push(l) }
       setLineasByMov(map)
+      setPlan(d.plan || [])
       if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) }
     }).finally(() => setLoading(false))
   }
@@ -688,6 +772,49 @@ const wantScroll = useRef(false)
     const first = [...cargas].sort((a, b) => a.nro_cartola - b.nro_cartola)[0]
     return first && first.saldo_inicial != null ? { saldo: first.saldo_inicial, label: 'Apertura 2026' } : null
   }, [cargas, cargaId, modo])
+
+  const planMap = useMemo(() => {
+    const m = {}
+    for (const c of plan) m[c.codigo] = c.descripcion
+    return m
+  }, [plan])
+
+  // Memoria por patron de descripcion. Un apunte de banco no tiene RUT, asi que la
+  // clave es la descripcion normalizada. Guarda dos cosas distintas:
+  //   cuenta unica  -> para sugerir una cuenta en una linea suelta
+  //   desglose      -> el ultimo reparto de varias lineas del mismo patron
+  const memoria = useMemo(() => {
+    const acc = {}
+    for (const m of movs) {
+      const pat = patronDe(m.descripcion)
+      if (!pat || PATRON_MUDO.test(pat)) continue
+      const ls = (lineasByMov[m.id] || []).filter(l => (l.cuenta_1 || '').trim())
+      if (!ls.length) continue
+      const e = acc[pat] || (acc[pat] = { ctas: {}, desglose: null, fecha: null, n: 0 })
+      for (const l of ls) {
+        const c = String(l.cuenta_1).trim()
+        e.ctas[c] = (e.ctas[c] || 0) + 1
+        e.n++
+      }
+      // el desglose mas reciente con mas de una linea
+      if (ls.length > 1 && (!e.fecha || String(m.fecha) > String(e.fecha))) {
+        e.fecha = m.fecha
+        e.desglose = ls.map(l => ({ ccb: l.ccb || '', cuenta_1: l.cuenta_1 || '', cuenta_2: l.cuenta_2 || '', concepto: l.concepto || '', monto: l.monto }))
+      }
+    }
+    for (const k of Object.keys(acc)) {
+      const e = acc[k]
+      const pares = Object.entries(e.ctas).sort((a, b) => b[1] - a[1])
+      e.unica = pares.length === 1 && e.n >= 2 ? pares[0][0] : null
+    }
+    return acc
+  }, [movs, lineasByMov])
+
+  const memoSel = sel ? memoria[patronDe(sel.descripcion)] : null
+  const copiarDesglose = () => {
+    if (!memoSel?.desglose) return
+    setLineas(memoSel.desglose.map((d, i) => ({ ...d, sub_orden: i + 1, monto: String(d.monto ?? '') })))
+  }
 
   const abrir = (m) => { setSel(m); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
@@ -982,9 +1109,9 @@ const wantScroll = useRef(false)
       {/* DRAWER (edición como tabla compacta) */}
       {sel && (
         <>
-          <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 40 }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 'clamp(640px, 66vw, 1120px)', maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E0DED6' }}>
+          <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 9000 }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 'clamp(640px, 66vw, 1120px)', maxWidth: '100%', background: '#fff', zIndex: 9001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E0DED6', flexShrink: 0, background: '#fff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: 12, color: '#888780' }}>Folio {sel.orden ?? '—'} · {fmtFecha(sel.fecha)}</div>
@@ -993,6 +1120,13 @@ const wantScroll = useRef(false)
                 </div>
                 <button onClick={cerrar} style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: '#888780', lineHeight: 1 }}>×</button>
               </div>
+              {canEdit && memoSel?.desglose && memoSel.desglose.length > 1 && lineas.length <= 1 && (
+                <button onClick={copiarDesglose}
+                  title={`Este movimiento se repite: se copian las ${memoSel.desglose.length} líneas de la última vez y sólo hay que ajustar los importes`}
+                  style={{ marginTop: 9, fontSize: 12, padding: '6px 12px', borderRadius: 7, border: '0.5px solid #CDEBDF', background: '#F3FBF8', color: '#085041', cursor: 'pointer', fontWeight: 600 }}>
+                  ⧉ Copiar el desglose de {fmtFecha(memoSel.fecha)} ({memoSel.desglose.length} líneas)
+                </button>
+              )}
               {!canEdit && <div style={{ marginTop: 8, fontSize: 12, color: '#888780', background: '#F7F6F2', padding: '6px 10px', borderRadius: 6 }}>Solo lectura · no tienes permiso para editar.</div>}
             </div>
 
@@ -1009,7 +1143,9 @@ const wantScroll = useRef(false)
                     <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
                     <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
                     <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
-                    <input value={l.cuenta_1 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_1', e.target.value)} style={inp} />
+                    <CuentaInput valor={l.cuenta_1} plan={plan} planMap={planMap} disabled={!canEdit}
+                      sugerida={memoSel?.unica || null}
+                      onChange={v => setLinea(i, 'cuenta_1', v)} />
                     <input value={l.cuenta_2 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_2', e.target.value)} style={inp} />
                     {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}
                   </div>

@@ -1,3 +1,13 @@
+// VERSION: v4 · 2026-07-27 · Lectura paginada + plan de cuentas para el buscador.
+//   1) Supabase devuelve 1000 filas como maximo por peticion y aqui no se paginaba:
+//      con mas de 1000 movimientos (o lineas) se perdian silenciosamente los ultimos.
+//      Ahora se lee por bloques con .range() y orden estable (id de desempate).
+//   2) Las consultas de lineas y marcas usaban .in('movimiento_id', ids) con TODOS los
+//      ids de golpe: eso viaja en la querystring y con unos miles revienta por longitud.
+//      Ahora va en trozos de 300.
+//   3) El GET de movimientos devuelve tambien el PLAN DE CUENTAS de detalle, para que
+//      el panel de clasificacion pueda ofrecer un buscador en vez de pedir el codigo
+//      de memoria (asi no se vuelve a teclear 1103-01 por 1101-03).
 // VERSION: v3 · 2026-07-22 · Dos cambios:
 //   1) nextFolio ignoraba que el 99999 (comisiones de mantención del banco) es el máximo de la
 //      tabla, así que la siguiente carga habría empezado a numerar en 100000. Ahora se excluye.
@@ -14,6 +24,35 @@ const admin = createClient(
 )
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+
+const PAGINA = 1000
+const TROZO = 300
+const TOPE = 200000
+
+// Lee por bloques hasta que uno venga incompleto. Recibe una FUNCION porque los
+// query builders de Supabase son de un solo uso.
+async function leerTodo(construir) {
+  const filas = []
+  for (let desde = 0; desde < TOPE; desde += PAGINA) {
+    const { data, error } = await construir().range(desde, desde + PAGINA - 1)
+    if (error) throw new Error(error.message)
+    const lote = data || []
+    filas.push(...lote)
+    if (lote.length < PAGINA) break
+  }
+  return filas
+}
+
+// .in() con muchos ids viaja en la URL: se trocea.
+async function enTrozos(ids, construir) {
+  const out = []
+  for (let i = 0; i < ids.length; i += TROZO) {
+    const parte = ids.slice(i, i + TROZO)
+    const filas = await leerTodo(() => construir(parte))
+    out.push(...filas)
+  }
+  return out
+}
 
 const COLS = 'id, carga_id, orden, linea_cartola, fecha, monto, descripcion, cargo_abono, n_lineas, suma_lineas, estado_clasificacion, saldo_calc'
 
@@ -40,35 +79,52 @@ export async function GET(req) {
 
   // Movimientos: de una cartola, o TODAS (vista continua). Incluye sus líneas para el desglose inline.
   if (carga || todas) {
-    let q = admin.from('vw_sa_movimientos').select(COLS)
-    if (carga) q = q.eq('carga_id', carga).order('linea_cartola', { ascending: true })
-    else q = q.order('fecha', { ascending: true }).order('carga_id', { ascending: true }).order('linea_cartola', { ascending: true })
-    const { data: movs, error } = await q
-    if (error) return Response.json({ error: error.message }, { status: 500 })
+    try {
+      const movs = await leerTodo(() => {
+        let q = admin.from('vw_sa_movimientos').select(COLS)
+        if (carga) q = q.eq('carga_id', carga).order('linea_cartola', { ascending: true })
+        else q = q.order('fecha', { ascending: true }).order('carga_id', { ascending: true }).order('linea_cartola', { ascending: true })
+        return q.order('id', { ascending: true })   // desempate: sin orden estable, paginar salta filas
+      })
 
-    const ids = (movs || []).map(m => m.id)
-    let lineas = []
-    if (ids.length) {
-      const { data: ls, error: e2 } = await admin
-        .from('sa_lineas')
-        .select('id, movimiento_id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto')
-        .in('movimiento_id', ids)
-        .order('sub_orden', { ascending: true })
-      if (e2) return Response.json({ error: e2.message }, { status: 500 })
-      lineas = ls || []
-    }
+      const ids = movs.map(m => m.id)
 
-    // Marcas de auditoría (sufijo de folio, color de fila, nota). Si la tabla aún no existe,
-    // se sigue sin ellas en vez de romper la pantalla.
-    let marcas = []
-    if (ids.length) {
-      const { data: mk } = await admin
-        .from('sa_marcas')
-        .select('movimiento_id, sufijo_orden, color_fondo, nota_auditoria')
-        .in('movimiento_id', ids)
-      marcas = mk || []
+      const lineas = ids.length ? await enTrozos(ids, (parte) =>
+        admin.from('sa_lineas')
+          .select('id, movimiento_id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto')
+          .in('movimiento_id', parte)
+          .order('movimiento_id', { ascending: true })
+          .order('sub_orden', { ascending: true })
+      ) : []
+
+      // Marcas de auditoría. Si la tabla aún no existe se sigue sin ellas.
+      let marcas = []
+      if (ids.length) {
+        try {
+          marcas = await enTrozos(ids, (parte) =>
+            admin.from('sa_marcas')
+              .select('movimiento_id, sufijo_orden, color_fondo, nota_auditoria')
+              .in('movimiento_id', parte)
+              .order('movimiento_id', { ascending: true })
+          )
+        } catch { marcas = [] }
+      }
+
+      // Plan de cuentas imputables, para el buscador del panel de clasificación.
+      let plan = []
+      try {
+        plan = await leerTodo(() =>
+          admin.from('contab_plan_cuentas')
+            .select('codigo, descripcion')
+            .eq('es_detalle', true).eq('activa', true)
+            .order('codigo', { ascending: true })
+        )
+      } catch { plan = [] }
+
+      return Response.json({ movimientos: movs, lineas, marcas, plan })
+    } catch (e) {
+      return Response.json({ error: String(e?.message || e) }, { status: 500 })
     }
-    return Response.json({ movimientos: movs, lineas, marcas })
   }
 
   // Lista de cartolas para el selector
