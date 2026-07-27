@@ -1,3 +1,9 @@
+// VERSION: v11 · 2026-07-27 · Compras: el panel de edicion va POR ENCIMA de las barras.
+//   Se abria en top:0 con zIndex 41, pero el TopNav y FinancieroNav van por encima y le
+//   tapaban las primeras lineas: RUT, proveedor, importe y neto. Es decir, se ocultaba
+//   justo lo que hace falta para decidir el CCB y la cuenta.
+//   Ademas el fondo oscurecido no cubria las barras, asi que la navegacion seguia
+//   clicable durante la edicion. Mismo arreglo que ya se hizo en SA (v20).
 // VERSION: v10 · 2026-07-27 · Compras: se crea el componente CuentaSelector, que faltaba.
 //   La v9 lo importaba de @/app/components/ui/CuentaSelector, pero ese archivo no
 //   existia: la pantalla habria reventado al abrir el panel. esbuild no lo detecta
@@ -489,8 +495,8 @@ const wantScroll = useRef(false)
       </div>
 
       {sel && (<>
-        <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 40 }} />
-        <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 460, maxWidth: '100%', background: '#fff', zIndex: 41, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+        <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 9000 }} />
+        <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 460, maxWidth: '100%', background: '#fff', zIndex: 9001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '16px 18px', borderBottom: '0.5px solid #E0DED6' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
               <div>
