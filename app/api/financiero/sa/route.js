@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-07-27 · El PUT guarda tambien la glosa contable del movimiento.
 // VERSION: v5 · 2026-07-27 · La carga reconcilia por N° MOVIMIENTO, no por posicion.
 //   El POST emparejaba por linea_cartola (la posicion en el archivo). Eso solo funciona
 //   si cada carga es la cartola COMPLETA desde la primera linea. La Consulta de
@@ -67,7 +68,7 @@ async function enTrozos(ids, construir) {
   return out
 }
 
-const COLS = 'id, carga_id, orden, linea_cartola, fecha, monto, descripcion, cargo_abono, n_lineas, suma_lineas, estado_clasificacion, saldo_calc'
+const COLS = 'id, carga_id, orden, glosa, linea_cartola, fecha, monto, descripcion, cargo_abono, n_lineas, suma_lineas, estado_clasificacion, saldo_calc'
 
 export async function GET(req) {
   const session = await getServerSession(authOptions)
@@ -160,6 +161,14 @@ export async function PUT(req) {
   const movimientoId = body?.movimiento_id
   const lineas = Array.isArray(body?.lineas) ? body.lineas : null
   if (!movimientoId || !lineas) return Response.json({ error: 'Faltan movimiento_id o lineas' }, { status: 400 })
+
+  // Glosa propia del movimiento: sustituye a la del banco en los asientos. La del
+  // banco NO se toca, es el dato original.
+  if (Object.prototype.hasOwnProperty.call(body, 'glosa')) {
+    const g = String(body.glosa || '').trim() || null
+    const { error: eG } = await admin.from('sa_movimientos').update({ glosa: g }).eq('id', movimientoId)
+    if (eG) return Response.json({ error: eG.message }, { status: 500 })
+  }
 
   const { error: delErr } = await admin.from('sa_lineas').delete().eq('movimiento_id', movimientoId)
   if (delErr) return Response.json({ error: delErr.message }, { status: 500 })

@@ -1,3 +1,7 @@
+// VERSION: v24 · 2026-07-27 · SA: glosa contable editable en el panel.
+//   El banco repite su plantilla: un pago de honorarios sale como "Honorarios Noviembr"
+//   en enero, febrero y marzo (folios 1879, 1922, 1966). Ahora se puede escribir una
+//   glosa propia que es la que va al asiento; la del banco se sigue viendo debajo.
 // VERSION: v23 · 2026-07-27 · SA: se captura el N° MOVIMIENTO del banco.
 //   Es el correlativo unico que asigna el Santander a cada apunte (1646, 1647...).
 //   Se capturaba N° DOCUMENTO -que en esta cuenta vale 000000000- e se ignoraba el
@@ -512,6 +516,7 @@ export default function SaPage() {
   const [movs, setMovs] = useState([])
   const [lineasByMov, setLineasByMov] = useState({})
   const [plan, setPlan] = useState([])
+  const [glosa, setGlosa] = useState('')
   const [loading, setLoading] = useState(false)
 
   const [filters, setFilters] = useState({})   // { colKey: {text, sel[]} }
@@ -771,7 +776,7 @@ const wantScroll = useRef(false)
     setLineas(memoSel.desglose.map((d, i) => ({ ...d, sub_orden: i + 1, monto: String(d.monto ?? '') })))
   }
 
-  const abrir = (m) => { setSel(m); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
+  const abrir = (m) => { setSel(m); setGlosa(m.glosa || ''); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
   const setLinea = (i, campo, val) => setLineas(ls => ls.map((l, k) => k === i ? { ...l, [campo]: val } : l))
   const addLinea = () => setLineas(ls => [...ls, { sub_orden: ls.length + 1, monto: '', ccb: '', cuenta_1: '', cuenta_2: '', concepto: '' }])
@@ -788,6 +793,7 @@ const wantScroll = useRef(false)
     try {
       const payload = {
         movimiento_id: sel.id,
+        glosa,
         lineas: lineas.filter(l => l.monto !== '' && l.monto != null).map((l, i) => ({
           sub_orden: i + 1, monto: Math.abs(Math.round(Number(l.monto))),
           ccb: (l.ccb || '').trim() || null, cuenta_1: (l.cuenta_1 || '').trim() || null,
@@ -1070,7 +1076,16 @@ const wantScroll = useRef(false)
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: 12, color: '#888780' }}>Folio {sel.orden ?? '—'} · {fmtFecha(sel.fecha)}</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#2C2C2A', marginTop: 2 }}>{sel.descripcion || '—'}</div>
+                  <input value={glosa} disabled={!canEdit}
+                    onChange={e => setGlosa(e.target.value)}
+                    placeholder={sel.descripcion || 'Glosa del asiento'}
+                    title="Glosa que irá al asiento contable. Si se deja vacía se usa la descripción del banco."
+                    style={{ width: '100%', fontSize: 14, fontWeight: 600, color: '#2C2C2A', marginTop: 2,
+                      padding: '4px 7px', borderRadius: 5, border: `0.5px solid ${glosa ? '#CDEBDF' : 'transparent'}`,
+                      background: glosa ? '#F3FBF8' : 'transparent', boxSizing: 'border-box' }} />
+                  <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 2 }}>
+                    Banco: {sel.descripcion || '—'}
+                  </div>
                   <div style={{ fontSize: 19, fontWeight: 700, marginTop: 3, color: sel.monto < 0 ? '#B23A3A' : '#085041' }}>{clp(sel.monto)}</div>
                 </div>
                 <button onClick={cerrar} style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: '#888780', lineHeight: 1 }}>×</button>
