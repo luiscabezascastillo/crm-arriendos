@@ -1,3 +1,16 @@
+// VERSION: v5 · 2026-07-27 · La carga reconcilia por N° MOVIMIENTO, no por posicion.
+//   El POST emparejaba por linea_cartola (la posicion en el archivo). Eso solo funciona
+//   si cada carga es la cartola COMPLETA desde la primera linea. La Consulta de
+//   Movimientos que se sube cada semana es parcial, solapada y de rango libre, asi que
+//   la posicion no significa nada: una carga con 5 movimientos nuevos daba "0 nuevos y
+//   11 lineas a revisar".
+//   Ahora se empareja en dos pasos:
+//     1) por n_movimiento (correlativo unico del banco);
+//     2) si el guardado aun no lo tiene -los 727 historicos-, por huella
+//        fecha + monto + descripcion, y de paso SE LE RELLENA el numero.
+//   Asi el historico se va numerando solo conforme se suben archivos.
+//   Ademas cada movimiento va a la carga de SU PROPIO MES: el archivo semanal cruza
+//   de mes (21/07 a 04/08) y antes todo caia en la cartola del mes del fichero.
 // VERSION: v4 · 2026-07-27 · Lectura paginada + plan de cuentas para el buscador.
 //   1) Supabase devuelve 1000 filas como maximo por peticion y aqui no se paginaba:
 //      con mas de 1000 movimientos (o lineas) se perdian silenciosamente los ultimos.
@@ -169,7 +182,7 @@ export async function PUT(req) {
   return Response.json({ ok: true, n: lineas.length })
 }
 
-// POST: cargar un extracto (provisoria o definitiva). Reconcilia por posición y asigna folio a los nuevos.
+// POST: cargar un extracto. Reconcilia por el N° MOVIMIENTO del banco.
 export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -178,66 +191,125 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { nro_cartola, tipo, periodo, fecha_desde, fecha_hasta, saldo_inicial } = body || {}
   const movimientos = Array.isArray(body?.movimientos) ? body.movimientos : null
-  if (!nro_cartola || !movimientos || !movimientos.length) return Response.json({ error: 'Faltan nro_cartola o movimientos' }, { status: 400 })
+  if (!movimientos || !movimientos.length) return Response.json({ error: 'No hay movimientos' }, { status: 400 })
 
-  const { data: cargaEx, error: e0 } = await admin.from('sa_cargas').select('id, tipo, n_movimientos').eq('nro_cartola', nro_cartola).maybeSingle()
-  if (e0) return Response.json({ error: e0.message }, { status: 500 })
+  const norm = (t) => String(t || '').trim().toUpperCase().replace(/\s+/g, ' ')
+  const huella = (m) => `${String(m.fecha).slice(0, 10)}|${Math.round(Number(m.monto))}|${norm(m.descripcion)}`
+  const mesDe = (f) => String(f).slice(0, 7)
 
-  // OJO: el 99999 es el número especial de las comisiones de mantención del banco, no el último
-  // folio de la serie. Sin el .lt() la siguiente cartola empezaría a numerar en 100000.
-  const { data: maxRow } = await admin.from('sa_movimientos')
-    .select('orden').not('orden', 'is', null).lt('orden', 90000)
-    .order('orden', { ascending: false }).limit(1).maybeSingle()
-  let nextFolio = maxRow?.orden || 1877   // el primero de 2026 será 1878
+  try {
+    // ---- 1. Lo que ya hay, para emparejar ----
+    const yaHay = await leerTodo(() => admin.from('sa_movimientos')
+      .select('id, n_movimiento, fecha, monto, descripcion, carga_id')
+      .order('id', { ascending: true }))
 
-  const mkRow = (cargaId, m, i, folio) => ({
-    carga_id: cargaId, linea_cartola: i + 1, fecha: m.fecha, monto: Math.round(Number(m.monto)),
-    descripcion: m.descripcion || null, n_documento: m.n_documento || null, sucursal: m.sucursal || null,
-    cargo_abono: (m.cargo_abono === 'C' || m.cargo_abono === 'A') ? m.cargo_abono : null, orden: folio,
-  })
-
-  // CARTOLA NUEVA
-  if (!cargaEx) {
-    const { data: nueva, error: e1 } = await admin.from('sa_cargas').insert({
-      nro_cartola, tipo: tipo || 'definitiva', periodo: periodo || null,
-      fecha_desde: fecha_desde || null, fecha_hasta: fecha_hasta || null,
-      saldo_inicial: (saldo_inicial != null ? Math.round(Number(saldo_inicial)) : null),
-      n_movimientos: movimientos.length, cargado_por: email, archivo: body.archivo || null,
-    }).select('id').single()
-    if (e1) return Response.json({ error: e1.message }, { status: 500 })
-    const rows = movimientos.map((m, i) => mkRow(nueva.id, m, i, ++nextFolio))
-    const { error: e2 } = await admin.from('sa_movimientos').insert(rows)
-    if (e2) return Response.json({ error: e2.message }, { status: 500 })
-    return Response.json({ ok: true, cartola_nueva: true, nro_cartola, nuevos: rows.length, existentes: 0, total: movimientos.length, conflictos: [] })
-  }
-
-  // RECARGA: reconciliar por posición (linea_cartola)
-  const cargaId = cargaEx.id
-  const { data: exMovs, error: e3 } = await admin.from('sa_movimientos').select('linea_cartola, fecha, monto').eq('carga_id', cargaId)
-  if (e3) return Response.json({ error: e3.message }, { status: 500 })
-  const exByLinea = {}
-  for (const m of (exMovs || [])) exByLinea[m.linea_cartola] = m
-
-  const nuevos = []; const conflictos = []
-  movimientos.forEach((m, i) => {
-    const linea = i + 1
-    const ex = exByLinea[linea]
-    if (ex) {
-      if (String(ex.fecha).slice(0, 10) !== String(m.fecha).slice(0, 10) || Math.round(Number(ex.monto)) !== Math.round(Number(m.monto))) {
-        conflictos.push({ linea })
-      }
-      // ya existía → se conserva su folio y su clasificación (no se toca)
-    } else {
-      nuevos.push(mkRow(cargaId, m, i, ++nextFolio))
+    const porNumero = new Map()
+    const porHuella = new Map()
+    for (const m of yaHay) {
+      if (m.n_movimiento != null) porNumero.set(Number(m.n_movimiento), m)
+      const h = huella(m)
+      if (!porHuella.has(h)) porHuella.set(h, [])
+      porHuella.get(h).push(m)
     }
-  })
-  if (nuevos.length) {
-    const { error: e4 } = await admin.from('sa_movimientos').insert(nuevos)
-    if (e4) return Response.json({ error: e4.message }, { status: 500 })
-  }
-  await admin.from('sa_cargas').update({ tipo: tipo || cargaEx.tipo, fecha_hasta: fecha_hasta || null, n_movimientos: movimientos.length }).eq('id', cargaId)
 
-  return Response.json({ ok: true, cartola_nueva: false, nro_cartola, nuevos: nuevos.length, existentes: (exMovs?.length || 0), total: movimientos.length, conflictos })
+    const usados = new Set()
+    const nuevos = []
+    const numerar = []          // historicos a los que se les rellena el numero
+    let existentes = 0
+
+    for (const m of movimientos) {
+      if (!m.fecha || m.monto == null) continue
+      const nm = m.n_movimiento != null ? Number(m.n_movimiento) : null
+
+      // 1) por el numero del banco
+      if (nm != null && porNumero.has(nm)) { existentes++; continue }
+
+      // 2) por huella, para los historicos que aun no tienen numero
+      const cands = (porHuella.get(huella(m)) || []).filter(x => !usados.has(x.id) && x.n_movimiento == null)
+      if (cands.length) {
+        const enc = cands[0]
+        usados.add(enc.id)
+        existentes++
+        if (nm != null) numerar.push({ id: enc.id, n_movimiento: nm })
+        continue
+      }
+
+      nuevos.push(m)
+    }
+
+    // ---- 2. Rellenar el numero en los historicos emparejados ----
+    let numerados = 0
+    for (const u of numerar) {
+      const { error } = await admin.from('sa_movimientos').update({ n_movimiento: u.n_movimiento }).eq('id', u.id)
+      if (!error) numerados++
+    }
+
+    // ---- 3. Los nuevos, cada uno a la carga de SU mes ----
+    const { data: maxRow } = await admin.from('sa_movimientos')
+      .select('orden').not('orden', 'is', null).lt('orden', 90000)
+      .order('orden', { ascending: false }).limit(1).maybeSingle()
+    let nextFolio = maxRow?.orden || 1877
+
+    const cargas = {}
+    const getCarga = async (mes) => {
+      if (cargas[mes]) return cargas[mes]
+      const { data: ex } = await admin.from('sa_cargas').select('id, nro_cartola').eq('periodo', mes).maybeSingle()
+      if (ex) { cargas[mes] = ex.id; return ex.id }
+      const { data: mx } = await admin.from('sa_cargas').select('nro_cartola')
+        .order('nro_cartola', { ascending: false }).limit(1).maybeSingle()
+      const nro = (mx?.nro_cartola || 0) + 1
+      const { data: nueva, error } = await admin.from('sa_cargas').insert({
+        nro_cartola: nro, tipo: body.tipo || 'provisoria', periodo: mes,
+        n_movimientos: 0, cargado_por: email, archivo: body.archivo || null,
+      }).select('id').single()
+      if (error) throw new Error(error.message)
+      cargas[mes] = nueva.id
+      return nueva.id
+    }
+
+    const filas = []
+    for (const m of nuevos) {
+      const cargaId = await getCarga(mesDe(m.fecha))
+      filas.push({
+        carga_id: cargaId, fecha: m.fecha, monto: Math.round(Number(m.monto)),
+        descripcion: m.descripcion || null, n_documento: m.n_documento || null,
+        n_movimiento: m.n_movimiento != null ? Number(m.n_movimiento) : null,
+        sucursal: m.sucursal || null,
+        cargo_abono: (m.cargo_abono === 'C' || m.cargo_abono === 'A') ? m.cargo_abono : null,
+        orden: ++nextFolio,
+      })
+    }
+
+    if (filas.length) {
+      // linea_cartola solo como referencia dentro de su carga; ya no reconcilia nada.
+      const porCarga = {}
+      for (const f of filas) porCarga[f.carga_id] = (porCarga[f.carga_id] || 0) + 1
+      for (const cid of Object.keys(porCarga)) {
+        const { count } = await admin.from('sa_movimientos').select('id', { count: 'exact', head: true }).eq('carga_id', cid)
+        let k = count || 0
+        for (const f of filas) if (String(f.carga_id) === String(cid)) f.linea_cartola = ++k
+      }
+      for (let i = 0; i < filas.length; i += PAGINA) {
+        const { error } = await admin.from('sa_movimientos').insert(filas.slice(i, i + PAGINA))
+        if (error) return Response.json({ error: error.message }, { status: 500 })
+      }
+      for (const cid of Object.keys(porCarga)) {
+        const { count } = await admin.from('sa_movimientos').select('id', { count: 'exact', head: true }).eq('carga_id', cid)
+        await admin.from('sa_cargas').update({ n_movimientos: count || 0 }).eq('id', cid)
+      }
+    }
+
+    return Response.json({
+      ok: true,
+      nuevos: filas.length,
+      existentes,
+      total: movimientos.length,
+      numerados,
+      meses: Object.keys(cargas),
+      conflictos: [],
+    })
+  } catch (e) {
+    return Response.json({ error: String(e?.message || e) }, { status: 500 })
+  }
 }

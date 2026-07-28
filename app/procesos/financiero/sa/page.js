@@ -1,3 +1,8 @@
+// VERSION: v23 · 2026-07-27 · SA: se captura el N° MOVIMIENTO del banco.
+//   Es el correlativo unico que asigna el Santander a cada apunte (1646, 1647...).
+//   Se capturaba N° DOCUMENTO -que en esta cuenta vale 000000000- e se ignoraba el
+//   que si identifica. Con el, la Consulta de Movimientos semanal (parcial, solapada
+//   y de rango libre) se reconcilia sin depender de la posicion en el archivo.
 // VERSION: v22 · 2026-07-27 · SA: el buscador de cuentas pasa a componente compartido.
 //   Compras necesita exactamente la misma ayuda, asi que CuentaSelector vive ahora en
 //   components/ui y lo usan las dos pantallas. Comportamiento identico al v21.
@@ -110,7 +115,9 @@ async function parseCartola(file, XLSX) {
   const H = Array.from(rows[hi] || [], c => String(c == null ? '' : c).trim().toUpperCase())
   const col = (...subs) => { for (let i = 0; i < H.length; i++) { if (subs.every(s => H[i].includes(s))) return i } return -1 }
   const C = { monto: col('MONTO'), desc: col('DESCRIPCI'), fecha: col('FECHA'), saldo: col('SALDO'),
-              ndoc: col('DOCUMENTO'), suc: col('SUCURSAL'), ca: col('CARGO') }
+              ndoc: col('DOCUMENTO'), suc: col('SUCURSAL'), ca: col('CARGO'),
+              // OJO: 'MOVIMIENTO' tambien casa con 'DESCRIPCION MOVIMIENTO'. Hay que excluirla.
+              nmov: H.findIndex(h => h.includes('MOVIMIENTO') && !h.includes('DESCRIP')) }
   if (C.fecha < 0) throw new Error('No encontré la columna FECHA en el archivo.')
   const flat = rows.slice(0, hi + 1).map(r => (r || []).map(c => c == null ? '' : String(c)).join('  ')).join('  ')
   const nroM = flat.match(/N[uú]mero cartola:\s*(\d+)/i)
@@ -133,6 +140,8 @@ async function parseCartola(file, XLSX) {
     const ca = String(C.ca >= 0 ? (r[C.ca] == null ? '' : r[C.ca]) : '').trim().toUpperCase().slice(0, 1)
     movimientos.push({ fecha: f, monto: Math.round(monto), descripcion: cellStr(r[C.desc]),
       n_documento: C.ndoc >= 0 ? cellStr(r[C.ndoc]) : null, sucursal: C.suc >= 0 ? cellStr(r[C.suc]) : null,
+      // Correlativo unico del banco. Viene con ceros a la izquierda ('000001656').
+      n_movimiento: (() => { const t = C.nmov >= 0 ? String(r[C.nmov] ?? '').replace(/\D/g, '') : ''; return t ? Number(t) : null })(),
       cargo_abono: (ca === 'C' || ca === 'A') ? ca : null,
       saldo: (C.saldo >= 0 && r[C.saldo] != null && r[C.saldo] !== '' && !isNaN(Number(r[C.saldo]))) ? Math.round(Number(r[C.saldo])) : null })
   }
