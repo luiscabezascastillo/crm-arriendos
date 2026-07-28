@@ -1,3 +1,10 @@
+// VERSION: v5 · 2026-07-27 · Remuneraciones: carga del Libro en PDF (arrastrar o botón).
+//   El PDF de Nubox se lee EN EL NAVEGADOR (lib/parseRemuneraciones) y se manda ya en
+//   JSON, igual que hacen Ventas y Compras con el Excel.
+//   Antes de guardar se cuadra lo leido contra el TOTAL GENERAL del propio PDF: si no
+//   coincide, se avisa y no se carga. Mejor no cargar que cargar mal.
+//   OJO: validado con el libro de Nubox (ene-2026 y todo 2025). De feb-2026 cambio el
+//   proveedor de remuneraciones y ese formato aun no se ha visto.
 // VERSION: v4 · 2026-07-26 · Remuneraciones: los años salen del CALENDARIO, no de los datos.
 //   La v3 sacaba la lista de años de las cargas existentes, asi que 2026 no aparecia
 //   por no tener ningun libro: justo el año que interesa y justo donde el aviso de
@@ -32,9 +39,10 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useMemo, Fragment } from 'react'
+import { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import { parseLibroRemuneracionesPDF } from '@/app/lib/parseRemuneraciones'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -87,6 +95,10 @@ export default function RemuneracionesPage() {
   const [verResumen, setVerResumen] = useState(false)
   const [selAbierto, setSelAbierto] = useState(false)
   const [anioVista, setAnioVista] = useState(null)
+  const fileRef = useRef(null)
+  const [subiendo, setSubiendo] = useState(false)
+  const [msgCarga, setMsgCarga] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
@@ -244,6 +256,46 @@ export default function RemuneracionesPage() {
     }
   }
 
+  const cargarLibro = async (file, sobrescribir = false) => {
+    if (!file) return
+    if (!/\.pdf$/i.test(file.name)) { setMsgCarga({ error: 'De momento solo el PDF del Libro de Remuneraciones.' }); return }
+    setSubiendo(true); setMsgCarga(null)
+    try {
+      const r = await parseLibroRemuneracionesPDF(file)
+      if (r.avisos && r.avisos.length) {
+        // No cuadra con el TOTAL GENERAL del PDF: no se carga.
+        setMsgCarga({ error: 'El libro no cuadra consigo mismo, no lo cargo: ' + r.avisos.join(' · ') })
+        return
+      }
+      const res = await fetch('/api/financiero/remuneraciones', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'cargar_libro', periodo: r.periodo, mes_texto: r.mes_texto, archivo: r.archivo,
+          lineas: r.lineas, totales: r.totales, sobrescribir,
+        }),
+      })
+      const j = await res.json()
+      if (j.error === 'mes_ya_cargado') {
+        if (window.confirm(j.mensaje + '\n\n¿Recargar de todos modos?')) return cargarLibro(file, true)
+        return
+      }
+      if (j.error) { setMsgCarga({ error: j.mensaje || j.error }); return }
+      setMsgCarga({ text: `${r.mes_texto} · ${j.n_lineas} personas cargadas` + (j.empleados_nuevos ? `, ${j.empleados_nuevos} nuevas en el maestro` : '') + '. ' + j.aviso })
+      const d = await fetch('/api/financiero/remuneraciones').then(x => x.json()).catch(() => ({}))
+      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) setCargaSel(nueva.id) }
+    } catch (e) {
+      setMsgCarga({ error: String(e?.message || e) })
+    } finally { setSubiendo(false) }
+  }
+
+  useEffect(() => {
+    const over = (e) => { e.preventDefault(); if (puedeEditar) setDragOver(true) }
+    const leave = (e) => { e.preventDefault(); setDragOver(false) }
+    const drop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f && puedeEditar) cargarLibro(f) }
+    window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop)
+    return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop) }
+  }) // eslint-disable-line
+
   const heredar = async (forzar = false) => {
     if (!cargaActual) return
     setGuardando(true)
@@ -311,6 +363,11 @@ export default function RemuneracionesPage() {
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
       <FinancieroNav activo="remuneraciones" />
+      {dragOver && puedeEditar && (
+        <div data-overlay="1" style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ background: '#fff', padding: '14px 22px', borderRadius: 10, fontSize: 15, fontWeight: 600, color: '#085041' }}>⬆ Suelta el PDF del Libro de Remuneraciones</div>
+        </div>
+      )}
 
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px' }}>
 
@@ -393,6 +450,16 @@ export default function RemuneracionesPage() {
                 ⚠ {sinCargar} {sinCargar === 1 ? 'mes sin cargar' : 'meses sin cargar'}
               </button>
             )}
+            {puedeEditar && (
+              <button onClick={() => fileRef.current?.click()} disabled={subiendo}
+                title="Subir o arrastrar el PDF del Libro de Remuneraciones"
+                style={{ ...pill, padding: '6px 14px', fontSize: 13, fontWeight: 600, border: 'none',
+                  background: subiendo ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: subiendo ? 'default' : 'pointer' }}>
+                ⬆ {subiendo ? 'Leyendo…' : 'Cargar libro (PDF)'}
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cargarLibro(f) }} />
             <button onClick={() => { setCargaSel('TODAS'); setExpandida(null); setEditando(null); setAviso(null) }}
               style={{ ...pill, padding: '6px 13px', fontSize: 13,
                 background: cargaSel === 'TODAS' ? VERDE : '#fff', color: cargaSel === 'TODAS' ? '#fff' : '#3A3A38',
@@ -402,6 +469,14 @@ export default function RemuneracionesPage() {
           </div>
         </div>
 
+        {msgCarga && (
+          <div style={{ marginBottom: 12, fontSize: 13, padding: '9px 12px', borderRadius: 8,
+            background: msgCarga.error ? '#FBE9E7' : '#F3FBF8',
+            border: `1px solid ${msgCarga.error ? '#F0C9C2' : '#CDEBDF'}`,
+            color: msgCarga.error ? '#B23A3A' : '#085041' }}>
+            {msgCarga.error || msgCarga.text}
+          </div>
+        )}
         {error && (
           <div style={{ ...banner, background: '#FBE9E7', color: '#B23A3A', borderColor: '#F0C8C2' }}>
             {error}

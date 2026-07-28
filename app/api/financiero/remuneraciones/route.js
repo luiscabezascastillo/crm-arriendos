@@ -3,9 +3,17 @@
 //   PUT  → guarda el desglose CCB de una línea (rem_ccb). Respeta rem_cargas.congelado.
 //   POST → hereda el reparto por defecto (rem_empleado_ccb) a todas las líneas de un mes.
 //
-// NO hay POST de carga de archivo a propósito: en feb-2026 cambió el proveedor de
-// remuneraciones (ene-2026 es Nubox, feb en adelante otro sistema), así que el Libro
-// de 2026 puede no tener el formato de 2025. El parser se escribe cuando se vea el archivo.
+// v2 · 2026-07-27 · POST admite ademas accion:'cargar_libro' (el PDF se parsea en el
+//   navegador y llega ya en JSON). Sigue SIN parser propio del formato nuevo: el libro
+//   de ene-2026 es Nubox y esta validado; de feb-2026 en adelante cambio el proveedor
+//   y ese formato no se ha visto todavia.
+//   Reglas de la carga:
+//     · mes congelado -> se rechaza;
+//     · si el mes ya tiene lineas -> se exige sobrescribir:true, porque recargar borra
+//       las lineas y con ellas el reparto por CCB ya hecho (rem_ccb va en cascada);
+//     · los RUT nuevos se dan de alta en rem_empleados para que existan en el maestro;
+//     · coste_empresa = tot_haberes: los aportes del empleador NO vienen en el libro,
+//       llegan de Previred, y hasta entonces falta_previred deja la linea marcada.
 // El histórico 2025 se cargó por SQL (rem_carga_2025_v1.sql).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
@@ -174,6 +182,9 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
+
+  if (body?.accion === 'cargar_libro') return cargarLibro(body, email)
+
   const periodo = body?.periodo
   if (!periodo) return Response.json({ error: 'Falta periodo (día 1 del mes)' }, { status: 400 })
 
@@ -253,5 +264,110 @@ export async function POST(req) {
     saltadas_por_tener_ya: saltadas,
     sin_reparto_definido: sinReparto,
     forzado: !!body?.forzar,
+  })
+}
+
+
+// ---------------------------------------------------------------------------
+// Carga de un Libro de Remuneraciones ya parseado en el navegador.
+// body: { accion:'cargar_libro', periodo:'2026-01-01', mes_texto, archivo,
+//         lineas:[{rut, nombre_libro, cod_libro, dt, ...}], totales:{chk_*}, sobrescribir? }
+// ---------------------------------------------------------------------------
+const N = (v) => (v == null || v === '' ? null : Math.round(Number(v)) || 0)
+const limpiarRut = (r) => String(r || '').replace(/[\s.]/g, '').toUpperCase() || null
+
+async function cargarLibro(body, email) {
+  const periodo = body?.periodo
+  const lineas = Array.isArray(body?.lineas) ? body.lineas : null
+  if (!periodo || !/^\d{4}-\d{2}-01$/.test(String(periodo))) {
+    return Response.json({ error: 'Falta periodo válido (día 1 del mes, AAAA-MM-01)' }, { status: 400 })
+  }
+  if (!lineas || !lineas.length) return Response.json({ error: 'El libro no trae líneas' }, { status: 400 })
+
+  // ¿Existe ya el mes?
+  const { data: cg, error: eC } = await admin
+    .from('rem_cargas').select('id, congelado').eq('periodo', periodo).maybeSingle()
+  if (eC) return Response.json({ error: eC.message }, { status: 500 })
+
+  if (cg?.congelado) {
+    return Response.json({ error: `El mes ${String(periodo).slice(0, 7)} está congelado y no se puede recargar.` }, { status: 409 })
+  }
+
+  if (cg) {
+    const { count, error: eN } = await admin
+      .from('rem_lineas').select('id', { count: 'exact', head: true }).eq('carga_id', cg.id)
+    if (eN) return Response.json({ error: eN.message }, { status: 500 })
+    if ((count || 0) > 0 && !body?.sobrescribir) {
+      return Response.json({
+        error: 'mes_ya_cargado',
+        mensaje: `El mes ${String(periodo).slice(0, 7)} ya tiene ${count} líneas cargadas. ` +
+                 'Volver a cargarlo las borra, y con ellas el reparto por CCB que se haya hecho. ' +
+                 'Repite con sobrescribir:true si es lo que quieres.',
+        n_actuales: count,
+      }, { status: 409 })
+    }
+  }
+
+  // Cabecera de la carga
+  const t = body?.totales || {}
+  const cab = {
+    periodo,
+    mes_texto: body?.mes_texto || null,
+    archivo_nombre: body?.archivo || null,
+    n_empleados: lineas.length,
+    chk_dt: N(t.chk_dt), chk_tot_imp: N(t.chk_tot_imp), chk_tot_no_imp: N(t.chk_tot_no_imp),
+    chk_tot_haberes: N(t.chk_tot_haberes), chk_tot_desc: N(t.chk_tot_desc), chk_liquido: N(t.chk_liquido),
+    congelado: false, cargado_por: email,
+  }
+
+  let cargaId = cg?.id
+  if (cargaId) {
+    const { error } = await admin.from('rem_cargas').update(cab).eq('id', cargaId)
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    const { error: eD } = await admin.from('rem_lineas').delete().eq('carga_id', cargaId)
+    if (eD) return Response.json({ error: eD.message }, { status: 500 })
+  } else {
+    const { data, error } = await admin.from('rem_cargas').insert(cab).select('id').single()
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    cargaId = data.id
+  }
+
+  // Alta de los RUT que no estuvieran en el maestro (sin pisar los nombres ya puestos)
+  const nuevos = []
+  const vistos = new Set()
+  for (const l of lineas) {
+    const rut = limpiarRut(l.rut)
+    if (!rut || vistos.has(rut)) continue
+    vistos.add(rut)
+    nuevos.push({ rut, nombre: l.nombre_libro || null, cod_libro: N(l.cod_libro), activo: true })
+  }
+  if (nuevos.length) {
+    await admin.from('rem_empleados').upsert(nuevos, { onConflict: 'rut', ignoreDuplicates: true })
+  }
+
+  const filas = lineas.map((l, i) => ({
+    carga_id: cargaId, periodo, rut: limpiarRut(l.rut),
+    fila_libro: i + 1, cod_libro: N(l.cod_libro), nombre_libro: l.nombre_libro || null,
+    dt: N(l.dt),
+    sueldo_base: N(l.sueldo_base), horas_extras: N(l.horas_extras), grat_legal: N(l.grat_legal),
+    otros_imp: N(l.otros_imp), total_imp: N(l.total_imp),
+    asig_fam: N(l.asig_fam), otros_no_imp: N(l.otros_no_imp), tot_no_imp: N(l.tot_no_imp),
+    tot_haberes: N(l.tot_haberes),
+    prevision: N(l.prevision), salud: N(l.salud), imp_unico: N(l.imp_unico), seg_ces: N(l.seg_ces),
+    otros_dleg: N(l.otros_dleg), tot_dleg: N(l.tot_dleg), desc_varios: N(l.desc_varios),
+    tot_desc: N(l.tot_desc), liquido: N(l.liquido),
+    // Los aportes del empleador NO vienen en el libro: llegan de Previred.
+    coste_empresa: N(l.tot_haberes),
+  }))
+
+  const { error: eI } = await admin.from('rem_lineas').insert(filas)
+  if (eI) return Response.json({ error: eI.message }, { status: 500 })
+
+  return Response.json({
+    ok: true, periodo, carga_id: cargaId,
+    n_lineas: filas.length,
+    empleados_nuevos: nuevos.length,
+    sobrescrito: !!cg,
+    aviso: 'Faltan los aportes del empleador (SIS, cesantía patronal, mutual, SANNA): vienen de Previred.',
   })
 }
