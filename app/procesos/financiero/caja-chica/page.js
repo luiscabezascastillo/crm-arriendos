@@ -1,3 +1,12 @@
+// VERSION: v5 · 2026-07-27 · Caja Chica: arreglada la carga y separadas Saldo / CCB.
+//   1) "Cannot read properties of undefined (reading 'includes')" al cargar el Excel:
+//      SheetJS devuelve arrays DISPERSOS (con huecos) cuando hay celdas vacias. .map()
+//      y .some() SALTAN los huecos, pero findIndex NO: los recorre pasando undefined.
+//      Bastaba una columna vacia en la fila de cabecera para que reventase la carga.
+//      Ahora la fila se densifica con Array.from antes de buscar nada.
+//   2) Las cabeceras "Saldo" y "CCB" se tocaban y parecian una sola columna llamada
+//      "SaldoCCB", lo que hacia pensar que habia un total por centro. Son dos columnas
+//      distintas: el saldo corrido de la caja y el centro de cada movimiento.
 // VERSION: v4 · 2026-07-26 · Caja Chica: cabecera compartida FinancieroHeader (3 lineas, fija).
 //   El offset pegajoso lo calcula el componente (TopNav + FinancieroNav). Antes esta
 //   pagina media solo el hermano inmediato y la cabecera se escondia tras el TopNav.
@@ -37,12 +46,13 @@ async function parseCajaChica(file, XLSX) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false })
   let hi = -1
   for (let i = 0; i < rows.length; i++) {
-    const hh = (rows[i] || []).map(c => String(c == null ? '' : c).trim().toUpperCase())
+    // Array.from densifica: rellena los huecos del array disperso de SheetJS.
+    const hh = Array.from(rows[i] || [], c => String(c == null ? '' : c).trim().toUpperCase())
     if (hh.some(h => h.includes('SALDO')) && hh.some(h => h.includes('MONTO INICIAL'))) { hi = i; break }
   }
   if (hi < 0) throw new Error('No encontré la cabecera (Monto inicial / Saldo Final). ¿Es el libro de Caja Chica?')
-  const H = rows[hi].map(c => String(c == null ? '' : c).trim().toUpperCase())
-  const idxHas = (...subs) => H.findIndex(h => subs.every(s => h.includes(s.toUpperCase())))
+  const H = Array.from(rows[hi] || [], c => String(c == null ? '' : c).trim().toUpperCase())
+  const idxHas = (...subs) => H.findIndex(h => typeof h === 'string' && subs.every(s => h.includes(s.toUpperCase())))
   const C = {
     ini: idxHas('MONTO', 'INICIAL'), fecha: (idxHas('GESTI') >= 0 ? idxHas('GESTI') : idxHas('DÍA')), detalle: idxHas('DOCUMENTOS'),
     pagado: idxHas('MONTO', 'PAGADO'), recibido: idxHas('RECIBIDO'), ndoc: (idxHas('BOLETA') >= 0 ? idxHas('BOLETA') : idxHas('TRANSFER')), saldo: idxHas('SALDO', 'FINAL'),
@@ -68,8 +78,8 @@ const COLDEFS = [
   { key: 'n_documento', label: 'N° Doc', w: '128px', align: 'left', get: v => v.n_documento || '', filter: 'text' },
   { key: 'pagado', label: 'Pagado', w: '98px', align: 'right', get: v => v.pagado, filter: null },
   { key: 'recibido', label: 'Recibido', w: '98px', align: 'right', get: v => v.recibido, filter: null },
-  { key: 'saldo', label: 'Saldo', w: '106px', align: 'right', get: v => v.saldo, filter: null },
-  { key: 'ccb', label: 'CCB', w: '74px', align: 'left', get: v => v.ccb || '', filter: 'list' },
+  { key: 'saldo', label: 'Saldo', w: '112px', align: 'right', get: v => v.saldo, filter: null },
+  { key: 'ccb', label: 'CCB', w: '92px', align: 'left', get: v => v.ccb || '', filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -251,7 +261,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={movimientos} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center', paddingRight: c.align === 'right' ? 10 : 0 }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={movimientos} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
           ) : (<>
