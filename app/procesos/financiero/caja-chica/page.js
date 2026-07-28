@@ -1,3 +1,8 @@
+// VERSION: v7 · 2026-07-27 · Caja Chica: marca en ambar lo que puso la maquina.
+//   Los 520 movimientos se preclasifican por patron (SQL), pero marcados como 'auto':
+//   punto ambar junto al CCB y contador en la cabecera. Al abrir uno y guardarlo pasa
+//   a 'manual' (lo hace un trigger) y el contador baja. Asi se evitan 520 clics sin
+//   que nada entre en contabilidad sin que alguien lo haya mirado.
 // VERSION: v6 · 2026-07-27 · Caja Chica: campo Cuenta con buscador del plan y sugerencia.
 //   La memoria va por la PRIMERA PALABRA del detalle, aprendida del historico:
 //   "Dominio A00842" y "Dominio A00844" son el mismo gasto, y con 520 movimientos
@@ -156,8 +161,8 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
   const resumen = useMemo(() => {
-    const r = { n: movimientos.length, pagado: 0, recibido: 0, revisar: 0, sinCuenta: 0, saldo: null }
-    for (const v of movimientos) { r.pagado += v.pagado || 0; r.recibido += v.recibido || 0; if (!v.ccb) r.revisar++; if (!String(v.cuenta || '').trim()) r.sinCuenta++ }
+    const r = { n: movimientos.length, pagado: 0, recibido: 0, revisar: 0, sinCuenta: 0, auto: 0, saldo: null }
+    for (const v of movimientos) { r.pagado += v.pagado || 0; r.recibido += v.recibido || 0; if (!v.ccb) r.revisar++; if (!String(v.cuenta || '').trim()) r.sinCuenta++; if (v.origen_clasificacion === 'auto') r.auto++ }
     if (movimientos.length) r.saldo = movimientos[movimientos.length - 1].saldo
     return r
   }, [movimientos])
@@ -284,6 +289,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
           { label: 'Saldo', valor: clp(resumen.saldo) },
           { label: 'Sin CCB', valor: resumen.revisar, color: resumen.revisar ? '#B23A3A' : '#888780' },
           { label: 'Sin cuenta', valor: resumen.sinCuenta, color: resumen.sinCuenta ? '#9A6E00' : '#888780' },
+          ...(resumen.auto ? [{ label: 'Sugeridas sin revisar', valor: resumen.auto, color: '#9A6E00' }] : []),
           { label: 'Saltos', valor: rotos.size, color: rotos.size ? '#B23A3A' : '#888780' },
         ]}
         mensajes={<>
@@ -321,7 +327,13 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
                 <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: v.pagado ? '#B23A3A' : '#B4B2A9' }}>{v.pagado ? clp(v.pagado) : '—'}</div>
                 <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: v.recibido ? '#085041' : '#B4B2A9' }}>{v.recibido ? clp(v.recibido) : '—'}</div>
                 <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: roto ? '#B26A00' : '#888780', fontWeight: roto ? 700 : 400 }}>{clp(v.saldo)}{roto ? ' ⚠' : ''}</div>
-                <div><CcbChip ccb={v.ccb} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <CcbChip ccb={v.ccb} />
+                  {v.origen_clasificacion === 'auto' && (
+                    <span title={`Cuenta puesta por el patrón del detalle · pendiente de revisar${v.cuenta ? ': ' + v.cuenta : ''}`}
+                      style={{ color: '#9A6E00', fontSize: 13, lineHeight: 1 }}>•</span>
+                  )}
+                </div>
               </div>
               )
             })}

@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-07-27 · Devuelve tambien origen_clasificacion (auto/manual).
 // VERSION: v2 · 2026-07-27 · Tres cambios.
 //   1) El PUT ahora guarda tambien 'cuenta'. Sin esto el buscador del plan se veria en
 //      pantalla pero no guardaria nada.
@@ -11,7 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
-const COLS = 'id, orden, fecha, detalle, pagado, recibido, monto, n_documento, saldo, ccb, cuenta, mes'
+const COLS = 'id, orden, fecha, detalle, pagado, recibido, monto, n_documento, saldo, ccb, cuenta, mes, origen_clasificacion'
 
 const PAGINA = 1000
 const TOPE = 200000
