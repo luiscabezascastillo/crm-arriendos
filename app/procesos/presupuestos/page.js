@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v4 · 2026-07-28 · El aviso de "ya existe presupuesto" ahora distingue por INCIDENCIA,
+//   no por IDADMON. Un depto puede tener varias incidencias a lo largo de su vida, y cada una
+//   lleva su propio presupuesto: eso NO es duplicado. Solo se avisa si ya hay un presupuesto para
+//   la MISMA incidencia (o, sin incidencia, si ya hay otro sin incidencia asignada). Sigue sin
+//   bloquear: es un recordatorio.
 // VERSION: v3 · 2026-07-20 · Al teclear el IDADMON (S/SQ/P/Q) autocompleta Ubicación+Propietario desde datos_arriendos (solo si vacíos), como ya hacía Q
 // VERSION: v2 · 2026-07-20 · Presupuestos para cualquier estado activo (S/SQ/P/Q, no solo Q): guarda estado_idadmon (foto de datos_arriendos al crear) + Nº de incidencia (incidencia_id) cuando el motivo es Incidencia; badge de estado del IDADMON.
 import { useState, useEffect } from 'react'
@@ -326,8 +331,17 @@ export default function PresupuestosPage() {
     const estForm = estadoDe(form.id_admon_new)
     // Aviso Opcion A: en un NUEVO presupuesto, si el IDADMON ya tiene presupuestos
     const idTrim = (form.id_admon_new || '').trim()
+    // Un presupuesto es "duplicado" solo si es del MISMO IDADMON y la MISMA incidencia. Varias
+    // incidencias del mismo depto son reparaciones distintas, cada una con su presupuesto.
+    const incTrim = String(form.incidencia_id || '').trim()
     const dupes = (!editando.id && idTrim)
-      ? lista.filter(x => norm(x.id_admon_new) === norm(idTrim))
+      ? lista.filter(x => {
+          if (norm(x.id_admon_new) !== norm(idTrim)) return false
+          const xInc = String(x.incidencia_id ?? '').trim()
+          // Con incidencia indicada: choca solo con la misma incidencia.
+          // Sin incidencia (p. ej. término): choca solo con otro que tampoco tenga incidencia.
+          return incTrim ? (xInc === incTrim) : (xInc === '')
+        })
       : []
     // IDADMON (old) es lastre historico: solo se muestra (read-only) en registros antiguos que lo tengan
     const mostrarOld = !!(editando.id && (form.id_admon_old || '').trim())
@@ -377,8 +391,9 @@ export default function PresupuestosPage() {
           {/* Aviso duplicado (Opcion A, no bloqueante) */}
           {!ro && !histNuevo && dupes.length > 0 && (
             <div style={{ ...card, background: '#FEF9E7', border: '1px solid #F1C40F', color: '#8a6d00', padding: 12 }}>
-              <b>⚠️ Atención:</b> este IDADMON ya tiene {dupes.length} presupuesto{dupes.length > 1 ? 's' : ''} ({dupes.map(d => d.numero).join(', ')}).
-              Recuerda que solo debe haber <b>un presupuesto válido</b> por IDADMON.
+              <b>⚠️ Atención:</b> {incTrim
+                ? <>la incidencia <b>#{incTrim}</b> de este IDADMON ya tiene {dupes.length} presupuesto{dupes.length > 1 ? 's' : ''} ({dupes.map(d => d.numero).join(', ')}). Cada incidencia debería tener <b>un solo presupuesto válido</b>.</>
+                : <>este IDADMON ya tiene {dupes.length} presupuesto{dupes.length > 1 ? 's' : ''} sin incidencia ({dupes.map(d => d.numero).join(', ')}). Si es para una incidencia distinta, indica su número arriba y este aviso desaparecerá.</>}
             </div>
           )}
 
