@@ -1,3 +1,7 @@
+// VERSION: v27 · 2026-07-27 · SA: al pasar el raton por una cuenta sale su descripcion.
+//   Antes el tooltip repetia el codigo, que es justo lo que ya se ve. Ahora muestra
+//   '4201-41 · TELEFONO E INTERNET', sacado del plan de cuentas que ya llega del
+//   endpoint. Sirve para revisar sin tener que abrir cada movimiento.
 // VERSION: v26 · 2026-07-27 · SA: columnas CCB y Cuenta en la lista.
 //   El CCB y la cuenta viven en las LINEAS, no en el movimiento, asi que uno puede
 //   tener varios. Se resume: si todas las lineas coinciden se muestra el valor; si no,
@@ -780,6 +784,27 @@ const wantScroll = useRef(false)
     return m
   }, [plan])
 
+  // "4201-41" -> "4201-41 · TELEFONO E INTERNET". Si la cuenta no esta en el plan se
+  // dice, que suele significar que esta mal escrita (paso con 1103-01 por 1101-03).
+  const describeCuenta = (v) => {
+    const t = String(v || '').trim()
+    if (!t) return undefined
+    const cod = (t.match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0]
+    if (!cod) return t
+    const d = planMap[cod] || planMap[cod.slice(0, 7)]
+    return d ? `${cod} · ${d}` : `${cod} · (no está en el plan de cuentas)`
+  }
+
+  // Para la celda resumen: si el movimiento tiene varias cuentas, se listan todas.
+  const describeVarias = (ls) => {
+    const vs = []
+    for (const l of (ls || [])) {
+      const d = describeCuenta(l.cuenta_1)
+      if (d && !vs.includes(d)) vs.push(d)
+    }
+    return vs.length ? vs.join('\n') : undefined
+  }
+
   // Memoria por patron de descripcion. Un apunte de banco no tiene RUT, asi que la
   // clave es la descripcion normalizada. Guarda dos cosas distintas:
   //   cuenta unica  -> para sugerir una cuenta en una linea suelta
@@ -1073,7 +1098,7 @@ const wantScroll = useRef(false)
                           : <span style={{ color: '#D3D1C7' }}>—</span>}
                       </div>
                       <div style={{ fontSize: 11, color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={m.__cta ? resumeLineas(lineasByMov[m.id], 'cuenta_1', true).detalle : undefined}>
+                        title={describeVarias(lineasByMov[m.id])}>
                         {m.__cta || <span style={{ color: '#D3D1C7' }}>—</span>}
                       </div>
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
@@ -1092,7 +1117,7 @@ const wantScroll = useRef(false)
                             ? <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C' }}>{l.ccb}</span>
                             : <span style={{ color: '#D3D1C7' }}>—</span>}
                         </div>
-                        <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.cuenta_1 || undefined}>
+                        <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={describeCuenta(l.cuenta_1)}>
                           {(String(l.cuenta_1 || '').match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0] || <span style={{ color: '#D3D1C7' }}>—</span>}
                         </div>
                         <div />
