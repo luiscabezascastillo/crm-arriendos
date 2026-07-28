@@ -1,3 +1,9 @@
+// VERSION: v6 · 2026-07-27 · Caja Chica: campo Cuenta con buscador del plan y sugerencia.
+//   La memoria va por la PRIMERA PALABRA del detalle, aprendida del historico:
+//   "Dominio A00842" y "Dominio A00844" son el mismo gasto, y con 520 movimientos
+//   cinco patrones (Dominio 175, FV 196, Rep 56, Plan 24, Comision 25) cubren el 92%.
+//   No hay reglas fijas en el codigo: en cuanto se clasifica UNO de un patron, los
+//   demas salen sugeridos. Asi la regla la pone quien sabe de contabilidad, no yo.
 // VERSION: v5 · 2026-07-27 · Caja Chica: arreglada la carga y separadas Saldo / CCB.
 //   1) "Cannot read properties of undefined (reading 'includes')" al cargar el Excel:
 //      SheetJS devuelve arrays DISPERSOS (con huecos) cuando hay celdas vacias. .map()
@@ -21,6 +27,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
+import CuentaSelector from '@/app/components/ui/CuentaSelector'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -71,6 +78,9 @@ async function parseCajaChica(file, XLSX) {
   }
   return { archivo: file.name, movimientos }
 }
+
+// Primera palabra del detalle, sin numeros ni codigos: "Dominio A00842" -> "DOMINIO".
+const patronDe = (d) => String(d || '').trim().split(/\s+/)[0].toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g, '')
 
 const COLDEFS = [
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
@@ -126,6 +136,7 @@ export default function CajaChicaPage() {
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [movimientos, setMovimientos] = useState([]); const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
+  const [plan, setPlan] = useState([])
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
   const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null)
   const canEdit = EDITORES.includes(session?.user?.email)
@@ -140,13 +151,13 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
     const url = modo === 'continua' ? '/api/financiero/caja-chica?todas=1' : (mesSel ? `/api/financiero/caja-chica?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setMovimientos(d.movimientos || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setMovimientos(d.movimientos || []); setPlan(d.plan || []); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
   const resumen = useMemo(() => {
-    const r = { n: movimientos.length, pagado: 0, recibido: 0, revisar: 0, saldo: null }
-    for (const v of movimientos) { r.pagado += v.pagado || 0; r.recibido += v.recibido || 0; if (!v.ccb) r.revisar++ }
+    const r = { n: movimientos.length, pagado: 0, recibido: 0, revisar: 0, sinCuenta: 0, saldo: null }
+    for (const v of movimientos) { r.pagado += v.pagado || 0; r.recibido += v.recibido || 0; if (!v.ccb) r.revisar++; if (!String(v.cuenta || '').trim()) r.sinCuenta++ }
     if (movimientos.length) r.saldo = movimientos[movimientos.length - 1].saldo
     return r
   }, [movimientos])
@@ -170,7 +181,31 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
 
   const filtrados = useMemo(() => movimientos.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [movimientos, filters])
 
-  const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', detalle: v.detalle || '' }) }
+  // Memoria por patron: para cada primera palabra, la cuenta y el CCB mas usados.
+  // Solo se propone si el historico es UNANIME (una sola cuenta) y hay al menos uno.
+  const memoria = useMemo(() => {
+    const acc = {}
+    for (const m of movimientos) {
+      const pat = patronDe(m.detalle)
+      if (!pat) continue
+      const e = acc[pat] || (acc[pat] = { ctas: {}, ccbs: {}, n: 0 })
+      e.n++
+      const c = String(m.cuenta || '').trim()
+      if (c) e.ctas[c] = (e.ctas[c] || 0) + 1
+      if (m.ccb) e.ccbs[m.ccb] = (e.ccbs[m.ccb] || 0) + 1
+    }
+    for (const k of Object.keys(acc)) {
+      const e = acc[k]
+      const ct = Object.keys(e.ctas), cb = Object.keys(e.ccbs)
+      e.cuenta = ct.length === 1 ? ct[0] : null
+      e.ccb = cb.length === 1 ? cb[0] : null
+    }
+    return acc
+  }, [movimientos])
+
+  const memoSel = sel ? memoria[patronDe(sel.detalle)] : null
+
+  const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', detalle: v.detalle || '' }) }
   const cerrar = () => { setSel(null) }
   const guardar = async () => {
     if (!sel) return; setSaving(true)
@@ -248,6 +283,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
           { label: 'Recibido', valor: clp(resumen.recibido), color: '#085041' },
           { label: 'Saldo', valor: clp(resumen.saldo) },
           { label: 'Sin CCB', valor: resumen.revisar, color: resumen.revisar ? '#B23A3A' : '#888780' },
+          { label: 'Sin cuenta', valor: resumen.sinCuenta, color: resumen.sinCuenta ? '#9A6E00' : '#888780' },
           { label: 'Saltos', valor: rotos.size, color: rotos.size ? '#B23A3A' : '#888780' },
         ]}
         mensajes={<>
@@ -311,6 +347,21 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={{ fontSize: 12, color: '#888780' }}>CCB<input list="ccb-list-cc" value={edit.ccb} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, ccb: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta
+              <div style={{ marginTop: 4 }}>
+                <CuentaSelector valor={edit.cuenta} plan={plan} disabled={!canEdit}
+                  formato="codigo+desc"
+                  sugerida={(memoSel && memoSel.cuenta && !String(edit.cuenta || '').trim()) ? String(memoSel.cuenta).trim().slice(0, 7) : null}
+                  onChange={v => setEdit(x => ({ ...x, cuenta: v }))}
+                  estilo={{ ...inp }} />
+              </div>
+            </label>
+            {memoSel && memoSel.n > 1 && (
+              <div style={{ fontSize: 11, color: '#888780', marginTop: -4 }}>
+                Hay {memoSel.n} movimientos que empiezan por «{patronDe(sel.detalle)}»
+                {memoSel.cuenta ? '. Al guardar este, los demás saldrán sugeridos.' : ''}
+              </div>
+            )}
             <label style={{ fontSize: 12, color: '#888780' }}>Detalle<input value={edit.detalle} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, detalle: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <datalist id="ccb-list-cc">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
           </div>
