@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-07-28 · "Reutilizar" comentarios de meses anteriores: por contrato, un
+//   desplegable "Ver comentarios anteriores" carga bajo demanda su historial (otros meses) y
+//   junto a cada uno un botón que copia el texto al campo de añadir (editable antes de guardar).
 // VERSION: v2 · 2026-07-28 · El bloqueo NO depende del calendario, sino de si la liquidación de
 //   ese mes está CONGELADA (liquidacion_idprop: todas las filas del mes con cerrado=true).
 //   Se puede comentar cualquier mes no congelado —el actual y los futuros— hasta el momento en
@@ -63,6 +66,9 @@ export default function ComentariosPage() {
   const [error, setError] = useState(null)
   const [busca, setBusca] = useState('')
   const [borrador, setBorrador] = useState({})         // texto en curso por idadmon
+  const [histAbierto, setHistAbierto] = useState({})   // idadmon -> bool (desplegable abierto)
+  const [histDatos, setHistDatos] = useState({})       // idadmon -> array de comentarios de otros meses
+  const [histCargando, setHistCargando] = useState({})
   const [editando, setEditando] = useState(null)       // id del hecho en edición
   const [editTexto, setEditTexto] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -143,6 +149,30 @@ export default function ComentariosPage() {
   const puedeTocar = (c) => esDireccion || (c.persona || '') === persona
 
   // ── Añadir un hecho ──
+  // Carga (una vez) los comentarios de OTROS meses de este contrato, para reutilizarlos.
+  const abrirHistorial = async (idadmon) => {
+    const abierto = !histAbierto[idadmon]
+    setHistAbierto((h) => ({ ...h, [idadmon]: abierto }))
+    if (!abierto || histDatos[idadmon]) return   // ya cargado o cerrando
+    setHistCargando((h) => ({ ...h, [idadmon]: true }))
+    const { data } = await supabase
+      .from('comentarios_liquidacion')
+      .select('id, comentario, persona, mes, para_mes_txt, created_at')
+      .eq('idadmon', idadmon)
+      .neq('mes', mesSel)                    // todo lo que NO sea el mes en curso
+      .neq('mes', '------')                  // fuera la papelera
+      .order('created_at', { ascending: false })
+    setHistDatos((h) => ({ ...h, [idadmon]: data || [] }))
+    setHistCargando((h) => ({ ...h, [idadmon]: false }))
+  }
+
+  // Reutilizar: copia el texto al campo de añadir de ese contrato (NO guarda; editable).
+  const reutilizar = (idadmon, texto) => {
+    if (congelados.has(mesSel)) { setError('La liquidación de ' + mesLabel + ' está cerrada: no admite comentarios.'); return }
+    // Copia al campo de añadir; queda editable. Si ya había texto, lo reemplaza.
+    setBorrador((b) => ({ ...b, [idadmon]: texto }))
+  }
+
   const añadir = async (idadmon) => {
     const texto = (borrador[idadmon] || '').trim()
     if (!texto || guardando) return
@@ -298,6 +328,34 @@ export default function ComentariosPage() {
                       )}
                     </div>
                   ))}
+
+                  {/* Comentarios anteriores (otros meses) para reutilizar */}
+                  <div style={{ marginTop: hechos.length ? 8 : 4 }}>
+                    <button onClick={() => abrirHistorial(c.idadmon)}
+                      style={{ fontSize: 11, background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                      {histAbierto[c.idadmon] ? '▾' : '▸'} Ver comentarios anteriores
+                    </button>
+                    {histAbierto[c.idadmon] && (
+                      <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: '2px solid #EEE9F7' }}>
+                        {histCargando[c.idadmon] ? (
+                          <div style={{ fontSize: 12, color: 'var(--gray-400, #999)', padding: '4px 0' }}>Cargando…</div>
+                        ) : (histDatos[c.idadmon] || []).length === 0 ? (
+                          <div style={{ fontSize: 12, color: 'var(--gray-400, #999)', padding: '4px 0' }}>Este contrato no tiene comentarios en otros meses.</div>
+                        ) : (
+                          (histDatos[c.idadmon] || []).map((h) => (
+                            <div key={h.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0', fontSize: 12, color: 'var(--gray-600, #666)' }}>
+                              <span style={{ flex: 1, lineHeight: 1.5 }}>
+                                {h.comentario}
+                                <span style={{ fontSize: 10, color: 'var(--gray-400, #aaa)', marginLeft: 6 }}>— {h.para_mes_txt || h.mes}{h.persona ? ' · ' + h.persona : ''}</span>
+                              </span>
+                              <button onClick={() => reutilizar(c.idadmon, h.comentario)} title="Copiar al campo de abajo para reutilizarlo"
+                                style={{ fontSize: 11, background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>↻ reutilizar</button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* añadir un hecho nuevo */}
                   <div style={{ display: 'flex', gap: 8, marginTop: hechos.length ? 10 : 0 }}>
