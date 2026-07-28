@@ -1,3 +1,10 @@
+// VERSION: v13 · 2026-07-27 · Compras: columna Cuenta, tooltip del plan y sin salto al guardar.
+//   · Columna Cuenta estrecha (solo el codigo) junto al CCB, filtrable como el resto.
+//   · Al pasar el raton sale '4201-41 · TELEFONO E INTERNET', sacado del plan. Si la
+//     cuenta no esta en el plan lo dice: ahi se ven los codigos mal escritos.
+//   · Guardar recargaba la lista entera y el navegador perdia la posicion, devolviendote
+//     al principio. Ahora se actualiza solo esa compra en memoria.
+//   · Y las cabeceras Total y Estado dejan de tocarse ("TotalEstado").
 // VERSION: v12 · 2026-07-27 · Compras: facturas RECHAZADAS (que no son de FCR).
 //   Fondo rojo tenue, importes tachados y chip "No es de FCR" con el motivo.
 //   Se quedan en la lista A PROPOSITO: existen en el registro del SII, y si
@@ -205,6 +212,8 @@ const COLDEFS = [
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
   { key: 'proveedor', label: 'Proveedor', w: '1fr', align: 'left', get: v => v.proveedor || '', filter: 'text' },
   { key: 'ccb', label: 'CCB', w: '86px', align: 'left', get: v => v.ccb || '', filter: 'list' },
+  { key: 'cuenta', label: 'Cuenta', w: '92px', align: 'left',
+    get: v => (String(v.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0], filter: 'list' },
   { key: 'pagado_por', label: 'Pagado', w: '72px', align: 'left', get: v => v.pagado_por || '', filter: 'list' },
   { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
   { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
@@ -354,6 +363,12 @@ const wantScroll = useRef(false)
       .sort((a, b) => a.codigo.localeCompare(b.codigo))
   }, [planApi, compras])
 
+  const planMap = useMemo(() => {
+    const m = {}
+    for (const c of plan) m[c.codigo] = c.descripcion
+    return m
+  }, [plan])
+
   // Memoria por RUT: mismo criterio que la de la base (unanime y >= 2 antecedentes).
   const memoriaRut = useMemo(() => {
     const acc = {}
@@ -373,6 +388,17 @@ const wantScroll = useRef(false)
     return out
   }, [compras])
 
+  // "4201-41" -> "4201-41 · TELEFONO E INTERNET". Si no esta en el plan, se dice:
+  // ahi se detectan los codigos mal escritos sin cruzar nada.
+  const describeCuenta = (v) => {
+    const t = String(v || '').trim()
+    if (!t) return undefined
+    const cod = (t.match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0]
+    if (!cod) return t
+    const d = planMap[cod] || planMap[cod.slice(0, 7)]
+    return d ? `${cod} · ${d}` : `${cod} · (no está en el plan de cuentas)`
+  }
+
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', cuenta: v.cuenta || '', pagado_por: v.pagado_por || '', estado: v.estado || '', glosa: v.glosa || '' }) }
   const cerrar = () => { setSel(null) }
   const guardar = async () => {
@@ -380,7 +406,17 @@ const wantScroll = useRef(false)
     try {
       const res = await fetch('/api/financiero/compras', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sel.id, ...edit }) })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar'); return }
-      setSavedFlag(true); cargar()
+      setSavedFlag(true)
+      // Se actualiza SOLO esta compra: recargar la lista entera hacia perder la
+      // posicion del scroll y volver al principio, inviable para clasificar en serie.
+      const patch = {
+        ccb: (edit.ccb || '').trim() || null, cuenta: (edit.cuenta || '').trim() || null,
+        pagado_por: (edit.pagado_por || '').trim() || null,
+        estado: (edit.estado || '').trim() || null, glosa: (edit.glosa || '').trim() || null,
+        origen_clasificacion: 'manual',   // lo marca el trigger en la base
+      }
+      setCompras(prev => prev.map(c => c.id === sel.id ? { ...c, ...patch } : c))
+      setSel(sv => sv ? { ...sv, ...patch } : sv)
     } finally { setSaving(false) }
   }
   const handleFile = async (file) => {
@@ -474,7 +510,7 @@ const wantScroll = useRef(false)
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={compras} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center', paddingRight: c.align === 'right' ? 10 : 0 }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={compras} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
           ) : comprasVista.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin compras para este filtro.</div>
@@ -492,6 +528,10 @@ const wantScroll = useRef(false)
                 {v.origen_clasificacion === 'auto' && (
                   <span title="Lo puso la memoria por RUT · pendiente de revisar" style={{ color: '#9A6E00', fontSize: 13, lineHeight: 1 }}>•</span>
                 )}
+              </div>
+              <div style={{ fontSize: 11, color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                title={describeCuenta(v.cuenta)}>
+                {(String(v.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0] || <span style={{ color: '#D3D1C7' }}>—</span>}
               </div>
               <div style={{ fontSize: 12, color: '#888780' }}>{v.pagado_por || '—'}</div>
               <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.neto)}</div>
