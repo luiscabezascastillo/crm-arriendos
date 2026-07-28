@@ -1,3 +1,16 @@
+// VERSION: v26 · 2026-07-27 · SA: columnas CCB y Cuenta en la lista.
+//   El CCB y la cuenta viven en las LINEAS, no en el movimiento, asi que uno puede
+//   tener varios. Se resume: si todas las lineas coinciden se muestra el valor; si no,
+//   'varios' con el detalle en el tooltip. Vacio si aun no esta clasificado.
+//   Se calcula en el navegador con las lineas que ya estan cargadas: ni endpoint ni
+//   vista tocados.
+// VERSION: v25 · 2026-07-27 · SA: al guardar ya no salta al principio de la lista.
+//   Guardar recargaba la lista ENTERA: mientras cargaba las filas desaparecian, la
+//   pagina se encogia y el navegador perdia la posicion, asi que al volver estabas en
+//   el 01/01/2025. Con 732 movimientos eso hace inviable clasificar en serie.
+//   Ahora el guardado actualiza SOLO ese movimiento en memoria, replicando el mismo
+//   calculo de estado que hace la vista. Ni recarga ni salto.
+//   Y cuando si hay que recargar (tras subir un extracto) se conserva la posicion.
 // VERSION: v24 · 2026-07-27 · SA: glosa contable editable en el panel.
 //   El banco repite su plantilla: un pago de honorarios sale como "Honorarios Noviembr"
 //   en enero, febrero y marzo (folios 1879, 1922, 1966). Ahora se puede escribir una
@@ -163,6 +176,21 @@ async function parseCartola(file, XLSX) {
 
 // Cada columna declara: cómo se pinta (get), qué clave usa el filtro (fkey), cómo se etiqueta
 // ese valor en la lista (flabel) y de qué tipo es, para ordenar la lista y ofrecer condiciones.
+// Resume las lineas de un movimiento en un solo valor.
+// Devuelve { txt, varios, detalle } para pintar la celda y su tooltip.
+function resumeLineas(ls, campo, corta) {
+  const vals = []
+  for (const l of (ls || [])) {
+    let v = String(l[campo] || '').trim()
+    if (!v) continue
+    if (corta) v = (v.match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [v])[0]
+    if (!vals.includes(v)) vals.push(v)
+  }
+  if (!vals.length) return { txt: '', varios: false, detalle: '' }
+  if (vals.length === 1) return { txt: vals[0], varios: false, detalle: vals[0] }
+  return { txt: 'varios', varios: true, detalle: vals.join(' · ') }
+}
+
 const COLDEFS = [
   { key: 'orden', label: 'Folio', w: '80px', align: 'left', tipo: 'num',
     get: m => (m.orden == null ? '' : String(m.orden)),
@@ -182,6 +210,12 @@ const COLDEFS = [
   { key: 'cargo_abono', label: 'C/A', w: '46px', align: 'center', tipo: 'texto',
     get: m => m.cargo_abono || '',
     fkey: m => m.cargo_abono || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'ccb_res', label: 'CCB', w: '78px', align: 'center', tipo: 'texto',
+    get: m => m.__ccb || '',
+    fkey: m => m.__ccb || '', flabel: k => (k === '' ? '(sin CCB)' : k) },
+  { key: 'cuenta_res', label: 'Cuenta', w: '92px', align: 'left', tipo: 'texto',
+    get: m => m.__cta || '',
+    fkey: m => m.__cta || '', flabel: k => (k === '' ? '(sin cuenta)' : k) },
   { key: 'estado_clasificacion', label: 'Estado', w: '116px', align: 'center', tipo: 'texto',
     get: m => m.estado_clasificacion,
     fkey: m => m.estado_clasificacion || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO[k]?.label || k)) },
@@ -558,16 +592,23 @@ const wantScroll = useRef(false)
   const cargar = () => {
     const url = modo === 'continua' ? '/api/financiero/sa?todas=1' : (cargaId ? `/api/financiero/sa?carga=${cargaId}` : null)
     if (!url) return
+    const y = typeof window !== 'undefined' ? window.scrollY : 0
     setLoading(true)
     fetch(url).then(r => r.json()).then(d => {
       const marcas = {}
       for (const k of (d.marcas || [])) marcas[k.movimiento_id] = k
-      setMovs((d.movimientos || []).map(m => ({ ...m, ...(marcas[m.id] || {}) })))
       const map = {}
       for (const l of (d.lineas || [])) { (map[l.movimiento_id] = map[l.movimiento_id] || []).push(l) }
       setLineasByMov(map)
+      // __ccb y __cta resumen las lineas para poder verlas y filtrarlas en la lista.
+      setMovs((d.movimientos || []).map(m => ({
+        ...m, ...(marcas[m.id] || {}),
+        __ccb: resumeLineas(map[m.id], 'ccb', false).txt,
+        __cta: resumeLineas(map[m.id], 'cuenta_1', true).txt,
+      })))
       setPlan(d.plan || [])
       if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) }
+      else if (y > 0) { setTimeout(() => window.scrollTo({ top: y, behavior: 'auto' }), 60) }
     }).finally(() => setLoading(false))
   }
   useEffect(() => {
@@ -802,7 +843,20 @@ const wantScroll = useRef(false)
       }
       const res = await fetch('/api/financiero/sa', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar'); return }
-      setSavedFlag(true); setConfirmDesc(false); cargar()
+      setSavedFlag(true); setConfirmDesc(false)
+
+      // Se actualiza SOLO este movimiento. El estado se calcula igual que en
+      // vw_sa_movimientos: sin lineas SIN_CLASIFICAR, y si la suma cuadra CUADRADO.
+      const nuevas = payload.lineas.map((l, i) => ({ ...l, id: `tmp-${sel.id}-${i}`, movimiento_id: sel.id }))
+      const suma = nuevas.reduce((a, l) => a + Math.abs(Number(l.monto) || 0), 0)
+      const estado = nuevas.length === 0 ? 'SIN_CLASIFICAR'
+        : (suma === Math.abs(Number(sel.monto)) ? 'CUADRADO' : 'DESCUADRADO')
+      setLineasByMov(prev => ({ ...prev, [sel.id]: nuevas }))
+      setMovs(prev => prev.map(m => m.id === sel.id
+        ? { ...m, glosa: (glosa || '').trim() || null, n_lineas: nuevas.length, suma_lineas: suma, estado_clasificacion: estado,
+            __ccb: resumeLineas(nuevas, 'ccb', false).txt, __cta: resumeLineas(nuevas, 'cuenta_1', true).txt }
+        : m))
+      setSel(sv => sv ? { ...sv, glosa: (glosa || '').trim() || null } : sv)
     } finally { setSaving(false) }
   }
 
@@ -988,7 +1042,7 @@ const wantScroll = useRef(false)
                   <div style={{ fontWeight: 600 }}>{apertura.label}</div>
                   <div />
                   <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{clp(apertura.saldo)}</div>
-                  <div /><div />
+                  <div /><div /><div /><div />
                 </div>
               )}
               {movsFiltrados.length === 0 ? (
@@ -1012,6 +1066,16 @@ const wantScroll = useRef(false)
                       <div title={hayFiltro ? 'El saldo es corrido sobre TODOS los movimientos, no sobre el filtro' : undefined}
                         style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: hayFiltro ? '#D3D1C7' : '#888780' }}>{clp(m.saldo_calc)}</div>
                       <div style={{ textAlign: 'center', color: '#888780', fontSize: 12 }}>{m.cargo_abono || '—'}</div>
+                      <div style={{ textAlign: 'center' }}>
+                        {m.__ccb
+                          ? <span title={resumeLineas(lineasByMov[m.id], 'ccb', false).detalle}
+                              style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: '#EEF3F8', color: '#0C447C' }}>{m.__ccb}</span>
+                          : <span style={{ color: '#D3D1C7' }}>—</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={m.__cta ? resumeLineas(lineasByMov[m.id], 'cuenta_1', true).detalle : undefined}>
+                        {m.__cta || <span style={{ color: '#D3D1C7' }}>—</span>}
+                      </div>
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
                     {desg.map((l, k) => (
@@ -1019,11 +1083,19 @@ const wantScroll = useRef(false)
                         <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(folioVisible(m), l.sub_orden)}</div>
                         <div />
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                          {l.ccb && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C', marginRight: 6 }}>{l.ccb}</span>}
-                          {l.concepto || l.cuenta_1 || '—'}
+                          {l.concepto || '—'}
                         </div>
                         <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(l.monto)}</div>
-                        <div /><div /><div />
+                        <div /><div />
+                        <div style={{ textAlign: 'center' }}>
+                          {l.ccb
+                            ? <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C' }}>{l.ccb}</span>
+                            : <span style={{ color: '#D3D1C7' }}>—</span>}
+                        </div>
+                        <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.cuenta_1 || undefined}>
+                          {(String(l.cuenta_1 || '').match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0] || <span style={{ color: '#D3D1C7' }}>—</span>}
+                        </div>
+                        <div />
                       </div>
                     ))}
                   </div>
@@ -1049,7 +1121,7 @@ const wantScroll = useRef(false)
                           padding: '3px 8px', cursor: 'pointer', color: '#0C447C' }}>Limpiar filtros</button>
                     )}
                   </div>
-                  <div /><div />
+                  <div /><div /><div /><div />
                 </div>
               )}
             </>
