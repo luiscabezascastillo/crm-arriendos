@@ -3,6 +3,9 @@
 //   PUT  → guarda el desglose CCB de una línea (rem_ccb). Respeta rem_cargas.congelado.
 //   POST → hereda el reparto por defecto (rem_empleado_ccb) a todas las líneas de un mes.
 //
+// v3 · 2026-07-27 · La carga NO escribe coste_empresa: es una columna GENERADA
+//   (haberes + aportes patronales) y Postgres la calcula sola. Insertarla daba
+//   'cannot insert a non-DEFAULT value into column "coste_empresa"'.
 // v2 · 2026-07-27 · POST admite ademas accion:'cargar_libro' (el PDF se parsea en el
 //   navegador y llega ya en JSON). Sigue SIN parser propio del formato nuevo: el libro
 //   de ene-2026 es Nubox y esta validado; de feb-2026 en adelante cambio el proveedor
@@ -356,8 +359,9 @@ async function cargarLibro(body, email) {
     prevision: N(l.prevision), salud: N(l.salud), imp_unico: N(l.imp_unico), seg_ces: N(l.seg_ces),
     otros_dleg: N(l.otros_dleg), tot_dleg: N(l.tot_dleg), desc_varios: N(l.desc_varios),
     tot_desc: N(l.tot_desc), liquido: N(l.liquido),
-    // Los aportes del empleador NO vienen en el libro: llegan de Previred.
-    coste_empresa: N(l.tot_haberes),
+    // coste_empresa NO se escribe: es una columna generada (haberes + aportes).
+    // Los aportes del empleador tampoco vienen en el libro: llegan de Previred,
+    // asi que hasta entonces coste_empresa saldra igual a tot_haberes.
   }))
 
   const { error: eI } = await admin.from('rem_lineas').insert(filas)
