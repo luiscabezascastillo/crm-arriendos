@@ -1,3 +1,7 @@
+// VERSION: v6 · 2026-07-28 · Filtros estilo Excel en TODAS las columnas (mismo motor que SA, ahora
+//   en lib/filtroExcel.js). Para que los operadores (cuota > X, entre fechas, dos condiciones Y/O)
+//   funcionen, la tabla carga los contratos de una vez y filtra/ordena/pagina EN MEMORIA en vez de
+//   pedir 15 filas por página a la BD. El paginador se mantiene sobre el resultado ya filtrado.
 // VERSION: v5 · 2026-07-28 · Botón "Comentarios" en la barra del LOG → /cc1/comentarios.
 //   Visible para todos los que ven el LOG (no solo editores): cualquiera puede añadir hechos
 //   del mes por contrato. Editar/borrar: cada uno lo suyo; Dirección (admin) todo.
@@ -10,6 +14,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { supabase } from '../../lib/supabaseClient'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '../../lib/filtroExcel'
 import TopNav from '../components/ui/TopNav'
 
 // Mismo criterio de edición que /cc1/propietarios: Dirección, Legal y Administración.
@@ -120,237 +125,6 @@ function OperacionesBtn({ opciones, router }) {
   )
 }
 
-function ColFilter({ label, col, sortCol, sortDir, onSort, searchVal, onSearch, align='left' }) {
-  const [open, setOpen] = useState(false)
-  const [localSearch, setLocalSearch] = useState(searchVal)
-  const ref = useRef(null)
-  useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [])
-  const activo = (sortCol === col) || searchVal !== ''
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer',
-        padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
-        color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-        <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
-          {sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
-        </span>
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0,
-          marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 200, zIndex: 300, padding: 8 }}>
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
-              <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{
-                flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid',
-                fontSize: 11, cursor: 'pointer',
-                background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB',
-                borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB',
-                color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151'
-              }}>{lbl}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Buscar</div>
-          <input placeholder={`Filtrar ${label.toLowerCase()}...`} value={localSearch}
-            onChange={e => setLocalSearch(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { onSearch(localSearch); setOpen(false) } }}
-            style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB',
-              fontSize: 12, boxSizing: 'border-box', marginBottom: 8 }} />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => { setLocalSearch(''); onSearch(''); setOpen(false) }}
-              style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid #E5E7EB',
-                background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>
-              Limpiar
-            </button>
-            <button onClick={() => { onSearch(localSearch); setOpen(false) }}
-              style={{ flex: 1, padding: '5px', borderRadius: 6, border: 'none',
-                background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>
-              Aplicar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left' }) {
-  const [open, setOpen] = useState(false)
-  const [buscar, setBuscar] = useState('')
-  const [pending, setPending] = useState(null)   // Set de valores marcados (null hasta abrir)
-  const ref = useRef(null)
-  useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [])
-  // Al abrir: marca solo lo ya aplicado (vacío = nada marcado). Marcas lo que quieres VER.
-  useEffect(() => {
-    if (open) {
-      setBuscar('')
-      setPending(new Set(value || []))
-    }
-  }, [open]) // eslint-disable-line
-
-  const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  const activo = (value && value.length > 0) || sortCol === col
-  const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
-  const p = pending || new Set()
-  const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
-
-  const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
-  const toggleTodas = () => {
-    const n = new Set(p)
-    if (todasVisiblesMarcadas) visibles.forEach(o => n.delete(o))
-    else visibles.forEach(o => n.add(o))
-    setPending(n)
-  }
-  const aplicar = () => {
-    const arr = [...p]
-    // Nada marcado o TODO marcado -> sin filtro (mostrar todo). Si no, mostrar solo lo marcado.
-    onApply((arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr)
-    setOpen(false)
-  }
-  const limpiar = () => { setPending(new Set()); onApply([]); setOpen(false) }
-
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer',
-        padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
-        color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-        <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
-          {value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
-        </span>
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', [align === 'right' ? 'right' : 'left']: 0,
-          marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, zIndex: 300, padding: 8 }}>
-          {/* Ordenar */}
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
-              <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{
-                flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer',
-                background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB',
-                borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB',
-                color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151'
-              }}>{lbl}</button>
-            ))}
-          </div>
-          {/* Filtro estilo Excel */}
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
-          <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
-          <input placeholder={`Buscar ${label.toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)}
-            style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB',
-              fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px', borderRadius: 6,
-            cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
-            <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
-            (Seleccionar todo){buscar ? ' (lo visible)' : ''}
-          </label>
-          <div style={{ maxHeight: 230, overflowY: 'auto', margin: '2px 0 8px' }}>
-            {visibles.length === 0
-              ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
-              : visibles.map(o => (
-                <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px',
-                  borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
-                </label>
-              ))}
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={limpiar}
-              style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid #E5E7EB',
-                background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>
-              Limpiar
-            </button>
-            <button onClick={aplicar}
-              style={{ flex: 1, padding: '5px', borderRadius: 6, border: 'none',
-                background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>
-              {[...p].length ? `Aplicar (${[...p].length})` : 'Ver todos'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EstadoFilter({ col, sortCol, sortDir, onSort, value, onChange }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-  const estados = ['S', 'P', 'Q', 'SQ', 'N', 'N-DICOM']
-  const estadoNombre = {
-    'S': 'Activo', 'P': 'Vacío', 'Q': 'En término', 'SQ': 'Activo con aviso de término',
-    'N': 'Histórico', 'N-DICOM': 'Histórico (DICOM)',
-  }
-  useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [])
-  const activo = value !== '' || sortCol === col
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-      <button onClick={() => setOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer',
-        padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
-        color: activo ? '#1a56db' : 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Estado
-        <span style={{ fontSize: 9, color: activo ? '#1a56db' : 'var(--gray-300)' }}>
-          {sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
-        </span>
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4,
-          background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 180, zIndex: 300, padding: 8 }}>
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
-              <button key={dir} onClick={() => { onSort(col, dir) }} style={{
-                flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid',
-                fontSize: 11, cursor: 'pointer',
-                background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB',
-                borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB',
-                color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151'
-              }}>{lbl}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Filtrar</div>
-          {estados.map(e => (
-            <div key={e} onClick={() => { onChange(value === e ? '' : e); setOpen(false) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px',
-                borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-              onMouseEnter={ev => ev.currentTarget.style.background = '#F3F4F6'}
-              onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
-              <input type="radio" readOnly checked={value === e} style={{ margin: 0 }} />
-              <EstadoBadge estado={e} />
-              <span style={{ fontSize: 11, color: '#6B7280' }}>{estadoNombre[e]}</span>
-            </div>
-          ))}
-          {value && (
-            <button onClick={() => { onChange(''); setOpen(false) }}
-              style={{ width: '100%', marginTop: 6, padding: '5px', borderRadius: 6,
-                border: '1px solid #E5E7EB', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>
-              Limpiar
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 const Ico = {
   comment: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
@@ -381,6 +155,26 @@ function alertaTermino(fecha, estado) {
   return null
 }
 
+
+// Columnas del LOG para el filtro estilo Excel (mismo motor que SA).
+const fmtFechaLOG = (v) => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('es-CL') }
+const LOG_COLS = [
+  { key: 'idadmon', label: 'IDADMON', tipo: 'texto',
+    fkey: p => p.idadmon || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'inmueble', label: 'Inmueble', tipo: 'texto',
+    fkey: p => p.inmueble || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'propietario', label: 'Propietario', tipo: 'texto',
+    fkey: p => p.propietario || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'estado', label: 'Estado', tipo: 'texto',
+    fkey: p => p.estado || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'cuota', label: 'Cuota', tipo: 'num',
+    fkey: p => (p.cuota == null ? '' : String(p.cuota)),
+    flabel: k => (k === '' ? '(vacías)' : Number(k).toLocaleString('es-CL')) },
+  { key: 'termino_actual', label: 'Término actual', tipo: 'fecha',
+    fkey: p => String(p.termino_actual || '').slice(0, 10),
+    flabel: k => (k === '' ? '(vacías)' : fmtFechaLOG(k)) },
+]
+
 export default function CC1Page() {
   const router = useRouter()
   const { data: session } = useSession()
@@ -390,45 +184,43 @@ export default function CC1Page() {
   const [activeTab, setActiveTab] = useState('Datos base')
   const [search, setSearch] = useState('')
   const [recuperarId, setRecuperarId] = useState('')   // caja IDADMON para RECUPERAR
-  const [filtroEstado, setFiltroEstado] = useState('')
-  // Autofiltro estilo Excel: array de valores seleccionados. [] = sin filtro (todos).
-  const [filtroIdadmon, setFiltroIdadmon] = useState([])
-  const [filtroInmueble, setFiltroInmueble] = useState([])
-  const [filtroPropietario, setFiltroPropietario] = useState([])
-  // Listas de valores distintos para los desplegables (se cargan una vez)
-  const [opcIdadmon, setOpcIdadmon] = useState([])
-  const [opcInmueble, setOpcInmueble] = useState([])
-  const [opcPropietario, setOpcPropietario] = useState([])
-  // 'default' = orden por defecto multi-columna: Estado ↓ · Propietario ↑ · Inmueble ↑.
-  // En cuanto el usuario pincha una columna, se pasa a orden simple por esa columna.
-  const [sortCol, setSortCol] = useState('default')
-  const [sortDir, setSortDir] = useState('desc')
-  const [propiedades, setPropiedades] = useState([])
+  // Filtro estilo Excel: un estado por columna en `filters`, más `orden` global. Igual que SA.
+  const [filters, setFilters] = useState({})       // { colKey: {sel?, c1?, conector?, c2?} }
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)         // { key, dir }
+  const [todas, setTodas] = useState([])           // TODAS las filas cargadas (sin paginar)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [kpis, setKpis] = useState({ total: 0, activos: 0, termino: 0, vacios: 0 })
   const [portalLoading, setPortalLoading] = useState(null) // idadmon cargando
   const [idpropMap, setIdpropMap] = useState({}) // idadmon -> idprop
 
   useEffect(() => { loadKpis() }, [])
-  useEffect(() => { loadOpciones() }, [])
-  useEffect(() => { setPage(1) }, [search, filtroEstado, filtroIdadmon, filtroInmueble, filtroPropietario, sortCol, sortDir])
-  useEffect(() => { loadData() }, [page, search, filtroEstado, filtroIdadmon, filtroInmueble, filtroPropietario, sortCol, sortDir])
+  useEffect(() => { loadTodas() }, [])
+  // Al cambiar búsqueda, filtros u orden, volver a la página 1 (paginación sobre lo ya filtrado).
+  useEffect(() => { setPage(1) }, [search, filters, orden])
 
-  async function loadOpciones() {
-    // Trae todas las filas (solo las 3 columnas) y saca los valores distintos, ordenados.
-    // Con ~828 registros es instantáneo y por debajo del tope de 1000 de Supabase.
-    const { data, error } = await supabase
-      .from('datos_arriendos')
-      .select('idadmon, inmueble, propietario')
-      .limit(2000)
-    if (error || !data) return
-    const uniq = arr => [...new Set(arr.filter(v => v != null && String(v).trim() !== '').map(String))]
-      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }))
-    setOpcIdadmon(uniq(data.map(d => d.idadmon)))
-    setOpcInmueble(uniq(data.map(d => d.inmueble)))
-    setOpcPropietario(uniq(data.map(d => d.propietario)))
+  // Carga ÚNICA de todos los contratos. Con ~837 filas cabe de sobra en memoria; a partir de aquí
+  // filtrar, ordenar y paginar se hace en el navegador (como SA), lo que permite el filtro Excel
+  // con operadores. Trae en bloques de 1000 por si supera el tope por consulta de Supabase.
+  async function loadTodas() {
+    setLoading(true)
+    const cols = 'idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual, arrendatario'
+    let desde = 0, acc = [], hay = true
+    while (hay) {
+      const { data, error } = await supabase.from('datos_arriendos').select(cols)
+        .order('estado', { ascending: false }).order('propietario', { ascending: true }).order('inmueble', { ascending: true })
+        .range(desde, desde + 999)
+      if (error) break
+      acc = acc.concat(data || [])
+      hay = (data || []).length === 1000
+      desde += 1000
+    }
+    setTodas(acc)
+    const map = {}
+    acc.forEach(p => { if (p.idprop) map[p.idadmon] = p.idprop })
+    setIdpropMap(prev => ({ ...prev, ...map }))
+    setLoading(false)
   }
 
   async function loadKpis() {
@@ -437,45 +229,6 @@ export default function CC1Page() {
     const { count: termino } = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true }).eq('estado', 'Q')
     const { count: vacios }  = await supabase.from('datos_arriendos').select('*', { count: 'exact', head: true }).eq('estado', 'P')
     setKpis({ total: total || 0, activos: activos || 0, termino: termino || 0, vacios: vacios || 0 })
-  }
-
-  async function loadData() {
-    setLoading(true)
-    let query = supabase
-      .from('datos_arriendos')
-      .select('idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual', { count: 'exact' })
-
-    // Orden estable estilo Excel: la columna elegida manda como criterio principal,
-    // y SIEMPRE se mantienen detrás los criterios por defecto (Estado ↓ · Propietario ↑ ·
-    // Inmueble ↑) como desempate. Así la agrupación no se pierde al ordenar ni al filtrar.
-    const ordenBase = [
-      ['estado', false],
-      ['propietario', true],
-      ['inmueble', true],
-    ]
-    const claves = (sortCol === 'default')
-      ? ordenBase
-      : [[sortCol, sortDir === 'asc'], ...ordenBase.filter(([c]) => c !== sortCol)]
-    claves.forEach(([c, asc]) => { query = query.order(c, { ascending: asc }) })
-
-    query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
-
-    if (search) query = query.or(`idadmon.ilike.%${search}%,inmueble.ilike.%${search}%,propietario.ilike.%${search}%,arrendatario.ilike.%${search}%`)
-    if (filtroEstado) query = query.eq('estado', filtroEstado)
-    if (filtroIdadmon.length) query = query.in('idadmon', filtroIdadmon)
-    if (filtroInmueble.length) query = query.in('inmueble', filtroInmueble)
-    if (filtroPropietario.length) query = query.in('propietario', filtroPropietario)
-
-    const { data, count, error } = await query
-    if (!error) {
-      setPropiedades(data || [])
-      setTotal(count || 0)
-      // Construir mapa idadmon -> idprop
-      const map = {}
-      ;(data || []).forEach(p => { if (p.idprop) map[p.idadmon] = p.idprop })
-      setIdpropMap(prev => ({ ...prev, ...map }))
-    }
-    setLoading(false)
   }
 
   async function verPortal(e, idadmon, idprop) {
@@ -504,16 +257,36 @@ export default function CC1Page() {
     }
   }
 
-  function handleSort(col, dir) { setSortCol(col); setSortDir(dir) }
-
   function limpiarTodo() {
-    setSearch(''); setFiltroEstado(''); setFiltroIdadmon([])
-    setFiltroInmueble([]); setFiltroPropietario([])
-    setSortCol('default'); setSortDir('desc')
+    setSearch(''); setFilters({}); setOrden(null)
   }
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const hayAlgunFiltro = LOG_COLS.some(c => filtroActivo(filters[c.key]))
+  // Filtro rápido de estado (tarjetas KPI + desplegable): se guarda como sel en filters.estado.
+  const estadoSel = (filters.estado?.sel && filters.estado.sel.length === 1) ? filters.estado.sel[0] : ''
+  const setEstadoRapido = (e) => setFiltroCol('estado', e ? { sel: [e] } : null)
 
-  const hayFiltros = search || filtroEstado || filtroIdadmon.length || filtroInmueble.length || filtroPropietario.length
+  // Derivación en memoria: búsqueda de texto → filtros de columna → orden.  Orden por defecto
+  // (Estado ↓ · Propietario ↑ · Inmueble ↑) si el usuario no ha elegido columna, igual que antes.
+  const filtradas = useMemo(() => {
+    let base = todas
+    const q = search.trim().toLowerCase()
+    if (q) base = base.filter(p => ['idadmon','inmueble','propietario','arrendatario']
+      .some(k => String(p[k] || '').toLowerCase().includes(q)))
+    let out = aplicarFiltros(base, LOG_COLS, filters, orden)
+    if (!orden?.key) {
+      out = [...out].sort((a, b) =>
+        String(b.estado||'').localeCompare(String(a.estado||'')) ||
+        String(a.propietario||'').localeCompare(String(b.propietario||''), 'es') ||
+        String(a.inmueble||'').localeCompare(String(b.inmueble||''), 'es'))
+    }
+    return out
+  }, [todas, search, filters, orden])
+
+  const total = filtradas.length
+  const hayFiltros = search || hayAlgunFiltro || orden?.key
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const propiedades = filtradas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const irAFormulario = () => router.push('/admin')
   const recuperar = () => {
     const v = recuperarId.trim().toUpperCase()
@@ -545,14 +318,14 @@ export default function CC1Page() {
           { label: 'Vacíos (P)',  value: kpis.vacios,  color: '#dc2626',         estado: 'P' },
         ].map((k, i) => (
           <div key={i} style={{ padding: '10px 20px', borderRight: '1px solid var(--border)', cursor: 'pointer' }}
-            onClick={() => setFiltroEstado(filtroEstado === k.estado ? '' : k.estado)}>
+            onClick={() => setEstadoRapido(estadoSel === k.estado ? '' : k.estado)}>
             <div style={{ fontSize: 10, color: 'var(--gray-400)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: k.color }}>{k.value}</div>
-            {filtroEstado === k.estado && k.estado !== '' && <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>● Filtro activo</div>}
+            {estadoSel === k.estado && k.estado !== '' && <div style={{ fontSize: 10, color: '#1a56db', marginTop: 2 }}>● Filtro activo</div>}
           </div>
         ))}
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center' }}>
-          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
+          <select value={estadoSel} onChange={e => setEstadoRapido(e.target.value)}
             style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
               background: 'var(--gray-50)', fontSize: 12, color: 'var(--gray-700)', fontFamily: 'inherit', cursor: 'pointer' }}>
             <option value="">Todos los estados</option>
@@ -598,7 +371,7 @@ export default function CC1Page() {
           <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray-800)', margin: 0 }}>
             Listado de propiedades administradas
             <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400, marginLeft: 8 }}>
-              ({total} registros{filtroEstado ? ` · estado ${filtroEstado}` : ''})
+              ({total} registro{total === 1 ? '' : 's'}{estadoSel ? ` · estado ${estadoSel}` : ''})
             </span>
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -634,22 +407,22 @@ export default function CC1Page() {
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
-                  <ColFilterExcel label="IDADMON" col="idadmon" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcIdadmon} value={filtroIdadmon} onApply={setFiltroIdadmon} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'idadmon')} movs={todas} state={filters['idadmon']} setState={v => setFiltroCol('idadmon', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilterExcel label="Inmueble" col="inmueble" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcInmueble} value={filtroInmueble} onApply={setFiltroInmueble} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'inmueble')} movs={todas} state={filters['inmueble']} setState={v => setFiltroCol('inmueble', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilterExcel label="Propietario" col="propietario" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} opciones={opcPropietario} value={filtroPropietario} onApply={setFiltroPropietario} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'propietario')} movs={todas} state={filters['propietario']} setState={v => setFiltroCol('propietario', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <EstadoFilter col="estado" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} value={filtroEstado} onChange={setFiltroEstado} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'estado')} movs={todas} state={filters['estado']} setState={v => setFiltroCol('estado', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilter label="Cuota" col="cuota" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'cuota')} movs={todas} state={filters['cuota']} setState={v => setFiltroCol('cuota', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <ColFilter label="Término actual" col="termino_actual" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} searchVal="" onSearch={() => {}} />
+                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
