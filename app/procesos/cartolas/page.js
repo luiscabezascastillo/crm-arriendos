@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v7 · 2026-07-28 · Cartola por IDADMON: editar el CARGO de los 5 movimientos
+//   más recientes (Dirección/Karina, incl. Término), con motivo obligatorio y auditoría. El valor va
+//   a cargo_manual (override; el original queda en `cargo` y sobrevive al re-volcado del LOG). Una
+//   fila editada se pinta en ROJO si su cargo no coincide con a_cobrar de liquidacion_idadmon del mes.
 // VERSION: v6 · 2026-07-23 · LA CAUSA REAL: fmtNum() se usaba en la columna Saldo de la Cartola
 //   por IDADMON pero NUNCA se definió (se coló en la v4 del 21/07). Cualquier IDADMON con
 //   movimientos reventaba al pintar. Definida aquí. El salvavidas de la v5 se queda como red.
@@ -30,6 +34,7 @@ const LIMITE = 50
 const MAX_FILAS = 3000   // techo de filas en memoria; evita que la pestaña se quede sin RAM
 
 const EDITABLES = ['idadmon', 'concepto', 'comentarios', 'calif', 'estado']
+const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
 const COLS = [
   { key: 'fecha',         h: 'Fecha',        w: 90,  align: 'left'  },
@@ -641,7 +646,7 @@ function calcProporcional(f, ufMesInicio) {
 }
 
 function CartolaIdadmonVista() {
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [idInput, setIdInput] = useState('')
   const [buscando, setBuscando] = useState(false)
@@ -651,6 +656,20 @@ function CartolaIdadmonVista() {
   const [consultado, setConsultado] = useState(false)
   const [aviso, setAviso] = useState(null)      // "en TÉRMINO" / "HISTÓRICO"
   const [ufMesInicio, setUfMesInicio] = useState(null)   // valor_uf del mes de inicio (indices_mensuales)
+  const [liqMap, setLiqMap] = useState({})               // AAMM -> a_cobrar (liquidacion_idadmon)
+  const [editRow, setEditRow] = useState(null)
+  const [editVal, setEditVal] = useState('')
+  const [editMotivo, setEditMotivo] = useState('')
+  const [savingCargo, setSavingCargo] = useState(false)
+  const [cargoErr, setCargoErr] = useState(null)
+  const rol = session?.user?.role
+  const email = session?.user?.email
+  const puedeEditarCargo = rol === 'direccion' || EDITORES.includes(email)
+  const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+  const normMes = (v) => String(v ?? '').replace(/\D/g, '').slice(-4)
+  const mesDeFila = (f) => { const m = String(f ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? m[3].slice(2) + m[2].padStart(2, '0') : null }
+  const cargoEfectivo = (m) => (m.cargo_manual != null && m.cargo_manual !== '') ? num(m.cargo_manual) : num(m.cargo)
+  const fmtFechaHora = (iso) => { const d = String(iso ?? ''); return d ? (d.slice(0, 10) + ' ' + d.slice(11, 16)) : '' }
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -692,10 +711,17 @@ function CartolaIdadmonVista() {
     // 2) movimientos en cuentas
     const { data: cu, error: e2 } = await supabase
       .from('cuentas')
-      .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes')
+      .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes, cargo_manual, cargo_editado_por, cargo_editado_motivo, cargo_editado_en')
       .eq('idadmon', id)
       .limit(2000)
     if (e2) { setError('Error leyendo movimientos: ' + e2.message); setBuscando(false); return }
+
+    // 3) liquidación por mes (a_cobrar), para el cotejo del rojo
+    const { data: li } = await supabase
+      .from('liquidacion_idadmon').select('mes, a_cobrar').eq('idadmon', id).limit(2000)
+    const lm = {}
+    for (const rr of (li || [])) { const k = normMes(rr.mes); if (k) lm[k] = num(rr.a_cobrar) }
+    setLiqMap(lm)
 
     // ordenar por fecha real ascendente (fecha es texto dd/mm/aaaa); empate -> por id
     const ordenados = (cu || []).slice().sort((a, b) => {
@@ -706,7 +732,7 @@ function CartolaIdadmonVista() {
     // saldo corrido desde 0: saldo = saldo_anterior + cargo - abono
     let saldo = 0
     const conSaldo = ordenados.map(m => {
-      saldo = saldo + num(m.cargo) - num(m.abono)
+      saldo = saldo + cargoEfectivo(m) - num(m.abono)
       return { ...m, _saldo: saldo }
     })
     setMovs(conSaldo)
@@ -722,6 +748,33 @@ function CartolaIdadmonVista() {
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
   const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
+  const idsEditables = new Set(movs.slice(-5).map(m => m.id))
+  const estadoLiq = (m) => {
+    if (m.cargo_editado_en == null) return null
+    const mes = mesDeFila(m.fecha)
+    const a = mes != null ? liqMap[mes] : undefined
+    if (a == null) return 'sin_liq'
+    return Math.abs(cargoEfectivo(m) - Math.round(num(a))) <= 1 ? 'ok' : 'no_cuadra'
+  }
+  const abrirEdicion = (m) => { setEditRow(m); setEditVal(String(cargoEfectivo(m) || '')); setEditMotivo(''); setCargoErr(null) }
+  const guardarCargo = async () => {
+    if (!editRow) return
+    const cargoNuevo = Math.round(num(editVal))
+    const motivo = editMotivo.trim()
+    if (motivo.length < 3) { setCargoErr('El motivo es obligatorio (mínimo 3 caracteres).'); return }
+    setSavingCargo(true); setCargoErr(null)
+    try {
+      const res = await fetch('/api/cartolas/editar-cargo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editRow.id, cargo: cargoNuevo, motivo }) })
+      const d = await res.json()
+      if (!res.ok) { setCargoErr(d.error || 'No se pudo guardar.'); setSavingCargo(false); return }
+      setMovs(prev => {
+        const upd = prev.map(m => m.id === editRow.id ? { ...m, cargo_manual: cargoNuevo, cargo_editado_por: d.cargo_editado_por, cargo_editado_motivo: d.cargo_editado_motivo, cargo_editado_en: d.cargo_editado_en } : m)
+        let sAc = 0
+        return upd.map(m => { sAc = sAc + cargoEfectivo(m) - num(m.abono); return { ...m, _saldo: sAc } })
+      })
+      setEditRow(null); setSavingCargo(false)
+    } catch { setCargoErr('Error de conexión'); setSavingCargo(false) }
+  }
 
   // Proporcional del primer mes.
   //  - propCalc: recálculo estándar de calendario (cuota × UF × días) → SOLO informativo.
@@ -745,8 +798,25 @@ function CartolaIdadmonVista() {
   )
 
   const cellMov = (r, c) => {
-    if (c.key === '_saldo') return <span style={{ fontWeight: 600, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span>
-    if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
+    if (c.key === '_saldo') return <span style={{ fontWeight: 600, fontFamily: MONO, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span>
+    if (c.key === 'cargo') {
+      const val = cargoEfectivo(r); const s = val ? val.toLocaleString('es-CL') : ''
+      const editable = puedeEditarCargo && idsEditables.has(r.id)
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end', width: '100%' }}>
+          {r.cargo_editado_en != null && (
+            <span title={`Cargo editado por ${r.cargo_editado_por || '—'} el ${fmtFechaHora(r.cargo_editado_en)} · Motivo: ${r.cargo_editado_motivo || '—'} · Original: ${fmt(r.cargo) || '0'}`}
+              style={{ color: '#B8860B', fontSize: 11, cursor: 'help' }}>✎</span>
+          )}
+          <span style={{ fontFamily: MONO, color: s ? '#9B1C1C' : '#2C2C2A' }}>{s || '—'}</span>
+          {editable && (
+            <button onClick={() => abrirEdicion(r)} title="Editar cargo (excepcional · queda registrado)"
+              style={{ border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#0C447C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>editar</button>
+          )}
+        </span>
+      )
+    }
+    if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: MONO, color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
     if (c.key === 'comentarios') return <span style={{ fontWeight: filaEsBI(r) ? 700 : 400 }}>{r[c.key] ?? '—'}</span>
     if (c.key === 'calif') return <span style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>
     return <span>{r[c.key] ?? '—'}</span>
@@ -757,6 +827,7 @@ function CartolaIdadmonVista() {
     return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando…</div>)
 
   return (
+    <>
     <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 10px', color: '#2C2C2A' }}>Cartola por IDADMON</h1>
 
@@ -871,15 +942,19 @@ function CartolaIdadmonVista() {
                 </tr>
               </thead>
               <tbody>
-                {movs.map((r) => (
+                {movs.map((r) => {
+                  const el = estadoLiq(r)
+                  const filaBg = el === 'no_cuadra' ? '#FDECEC' : el === 'sin_liq' ? '#FEF9E7' : null
+                  return (
                   <tr key={r.id}>
                     {MCOLS.map((c, ci) => (
-                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: bgMov(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4' }}>
+                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: filaBg || bgMov(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4' }}>
                         {cellMov(r, c)}
                       </td>
                     ))}
                   </tr>
-                ))}
+                  )
+                })}
                 {movs.length === 0 && <tr><td colSpan={MCOLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin movimientos en CUENTAS para este IDADMON.</td></tr>}
               </tbody>
             </table>
@@ -887,8 +962,45 @@ function CartolaIdadmonVista() {
           <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
             {movs.length} movimiento(s) · saldo corrido desde 0 (cargo suma, abono resta) · ordenados por fecha.
           </div>
+          {puedeEditarCargo && (
+            <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>
+              Puedes editar el <b>cargo</b> de los 5 movimientos más recientes (queda registrado quién y por qué, aunque el contrato esté en Término). Una fila editada se marca en <span style={{ background: '#FDECEC', padding: '0 4px', borderRadius: 3, color: '#9B1C1C' }}>rojo</span> si su cargo no coincide con la liquidación (a_cobrar) de ese mes.
+            </div>
+          )}
         </>
       )}
     </div>
+
+    {editRow && (
+      <>
+        <div onClick={() => !savingCargo && setEditRow(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000 }} />
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(460px, 94vw)', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 9001, padding: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>Editar cargo (excepcional)</div>
+          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{editRow.fecha} · {editRow.concepto}</div>
+          <div style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 12, background: '#F7F5EF', padding: '8px 10px', borderRadius: 8 }}>
+            Cargo original: <b style={{ fontFamily: MONO }}>{fmt(editRow.cargo) || '0'}</b>
+            {(() => { const mesEd = mesDeFila(editRow.fecha); const a = mesEd != null ? liqMap[mesEd] : undefined; return a != null
+              ? <> · En la liquidación (a_cobrar) de este mes: <b style={{ fontFamily: MONO }}>{num(a).toLocaleString('es-CL')}</b></>
+              : <> · Sin línea en la liquidación de este mes para comparar</> })()}
+          </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Nuevo cargo
+            <input value={editVal} onChange={e => setEditVal(e.target.value)} inputMode="numeric" autoFocus
+              style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', fontFamily: MONO }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 8 }}>Motivo (obligatorio)
+            <textarea value={editMotivo} onChange={e => setEditMotivo(e.target.value)} rows={3} placeholder="Por qué se cambia este cargo…"
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+          </label>
+          {cargoErr && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8 }}>{cargoErr}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button onClick={() => setEditRow(null)} disabled={savingCargo}
+              style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={guardarCargo} disabled={savingCargo || editMotivo.trim().length < 3}
+              style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: (savingCargo || editMotivo.trim().length < 3) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (savingCargo || editMotivo.trim().length < 3) ? 'default' : 'pointer' }}>{savingCargo ? 'Guardando…' : 'Guardar cambio'}</button>
+          </div>
+        </div>
+      </>
+    )}
+    </>
   )
 }
