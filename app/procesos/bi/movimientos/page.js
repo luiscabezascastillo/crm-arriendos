@@ -1,3 +1,6 @@
+// VERSION: v17 · 2026-07-28 · La pantalla ya NO lee/escribe `bi` directo con anon (RLS lo bloquea:
+//   0 filas). Lectura por GET /api/bi/movimientos y edición por PATCH, ambos service_role. Así
+//   `bi` puede tener RLS activado y la pantalla sigue funcionando.
 // VERSION: v16 · 2026-07-21 · El botón +RUT pasa a vivir DENTRO de la celda de UNIQUE CONCEPT (junto al de color), donde es más útil; se oculta la columna _asociar del final. UNIQUE CONCEPT algo más ancha.
 // VERSION: v15 · 2026-07-21 · Oculta LIQ. MES2; quita botón 'Corregir en CUENTAS' (obsoleto, +RUT corrige solo); columna +RUT (bi_admon) fija a la derecha (sticky) para verla sin scroll.
 // VERSION: v14 · 2026-07-21 · Oculta columna IDADMON (idadmon2, vestigio sin uso); ensancha DISCRIMINADOR (conocimiento para discriminar). Números en fuente monoespaciada.
@@ -40,7 +43,6 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
 // ── Permisos de ESCRITURA del BI ──────────────────────────────────────────
@@ -286,8 +288,7 @@ export default function BiVista() {
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
-  // Con la carga completa, el filtrado es EN CLIENTE. buildQuery solo trae todo.
-  const buildQuery = () => supabase.from('bi').select('*')
+  // (La carga la hace /api/bi/movimientos por service_role; el filtrado es en cliente.)
 
   // Valor de una celda para el filtro (vacío -> "(vacío)").
   const valorCelda = (r, key) => { const v = r[key]; return (v ?? '') === '' ? '(vacío)' : String(v) }
@@ -316,24 +317,17 @@ export default function BiVista() {
 
   const fetchInitial = async (fActuales = filtros) => {
     setRefreshing(true); setError(null); setNoMore(true)
-    // Carga completa: Supabase devuelve máx. 1000 por consulta, así que paginamos por rangos
-    // hasta traerlas todas. Ascendente por id => antiguas arriba, recientes abajo.
-    const PAGE = 1000
-    let desde = 0
-    let todo = []
-    let errFinal = null
-    for (;;) {
-      const { data, error } = await buildQuery()
-        .order('id', { ascending: true })
-        .range(desde, desde + PAGE - 1)
-      if (error) { errFinal = error; break }
-      todo = todo.concat(data || [])
-      if (!data || data.length < PAGE) break
-      desde += PAGE
+    // Lectura por el servidor (service_role): el navegador no puede leer `bi` directo porque
+    // RLS lo deniega (devolvería 0 filas). La API trae todas las filas ya paginadas.
+    try {
+      const res = await fetch('/api/bi/movimientos')
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Error cargando movimientos'); setRefreshing(false); setLoading(false); return }
+      anclarAbajo.current = true
+      setRows(d.filas || [])
+    } catch (e) {
+      setError('Error de conexión al cargar movimientos: ' + (e?.message || e))
     }
-    if (errFinal) { setError(errFinal.message); setRefreshing(false); setLoading(false); return }
-    anclarAbajo.current = true
-    setRows(todo)
     setRefreshing(false); setLoading(false)
   }
   useEffect(() => { fetchInitial({}) }, [])
@@ -357,23 +351,9 @@ export default function BiVista() {
     fetchInitial()
   }
 
-  const loadMore = async () => {
-    if (loadingMore || noMore || loading || rows.length === 0) return
-    setLoadingMore(true)
-    const minId = rows[0].id
-    const el = scrollRef.current
-    const prevH = el ? el.scrollHeight : 0
-    const prevT = el ? el.scrollTop : 0
-    const { data, error } = await buildQuery(filtros).lt('id', minId).order('id', { ascending: false }).limit(LIMITE)
-    if (error) { setError(error.message); setLoadingMore(false); return }
-    const nuevos = (data || []).reverse()
-    if (nuevos.length > 0) {
-      pendingAdjust.current = { prevH, prevT }
-      setRows(rs => [...nuevos, ...rs])
-    }
-    if ((data || []).length < LIMITE) setNoMore(true)
-    setLoadingMore(false)
-  }
+  // Con la carga completa por la API, ya están TODAS las filas en memoria: no hace falta traer
+  // más al hacer scroll. loadMore queda como no-op (se conserva onScroll para no tocar el JSX).
+  const loadMore = async () => {}
 
   useEffect(() => {
     const el = scrollRef.current
@@ -427,11 +407,21 @@ export default function BiVista() {
     if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     const v = valor === '' ? null : valor
     setSavingId(id)
-    const { error } = await supabase.from('bi').update({ [k]: v }).eq('id', id)
-    setSavingId(null)
-    if (error) { setError('No se pudo guardar: ' + error.message); return }
-    setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
-    flash('✓ Guardado')
+    try {
+      const res = await fetch('/api/bi/movimientos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, campo: k, valor: v }),
+      })
+      const d = await res.json()
+      setSavingId(null)
+      if (!res.ok) { setError(d.error || 'No se pudo guardar'); return }
+      setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
+      flash('✓ Guardado')
+    } catch (e) {
+      setSavingId(null)
+      setError('Error de conexión al guardar: ' + (e?.message || e))
+    }
   }
 
   // ── Selector de color manual de la fila (solo Dirección/Karina) ──────────
