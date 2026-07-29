@@ -495,9 +495,9 @@ function AdminContent() {
   // Correcciones excepcionales: desbloquea los campos del contrato (excepto IDADMON
   // y estado) en un contrato activo. Solo Anthony/Dirección. Con motivo y registro.
   const [correccionAbierta, setCorreccionAbierta] = useState(false)
-  const [corrigiendoTermino, setCorrigiendoTermino] = useState(false)  // supervisor: solo termino_actual
   const [modalTerminoAbierto, setModalTerminoAbierto] = useState(false)
   const [motivoTermino, setMotivoTermino] = useState('')
+  const [fechaTermino, setFechaTermino] = useState('')  // fecha nueva, se escribe DENTRO del modal
   const [modalCorrAbierto, setModalCorrAbierto] = useState(false)
   const [motivoCorr, setMotivoCorr] = useState('')
 
@@ -842,8 +842,32 @@ function AdminContent() {
     setMsg({ type: 'ok', text: '✓ Datos precargados desde el email. Revisa, completa lo que falte y pulsa GUARDAR.' })
   }
 
+  // Guardar la corrección de la fecha de término desde el propio modal: escribe termino_actual
+  // (la fecha del modal) y registra el motivo. No cambia el estado ni ningún otro campo.
+  async function guardarCorreccionTermino() {
+    const nuevaFecha = fechaTermino || null
+    const motivo = motivoTermino.trim()
+    if (motivo.length < 5) { setMsg({ type: 'warn', text: 'Escribe el motivo (mín. 5 caracteres).' }); return }
+    setSaving(true); setMsg(null)
+    const { error: eT } = await supabase.from('datos_arriendos')
+      .update({ termino_actual: nuevaFecha, updated_at: new Date().toISOString() })
+      .eq('idadmon', form.idadmon)
+    if (eT) { setMsg({ type: 'error', text: 'Error: ' + eT.message }); setSaving(false); return }
+    // reflejar en el formulario en pantalla
+    setForm(prev => ({ ...prev, termino_actual: nuevaFecha }))
+    try {
+      await fetch('/api/cc1/registrar-correccion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: form.idadmon, motivo: 'Fecha de término → ' + (nuevaFecha || '(vacía)') + '. Motivo: ' + motivo }),
+      })
+    } catch { /* el registro no debe romper el guardado */ }
+    setModalTerminoAbierto(false); setMotivoTermino(''); setFechaTermino('')
+    setMsg({ type: 'ok', text: '✓ Fecha de término corregida y registrada. El proporcional del último mes se aplicará en la próxima liquidación.' })
+    setSaving(false)
+  }
+
   async function guardar() {
-    if (bloqueado && !corrigiendoTermino) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
+    if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     setSaving(true); setMsg(null)
 
     if (isNew) {
@@ -868,25 +892,6 @@ function AdminContent() {
       } catch (err) {
         setMsg({ type: 'error', text: 'Error de conexión' })
       }
-      setSaving(false)
-      return
-    }
-
-    // Corrección de término (supervisor): se actualiza SOLO termino_actual, nada más del LOG.
-    if (corrigiendoTermino) {
-      const nuevaFecha = form.termino_actual || null
-      const { error: eT } = await supabase.from('datos_arriendos')
-        .update({ termino_actual: nuevaFecha, updated_at: new Date().toISOString() })
-        .eq('idadmon', form.idadmon)
-      if (eT) { setMsg({ type: 'error', text: 'Error: ' + eT.message }); setSaving(false); return }
-      try {
-        await fetch('/api/cc1/registrar-correccion', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idadmon: form.idadmon, motivo: 'Fecha de término → ' + (nuevaFecha || '(vacía)') + '. Motivo: ' + motivoTermino.trim() }),
-        })
-      } catch { /* el registro no debe romper el guardado */ }
-      setCorrigiendoTermino(false); setMotivoTermino(''); setBloqueado(true)
-      setMsg({ type: 'ok', text: '✓ Fecha de término corregida y registrada. El proporcional del último mes se aplicará en la próxima liquidación.' })
       setSaving(false)
       return
     }
@@ -1154,7 +1159,7 @@ function AdminContent() {
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 
         {puedeEditarAhora && (
-        <button onClick={guardar} disabled={saving || (bloqueado && !corrigiendoTermino)} style={{
+        <button onClick={guardar} disabled={saving || bloqueado} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: bloqueado ? '#9ca3af' : C.green,
           color: '#fff', fontSize: 12, fontWeight: 700,
@@ -1271,23 +1276,12 @@ function AdminContent() {
         )}
 
         {/* Corregir SOLO la fecha de término — Administración (supervisor). No desbloquea el resto. */}
-        {cap?.puedeCorregirTermino && !cap?.puedeAprobar && form.idadmon && !isNew && (form.estado === 'SQ' || form.estado === 'Q') && !corrigiendoTermino && (
-          <button onClick={() => { setMotivoTermino(''); setModalTerminoAbierto(true) }} title="Corregir la fecha de salida del arrendatario (queda registrado)"
+        {cap?.puedeCorregirTermino && !cap?.puedeAprobar && form.idadmon && !isNew && (form.estado === 'SQ' || form.estado === 'Q') && (
+          <button onClick={() => { setMotivoTermino(''); setFechaTermino(form.termino_actual || ''); setModalTerminoAbierto(true) }} title="Corregir la fecha de salida del arrendatario (queda registrado)"
             style={{ padding: '5px 14px', borderRadius: 5, border: 'none', background: '#0369a1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
             🗓 Corregir fecha de término
           </button>
         )}
-        {corrigiendoTermino && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 5,
-            background: '#e0f2fe', border: '1px solid #7dd3fc', fontSize: 12, color: '#075985' }}>
-            🗓 Corrigiendo fecha de término — cambia la fecha (resaltada) y pulsa Guardar
-            <button onClick={() => { setCorrigiendoTermino(false); setMotivoTermino('') }}
-              style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #7dd3fc', background: '#fff', cursor: 'pointer', fontSize: 11 }}>
-              Cancelar
-            </button>
-          </span>
-        )}
-
         <button onClick={() => { contractOkRef.current = new Set(); setForm(FORM_VACIO); setIdadmonInput(''); setLogData(null); setLogEcon(econDesdeRaw(null)); setPropData(null); setArr2Abierto(false); setAval2Abierto(false); setProp2Abierto(false); setIsNew(true); setBloqueado(false); setMsg(null); localStorage.removeItem('ultimo_idadmon') }}
           style={{
             marginLeft: 'auto', padding: '5px 12px', borderRadius: 5,
@@ -1738,8 +1732,8 @@ function AdminContent() {
               <td style={inputCell}><IC name="quien_tiene_garantia" value={form.quien_tiene_garantia} onChange={handleChange} readOnly={roLog} /></td>
               <LB>Extensión</LB>
               <td style={inputCell}><IC name="comentar_renovacion" value={form.comentar_renovacion} onChange={handleChange} readOnly={roLog} /></td>
-              <LB bg={SAL_BG} txt={SAL_TXT}>Nuevo final</LB>
-              <td colSpan={2} style={{ ...inputCell, background: corrigiendoTermino ? '#fef9c3' : SAL_BG }}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog && !corrigiendoTermino} type="date" bold /></td>
+              <LB bg={SAL_BG} txt={SAL_TXT}>Término actual</LB>
+              <td colSpan={2} style={{ ...inputCell, background: SAL_BG }}><IC name="termino_actual_ro" value={form.termino_actual} onChange={() => {}} readOnly type="date" bold /></td>
               <td colSpan={3} style={{ ...labelCell, background: SAL_BG, color: SAL_TXT, textAlign: 'center', fontWeight: 700 }}>ESPECIAL PRIMEROS MESES</td>
             </tr>
             <tr>
@@ -1891,19 +1885,24 @@ function AdminContent() {
                 ['UF/Peso factor', 'uf_peso_factor', 'text'],
                 ['ID Admo', 'idadmo', 'text'],
                 ['Comisión base', 'comision_base', 'number'],
-              ].map(([label, name, type]) => (
+              ].map(([label, name, type]) => {
+                // termino_actual: editable también en modo "corregir fecha de término" (supervisor),
+                // aunque el resto del LOG esté bloqueado. Los demás campos siguen con roLog.
+                const roCampo = roLog
+                const resaltar = false
+                return (
                 <div key={name}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: C.labelText, marginBottom: 3 }}>{label}</div>
                   <input type={type} name={name} value={form[name] ?? ''} onChange={handleChange}
-                    readOnly={roLog}
+                    readOnly={roCampo}
                     style={{
                       ...fieldInput,
                       width: '100%', padding: '5px 8px', fontSize: 11,
-                      background: ro ? '#f8fafc' : '#fff',
-                      border: `1px solid ${C.border}`, borderRadius: 4,
+                      background: resaltar ? '#fef9c3' : (roCampo ? '#f8fafc' : '#fff'),
+                      border: `1px solid ${resaltar ? '#eab308' : C.border}`, borderRadius: 4,
                     }} />
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>
@@ -1917,27 +1916,33 @@ function AdminContent() {
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 22,
             width: 'min(540px, 92vw)', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
             <h3 style={{ margin: '0 0 8px', color: '#075985', fontSize: 17 }}>🗓 Corregir fecha de término</h3>
-            <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px', lineHeight: 1.5 }}>
-              Vas a corregir la <b>fecha real de salida</b> del arrendatario (campo «Nuevo final»). Es lo único
-              que se cambia; el resto del contrato no se toca. El proporcional del último mes se calculará en la
-              próxima liquidación a partir de esta fecha.
-              <br /><br />
-              Escribe el motivo: quedará registrado con tu nombre y la fecha.
+            <p style={{ fontSize: 13, color: '#475569', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Corrige aquí la <b>fecha real de salida</b> del arrendatario. Es lo único que se cambia; el estado y
+              el resto del contrato no se tocan. El proporcional del último mes se calculará en la próxima
+              liquidación a partir de esta fecha.
             </p>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>Nueva fecha de término</label>
+            <input type="date" value={fechaTermino} onChange={e => setFechaTermino(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 14,
+                border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'inherit', marginBottom: 14 }} />
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>Motivo (obligatorio)</label>
             <textarea value={motivoTermino} onChange={e => setMotivoTermino(e.target.value)} rows={3}
-              placeholder="Motivo (ej.: el arrendatario avisó salida para el 15/05; se había registrado mal)"
+              placeholder="Ej.: dato heredado del Excel; la salida real fue el 15/05/2026"
               style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
                 border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'inherit', resize: 'vertical' }} />
+
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
               <button onClick={() => setModalTerminoAbierto(false)}
                 style={{ fontSize: 13, padding: '8px 16px', borderRadius: 6, border: '1px solid #cbd5e1',
                   background: '#fff', color: '#475569', cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={() => { setCorrigiendoTermino(true); setModalTerminoAbierto(false); setMsg({ type: 'info', text: 'Cambia la fecha de término (resaltada) y pulsa Guardar.' }) }}
-                disabled={motivoTermino.trim().length < 5}
+              <button onClick={guardarCorreccionTermino}
+                disabled={saving || motivoTermino.trim().length < 5 || !fechaTermino}
                 style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 6, border: 'none',
-                  background: motivoTermino.trim().length < 5 ? '#9ca3af' : '#0369a1',
-                  color: '#fff', cursor: motivoTermino.trim().length < 5 ? 'not-allowed' : 'pointer' }}>
-                Habilitar corrección
+                  background: (saving || motivoTermino.trim().length < 5 || !fechaTermino) ? '#9ca3af' : '#0369a1',
+                  color: '#fff', cursor: (saving || motivoTermino.trim().length < 5 || !fechaTermino) ? 'not-allowed' : 'pointer' }}>
+                {saving ? 'Guardando…' : 'Guardar corrección'}
               </button>
             </div>
           </div>
