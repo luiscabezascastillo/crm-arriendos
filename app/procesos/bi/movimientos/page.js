@@ -1,3 +1,6 @@
+// VERSION: v18 · 2026-07-29 · Botón renombrado a "Copiar FALTA a CUENTAS". El mensaje tras
+//   copiar ahora informa de omitidos (ya estaban) y actualizados (reg existente con IDADMON
+//   corregido), no solo de copiados — antes decía "0 copiados" sin explicar y parecía no hacer nada.
 // VERSION: v17 · 2026-07-28 · La pantalla ya NO lee/escribe `bi` directo con anon (RLS lo bloquea:
 //   0 filas). Lectura por GET /api/bi/movimientos y edición por PATCH, ambos service_role. Así
 //   `bi` puede tener RLS activado y la pantalla sigue funcionando.
@@ -506,7 +509,11 @@ export default function BiVista() {
           `NO se han pasado a CARTOLAS y siguen en FALTA. Corrígelos en BI` + (regs ? ` (Reg: ${regs}).` : '.')
         )
       }
-      flash(`✓ ${d.copiados} copiado(s) a CUENTAS`)
+      const partes = []
+      if (d.copiados) partes.push(`${d.copiados} copiado(s)`)
+      if (d.actualizados?.length) partes.push(`${d.actualizados.length} actualizado(s) (IDADMON corregido)`)
+      if (d.omitidos_ya_existian?.length) partes.push(`${d.omitidos_ya_existian.length} ya estaban en CUENTAS`)
+      flash(partes.length ? '✓ ' + partes.join(' · ') : '✓ Nada que copiar: todo estaba al día')
       fetchInitial()
     } catch (err) {
       setError('No se pudo copiar: ' + err.message)
@@ -844,7 +851,7 @@ export default function BiVista() {
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
             ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
-            ['Copiar FALTAN a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido)', copiarFaltan],
+            ['Copiar FALTA a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido). Si el reg ya está pero con otro IDADMON, lo corrige.', copiarFaltan],
           ].map(([label, hint, accion], i) => {
             const habilitado = !!accion && !copiando && puedeEditar
             return (

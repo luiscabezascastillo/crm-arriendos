@@ -1,3 +1,8 @@
+// VERSION: v2 . 2026-07-29 . Al recopiar una fila cuyo reg YA existe en cuentas:
+//   - si el idadmon coincide -> se omite (ya esta bien).
+//   - si el idadmon DIFIERE (se corrigio en BI) -> se ACTUALIZA la linea de cuentas al nuevo
+//     idadmon/propietario/inmueble, en vez de omitirla en silencio. Antes el dedupe miraba solo
+//     el reg y dejaba cuentas desactualizada al corregir un IDADMON. Devuelve `actualizados`.
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
@@ -92,21 +97,31 @@ export async function POST() {
 
   // 4b) DEDUPE: comprobar qué reg ya están en cuentas (columna calif) para NO duplicar
   const regs = [...new Set(preparadas.map((p) => p.reg).filter(Boolean))]
-  const yaEnCuentas = new Set()
+  // Mapa reg -> { id, idadmon } de la linea existente en cuentas. Necesitamos el idadmon para
+  // saber si la correccion de BI ya esta reflejada o si hay que actualizar la linea.
+  const existentes = {}
   if (regs.length) {
     const { data: exist, error: eDup } = await supabaseAdmin
       .from('cuentas')
-      .select('calif')
+      .select('id, calif, idadmon')
       .in('calif', regs)
     if (eDup) return NextResponse.json({ error: 'Error comprobando duplicados en cuentas: ' + eDup.message }, { status: 500 })
     for (const x of exist || []) {
       const c = String(x.calif ?? '').trim()
-      if (c) yaEnCuentas.add(c)
+      if (c && !existentes[c]) existentes[c] = { id: x.id, idadmon: String(x.idadmon ?? '').trim() }
     }
   }
 
-  const nuevas   = preparadas.filter((p) => !(p.reg && yaEnCuentas.has(p.reg)))
-  const omitidas = preparadas.filter((p) =>   p.reg && yaEnCuentas.has(p.reg))
+  // Clasificar: nueva (insertar), omitida (ya esta igual) o a actualizar (mismo reg, idadmon distinto).
+  const nuevas = []
+  const omitidas = []
+  const aActualizar = []
+  for (const p of preparadas) {
+    const prev = p.reg ? existentes[p.reg] : null
+    if (!prev) { nuevas.push(p); continue }
+    if (prev.idadmon === String(p.fila.idadmon).trim()) { omitidas.push(p) }
+    else { aActualizar.push({ ...p, cuentasId: prev.id, idadmonViejo: prev.idadmon }) }
+  }
   const detalleOmitidos = omitidas.map((p) => ({ reg: p.reg, idadmon: p.fila.idadmon }))
 
   // 5) insertar en cuentas SOLO las nuevas (las omitidas ya estaban: no se duplican)
@@ -117,6 +132,23 @@ export async function POST() {
       .insert(nuevas.map((p) => p.fila), { count: 'exact' })
     if (e3) return NextResponse.json({ error: 'Error insertando en cuentas: ' + e3.message }, { status: 500 })
     copiados = count ?? nuevas.length
+  }
+
+  // 5b) ACTUALIZAR en cuentas las filas cuyo reg ya estaba pero con idadmon distinto (corregidas
+  //     en BI). Se lleva el nuevo idadmon/propietario/inmueble a la linea existente.
+  const detalleActualizados = []
+  for (const p of aActualizar) {
+    const { error: eUp } = await supabaseAdmin
+      .from('cuentas')
+      .update({
+        idadmon: p.fila.idadmon,
+        propietario: p.fila.propietario ?? null,
+        inmueble: p.fila.inmueble ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', p.cuentasId)
+    if (eUp) return NextResponse.json({ error: 'Error actualizando cuentas (reg ' + p.reg + '): ' + eUp.message }, { status: 500 })
+    detalleActualizados.push({ reg: p.reg, de: p.idadmonViejo, a: p.fila.idadmon })
   }
 
   // 6) marcar PASADO todas las validas procesadas: las nuevas (ya insertadas) y
@@ -138,7 +170,8 @@ export async function POST() {
   return NextResponse.json({
     ok: true,
     copiados,
-    omitidos_ya_existian: detalleOmitidos,   // mismo reg ya en cuentas: NO se duplicaron
+    actualizados: detalleActualizados,       // reg ya existia con otro IDADMON: corregido en cuentas
+    omitidos_ya_existian: detalleOmitidos,   // mismo reg y mismo IDADMON: nada que hacer
     invalidos: detalleInvalidos,             // sin IDADMON valido: se quedan en FALTA
     idadmons_sin_match: [...sinMatch],
   })
