@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v6 . 2026-07-29 . Administracion (supervisor) puede CORREGIR SOLO la fecha termino_actual
+//   en un contrato activo (por si la fecha de salida se equivoco o el arrendatario tardo en salir),
+//   sin desbloquear el resto del LOG. Pide motivo (registrado). El resto de campos siguen bloqueados.
+//   El proporcional del ultimo mes NO se toca aqui: lo calcula TRANSFER al liquidar, usando esta fecha.
 // VERSION: v5 · 2026-07-23 · CONDICIONES: rejilla de 13 columnas, ESPECIAL PRIMEROS MESES como cabecera sobre Meses/Cantidad,
 //   fondo salmon como la plantilla LOG 2.0.7, y Paga aseo (SI/NO) junto a Multas. LB acepta bg/txt/cols (cols estaba ignorado).
 // VERSION: v4 · 2026-07-16 · Si se llega al ADMIN desde el panel de término (?volver=termino), el
@@ -491,6 +495,9 @@ function AdminContent() {
   // Correcciones excepcionales: desbloquea los campos del contrato (excepto IDADMON
   // y estado) en un contrato activo. Solo Anthony/Dirección. Con motivo y registro.
   const [correccionAbierta, setCorreccionAbierta] = useState(false)
+  const [corrigiendoTermino, setCorrigiendoTermino] = useState(false)  // supervisor: solo termino_actual
+  const [modalTerminoAbierto, setModalTerminoAbierto] = useState(false)
+  const [motivoTermino, setMotivoTermino] = useState('')
   const [modalCorrAbierto, setModalCorrAbierto] = useState(false)
   const [motivoCorr, setMotivoCorr] = useState('')
 
@@ -836,7 +843,7 @@ function AdminContent() {
   }
 
   async function guardar() {
-    if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
+    if (bloqueado && !corrigiendoTermino) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     setSaving(true); setMsg(null)
 
     if (isNew) {
@@ -861,6 +868,25 @@ function AdminContent() {
       } catch (err) {
         setMsg({ type: 'error', text: 'Error de conexión' })
       }
+      setSaving(false)
+      return
+    }
+
+    // Corrección de término (supervisor): se actualiza SOLO termino_actual, nada más del LOG.
+    if (corrigiendoTermino) {
+      const nuevaFecha = form.termino_actual || null
+      const { error: eT } = await supabase.from('datos_arriendos')
+        .update({ termino_actual: nuevaFecha, updated_at: new Date().toISOString() })
+        .eq('idadmon', form.idadmon)
+      if (eT) { setMsg({ type: 'error', text: 'Error: ' + eT.message }); setSaving(false); return }
+      try {
+        await fetch('/api/cc1/registrar-correccion', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: form.idadmon, motivo: 'Fecha de término → ' + (nuevaFecha || '(vacía)') + '. Motivo: ' + motivoTermino.trim() }),
+        })
+      } catch { /* el registro no debe romper el guardado */ }
+      setCorrigiendoTermino(false); setMotivoTermino(''); setBloqueado(true)
+      setMsg({ type: 'ok', text: '✓ Fecha de término corregida y registrada. El proporcional del último mes se aplicará en la próxima liquidación.' })
       setSaving(false)
       return
     }
@@ -1128,7 +1154,7 @@ function AdminContent() {
         <span style={{ color: C.border, fontSize: 14 }}>|</span>
 
         {puedeEditarAhora && (
-        <button onClick={guardar} disabled={saving || bloqueado} style={{
+        <button onClick={guardar} disabled={saving || (bloqueado && !corrigiendoTermino)} style={{
           padding: '5px 14px', borderRadius: 5, border: 'none',
           background: bloqueado ? '#9ca3af' : C.green,
           color: '#fff', fontSize: 12, fontWeight: 700,
@@ -1239,6 +1265,24 @@ function AdminContent() {
             ✏ Corrección excepcional activa — edita y pulsa Guardar
             <button onClick={() => { setCorreccionAbierta(false); setMotivoCorr('') }}
               style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #d6b34a', background: '#fff', cursor: 'pointer', fontSize: 11 }}>
+              Cancelar
+            </button>
+          </span>
+        )}
+
+        {/* Corregir SOLO la fecha de término — Administración (supervisor). No desbloquea el resto. */}
+        {cap?.puedeCorregirTermino && !cap?.puedeAprobar && form.idadmon && !isNew && (form.estado === 'SQ' || form.estado === 'Q') && !corrigiendoTermino && (
+          <button onClick={() => { setMotivoTermino(''); setModalTerminoAbierto(true) }} title="Corregir la fecha de salida del arrendatario (queda registrado)"
+            style={{ padding: '5px 14px', borderRadius: 5, border: 'none', background: '#0369a1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            🗓 Corregir fecha de término
+          </button>
+        )}
+        {corrigiendoTermino && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 5,
+            background: '#e0f2fe', border: '1px solid #7dd3fc', fontSize: 12, color: '#075985' }}>
+            🗓 Corrigiendo fecha de término — cambia la fecha (resaltada) y pulsa Guardar
+            <button onClick={() => { setCorrigiendoTermino(false); setMotivoTermino('') }}
+              style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #7dd3fc', background: '#fff', cursor: 'pointer', fontSize: 11 }}>
               Cancelar
             </button>
           </span>
@@ -1695,7 +1739,7 @@ function AdminContent() {
               <LB>Extensión</LB>
               <td style={inputCell}><IC name="comentar_renovacion" value={form.comentar_renovacion} onChange={handleChange} readOnly={roLog} /></td>
               <LB bg={SAL_BG} txt={SAL_TXT}>Nuevo final</LB>
-              <td colSpan={2} style={{ ...inputCell, background: SAL_BG }}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog} type="date" bold /></td>
+              <td colSpan={2} style={{ ...inputCell, background: corrigiendoTermino ? '#fef9c3' : SAL_BG }}><IC name="termino_actual" value={form.termino_actual} onChange={handleChange} readOnly={roLog && !corrigiendoTermino} type="date" bold /></td>
               <td colSpan={3} style={{ ...labelCell, background: SAL_BG, color: SAL_TXT, textAlign: 'center', fontWeight: 700 }}>ESPECIAL PRIMEROS MESES</td>
             </tr>
             <tr>
@@ -1864,6 +1908,41 @@ function AdminContent() {
           )}
         </div>
       </div>
+
+      {/* ══ MODAL: Motivo de corrección de la FECHA DE TÉRMINO (supervisor) ══ */}
+      {modalTerminoAbierto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setModalTerminoAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 22,
+            width: 'min(540px, 92vw)', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <h3 style={{ margin: '0 0 8px', color: '#075985', fontSize: 17 }}>🗓 Corregir fecha de término</h3>
+            <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px', lineHeight: 1.5 }}>
+              Vas a corregir la <b>fecha real de salida</b> del arrendatario (campo «Nuevo final»). Es lo único
+              que se cambia; el resto del contrato no se toca. El proporcional del último mes se calculará en la
+              próxima liquidación a partir de esta fecha.
+              <br /><br />
+              Escribe el motivo: quedará registrado con tu nombre y la fecha.
+            </p>
+            <textarea value={motivoTermino} onChange={e => setMotivoTermino(e.target.value)} rows={3}
+              placeholder="Motivo (ej.: el arrendatario avisó salida para el 15/05; se había registrado mal)"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'inherit', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setModalTerminoAbierto(false)}
+                style={{ fontSize: 13, padding: '8px 16px', borderRadius: 6, border: '1px solid #cbd5e1',
+                  background: '#fff', color: '#475569', cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={() => { setCorrigiendoTermino(true); setModalTerminoAbierto(false); setMsg({ type: 'info', text: 'Cambia la fecha de término (resaltada) y pulsa Guardar.' }) }}
+                disabled={motivoTermino.trim().length < 5}
+                style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: motivoTermino.trim().length < 5 ? '#9ca3af' : '#0369a1',
+                  color: '#fff', cursor: motivoTermino.trim().length < 5 ? 'not-allowed' : 'pointer' }}>
+                Habilitar corrección
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL: Motivo de corrección excepcional ══ */}
       {modalCorrAbierto && (
