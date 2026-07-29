@@ -1,3 +1,8 @@
+// VERSION: v15 · 2026-07-28 · Compras: columna "Tipo" (Factura / Nota de crédito / Boleta…).
+//   · Mapea tipo_doc (código SII 33/34/39/41/46/56/61…) a su nombre. Las Notas de Crédito (61)
+//     salen como chip ROJO para que no pasen por factura. Columna filtrable como el resto.
+//   · OJO signo NC: la vista suma neto/iva/total en POSITIVO; una NC debería RESTAR. Pendiente de
+//     confirmar cómo están guardadas antes de aplicar el −1 en los totales (ver diagnóstico).
 // VERSION: v14 · 2026-07-28 · Compras: filtro estilo Excel también en Neto, IVA y Total.
 //   · Esas tres columnas estaban con filter:null (sin desplegable). Ahora usan el MISMO filtro
 //     de lista que el resto y que SA: ordenar menor/mayor, buscar en la lista de importes,
@@ -212,8 +217,19 @@ function estaClasificada(v) {
   return /^\d{4}-\d{2}/.test(c)
 }
 
+// Código de documento del SII -> nombre legible. NC = 61 (y export 112).
+const TIPOS_DOC = {
+  '33': 'Factura', '34': 'Factura exenta', '39': 'Boleta', '41': 'Boleta exenta',
+  '43': 'Liquidación factura', '46': 'Factura de compra', '56': 'Nota de débito',
+  '61': 'Nota de crédito', '110': 'Factura exportación', '111': 'Nota débito exportación',
+  '112': 'Nota crédito exportación',
+}
+const tipoLabel = (t) => { const x = String(t ?? '').trim(); if (!x) return ''; return TIPOS_DOC[x] || TIPOS_DOC[String(Number(x))] || x }
+const esNC = (t) => { const x = String(t ?? '').trim(); return x === '61' || x === '112' || /cr[eé]dito/i.test(tipoLabel(t)) }
+
 const COLDEFS = [
   { key: 'folio', label: 'Folio', w: '82px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
+  { key: 'tipo_doc', label: 'Tipo', w: '118px', align: 'left', get: v => tipoLabel(v.tipo_doc), filter: 'list' },
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
   { key: 'proveedor', label: 'Proveedor', w: '1fr', align: 'left', get: v => v.proveedor || '', filter: 'text' },
   { key: 'ccb', label: 'CCB', w: '86px', align: 'left', get: v => v.ccb || '', filter: 'list' },
@@ -526,6 +542,11 @@ const wantScroll = useRef(false)
               onMouseEnter={e => e.currentTarget.style.background = esRechazada(v) ? '#F7DEDB' : '#FAFAF7'}
               onMouseLeave={e => e.currentTarget.style.background = esRechazada(v) ? '#FBE9E7' : '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {esNC(v.tipo_doc)
+                  ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#FBE9E7', color: '#B23A3A' }}>{tipoLabel(v.tipo_doc)}</span>
+                  : <span style={{ fontSize: 12, color: '#5F5E5A' }}>{tipoLabel(v.tipo_doc) || '—'}</span>}
+              </div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{v.proveedor || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
