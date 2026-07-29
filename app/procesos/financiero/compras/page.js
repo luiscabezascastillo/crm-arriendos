@@ -1,3 +1,14 @@
+// VERSION: v17 · 2026-07-28 · Compras: tipo_doc normalizado a "código + sigla" única.
+//   · Colapsa las variantes (FAC/Factura/33 → "33 FAC"; NCC/N/C/61 → "61 NCC"; FXE/34 → "34 FXE")
+//     entendiendo tanto los códigos SII (2025→) como las siglas de casa (2019→migración: BOL/FAC/NCC/FXE).
+//   · El signo (−1 para nota de crédito) sale de ese mismo criterio (contab_tipos_doc.signo), así que
+//     corrige el hueco de v16: una fila con tipo_doc='NCC' también se detecta como NC y RESTA.
+//   · 'Del Giro' (histórico, sin código real) queda como su propio grupo para reclasificar aparte.
+// VERSION: v16 · 2026-07-28 · Compras: las Notas de Crédito (61) RESTAN en la vista.
+//   · Estaban guardadas en positivo y la pantalla las sumaba como una factura (una NC y su factura
+//     se contaban dobles en vez de anularse). Ahora el importe de una NC se muestra en NEGATIVO y
+//     se RESTA en los totales de cabecera (Neto/IVA/Total y Total según SII). Los datos NO se tocan;
+//     es solo el signo en la vista (CONTAB ya aplicaba el −1 por su cuenta).
 // VERSION: v15 · 2026-07-28 · Compras: columna "Tipo" (Factura / Nota de crédito / Boleta…).
 //   · Mapea tipo_doc (código SII 33/34/39/41/46/56/61…) a su nombre. Las Notas de Crédito (61)
 //     salen como chip ROJO para que no pasen por factura. Columna filtrable como el resto.
@@ -217,15 +228,21 @@ function estaClasificada(v) {
   return /^\d{4}-\d{2}/.test(c)
 }
 
-// Código de documento del SII -> nombre legible. NC = 61 (y export 112).
-const TIPOS_DOC = {
-  '33': 'Factura', '34': 'Factura exenta', '39': 'Boleta', '41': 'Boleta exenta',
-  '43': 'Liquidación factura', '46': 'Factura de compra', '56': 'Nota de débito',
-  '61': 'Nota de crédito', '110': 'Factura exportación', '111': 'Nota débito exportación',
-  '112': 'Nota crédito exportación',
-}
-const tipoLabel = (t) => { const x = String(t ?? '').trim(); if (!x) return ''; return TIPOS_DOC[x] || TIPOS_DOC[String(Number(x))] || x }
-const esNC = (t) => { const x = String(t ?? '').trim(); return x === '61' || x === '112' || /cr[eé]dito/i.test(tipoLabel(t)) }
+// Normaliza tipo_doc (código SII, sigla de casa o nombre) a una ÚNICA etiqueta "código sigla".
+// Familias con su código SII canónico, su sigla y su signo (nota de crédito = -1). Fuente: contab_tipos_doc.
+const TIPO_FAMILIAS = [
+  { cod: '33',  sigla: 'FAC', signo: 1,  raw: ['33', 'FAC', 'FAV', 'FACTURA', 'FACTURA ELECTRONICA', 'FACTURA AFECTA DE VENTA'] },
+  { cod: '46',  sigla: 'FAC', signo: 1,  raw: ['46', 'FACTURA DE COMPRA', 'FACTURA DE COMPRA ELECTRONICA'] },
+  { cod: '34',  sigla: 'FXE', signo: 1,  raw: ['34', 'FXE', 'FACTURA EXENTA', 'FACTURA NO AFECTA O EXENTA ELECTRONICA'] },
+  { cod: '39',  sigla: 'BOL', signo: 1,  raw: ['39', 'BOL', 'BOLETA', 'BOLETA ELECTRONICA'] },
+  { cod: '56',  sigla: 'N/D', signo: 1,  raw: ['56', 'N/D', 'ND', 'NOTA DE DEBITO', 'NOTA DE DÉBITO'] },
+  { cod: '61',  sigla: 'NCC', signo: -1, raw: ['61', 'NCC', 'NC', 'N/C', 'NCV', 'NOTA DE CREDITO', 'NOTA DE CRÉDITO'] },
+]
+const _TIPO_IDX = (() => { const m = {}; for (const f of TIPO_FAMILIAS) for (const r of f.raw) m[r] = f; return m })()
+const tipoFam = (t) => _TIPO_IDX[String(t ?? '').trim().toUpperCase()] || null
+const tipoLabel = (t) => { const f = tipoFam(t); if (f) return f.cod + ' ' + f.sigla; const x = String(t ?? '').trim(); return x || '—' }
+const esNC = (t) => { const f = tipoFam(t); return !!f && f.signo === -1 }
+const sgnDoc = (t) => { const f = tipoFam(t); return f ? f.signo : 1 }   // nota de crédito resta
 
 const COLDEFS = [
   { key: 'folio', label: 'Folio', w: '82px', align: 'left', get: v => String(v.folio ?? ''), filter: 'text' },
@@ -349,7 +366,7 @@ const wantScroll = useRef(false)
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
-  const resumen = useMemo(() => { const r = { n: 0, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0, auto: 0, rech: 0, totalRech: 0, totalSii: 0 }; for (const v of compras) { r.totalSii += v.total || 0; if (esRechazada(v)) { r.rech++; r.totalRech += v.total || 0; continue } r.n++; r.neto += v.neto || 0; r.iva += v.iva || 0; r.total += v.total || 0; if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++; if (v.origen_clasificacion === 'auto') r.auto++ } return r }, [compras])
+  const resumen = useMemo(() => { const r = { n: 0, neto: 0, iva: 0, total: 0, revisar: 0, sinClas: 0, auto: 0, rech: 0, totalRech: 0, totalSii: 0 }; for (const v of compras) { const g = sgnDoc(v.tipo_doc); r.totalSii += g * (v.total || 0); if (esRechazada(v)) { r.rech++; r.totalRech += g * (v.total || 0); continue } r.n++; r.neto += g * (v.neto || 0); r.iva += g * (v.iva || 0); r.total += g * (v.total || 0); if (!v.ccb) r.revisar++; if (!estaClasificada(v)) r.sinClas++; if (v.origen_clasificacion === 'auto') r.auto++ } return r }, [compras])
   const valOrden = (c, v) => {
     if (c.key === 'fecha') return v.fecha || ''
     if (['neto', 'iva', 'total', 'folio'].includes(c.key)) return Number(v[c.key] ?? 0)
@@ -560,9 +577,9 @@ const wantScroll = useRef(false)
                 {(String(v.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0] || <span style={{ color: '#D3D1C7' }}>—</span>}
               </div>
               <div style={{ fontSize: 12, color: '#888780' }}>{v.pagado_por || '—'}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.neto)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.iva)}</div>
-              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(v.total)}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: esNC(v.tipo_doc) ? '#B23A3A' : '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(sgnDoc(v.tipo_doc) * (v.neto || 0))}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: esNC(v.tipo_doc) ? '#B23A3A' : '#888780', textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(sgnDoc(v.tipo_doc) * (v.iva || 0))}</div>
+              <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: esNC(v.tipo_doc) ? '#B23A3A' : undefined, textDecoration: esRechazada(v) ? 'line-through' : 'none' }}>{clp(sgnDoc(v.tipo_doc) * (v.total || 0))}</div>
               <div>
                 {esRechazada(v)
                   ? <span title={v.glosa || undefined} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#F7DEDB', color: '#B23A3A', border: '0.5px solid #F0C9C2' }}>No es de FCR</span>
@@ -594,8 +611,8 @@ const wantScroll = useRef(false)
                 <div style={{ fontSize: 12, color: '#888780' }}>{sel.tipo_doc || 'Compra'} · Folio {sel.folio} · {fmtFecha(sel.fecha)}</div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#2C2C2A', marginTop: 2 }}>{sel.proveedor || '—'}</div>
                 <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>{sel.rut || ''}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, color: '#B23A3A' }}>{clp(sel.total)}</div>
-                <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>Neto {clp(sel.neto)} · IVA {clp(sel.iva)}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, color: '#B23A3A' }}>{clp(sgnDoc(sel.tipo_doc) * (sel.total || 0))}{esNC(sel.tipo_doc) ? ' · Nota de crédito' : ''}</div>
+                <div style={{ fontSize: 12, color: '#888780', marginTop: 2 }}>Neto {clp(sgnDoc(sel.tipo_doc) * (sel.neto || 0))} · IVA {clp(sgnDoc(sel.tipo_doc) * (sel.iva || 0))}</div>
               </div>
               <button onClick={cerrar} style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: '#888780', lineHeight: 1 }}>×</button>
             </div>
