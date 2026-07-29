@@ -1,3 +1,6 @@
+// VERSION: v18 · 2026-07-28 · Compras: la fila que se está editando NO se oscurece.
+//   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
+//     encima del velo (queda con su color original) y lleva un realce verde a la izquierda.
 // VERSION: v17 · 2026-07-28 · Compras: tipo_doc normalizado a "código + sigla" única.
 //   · Colapsa las variantes (FAC/Factura/33 → "33 FAC"; NCC/N/C/61 → "61 NCC"; FXE/34 → "34 FXE")
 //     entendiendo tanto los códigos SII (2025→) como las siglas de casa (2019→migración: BOL/FAC/NCC/FXE).
@@ -555,7 +558,7 @@ const wantScroll = useRef(false)
           ) : comprasVista.map(v => (
             <div key={v.id} onClick={() => abrir(v)}
               title={esRechazada(v) ? (v.glosa || 'No es de FCR · se conserva para cuadrar con el SII') : undefined}
-              style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: esRechazada(v) ? '#9C6B66' : '#2C2C2A', background: esRechazada(v) ? '#FBE9E7' : '#fff', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }}
+              style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: esRechazada(v) ? '#9C6B66' : '#2C2C2A', background: esRechazada(v) ? '#FBE9E7' : '#fff', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', ...(sel?.id === v.id ? { position: 'relative', zIndex: 8999, boxShadow: 'inset 3px 0 0 #1D9E75, 0 6px 18px rgba(0,0,0,0.14)' } : {}) }}
               onMouseEnter={e => e.currentTarget.style.background = esRechazada(v) ? '#F7DEDB' : '#FAFAF7'}
               onMouseLeave={e => e.currentTarget.style.background = esRechazada(v) ? '#FBE9E7' : '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
@@ -603,7 +606,7 @@ const wantScroll = useRef(false)
       </div>
 
       {sel && (<>
-        <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 9000 }} />
+        <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 8998 }} />
         <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 460, maxWidth: '100%', background: '#fff', zIndex: 9001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '16px 18px', borderBottom: '0.5px solid #E0DED6' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
