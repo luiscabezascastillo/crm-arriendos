@@ -1,3 +1,8 @@
+// VERSION: v14 · 2026-07-28 · Compras: filtro estilo Excel también en Neto, IVA y Total.
+//   · Esas tres columnas estaban con filter:null (sin desplegable). Ahora usan el MISMO filtro
+//     de lista que el resto y que SA: ordenar menor/mayor, buscar en la lista de importes,
+//     marcar valores y recuento por valor. Los importes se muestran formateados (1.000.000),
+//     y el buscador acepta tanto "1000000" como "1.000.000".
 // VERSION: v13 · 2026-07-27 · Compras: columna Cuenta, tooltip del plan y sin salto al guardar.
 //   · Columna Cuenta estrecha (solo el codigo) junto al CCB, filtrable como el resto.
 //   · Al pasar el raton sale '4201-41 · TELEFONO E INTERNET', sacado del plan. Si la
@@ -215,9 +220,9 @@ const COLDEFS = [
   { key: 'cuenta', label: 'Cuenta', w: '92px', align: 'left',
     get: v => (String(v.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0], filter: 'list' },
   { key: 'pagado_por', label: 'Pagado', w: '72px', align: 'left', get: v => v.pagado_por || '', filter: 'list' },
-  { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, filter: null },
-  { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, filter: null },
-  { key: 'total', label: 'Total', w: '112px', align: 'right', get: v => v.total, filter: null },
+  { key: 'neto', label: 'Neto', w: '100px', align: 'right', get: v => v.neto, fmt: clp, filter: 'list' },
+  { key: 'iva', label: 'IVA', w: '90px', align: 'right', get: v => v.iva, fmt: clp, filter: 'list' },
+  { key: 'total', label: 'Total', w: '112px', align: 'right', get: v => v.total, fmt: clp, filter: 'list' },
   { key: 'estado_clas', label: 'Estado', w: '124px', align: 'left', get: v => esRechazada(v) ? 'No es de FCR' : (estaClasificada(v) ? 'Clasificada' : 'Sin clasificar'), filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
@@ -247,7 +252,7 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
   // el buscador filtra la LISTA de valores, no las filas
   const visibles = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    return q ? distinct.filter(([v]) => v.toLowerCase().includes(q)) : distinct
+    return q ? distinct.filter(([v]) => v.toLowerCase().includes(q) || (col.fmt && col.fmt(v).toLowerCase().includes(q))) : distinct
   }, [distinct, busca])
 
   const toggle = (v) => { const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]; setState({ ...s, sel }) }
@@ -287,7 +292,7 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
             {visibles.slice(0, 400).map(([v, n]) => (
               <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
                 <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : (col.fmt ? col.fmt(v) : v)}</span>
                 <span style={{ fontSize: 10, color: '#B4B2A9' }}>{n}</span>
               </label>))}
             {visibles.length > 400 && <div style={{ fontSize: 10, color: '#B4B2A9', padding: '4px 0' }}>…y {visibles.length - 400} más. Afina la búsqueda.</div>}
