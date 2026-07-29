@@ -1,3 +1,16 @@
+// VERSION: v28 · 2026-07-29 · SA: Cuenta 2 con buscador y sugerencia desde Compras.
+//   · Cuenta 2 deja de ser un campo a ciegas: usa el MISMO buscador que Cuenta 1
+//     (CuentaSelector), con el plan de cuentas.
+//   · Sugerencia de proveedor: al clasificar un pago se busca en el Registro de Compras
+//     la factura que CUADRA por importe EXACTO y fecha cercana (±20 dias del movimiento).
+//     Si la encuentra, se ofrece su cuenta en Cuenta 2 (la que ya se imputo en Compras),
+//     asi no hay que ir a mirar "que se pago" a mano. Si hay varias candidatas, se
+//     ofrecen todas.
+//   · Campo de referencia nuevo: debajo de la linea salen la/las compras sugeridas con
+//     su fecha · proveedor · folio · cuenta, y un clic las aplica a Cuenta 2.
+//   · Reutiliza el endpoint que ya existe (/api/financiero/compras?todas=1): no toca
+//     backend. Las compras se cargan la primera vez que se abre un movimiento y se
+//     guardan en memoria para el resto de la sesion. Se ignoran las RECHAZADAS (no son de FCR).
 // VERSION: v27 · 2026-07-27 · SA: al pasar el raton por una cuenta sale su descripcion.
 //   Antes el tooltip repetia el codigo, que es justo lo que ya se ve. Ahora muestra
 //   '4201-41 · TELEFONO E INTERNET', sacado del plan de cuentas que ya llega del
@@ -554,6 +567,10 @@ export default function SaPage() {
   const [movs, setMovs] = useState([])
   const [lineasByMov, setLineasByMov] = useState({})
   const [plan, setPlan] = useState([])
+  // Registro de Compras, para sugerir en Cuenta 2 la cuenta del pago a proveedor.
+  // null = aun no cargado; se pide la 1a vez que se abre un movimiento y se cachea.
+  const [compras, setCompras] = useState(null)
+  const [cargandoCompras, setCargandoCompras] = useState(false)
   const [glosa, setGlosa] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -618,6 +635,18 @@ const wantScroll = useRef(false)
   useEffect(() => {
     if (status === 'authenticated' && (modo === 'continua' || cargaId)) { wantScroll.current = true; cargar() }
   }, [modo, cargaId, status]) // eslint-disable-line
+
+  // Compras: se cargan una sola vez, la primera vez que se abre un movimiento.
+  // Reutiliza el endpoint de la pantalla de Compras (mismo dato, sin backend nuevo).
+  useEffect(() => {
+    if (!sel || compras !== null || cargandoCompras) return
+    setCargandoCompras(true)
+    fetch('/api/financiero/compras?todas=1')
+      .then(r => r.json())
+      .then(d => setCompras(Array.isArray(d.compras) ? d.compras : []))
+      .catch(() => setCompras([]))
+      .finally(() => setCargandoCompras(false))
+  }, [sel, compras, cargandoCompras])
 
   const resumen = useMemo(() => {
     const r = { n: movs.length, cuad: 0, sin: 0, desc: 0, cargos: 0, abonos: 0 }
@@ -840,6 +869,38 @@ const wantScroll = useRef(false)
   const copiarDesglose = () => {
     if (!memoSel?.desglose) return
     setLineas(memoSel.desglose.map((d, i) => ({ ...d, sub_orden: i + 1, monto: String(d.monto ?? '') })))
+  }
+
+  // ── Sugerencia de Cuenta 2 desde el Registro de Compras ─────────────────────
+  // Un pago a proveedor sale del banco por el mismo importe que su factura y en
+  // fechas cercanas. Se busca la compra que CUADRA por importe exacto dentro de una
+  // ventana de ±20 dias del movimiento y se ofrece la cuenta que ya se le imputo.
+  const codDe = (v) => (String(v || '').trim().match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0]
+  const DIA_MS = 86400000
+  // Compras dentro de la ventana de fechas del movimiento abierto, con cuenta puesta
+  // y que sean de FCR (se descartan las RECHAZADAS).
+  const comprasCerca = useMemo(() => {
+    if (!sel || !Array.isArray(compras) || !sel.fecha) return []
+    if (Number(sel.monto) >= 0) return []   // solo pagos (cargos): una compra se paga, no se cobra
+    const fMov = new Date(String(sel.fecha).slice(0, 10)).getTime()
+    if (isNaN(fMov)) return []
+    return compras.filter(c => {
+      if (!c.fecha || !codDe(c.cuenta)) return false
+      if (String(c.estado || '').toUpperCase() === 'RECHAZADA') return false
+      const fc = new Date(String(c.fecha).slice(0, 10)).getTime()
+      if (isNaN(fc)) return false
+      return Math.abs(fc - fMov) / DIA_MS <= 20
+    })
+  }, [sel, compras])
+  // Compras cuyo TOTAL coincide EXACTO con el importe dado (el de la linea, o el del
+  // movimiento si la linea aun no tiene importe). Ordenadas por cercania de fecha.
+  const matchCompras = (monto) => {
+    const v = Math.abs(Math.round(Number(monto) || 0))
+    if (!v || !comprasCerca.length) return []
+    const fMov = sel ? new Date(String(sel.fecha).slice(0, 10)).getTime() : 0
+    return comprasCerca
+      .filter(c => Math.abs(Math.round(Number(c.total) || 0)) === v)
+      .sort((a, b) => Math.abs(new Date(a.fecha).getTime() - fMov) - Math.abs(new Date(b.fecha).getTime() - fMov))
   }
 
   const abrir = (m) => { setSel(m); setGlosa(m.glosa || ''); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
@@ -1204,20 +1265,60 @@ const wantScroll = useRef(false)
                   <div>Folio</div><div>CCB</div><div style={{ textAlign: 'right' }}>Cantidad</div><div>Concepto</div><div>Cuenta 1</div><div>Cuenta 2</div><div />
                 </div>
                 {lineas.length === 0 && <div style={{ fontSize: 13, color: '#B4B2A9', padding: '8px 2px' }}>Sin líneas. {canEdit && 'Añade una para clasificar.'}</div>}
-                {lineas.map((l, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(folioVisible(sel), i + 1)}</div>
-                    <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
-                    <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
-                    <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
-                    <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
-                      sugerida={memoSel?.unica || null} formato="codigo"
-                      estilo={{ width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: !canEdit ? '#F7F6F2' : '#fff' }}
-                      onChange={v => setLinea(i, 'cuenta_1', v)} />
-                    <input value={l.cuenta_2 || ''} disabled={!canEdit} onChange={e => setLinea(i, 'cuenta_2', e.target.value)} style={inp} />
-                    {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}
+                {lineas.map((l, i) => {
+                  const selCta = { width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: !canEdit ? '#F7F6F2' : '#fff' }
+                  // Compras que cuadran con esta linea (o con el movimiento si aun no tiene importe).
+                  const sugs = matchCompras(Math.abs(Number(l.monto) || 0) || Math.abs(Number(sel.monto) || 0))
+                  const ctasUnicas = Array.from(new Set(sugs.map(c => codDe(c.cuenta)).filter(Boolean)))
+                  const sugCta2 = ctasUnicas.length === 1 ? ctasUnicas[0] : null
+                  return (
+                  <div key={i} style={{ marginBottom: sugs.length ? 8 : 6 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, alignItems: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(folioVisible(sel), i + 1)}</div>
+                      <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
+                      <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
+                      <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
+                      <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
+                        sugerida={memoSel?.unica || null} formato="codigo"
+                        estilo={selCta}
+                        onChange={v => setLinea(i, 'cuenta_1', v)} />
+                      <CuentaSelector valor={l.cuenta_2} plan={plan} disabled={!canEdit}
+                        sugerida={sugCta2} formato="codigo"
+                        placeholder="cuenta / compra"
+                        estilo={selCta}
+                        onChange={v => setLinea(i, 'cuenta_2', v)} />
+                      {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}
+                    </div>
+                    {sugs.length > 0 && (
+                      <div style={{ marginTop: 4, marginLeft: 86, padding: '6px 9px', background: '#F3FBF8', border: '0.5px solid #CDEBDF', borderRadius: 7 }}>
+                        <div style={{ fontSize: 10.5, color: '#085041', fontWeight: 600, marginBottom: 4 }}>
+                          💡 {sugs.length === 1 ? 'Compra que cuadra' : `${sugs.length} compras que cuadran`} por importe y fecha (±20 días) · clic para poner la cuenta en Cuenta 2
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {sugs.map((c, k) => {
+                            const cod = codDe(c.cuenta)
+                            const puesta = codDe(l.cuenta_2) && codDe(l.cuenta_2) === cod
+                            return (
+                              <button key={k} disabled={!canEdit}
+                                onClick={() => setLinea(i, 'cuenta_2', cod)}
+                                title={`${c.proveedor || 'Proveedor s/n'} · Folio ${c.folio} · ${describeCuenta(c.cuenta) || cod}`}
+                                style={{ display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left', width: '100%',
+                                  fontSize: 11, padding: '4px 7px', borderRadius: 5, cursor: canEdit ? 'pointer' : 'default',
+                                  border: `0.5px solid ${puesta ? '#1D9E75' : '#CDEBDF'}`, background: puesta ? '#E1F5EE' : '#fff', color: '#2C2C2A' }}>
+                                <span style={{ color: '#888780', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha)}</span>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.proveedor || '—'}</span>
+                                <span style={{ color: '#888780', whiteSpace: 'nowrap' }}>Folio {c.folio}</span>
+                                <span style={{ fontWeight: 700, color: '#085041', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{cod}</span>
+                                {puesta && <span style={{ color: '#1D9E75', fontWeight: 700 }}>✓</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
                 {canEdit && <button onClick={addLinea} style={{ marginTop: 4, fontSize: 12, padding: '7px 12px', borderRadius: 7, border: '0.5px dashed #1D9E75', background: '#F3FBF8', color: '#085041', cursor: 'pointer', fontWeight: 500 }}>+ Añadir línea</button>}
                 <datalist id="ccb-list">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
               </div>

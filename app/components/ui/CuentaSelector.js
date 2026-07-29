@@ -1,3 +1,9 @@
+// VERSION: v2 · 2026-07-29 · Opciones del desplegable en DOS lineas.
+//   Antes el codigo y la descripcion iban en la misma linea y la descripcion se
+//   recortaba con puntos suspensivos: "4201-41 TELEFONO E INTE…", justo el texto que
+//   hace falta para elegir bien. Ahora cada opcion muestra el codigo en negrita arriba
+//   y la descripcion COMPLETA debajo, que envuelve si no cabe. Sin recortes.
+//   Mismo comportamiento en todo lo demas; lo usan SA (cuenta_1 y cuenta_2) y Compras.
 // VERSION: v1 · 2026-07-27 · Buscador del plan de cuentas, compartido.
 //
 // Nace en el panel de SA y lo usa tambien Compras: la misma ayuda en los dos sitios,
@@ -106,11 +112,11 @@ export default function CuentaSelector({
           {opciones.map(c => (
             <div key={c.codigo}
               onMouseDown={(e) => { e.preventDefault(); elegir(c) }}
-              style={{ padding: '6px 9px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid #F3F2ED', display: 'flex', gap: 8 }}
+              style={{ padding: '7px 10px', cursor: 'pointer', borderBottom: '0.5px solid #F3F2ED', display: 'flex', flexDirection: 'column', gap: 2 }}
               onMouseEnter={e => { e.currentTarget.style.background = '#F7F6F2' }}
               onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}>
-              <span style={{ fontWeight: 600, color: '#085041', minWidth: 76 }}>{c.codigo}</span>
-              <span style={{ color: '#4A4A46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.descripcion}</span>
+              <span style={{ fontWeight: 700, color: '#085041', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{c.codigo}</span>
+              <span style={{ color: '#4A4A46', fontSize: 11, lineHeight: 1.35, whiteSpace: 'normal', wordBreak: 'break-word' }}>{c.descripcion}</span>
             </div>
           ))}
         </div>
