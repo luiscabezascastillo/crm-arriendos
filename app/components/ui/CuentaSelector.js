@@ -1,3 +1,8 @@
+// VERSION: v3 · 2026-07-30 · El desplegable ya no se corta en 80 cuentas.
+//   Sin texto de busqueda mostraba solo las primeras 80 por codigo; con 121 imputables,
+//   las 4301-xx caian mas alla del corte y la lista terminaba en 4201-41 (parecia que
+//   faltaban en el plan, pero solo era el tope). Subido a 500: el plan entero cabe y se
+//   ve completo, con scroll. La busqueda tambien devuelve hasta 500.
 // VERSION: v2 · 2026-07-29 · Opciones del desplegable en DOS lineas.
 //   Antes el codigo y la descripcion iban en la misma linea y la descripcion se
 //   recortaba con puntos suspensivos: "4201-41 TELEFONO E INTE…", justo el texto que
@@ -38,11 +43,11 @@ export default function CuentaSelector({
 
   const opciones = useMemo(() => {
     const t = q.trim().toLowerCase()
-    if (!t) return plan.slice(0, 80)
+    if (!t) return plan.slice(0, 500)
     return plan.filter(c =>
       c.codigo.toLowerCase().includes(t) ||
       String(c.descripcion || '').toLowerCase().includes(t)
-    ).slice(0, 80)
+    ).slice(0, 500)
   }, [q, plan])
 
   const texto = (c) => formato === 'codigo+desc'

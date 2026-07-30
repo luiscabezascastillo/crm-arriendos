@@ -1,3 +1,7 @@
+// VERSION: v7 · 2026-07-29 · Las lineas guardan un COMENTARIO libre.
+//   Campo `comentario` en sa_lineas: notas de la persona y, cuando se usa la sugerencia
+//   de Compras en Cuenta 2, la referencia de la compra de donde viene (proveedor·folio·fecha).
+//   Requiere: alter table public.sa_lineas add column if not exists comentario text;
 // VERSION: v6 · 2026-07-27 · El PUT guarda tambien la glosa contable del movimiento.
 // VERSION: v5 · 2026-07-27 · La carga reconcilia por N° MOVIMIENTO, no por posicion.
 //   El POST emparejaba por linea_cartola (la posicion en el archivo). Eso solo funciona
@@ -84,7 +88,7 @@ export async function GET(req) {
   if (movimiento) {
     const { data, error } = await admin
       .from('sa_lineas')
-      .select('id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto')
+      .select('id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto, comentario')
       .eq('movimiento_id', movimiento)
       .order('sub_orden', { ascending: true })
     if (error) return Response.json({ error: error.message }, { status: 500 })
@@ -105,7 +109,7 @@ export async function GET(req) {
 
       const lineas = ids.length ? await enTrozos(ids, (parte) =>
         admin.from('sa_lineas')
-          .select('id, movimiento_id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto')
+          .select('id, movimiento_id, sub_orden, monto, ccb, cuenta_1, cuenta_2, concepto, comentario')
           .in('movimiento_id', parte)
           .order('movimiento_id', { ascending: true })
           .order('sub_orden', { ascending: true })
@@ -182,6 +186,7 @@ export async function PUT(req) {
       cuenta_1: l.cuenta_1 || null,
       cuenta_2: l.cuenta_2 || null,
       concepto: l.concepto || null,
+      comentario: l.comentario || null,
       creado_por: email,
     }))
     const { error: insErr } = await admin.from('sa_lineas').insert(filas)

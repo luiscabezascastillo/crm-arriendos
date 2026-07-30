@@ -1,3 +1,22 @@
+// VERSION: v30 · 2026-07-29 · SA: campo COMENTARIO por linea + autorelleno del origen.
+//   · Cada linea gana un campo "Comentario" (tercera fila, ancho completo) para notas
+//     libres y para dejar constancia de DE DONDE viene la cuenta.
+//   · Al pulsar una compra sugerida para Cuenta 2, ademas de poner la cuenta se rellena
+//     el comentario con la referencia ('Compras · PROVEEDOR · Folio N · fecha') si estaba
+//     vacio, para que quede por escrito de que factura salio la imputacion.
+//   · Requiere la columna nueva: alter table public.sa_lineas add column if not exists comentario text;
+//     y el route de SA v7 (que la lee y la guarda).
+// VERSION: v29 · 2026-07-29 · SA: cada linea del drawer en DOS filas + referencia visible.
+//   Sobre la v28, tres arreglos pedidos al verlo en pantalla:
+//   1) Cada linea se despliega en dos filas: arriba folio · CCB · cantidad · concepto;
+//      abajo Cuenta 1 y Cuenta 2 a media anchura, CON su descripcion completa debajo
+//      ('2105-05 · PROVEEDORES...'). Antes las cuentas iban en 90px y no se leia el texto.
+//   2) La referencia a Compras esta SIEMPRE visible bajo Cuenta 2 en los pagos: si hay
+//      compra que cuadra la lista; si esta cargando dice 'buscando en Compras…'; si no
+//      hay ninguna dice 'sin compra que cuadre'. Asi se ve que el mecanismo actua.
+//   3) La sugerencia ya NO exige que la compra tenga cuenta puesta: se muestra igual
+//      (con 'sin cuenta') para saber QUE se pago; solo se puede pulsar para rellenar
+//      Cuenta 2 cuando la compra si tiene cuenta.
 // VERSION: v28 · 2026-07-29 · SA: Cuenta 2 con buscador y sugerencia desde Compras.
 //   · Cuenta 2 deja de ser un campo a ciegas: usa el MISMO buscador que Cuenta 1
 //     (CuentaSelector), con el plan de cuentas.
@@ -244,7 +263,8 @@ const patronDe = (d) => String(d || '').toUpperCase().replace(/[0-9]{6,}/g, '').
 // Patrones donde el banco no dice nada: no se sugiere.
 const PATRON_MUDO = /TRANSF\.? SIN INFORMACION/
 
-const DGRID = '80px 76px 108px 1fr 90px 90px 26px'  // drawer: folio-sub · CCB · cantidad · concepto · cta1 · cta2 · x
+const DGRID = '80px 76px 108px 1fr 90px 90px 26px'  // (v27 y anteriores) drawer en una sola fila
+const LGRID = '60px 96px 110px 1fr 28px'             // v28: fila superior de cada linea · folio · CCB · cantidad · concepto · x
 
 function Chip({ estado }) {
   const e = ESTADO[estado] || ESTADO.SIN_CLASIFICAR
@@ -854,7 +874,7 @@ const wantScroll = useRef(false)
       // el desglose mas reciente con mas de una linea
       if (ls.length > 1 && (!e.fecha || String(m.fecha) > String(e.fecha))) {
         e.fecha = m.fecha
-        e.desglose = ls.map(l => ({ ccb: l.ccb || '', cuenta_1: l.cuenta_1 || '', cuenta_2: l.cuenta_2 || '', concepto: l.concepto || '', monto: l.monto }))
+        e.desglose = ls.map(l => ({ ccb: l.ccb || '', cuenta_1: l.cuenta_1 || '', cuenta_2: l.cuenta_2 || '', concepto: l.concepto || '', comentario: l.comentario || '', monto: l.monto }))
       }
     }
     for (const k of Object.keys(acc)) {
@@ -906,7 +926,7 @@ const wantScroll = useRef(false)
   const abrir = (m) => { setSel(m); setGlosa(m.glosa || ''); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
   const setLinea = (i, campo, val) => setLineas(ls => ls.map((l, k) => k === i ? { ...l, [campo]: val } : l))
-  const addLinea = () => setLineas(ls => [...ls, { sub_orden: ls.length + 1, monto: '', ccb: '', cuenta_1: '', cuenta_2: '', concepto: '' }])
+  const addLinea = () => setLineas(ls => [...ls, { sub_orden: ls.length + 1, monto: '', ccb: '', cuenta_1: '', cuenta_2: '', concepto: '', comentario: '' }])
   const delLinea = (i) => setLineas(ls => ls.filter((_, k) => k !== i))
 
   const sumaLineas = useMemo(() => lineas.reduce((a, l) => a + Math.abs(Number(l.monto) || 0), 0), [lineas])
@@ -925,6 +945,7 @@ const wantScroll = useRef(false)
           sub_orden: i + 1, monto: Math.abs(Math.round(Number(l.monto))),
           ccb: (l.ccb || '').trim() || null, cuenta_1: (l.cuenta_1 || '').trim() || null,
           cuenta_2: (l.cuenta_2 || '').trim() || null, concepto: (l.concepto || '').trim() || null,
+          comentario: (l.comentario || '').trim() || null,
         })),
       }
       const res = await fetch('/api/financiero/sa', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -1260,62 +1281,93 @@ const wantScroll = useRef(false)
 
             <div style={{ flex: 1, overflow: 'auto', padding: '12px 18px' }}>
               <div style={{ minWidth: 620 }}>
-                {/* cabecera tabla */}
-                <div style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, fontSize: 10, fontWeight: 600, color: '#888780', padding: '0 2px 6px' }}>
-                  <div>Folio</div><div>CCB</div><div style={{ textAlign: 'right' }}>Cantidad</div><div>Concepto</div><div>Cuenta 1</div><div>Cuenta 2</div><div />
+                {/* cabecera de la fila de arriba de cada linea */}
+                <div style={{ display: 'grid', gridTemplateColumns: LGRID, gap: 6, fontSize: 10, fontWeight: 600, color: '#888780', padding: '0 2px 6px' }}>
+                  <div>Folio</div><div>CCB</div><div style={{ textAlign: 'right' }}>Cantidad</div><div>Concepto</div><div />
                 </div>
                 {lineas.length === 0 && <div style={{ fontSize: 13, color: '#B4B2A9', padding: '8px 2px' }}>Sin líneas. {canEdit && 'Añade una para clasificar.'}</div>}
                 {lineas.map((l, i) => {
                   const selCta = { width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 5, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', background: !canEdit ? '#F7F6F2' : '#fff' }
+                  const esCargo = Number(sel.monto) < 0
                   // Compras que cuadran con esta linea (o con el movimiento si aun no tiene importe).
                   const sugs = matchCompras(Math.abs(Number(l.monto) || 0) || Math.abs(Number(sel.monto) || 0))
                   const ctasUnicas = Array.from(new Set(sugs.map(c => codDe(c.cuenta)).filter(Boolean)))
                   const sugCta2 = ctasUnicas.length === 1 ? ctasUnicas[0] : null
+                  const d1 = describeCuenta(l.cuenta_1)
+                  const d2 = describeCuenta(l.cuenta_2)
                   return (
-                  <div key={i} style={{ marginBottom: sugs.length ? 8 : 6 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: DGRID, gap: 6, alignItems: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#9a988f' }}>{subFolio(folioVisible(sel), i + 1)}</div>
+                  <div key={i} style={{ border: '0.5px solid #ECEAE3', borderRadius: 9, padding: '9px 11px', marginBottom: 9, background: '#FCFCFA' }}>
+                    {/* fila 1: folio · CCB · cantidad · concepto · quitar */}
+                    <div style={{ display: 'grid', gridTemplateColumns: LGRID, gap: 6, alignItems: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#9a988f', fontWeight: 600 }}>{subFolio(folioVisible(sel), i + 1)}</div>
                       <input list="ccb-list" value={l.ccb || ''} disabled={!canEdit} onChange={e => setLinea(i, 'ccb', e.target.value)} style={inp} />
                       <input type="number" value={l.monto} disabled={!canEdit} onChange={e => setLinea(i, 'monto', e.target.value)} style={{ ...inp, textAlign: 'right' }} />
                       <input value={l.concepto || ''} disabled={!canEdit} onChange={e => setLinea(i, 'concepto', e.target.value)} style={inp} />
-                      <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
-                        sugerida={memoSel?.unica || null} formato="codigo"
-                        estilo={selCta}
-                        onChange={v => setLinea(i, 'cuenta_1', v)} />
-                      <CuentaSelector valor={l.cuenta_2} plan={plan} disabled={!canEdit}
-                        sugerida={sugCta2} formato="codigo"
-                        placeholder="cuenta / compra"
-                        estilo={selCta}
-                        onChange={v => setLinea(i, 'cuenta_2', v)} />
                       {canEdit ? <button onClick={() => delLinea(i)} title="Quitar" style={{ border: '0.5px solid #E7C9C4', background: '#fff', color: '#B23A3A', borderRadius: 5, cursor: 'pointer', height: 28, fontSize: 14 }}>×</button> : <div />}
                     </div>
-                    {sugs.length > 0 && (
-                      <div style={{ marginTop: 4, marginLeft: 86, padding: '6px 9px', background: '#F3FBF8', border: '0.5px solid #CDEBDF', borderRadius: 7 }}>
-                        <div style={{ fontSize: 10.5, color: '#085041', fontWeight: 600, marginBottom: 4 }}>
-                          💡 {sugs.length === 1 ? 'Compra que cuadra' : `${sugs.length} compras que cuadran`} por importe y fecha (±20 días) · clic para poner la cuenta en Cuenta 2
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          {sugs.map((c, k) => {
-                            const cod = codDe(c.cuenta)
-                            const puesta = codDe(l.cuenta_2) && codDe(l.cuenta_2) === cod
-                            return (
-                              <button key={k} disabled={!canEdit}
-                                onClick={() => setLinea(i, 'cuenta_2', cod)}
-                                title={`${c.proveedor || 'Proveedor s/n'} · Folio ${c.folio} · ${describeCuenta(c.cuenta) || cod}`}
-                                style={{ display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left', width: '100%',
-                                  fontSize: 11, padding: '4px 7px', borderRadius: 5, cursor: canEdit ? 'pointer' : 'default',
-                                  border: `0.5px solid ${puesta ? '#1D9E75' : '#CDEBDF'}`, background: puesta ? '#E1F5EE' : '#fff', color: '#2C2C2A' }}>
-                                <span style={{ color: '#888780', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha)}</span>
-                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.proveedor || '—'}</span>
-                                <span style={{ color: '#888780', whiteSpace: 'nowrap' }}>Folio {c.folio}</span>
-                                <span style={{ fontWeight: 700, color: '#085041', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{cod}</span>
-                                {puesta && <span style={{ color: '#1D9E75', fontWeight: 700 }}>✓</span>}
-                              </button>
-                            )
-                          })}
-                        </div>
+                    {/* fila 2: Cuenta 1 y Cuenta 2, cada una con su descripcion legible debajo */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 9 }}>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Cuenta 1</div>
+                        <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
+                          sugerida={memoSel?.unica || null} formato="codigo" estilo={selCta}
+                          onChange={v => setLinea(i, 'cuenta_1', v)} />
+                        {d1 && <div style={{ fontSize: 10.5, color: '#888780', marginTop: 3, lineHeight: 1.3 }}>{d1}</div>}
                       </div>
-                    )}
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Cuenta 2 <span style={{ fontWeight: 400, color: '#B4B2A9' }}>· contrapartida</span></div>
+                        <CuentaSelector valor={l.cuenta_2} plan={plan} disabled={!canEdit}
+                          sugerida={sugCta2} formato="codigo" placeholder="cuenta / compra" estilo={selCta}
+                          onChange={v => setLinea(i, 'cuenta_2', v)} />
+                        {d2 && <div style={{ fontSize: 10.5, color: '#888780', marginTop: 3, lineHeight: 1.3 }}>{d2}</div>}
+                        {/* Referencia al origen en Compras — siempre visible en los pagos */}
+                        {esCargo && (
+                          <div style={{ marginTop: 6 }}>
+                            {sugs.length > 0 ? (
+                              <>
+                                <div style={{ fontSize: 10, color: '#085041', fontWeight: 600, marginBottom: 3 }}>
+                                  💡 Origen en Compras{sugs.length > 1 ? ` (${sugs.length})` : ''} · clic para poner la cuenta
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                  {sugs.map((c, k) => {
+                                    const cod = codDe(c.cuenta)
+                                    const puesta = cod && codDe(l.cuenta_2) === cod
+                                    return (
+                                      <button key={k} disabled={!canEdit || !cod}
+                                        onClick={() => { if (cod) setLineas(ls => ls.map((x, k2) => k2 === i ? { ...x, cuenta_2: cod, comentario: (x.comentario || '').trim() ? x.comentario : `Compras · ${c.proveedor || 'proveedor s/n'} · Folio ${c.folio} · ${fmtFecha(c.fecha)}` } : x)) }}
+                                        title={`${c.proveedor || 'Proveedor s/n'} · Folio ${c.folio} · ${cod ? (describeCuenta(c.cuenta) || cod) : 'aún sin cuenta en Compras'}`}
+                                        style={{ display: 'flex', gap: 7, alignItems: 'center', textAlign: 'left', width: '100%',
+                                          fontSize: 10.5, padding: '4px 7px', borderRadius: 5,
+                                          cursor: (canEdit && cod) ? 'pointer' : 'default',
+                                          border: `0.5px solid ${puesta ? '#1D9E75' : '#CDEBDF'}`, background: puesta ? '#E1F5EE' : '#fff', color: '#2C2C2A' }}>
+                                        <span style={{ color: '#888780', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha)}</span>
+                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.proveedor || '—'} · Folio {c.folio}</span>
+                                        {cod
+                                          ? <span style={{ fontWeight: 700, color: '#085041', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{cod}</span>
+                                          : <span style={{ color: '#B26B00', whiteSpace: 'nowrap' }}>sin cuenta</span>}
+                                        {puesta && <span style={{ color: '#1D9E75', fontWeight: 700 }}>✓</span>}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </>
+                            ) : (compras === null || cargandoCompras) ? (
+                              <div style={{ fontSize: 10, color: '#B4B2A9' }}>buscando en Compras…</div>
+                            ) : (
+                              <div style={{ fontSize: 10, color: '#B4B2A9' }}>sin compra que cuadre por importe (±20 días)</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {/* fila 3: comentario libre / origen de la imputacion */}
+                    <div style={{ marginTop: 9 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Comentario <span style={{ fontWeight: 400, color: '#B4B2A9' }}>· nota u origen de la cuenta</span></div>
+                      <input value={l.comentario || ''} disabled={!canEdit}
+                        onChange={e => setLinea(i, 'comentario', e.target.value)}
+                        placeholder="p. ej. de qué factura de Compras viene, o una nota"
+                        style={{ ...inp, width: '100%' }} />
+                    </div>
                   </div>
                   )
                 })}
