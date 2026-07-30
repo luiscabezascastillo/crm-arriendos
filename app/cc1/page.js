@@ -1,3 +1,8 @@
+// VERSION: v7 · 2026-07-30 · Color de fondo por estado en las 2 primeras columnas (idadmon/inmueble),
+//   como en el Excel: P marrón, SQ amarillo-ámbar pálido, Q violeta, N gris, N-DICOM rojizo. Además,
+//   un P cuyo DEPARTAMENTO (idinmue en rango 01-49) tiene otra versión en SQ se pinta marrón+violeta
+//   (idadmon marrón, inmueble violeta) → señal de que el piso sigue ocupado y la visita se coordina
+//   con el arrendatario actual. Estacionamientos/bodegas sueltos (51-99) nunca llevan la mezcla.
 // VERSION: v6 · 2026-07-28 · Filtros estilo Excel en TODAS las columnas (mismo motor que SA, ahora
 //   en lib/filtroExcel.js). Para que los operadores (cuota > X, entre fechas, dos condiciones Y/O)
 //   funcionen, la tabla carga los contratos de una vez y filtra/ordena/pagina EN MEMORIA en vez de
@@ -156,6 +161,34 @@ function alertaTermino(fecha, estado) {
 }
 
 
+// ── Colores de fondo por estado (paleta del Excel) ──
+const COL_ESTADO = {
+  P:  '#EADDC7',   // marrón claro: vacío, buscando arrendatario
+  SQ: '#FCF4D6',   // amarillo-ámbar pálido: notificó salida, en transición
+  Q:  '#E7E0F0',   // violeta claro: terminado
+  N:  '#EAEAEA',   // gris: cerrado / histórico
+}
+const COL_NDICOM = '#F5D9D6'  // rojizo: N-DICOM (reclamación)
+const COL_MARRON = '#EADDC7'
+const COL_VIOLETA = '#E7E0F0'
+
+// El idinmue de un departamento es el código cuyo número está en 01-49 (regla de numeración:
+// 01-49 depto, 51-79 bodega, 81-99 estacionamiento). idlinmue puede traer varios separados por
+// espacio ("P001-14 P001-85"); devolvemos el que sea depto, o null si no hay.
+function idinmueDepto(idlinmue) {
+  if (!idlinmue) return null
+  for (const cod of String(idlinmue).trim().split(/\s+/)) {
+    const m = cod.match(/-(\d{2,})$/)
+    if (m) { const n = parseInt(m[1], 10); if (n >= 1 && n <= 49) return cod }
+  }
+  return null
+}
+
+// Normaliza el estado para leer N-DICOM en sus variantes.
+function estadoNorm(e) {
+  return String(e || '').trim().toUpperCase().replace('N_DICOM', 'N-DICOM').replace('N DICOM', 'N-DICOM')
+}
+
 // Columnas del LOG para el filtro estilo Excel (mismo motor que SA).
 const fmtFechaLOG = (v) => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('es-CL') }
 const LOG_COLS = [
@@ -284,6 +317,29 @@ export default function CC1Page() {
   }, [todas, search, filters, orden])
 
   const total = filtradas.length
+
+  // Deptos (por su idinmue 01-49) que tienen alguna versión en estado SQ. Un P de ese mismo depto
+  // se marcará marrón+violeta ("piso aún ocupado, coordinar visita con el arrendatario actual").
+  const deptosConSQ = useMemo(() => {
+    const s = new Set()
+    for (const r of todas) {
+      if (estadoNorm(r.estado) === 'SQ') { const d = idinmueDepto(r.idlinmue); if (d) s.add(d) }
+    }
+    return s
+  }, [todas])
+
+  // Devuelve { idadmon, inmueble } con el color de fondo de cada una de las 2 primeras celdas.
+  function fondoFila(p) {
+    const est = estadoNorm(p.estado)
+    if (est === 'N-DICOM') return { idadmon: COL_NDICOM, inmueble: COL_NDICOM }
+    if (est === 'P') {
+      const d = idinmueDepto(p.idlinmue)
+      if (d && deptosConSQ.has(d)) return { idadmon: COL_MARRON, inmueble: COL_VIOLETA }  // ocupado
+      return { idadmon: COL_ESTADO.P, inmueble: COL_ESTADO.P }
+    }
+    const c = COL_ESTADO[est]
+    return c ? { idadmon: c, inmueble: c } : { idadmon: 'transparent', inmueble: 'transparent' }
+  }
   const hayFiltros = search || hayAlgunFiltro || orden?.key
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const propiedades = filtradas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -437,13 +493,12 @@ export default function CC1Page() {
               ) : propiedades.map((p, i) => {
                 const alerta = alertaTermino(p.termino_actual, p.estado)
                 const cargando = portalLoading === p.idadmon
+                const bg = fondoFila(p)
                 return (
                   <tr key={i} style={{ cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     onClick={(e) => { if (!e.defaultPrevented) router.push(`/admin?idadmon=${p.idadmon}`) }}>
-                    <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)' }}>{p.idadmon}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.inmueble || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)', background: bg.idadmon }}>{p.idadmon}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: bg.inmueble }}>{p.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}><EstadoBadge estado={p.estado} /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
