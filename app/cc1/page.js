@@ -32,7 +32,6 @@ const EMAILS_OK = [
 ]
 
 const PORTAL_URL = 'https://portal-propietarios-rose.vercel.app'
-const PAGE_SIZE = 15
 
 const estadoMap = {
   S:          { bg: '#eff6ff', color: '#1a56db' },
@@ -161,6 +160,13 @@ function alertaTermino(fecha, estado) {
 }
 
 
+// Orden de los estados de arriba abajo en el LOG (ciclo de vida: activos primero, cerrados al final).
+const ORDEN_ESTADO = { S: 0, SQ: 1, Q: 2, P: 3, N: 4, 'N-DICOM': 5 }
+const rankEstado = (e) => {
+  const k = estadoNorm(e)
+  return (k in ORDEN_ESTADO) ? ORDEN_ESTADO[k] : 99
+}
+
 // ── Colores de fondo por estado (paleta del Excel) ──
 const COL_ESTADO = {
   P:  '#EADDC7',   // marrón claro: vacío, buscando arrendatario
@@ -223,7 +229,6 @@ export default function CC1Page() {
   const [orden, setOrden] = useState(null)         // { key, dir }
   const [todas, setTodas] = useState([])           // TODAS las filas cargadas (sin paginar)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
   const [kpis, setKpis] = useState({ total: 0, activos: 0, termino: 0, vacios: 0 })
   const [portalLoading, setPortalLoading] = useState(null) // idadmon cargando
   const [idpropMap, setIdpropMap] = useState({}) // idadmon -> idprop
@@ -231,7 +236,6 @@ export default function CC1Page() {
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { loadTodas() }, [])
   // Al cambiar búsqueda, filtros u orden, volver a la página 1 (paginación sobre lo ya filtrado).
-  useEffect(() => { setPage(1) }, [search, filters, orden])
 
   // Carga ÚNICA de todos los contratos. Con ~837 filas cabe de sobra en memoria; a partir de aquí
   // filtrar, ordenar y paginar se hace en el navegador (como SA), lo que permite el filtro Excel
@@ -309,7 +313,7 @@ export default function CC1Page() {
     let out = aplicarFiltros(base, LOG_COLS, filters, orden)
     if (!orden?.key) {
       out = [...out].sort((a, b) =>
-        String(b.estado||'').localeCompare(String(a.estado||'')) ||
+        (rankEstado(a.estado) - rankEstado(b.estado)) ||
         String(a.propietario||'').localeCompare(String(b.propietario||''), 'es') ||
         String(a.inmueble||'').localeCompare(String(b.inmueble||''), 'es'))
     }
@@ -341,8 +345,7 @@ export default function CC1Page() {
     return c ? { idadmon: c, inmueble: c } : { idadmon: 'transparent', inmueble: 'transparent' }
   }
   const hayFiltros = search || hayAlgunFiltro || orden?.key
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const propiedades = filtradas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const propiedades = filtradas  // scroll continuo: se muestran todas las filas filtradas
   const irAFormulario = () => router.push('/admin')
   const recuperar = () => {
     const v = recuperarId.trim().toUpperCase()
@@ -463,22 +466,22 @@ export default function CC1Page() {
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', borderTopLeftRadius: 12 }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'idadmon')} movs={todas} state={filters['idadmon']} setState={v => setFiltroCol('idadmon', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDADMON</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idadmon')} movs={todas} state={filters['idadmon']} setState={v => setFiltroCol('idadmon', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'inmueble')} movs={todas} state={filters['inmueble']} setState={v => setFiltroCol('inmueble', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Inmueble</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'inmueble')} movs={todas} state={filters['inmueble']} setState={v => setFiltroCol('inmueble', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'propietario')} movs={todas} state={filters['propietario']} setState={v => setFiltroCol('propietario', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Propietario</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'propietario')} movs={todas} state={filters['propietario']} setState={v => setFiltroCol('propietario', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'estado')} movs={todas} state={filters['estado']} setState={v => setFiltroCol('estado', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estado</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'estado')} movs={todas} state={filters['estado']} setState={v => setFiltroCol('estado', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'cuota')} movs={todas} state={filters['cuota']} setState={v => setFiltroCol('cuota', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuota</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'cuota')} movs={todas} state={filters['cuota']} setState={v => setFiltroCol('cuota', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Término actual</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
@@ -543,17 +546,8 @@ export default function CC1Page() {
           </table>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 16 }}>
-          <button onClick={() => setPage(1)} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>«</button>
-          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===1?'not-allowed':'pointer', opacity:page===1?0.4:1 }}>‹</button>
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            const p = Math.max(1, Math.min(page-2, totalPages-4))+i
-            if (p<1||p>totalPages) return null
-            return <button key={p} onClick={() => setPage(p)} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:p===page?'#1a56db':'transparent', color:p===page?'#fff':'var(--gray-500)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{p}</button>
-          })}
-          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>›</button>
-          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={{ width:30, height:30, borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--gray-500)', fontSize:12, cursor:page===totalPages?'not-allowed':'pointer', opacity:page===totalPages?0.4:1 }}>»</button>
-          <span style={{ fontSize:11, color:'var(--gray-400)', marginLeft:8 }}>Página {page} de {totalPages} · {total} registros</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 12 }}>
+          <span style={{ fontSize:11, color:'var(--gray-400)' }}>{total} registro{total === 1 ? '' : 's'}</span>
         </div>
       </div>
     </div>
