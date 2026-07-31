@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v5 · 2026-07-31 · Nuevo motivo COTIZACIÓN: presupuesto para un inmueble que aún NO
+//   administramos (cliente potencial). No exige IDADMON. Se guarda con en_termino = null
+//   (true=término, false=incidencia, null=cotización). Ubicación y propietario a mano.
 // VERSION: v4 · 2026-07-28 · El aviso de "ya existe presupuesto" ahora distingue por INCIDENCIA,
 //   no por IDADMON. Un depto puede tener varias incidencias a lo largo de su vida, y cada una
 //   lleva su propio presupuesto: eso NO es duplicado. Solo se avisa si ya hay un presupuesto para
@@ -209,7 +212,7 @@ export default function PresupuestosPage() {
       fecha: r.fecha ? String(r.fecha).slice(0, 10) : hoyISO(),
       id_admon_new: r.id_admon_new || '', id_admon_old: r.id_admon_old || '',
       ubicacion: r.ubicacion || '', propietario: r.propietario || '', descripcion: r.descripcion || '',
-      motivo: r.en_termino === false ? 'incidencia' : 'termino',
+      motivo: r.en_termino == null ? 'cotizacion' : (r.en_termino === false ? 'incidencia' : 'termino'),
     })
     const { data } = await supabase
       .from('presupuesto_detalle')
@@ -230,14 +233,19 @@ export default function PresupuestosPage() {
     // seguridad: nunca guardar un presupuesto historico
     if (soloLectura) { setMsg({ tipo: 'error', txt: 'Presupuesto histórico: no editable.' }); return }
     // seguridad: no crear un presupuesto NUEVO sobre un IDADMON historico (N / N DICOM)
-    if (!(editando && editando.id) && esHistorico(estadoDe(form.id_admon_new))) {
+    if (!(editando && editando.id) && form.motivo !== 'cotizacion' && esHistorico(estadoDe(form.id_admon_new))) {
       setMsg({ tipo: 'error', txt: 'El IDADMON está en estado histórico (N / N DICOM): no se pueden crear presupuestos nuevos sobre él.' })
       return
     }
-    // IDADMON obligatorio al crear (los historicos sin IDADMON ya guardados no se tocan)
+    // IDADMON obligatorio al crear, EXCEPTO en cotizaciones (inmueble aún no administrado).
     const esNuevo = !(editando && editando.id)
-    if (esNuevo && !((form.id_admon_new || '').trim())) {
+    if (esNuevo && form.motivo !== 'cotizacion' && !((form.id_admon_new || '').trim())) {
       setMsg({ tipo: 'error', txt: 'Debes asignar un IDADMON al presupuesto.' })
+      return
+    }
+    // En cotización conviene al menos una referencia para reconocerla luego.
+    if (form.motivo === 'cotizacion' && !((form.ubicacion || '').trim()) && !((form.propietario || '').trim())) {
+      setMsg({ tipo: 'error', txt: 'En una cotización indica al menos la ubicación o el cliente/propietario.' })
       return
     }
     setGuardando(true); setMsg(null)
@@ -252,7 +260,7 @@ export default function PresupuestosPage() {
       propietario: form.propietario || null,
       descripcion: form.descripcion || null,
       neto: totBase, iva: totIva, total: totTotal,
-      en_termino: form.motivo === 'incidencia' ? false : true,
+      en_termino: form.motivo === 'cotizacion' ? null : (form.motivo === 'incidencia' ? false : true),
       incidencia_id: (form.motivo === 'incidencia' && String(form.incidencia_id || '').trim()) ? Number(String(form.incidencia_id).trim()) : null,
       updated_at: new Date().toISOString(),
     }
@@ -430,7 +438,7 @@ export default function PresupuestosPage() {
             <div style={{ display: 'grid', gridTemplateColumns: mostrarOld ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div><label style={label}>Número</label><input style={ro ? inputRo : input} value={form.numero} disabled={ro} onChange={e => set('numero', e.target.value)} /></div>
               <div><label style={label}>Fecha</label><input style={ro ? inputRo : input} type="date" value={form.fecha} disabled={ro} onChange={e => set('fecha', e.target.value)} /></div>
-              <div><label style={label}>IDADMON {(estadoLive || estForm) ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: '#EEF2FF', color: '#3730A3' }}>estado: {estadoLive || estForm}</span> : null}</label><input style={ro ? inputRo : input} value={form.id_admon_new} disabled={ro} onChange={e => set('id_admon_new', e.target.value)} onBlur={e => leerEstado(e.target.value)} placeholder="A00600" /></div>
+              <div><label style={label}>IDADMON {form.motivo === 'cotizacion' ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#6B7280' }}>(no requerido en cotización)</span> : ((estadoLive || estForm) ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: '#EEF2FF', color: '#3730A3' }}>estado: {estadoLive || estForm}</span> : null)}</label><input style={ro ? inputRo : input} value={form.id_admon_new} disabled={ro} onChange={e => set('id_admon_new', e.target.value)} onBlur={e => leerEstado(e.target.value)} placeholder={form.motivo === 'cotizacion' ? '(sin IDADMON)' : 'A00600'} /></div>
               {mostrarOld && (
                 <div><label style={label}>IDADMON (old) · histórico</label><input style={inputRo} value={form.id_admon_old} disabled readOnly /></div>
               )}
@@ -444,7 +452,7 @@ export default function PresupuestosPage() {
             <div style={{ marginTop: 12 }}>
               <label style={label}>Motivo del presupuesto</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                {[['termino', 'Término'], ['incidencia', 'Incidencia']].map(([k, lab]) => (
+                {[['termino', 'Término'], ['incidencia', 'Incidencia'], ['cotizacion', 'Cotización']].map(([k, lab]) => (
                   <button key={k} disabled={ro} onClick={() => set('motivo', k)} style={{
                     padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
                     cursor: ro ? 'not-allowed' : 'pointer',
