@@ -97,11 +97,12 @@ const FORM_VACIO = {
 }
 
 /* ── Celda de input editable ── */
-function IC({ name, value, onChange, readOnly, type='text', width, bold }) {
+function IC({ name, value, onChange, readOnly, type='text', width, bold, title }) {
   return (
     <input
       type={type} name={name} value={value ?? ''}
       onChange={onChange} readOnly={readOnly}
+      title={title || (typeof value === 'string' ? value : '')}
       style={{
         ...inputCell,
         width: width || '100%',
@@ -870,6 +871,7 @@ function AdminContent() {
   function elegirComposicion(it) {
     setForm(prev => ({ ...prev, inmueble: it.inmueble, idlinmue: it.idinmue }))
     setModalComponerAbierto(false)
+    setBloqueado(false)   // desbloquear para que el botón Guardar se active
     setMsg({ type: 'info', text: 'Composición actualizada a ' + it.idinmue + '. Revisa y pulsa Guardar para confirmar.' })
   }
 
