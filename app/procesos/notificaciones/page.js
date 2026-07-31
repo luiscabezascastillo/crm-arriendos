@@ -147,7 +147,7 @@ const COLS = [
   { key: 'revision',          label: 'Revisión',     w: '7.5%', align: 'left',  val: (c) => (c.revision || '').trim() },
   { key: 'apagar',            label: 'A pagar',      w: '8%',   align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
   { key: 'tipoCom',           label: 'Comunic.',     w: '6%',   align: 'left',  val: (c) => c.tipoCom || '' },
-  { key: 'mail_arrendatario', label: 'email',        w: '9%',   align: 'left',  val: (c) => c.mail_arrendatario || '' },
+  { key: 'mail_arrendatario', label: 'email',        w: '7%',   align: 'left',  val: (c) => c.mail_arrendatario || '' },
 ]
 
 const menuItem = {
@@ -977,6 +977,7 @@ export default function NotificacionesPage() {
             <colgroup>
               <col style={{ width: '4%' }} />
               {COLS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
+              <col style={{ width: '4%' }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
@@ -1008,6 +1009,7 @@ export default function NotificacionesPage() {
                     </th>
                   )
                 })}
+                <th style={{ padding: '9px 6px', borderBottom: '1px solid #E5E7EB' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -1033,16 +1035,14 @@ export default function NotificacionesPage() {
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
                       ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom === 'AJUSTE' || c.tipoCom === 'UF' ? c.tipoCom : '—'}</td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.mail_arrendatario || '—'}</span>
-                        {c.envioEstado === ENVIO.ENVIADO && c.mail_arrendatario && (
-                          <button onClick={() => abrirReenvio(c)} title="Reenviar con corrección (excepcional)"
-                            style={{ flexShrink: 0, padding: '2px 7px', borderRadius: 5, border: '1px solid #d97706', background: '#fff', color: '#d97706', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            ↻
-                          </button>
-                        )}
-                      </span>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
+                    <td style={{ padding: '9px 6px', borderBottom: '1px solid #F0EEE8', textAlign: 'center' }}>
+                      {c.envioEstado === ENVIO.ENVIADO && c.mail_arrendatario && (
+                        <button onClick={() => abrirReenvio(c)} title="Reenviar con corrección (excepcional)"
+                          style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #d97706', background: '#fff', color: '#d97706', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1 }}>
+                          ↻
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
