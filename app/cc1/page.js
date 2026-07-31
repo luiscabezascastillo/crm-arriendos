@@ -418,7 +418,7 @@ export default function CC1Page() {
           <ActionBtn label="RECUPERAR" bg="#1a56db" icon={Ico.edit} onClick={recuperar} />
         </div>
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
-        <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => {}} />
+        <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => router.push('/cc1/inmuebles')} />
         <ActionBtn label="Comentarios"                bg="#7c3aed" icon={Ico.comment} onClick={() => router.push('/cc1/comentarios')} />
         {puedeEditar && (
           <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
