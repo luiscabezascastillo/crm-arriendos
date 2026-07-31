@@ -454,25 +454,14 @@ export default function CC1Page() {
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 58 }} />    {/* IDADMON — máx 6 chars + 1 estético */}
-              <col style={{ width: 'auto' }} /> {/* Inmueble — se lleva el espacio libre */}
-              <col style={{ width: 170 }} />   {/* Propietario */}
-              <col style={{ width: 60 }} />    {/* Estado — 4 chars */}
-              <col style={{ width: 110 }} />   {/* Cuota */}
-              <col style={{ width: 130 }} />   {/* Término actual */}
-              <col style={{ width: 60 }} />    {/* IDPROP */}
-              <col style={{ width: 160 }} />   {/* IDLINMUE */}
-              <col style={{ width: 80 }} />    {/* Portal */}
-            </colgroup>
-            <colgroup>
-              <col style={{ width: 85 }} />
-              <col style={{ width: 180 }} />
-              <col style={{ width: 150 }} />
-              <col style={{ width: 65 }} />
-              <col style={{ width: 95 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 70 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 65 }} />
+              <col style={{ width: 320 }} />   {/* Inmueble — ancho para agrupaciones largas */}
+              <col style={{ width: 150 }} />   {/* Propietario */}
+              <col style={{ width: 58 }} />    {/* Estado */}
+              <col style={{ width: 95 }} />    {/* Cuota */}
+              <col style={{ width: 100 }} />   {/* Término actual */}
+              <col style={{ width: 55 }} />    {/* IDPROP */}
+              <col style={{ width: 175 }} />   {/* IDINMUE — hasta 3 códigos */}
+              <col style={{ width: 65 }} />    {/* Portal */}
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--gray-50)' }}>
@@ -495,7 +484,7 @@ export default function CC1Page() {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Término actual</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDLINMUE</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDINMUE</th>
                 <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
             </thead>
