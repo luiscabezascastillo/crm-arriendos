@@ -13,7 +13,6 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { HeaderFilter, filtroActivo, aplicarFiltros } from '../../../lib/filtroExcel'
-import { getCapacidades } from '../../../lib/cc1Permisos'
 import TopNav from '../../components/ui/TopNav'
 
 // Columnas para el filtro estilo Excel (mismo motor que el LOG y SA).
@@ -50,10 +49,15 @@ export default function InmueblesPage() {
   const [agrupResult, setAgrupResult] = useState(null)
 
   useEffect(() => { cargar() }, [])
-  useEffect(() => {
-    const email = session?.user?.email
-    if (email) getCapacidades(email).then(setCap).catch(() => setCap(null))
-  }, [session])
+  useEffect(() => { cargarCapacidades() }, [])
+
+  async function cargarCapacidades() {
+    try {
+      const res = await fetch('/api/cc1/pendientes')
+      const data = await res.json()
+      if (res.ok) setCap(data.capacidades)
+    } catch { /* sin permisos: no se muestra el botón de crear */ }
+  }
 
   async function cargar() {
     setLoading(true); setError(null)
@@ -159,6 +163,14 @@ export default function InmueblesPage() {
 
   const totalComb = useMemo(() => todas.filter(p => p.combinacion).length, [todas])
 
+  // Permiso para crear/editar agrupaciones: supervisor, Dirección o Anthony (Legal).
+  // Robusto ante distintas formas del objeto cap devuelto por la API.
+  const puedeEditar = !!(cap && (
+    cap.puedeEditarInmuebles ||
+    cap.esDireccion || cap.rol === 'direccion' || cap.rol === 'responsable' || cap.rol === 'supervisor' ||
+    cap.email === 'anthony.mendoza@fondocapital.com'
+  ))
+
   const thStyle = { padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
   const labelStyle = { fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
   const hf = (key) => (
@@ -186,7 +198,7 @@ export default function InmueblesPage() {
             style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + (soloComb ? '#0891b2' : 'var(--border)'), background: soloComb ? '#0891b2' : '#fff', color: soloComb ? '#fff' : 'var(--gray-600)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
             Solo agrupaciones ({totalComb})
           </button>
-          {cap?.puedeEditarInmuebles && (
+          {puedeEditar && (
             <button onClick={abrirAgrupacion}
               style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#0891b2', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
               ➕ Nueva agrupación
