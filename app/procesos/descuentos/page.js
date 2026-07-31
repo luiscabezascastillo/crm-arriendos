@@ -202,6 +202,43 @@ export default function DescuentosPage() {
   }, [rows, filtros]);
 
   const hayFiltroActivo = Object.values(filtros).some((s) => s && s.size > 0);
+
+  // Exportar a Excel EXACTAMENTE lo filtrado (todas las columnas: vista + ficha).
+  async function exportarExcel() {
+    const XLSX = await import('xlsx');
+    // Orden de columnas: primero las de la vista, luego el resto de campos de LABELS.
+    const colsVista = COLS.map(c => c.key);
+    const resto = Object.keys(LABELS).filter(k => !colsVista.includes(k)
+      && !['id', 'sync_hash'].includes(k));
+    const orden = [...colsVista, ...resto];
+    const filas = filtradas.map((r) => {
+      const o = {};
+      for (const k of orden) {
+        const lab = LABELS[k] || k;
+        let v = r[k];
+        // Montos y fechas en formato legible; el resto tal cual.
+        if (k === 'fecha' || k === 'fecha_contable' || k === 'creado_at' || k === 'modificado_at' || k === 'verificado_at' || k === 'updated_at') {
+          v = v ? fmtFecha(v) : '';
+        } else if (k === 'monto_a_imputar' || k === 'monto_a_transferir') {
+          v = (v == null || v === '') ? '' : Number(v);
+        } else {
+          v = v == null ? '' : v;
+        }
+        o[lab] = v;
+      }
+      return o;
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(filas);
+    XLSX.utils.book_append_sheet(wb, ws, 'Descuentos');
+    // Nombre con el mes filtrado si hay uno, o la fecha de hoy.
+    const mesFiltro = filtros.mes_a_imputar && filtros.mes_a_imputar.size === 1
+      ? [...filtros.mes_a_imputar][0].replace(/[^\w]+/g, '_') : null;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const nombre = `Descuentos_${mesFiltro || hoy}.xlsx`;
+    XLSX.writeFile(wb, nombre);
+  }
+
   // rows viene con el NUM más alto/reciente AL FINAL. Por defecto mostramos los
   // 30 del final (los más recientes). Con filtro activo o "ver todos", todas.
   const visibles = useMemo(() => {
@@ -312,6 +349,11 @@ export default function DescuentosPage() {
             </button>
           )}
           <button onClick={cargar} style={btn(C.gris)}>↻ Recargar</button>
+          <button onClick={exportarExcel} disabled={filtradas.length === 0}
+            title="Exporta a Excel todo lo filtrado, con todas las columnas"
+            style={{ ...btn('#188038'), opacity: filtradas.length === 0 ? 0.5 : 1, cursor: filtradas.length === 0 ? 'default' : 'pointer' }}>
+            ⭳ Exportar Excel ({filtradas.length})
+          </button>
         </div>
       </div>
 
