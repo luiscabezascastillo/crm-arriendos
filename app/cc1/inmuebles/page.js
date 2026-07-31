@@ -109,11 +109,11 @@ export default function InmueblesPage() {
         </div>
 
         {/* Tabla */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--gray-700)' }}>
             Listado de inmuebles <span style={{ fontWeight: 400, color: 'var(--gray-400)' }}>({filtradas.length} registro{filtradas.length === 1 ? '' : 's'})</span>
           </div>
-          <div style={{ overflow: 'auto', maxHeight: '70vh' }}>
+          <div>
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: 180 }} />   {/* IDINMUE combinado */}
