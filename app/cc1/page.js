@@ -212,6 +212,10 @@ const LOG_COLS = [
   { key: 'termino_actual', label: 'Término actual', tipo: 'fecha',
     fkey: p => String(p.termino_actual || '').slice(0, 10),
     flabel: k => (k === '' ? '(vacías)' : fmtFechaLOG(k)) },
+  { key: 'idprop', label: 'IDPROP', tipo: 'texto',
+    fkey: p => p.idprop || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'idlinmue', label: 'IDINMUE', tipo: 'texto',
+    fkey: p => p.idlinmue || '', flabel: k => (k === '' ? '(vacías)' : k) },
 ]
 
 export default function CC1Page() {
@@ -453,7 +457,7 @@ export default function CC1Page() {
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: 58 }} />    {/* IDADMON — máx 6 chars + 1 estético */}
+              <col style={{ width: 78 }} />    {/* IDADMON — 6 chars + triángulo de filtro */}
               <col style={{ width: 320 }} />   {/* Inmueble — ancho para agrupaciones largas */}
               <col style={{ width: 150 }} />   {/* Propietario */}
               <col style={{ width: 58 }} />    {/* Estado */}
@@ -483,8 +487,12 @@ export default function CC1Page() {
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Término actual</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</th>
-                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDINMUE</th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idprop')} movs={todas} state={filters['idprop']} setState={v => setFiltroCol('idprop', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
+                </th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDINMUE</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idlinmue')} movs={todas} state={filters['idlinmue']} setState={v => setFiltroCol('idlinmue', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
+                </th>
                 <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
             </thead>
