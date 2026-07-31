@@ -49,11 +49,27 @@ const opEspecialesCC1 = [
   { label: 'Deudas de servicios',                                    href: '/op/deudas' },
 ]
 
+// Significado de cada estado, para tooltips y para el desplegable del filtro (ayuda a la formación).
+const ESTADO_DESC = {
+  'S': 'Vigente',
+  'SQ': 'Vigente y notificación de término',
+  'Q': 'Término',
+  'P': 'Pendiente (vacío, buscando arrendatario)',
+  'N': 'Cerrado / histórico',
+  'N-DICOM': 'Histórico, todavía en DICOM',
+}
+function descEstado(e) {
+  const k = estadoNorm(e)
+  return ESTADO_DESC[k] || ''
+}
+
 function EstadoBadge({ estado }) {
   const s = estadoMap[estado] || { bg: '#f3f4f6', color: '#6b7280' }
+  const desc = descEstado(estado)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color, fontSize: 11, fontWeight: 600 }}>
+    <span title={desc ? `${estado} · ${desc}` : (estado || '')}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color, fontSize: 11, fontWeight: 600, cursor: 'help' }}>
       {estado || '—'}
     </span>
   )
@@ -205,7 +221,7 @@ const LOG_COLS = [
   { key: 'propietario', label: 'Propietario', tipo: 'texto',
     fkey: p => p.propietario || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'estado', label: 'Estado', tipo: 'texto',
-    fkey: p => p.estado || '', flabel: k => (k === '' ? '(vacías)' : k) },
+    fkey: p => p.estado || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO_DESC[estadoNorm(k)] ? `${k} · ${ESTADO_DESC[estadoNorm(k)]}` : k)) },
   { key: 'cuota', label: 'Cuota', tipo: 'num',
     fkey: p => (p.cuota == null ? '' : String(p.cuota)),
     flabel: k => (k === '' ? '(vacías)' : Number(k).toLocaleString('es-CL')) },
