@@ -13,13 +13,14 @@ const transporter = nodemailer.createTransport({
 
 export async function POST(request) {
   try {
-    const { mes, mesLabel, valorUf, cc, emailOverride, notificaciones } = await request.json()
+    const { mes, mesLabel, valorUf, cc, emailOverride, notificaciones, notaCorreccion } = await request.json()
 
     if (!Array.isArray(notificaciones) || notificaciones.length === 0) {
       return NextResponse.json({ error: 'No hay notificaciones que enviar' }, { status: 400 })
     }
 
-    const ctx = { mes, mesLabel, valorUf }
+    // notaCorreccion (opcional): para reenvíos correctores. Se muestra destacada en el correo.
+    const ctx = { mes, mesLabel, valorUf, notaCorreccion: notaCorreccion || '' }
     let enviados = 0
     let errores = 0
     const detalle = []

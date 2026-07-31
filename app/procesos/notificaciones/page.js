@@ -231,6 +231,12 @@ export default function NotificacionesPage() {
   const [menuFila, setMenuFila] = useState(null)
 
   const [modalAbierto, setModalAbierto] = useState(false)
+  // Reenvío corrector (excepcional): para un contrato ya enviado este mes.
+  const [reenvioFila, setReenvioFila] = useState(null)   // la fila que se reenvía, o null
+  const [reenvioNota, setReenvioNota] = useState('')     // texto de corrección para el email
+  const [reenvioCC, setReenvioCC] = useState('')         // copias adicionales (emails ; separados)
+  const [reenviando, setReenviando] = useState(false)
+  const [reenvioResult, setReenvioResult] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [modoPrueba, setModoPrueba] = useState(true)
   const [correoPrueba, setCorreoPrueba] = useState('')
@@ -669,6 +675,74 @@ export default function NotificacionesPage() {
     }
   }
 
+  // Reenvío CORRECTOR de un contrato ya enviado este mes. Acción excepcional: envía un segundo
+  // correo con una nota de corrección al principio, permite CC adicionales, y registra quién y
+  // cuándo lo hizo. No altera el envío normal ni el importe (que ya está corregido en la fila).
+  function abrirReenvio(f) {
+    setReenvioFila(f)
+    setReenvioNota('')
+    setReenvioCC('')
+    setReenvioResult(null)
+  }
+
+  async function reenviarCorreccion() {
+    const f = reenvioFila
+    if (!f) return
+    if (reenvioNota.trim().length < 5) { setReenvioResult({ error: 'Escribe la nota de corrección (mín. 5 caracteres).' }); return }
+    setReenviando(true)
+    setReenvioResult(null)
+
+    // CC = el fijo del equipo + los que añada el usuario.
+    const ccExtra = splitEmails(reenvioCC).join(', ')
+    const cc = ccExtra ? `${CC_ENVIO}, ${ccExtra}` : CC_ENVIO
+
+    const noti = {
+      idadmon: f.idadmon, arrendatario: f.arrendatario, propiedad: f.inmueble,
+      mail_arrendatario: f.mail_arrendatario, destinatarios: splitEmails(f.mail_arrendatario),
+      apagar: f.apagar, revision: f.revision, tipoCom: f.tipoCom,
+      ajusteTipo: f.ajusteTipo, ajusteMonto: f.ajusteMonto,
+    }
+
+    try {
+      const res = await fetch(ENDPOINT_ENVIO, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mes: mesSel, mesLabel: mesLabel(mesSel),
+          valorUf: idxMes ? idxMes.valor_uf : null,
+          cc,
+          notaCorreccion: reenvioNota.trim(),
+          notificaciones: [noti],
+        }),
+      })
+      if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`HTTP ${res.status}${t ? ' · ' + t.slice(0, 140) : ''}`) }
+      const data = await res.json()
+      if (data.error) { setReenvioResult({ error: data.error }); setReenviando(false); return }
+
+      // Registrar la excepcionalidad: quién, cuándo y la nota, en la fila del mes.
+      const ahora = new Date()
+      const p = (x) => String(x).padStart(2, '0')
+      const sello = `${ahora.getFullYear()}-${p(ahora.getMonth() + 1)}-${p(ahora.getDate())} ${p(ahora.getHours())}:${p(ahora.getMinutes())}:${p(ahora.getSeconds())}`
+      const quien = session?.user?.email || 'desconocido'
+      try {
+        await supabase.from(TABLA_NOTI).upsert([{
+          idadmon: f.idadmon, mes_notificacion: mesSel,
+          reenvio_correccion_en: sello,
+          reenvio_correccion_por: quien,
+          reenvio_correccion_nota: reenvioNota.trim(),
+          reenvio_correccion_cc: cc,
+          actualizado_en: new Date().toISOString(),
+        }], { onConflict: 'idadmon,mes_notificacion' })
+      } catch { /* el registro no debe impedir dar por bueno el envío */ }
+
+      setReenvioResult({ ok: true, enviados: data.enviados || 0, errores: data.errores || 0 })
+      await cargarNoti(mesSel)
+    } catch (err) {
+      setReenvioResult({ error: err.message })
+    } finally {
+      setReenviando(false)
+    }
+  }
+
   if (status === 'loading' || loading) {
     return (
       <>
@@ -959,7 +1033,17 @@ export default function NotificacionesPage() {
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
                       ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom === 'AJUSTE' || c.tipoCom === 'UF' ? c.tipoCom : '—'}</td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.mail_arrendatario || '—'}</span>
+                        {c.envioEstado === ENVIO.ENVIADO && c.mail_arrendatario && (
+                          <button onClick={() => abrirReenvio(c)} title="Reenviar con corrección (excepcional)"
+                            style={{ flexShrink: 0, padding: '2px 7px', borderRadius: 5, border: '1px solid #d97706', background: '#fff', color: '#d97706', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            ↻
+                          </button>
+                        )}
+                      </span>
+                    </td>
                   </tr>
                 )
               })}
@@ -981,6 +1065,55 @@ export default function NotificacionesPage() {
           <button onClick={abrirModal} style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Revisar y enviar</button>
           <button onClick={copiarEmails} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Copiar emails</button>
           <button onClick={limpiarSeleccion} style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid #555', background: 'transparent', color: '#C9C7BF', cursor: 'pointer' }}>Limpiar</button>
+        </div>
+      )}
+
+      {reenvioFila && (
+        <div onClick={() => !reenviando && setReenvioFila(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 55, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 24, width: 520, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', color: '#2C2C2A' }}>↻ Reenviar con corrección</h2>
+            <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 4px' }}>
+              Contrato <strong>{reenvioFila.idadmon}</strong> · {reenvioFila.arrendatario} · a pagar <strong>${fmtMiles(reenvioFila.apagar)}</strong> ({(reenvioFila.revision || '').trim()})
+            </p>
+            <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', margin: '0 0 14px' }}>
+              Este contrato ya fue notificado este mes. Vas a enviar un <strong>segundo correo corrector</strong> con el importe actual. Queda registrado quién y cuándo.
+            </p>
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Nota de corrección (aparece destacada en el correo)</label>
+            <textarea value={reenvioNota} onChange={(e) => setReenvioNota(e.target.value)} rows={4}
+              placeholder="Ej.: Le reenviamos la notificación con el tipo de ajuste corregido a IPC semestral. Disculpe las molestias."
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', marginBottom: 12, outline: 'none' }} />
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Copias adicionales (CC) — opcional, separadas por «;»</label>
+            <input type="text" value={reenvioCC} onChange={(e) => setReenvioCC(e.target.value)}
+              placeholder="correo1@ejemplo.com; correo2@ejemplo.com"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 13, fontFamily: 'inherit', marginBottom: 6, outline: 'none' }} />
+            <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 14px' }}>Siempre se copia a {CC_ENVIO}. El correo va a {splitEmails(reenvioFila.mail_arrendatario).join(', ') || '—'}.</p>
+
+            {reenvioResult && (
+              <div style={{ fontSize: 13, padding: '10px 12px', borderRadius: 8, marginBottom: 12,
+                background: reenvioResult.error ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (reenvioResult.error ? '#FCA5A5' : '#86EFAC'),
+                color: reenvioResult.error ? '#991B1B' : '#166534' }}>
+                {reenvioResult.error ? reenvioResult.error : `✓ Correo corrector enviado (${reenvioResult.enviados} enviado${reenvioResult.enviados === 1 ? '' : 's'}${reenvioResult.errores ? `, ${reenvioResult.errores} con error` : ''}). Registrado.`}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setReenvioFila(null)} disabled={reenviando}
+                style={{ fontSize: 13, padding: '9px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: reenviando ? 'default' : 'pointer' }}>
+                {reenvioResult?.ok ? 'Cerrar' : 'Cancelar'}
+              </button>
+              {!reenvioResult?.ok && (
+                <button onClick={reenviarCorreccion} disabled={reenviando || reenvioNota.trim().length < 5}
+                  style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: 'none',
+                    background: (reenviando || reenvioNota.trim().length < 5) ? '#9CA3AF' : '#d97706', color: '#fff',
+                    cursor: (reenviando || reenvioNota.trim().length < 5) ? 'default' : 'pointer' }}>
+                  {reenviando ? 'Enviando…' : 'Enviar corrección'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
