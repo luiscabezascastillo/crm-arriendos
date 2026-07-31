@@ -1,4 +1,4 @@
-  // VERSION: v31 · 2026-07-30 · SA: Cuenta 1 se pone sola en 2105-05 en pagos a proveedor.
+// VERSION: v31 · 2026-07-30 · SA: Cuenta 1 se pone sola en 2105-05 en pagos a proveedor.
 //   Cuando la linea CUADRA con una factura de Compras (mismo importe, ±20 dias), el pago
 //   cancela la deuda del proveedor, asi que la contrapartida SIEMPRE es 2105-05 PROVEEDORES.
 //   Ahora se rellena sola la Cuenta 1 con 2105-05 (solo si estaba vacia y solo en cargos),
