@@ -1561,7 +1561,7 @@ function AdminContent() {
               <td colSpan={2} style={inputCell}><IC name="quien_cobra" value={form.quien_cobra} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
             <tr>
-              <LB>Comuna</LB>
+              <LB>IDINMUE</LB>
               <td colSpan={3} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Comienzo</LB>
               <td colSpan={2} style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={roLog} type="date" /></td>
