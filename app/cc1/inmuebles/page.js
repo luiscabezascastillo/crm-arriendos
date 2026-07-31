@@ -69,7 +69,7 @@ export default function InmueblesPage() {
 
   const totalComb = useMemo(() => todas.filter(p => p.combinacion).length, [todas])
 
-  const thStyle = { padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 0, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
+  const thStyle = { padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 52, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
   const labelStyle = { fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
   const hf = (key) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -83,30 +83,26 @@ export default function InmueblesPage() {
       <TopNav />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 24px' }}>
 
-        {/* Cabecera */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+        {/* Cabecera: título a la izquierda, búsqueda y botones a la derecha en la misma fila */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
           <Link href="/cc1" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none' }}>‹ Volver al LOG</Link>
-          <div style={{ width: 30, height: 30, background: '#0891b2', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 30, height: 30, background: '#0891b2', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: '#2C2C2A' }}>Inmuebles</h1>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '0 0 16px 42px' }}>
-          Unidades individuales y agrupaciones (departamento + bodega/estacionamiento) con su ROL. Solo consulta.
-        </p>
-
-        {/* Barra de búsqueda + toggle combinaciones */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: '#2C2C2A', flexShrink: 0 }}>Inmuebles</h1>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por IDINMUE, inmueble, propietario o ROL…"
-            style={{ flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+            style={{ flex: 1, minWidth: 240, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           <button onClick={() => setSoloComb(v => !v)}
-            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + (soloComb ? '#0891b2' : 'var(--border)'), background: soloComb ? '#0891b2' : '#fff', color: soloComb ? '#fff' : 'var(--gray-600)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + (soloComb ? '#0891b2' : 'var(--border)'), background: soloComb ? '#0891b2' : '#fff', color: soloComb ? '#fff' : 'var(--gray-600)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
             Solo agrupaciones ({totalComb})
           </button>
           {hayFiltros && (
-            <button onClick={limpiarTodo} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #fcd34d', background: '#fef9c3', color: '#92400e', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>✕ Limpiar filtros</button>
+            <button onClick={limpiarTodo} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #fcd34d', background: '#fef9c3', color: '#92400e', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>✕ Limpiar filtros</button>
           )}
         </div>
+        <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '0 0 14px 42px' }}>
+          Unidades individuales y agrupaciones (departamento + bodega/estacionamiento) con su ROL. Solo consulta.
+        </p>
 
         {/* Tabla */}
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
