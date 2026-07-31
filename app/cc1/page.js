@@ -453,6 +453,17 @@ export default function CC1Page() {
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
+              <col style={{ width: 58 }} />    {/* IDADMON — máx 6 chars + 1 estético */}
+              <col style={{ width: 'auto' }} /> {/* Inmueble — se lleva el espacio libre */}
+              <col style={{ width: 170 }} />   {/* Propietario */}
+              <col style={{ width: 60 }} />    {/* Estado — 4 chars */}
+              <col style={{ width: 110 }} />   {/* Cuota */}
+              <col style={{ width: 130 }} />   {/* Término actual */}
+              <col style={{ width: 60 }} />    {/* IDPROP */}
+              <col style={{ width: 160 }} />   {/* IDLINMUE */}
+              <col style={{ width: 80 }} />    {/* Portal */}
+            </colgroup>
+            <colgroup>
               <col style={{ width: 85 }} />
               <col style={{ width: 180 }} />
               <col style={{ width: 150 }} />
@@ -501,7 +512,7 @@ export default function CC1Page() {
                   <tr key={i} style={{ cursor: 'pointer' }}
                     onClick={(e) => { if (!e.defaultPrevented) router.push(`/admin?idadmon=${p.idadmon}`) }}>
                     <td style={{ padding: '9px 12px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)', background: bg.idadmon }}>{p.idadmon}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: bg.inmueble }}>{p.inmueble || '—'}</td>
+                    <td title={p.inmueble || ''} style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: bg.inmueble }}>{p.inmueble || '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.propietario || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}><EstadoBadge estado={p.estado} /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -516,7 +527,7 @@ export default function CC1Page() {
                       ) : '—'}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace' }}>{p.idprop || '—'}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace' }}>{p.idlinmue || '—'}</td>
+                    <td title={p.idlinmue || ''} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.idlinmue || '—'}</td>
                     <td style={{ padding: '9px 8px', borderBottom: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                       {p.idprop ? (
                         <button
