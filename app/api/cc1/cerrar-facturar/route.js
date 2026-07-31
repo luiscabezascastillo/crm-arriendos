@@ -1,4 +1,4 @@
-// VERSION: v2 · 2026-07-11 · P→S (CERRAR Y FACTURAR) ahora valida + escribe INICIOS en cuentas (dos fases)
+// VERSION: v3 · 2026-07-31 · lee valor_uf de indices_mensuales (mes de inicio), autocompleta/persiste uf_peso_factor y usa fecha_inicio real
 //
 // app/api/cc1/cerrar-facturar/route.js
 //
@@ -115,6 +115,28 @@ function mesAnio(f) {
   if (m2) return `${m2[2]}/${m2[1]}`
   return null
 }
+// Primer día del mes (yyyy-mm-01) a partir de una fecha ISO o dd/mm/yyyy.
+function primerDiaMesISO(f) {
+  if (!f) return null
+  const s = String(f)
+  const mISO = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (mISO) return `${mISO[1]}-${mISO[2]}-01`
+  const mCL = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (mCL) return `${mCL[3]}-${mCL[2]}-01`
+  return null
+}
+
+// Valor de la UF del día 1 del mes de inicio, desde indices_mensuales.
+// Devuelve { mesISO, valorUf }. valorUf=0 si no hay índice para ese mes.
+async function leerValorUfMes(fechaIni) {
+  const mesISO = primerDiaMesISO(fechaIni)
+  if (!mesISO) return { mesISO: null, valorUf: 0 }
+  const { data } = await supabaseAdmin
+    .from('indices_mensuales').select('valor_uf').eq('mes', mesISO).maybeSingle()
+  const valorUf = data && data.valor_uf != null ? Number(data.valor_uf) : 0
+  return { mesISO, valorUf: isFinite(valorUf) ? valorUf : 0 }
+}
+
 async function leerInicios(idadmon) {
   const { data } = await supabaseAdmin
     .from('cuentas').select('id, concepto, calif')
@@ -168,8 +190,13 @@ export async function POST(req) {
   // ─────────────────────────────────────────────────────────────
   // 2b. NUEVO — VALIDACIÓN DE INICIOS (bloqueante, antes de cambiar estado)
   // ─────────────────────────────────────────────────────────────
+  // Fecha de inicio REAL del contrato (no fecha1, que es la cuota 1 de garantía).
+  const fechaIni = dat.fecha_inicio || dat.fecha1
+  // Valor de la UF del día 1 del mes de inicio (para el proporcional y el factor UF).
+  const { mesISO: mesUf, valorUf: valorUfInicio } = await leerValorUfMes(fechaIni)
+
   const iniciosExistentes = await leerInicios(idadmon)
-  const val = validarInicios(dat, iniciosExistentes)
+  const val = validarInicios(dat, iniciosExistentes, { valorUfInicio })
 
   if (!val.ok) {
     // BLOQUEO: el estado NO cambia. Corregir en el LOG.
@@ -182,11 +209,12 @@ export async function POST(req) {
 
   if (fase !== 'ejecutar') {
     // Validación OK pero aún NO ejecutamos: pedimos DICOM y mostramos el previo.
-    const yaRenta = await hayRentaDelMesInicio(idadmon, dat.fecha1)
+    const yaRenta = await hayRentaDelMesInicio(idadmon, fechaIni)
     const previo = construirCargosInicio(dat, {
       fechaHoy: fechaDDMMYYYY(new Date().toISOString().slice(0, 10)),
       dicom: { tiene: false, monto: 0 },
       yaHayRentaDelMesInicio: yaRenta,
+      valorUfInicio,
     })
     return Response.json({
       ok: true, fase: 'validar', validado: true, necesitaDicom: true,
@@ -199,9 +227,22 @@ export async function POST(req) {
   const fechaEvento = new Date().toISOString().slice(0, 10)
 
   // 3. Cambiar estado P -> S
+  //    Si el contrato es UF y su uf_peso_factor aún vale 1 (recién cargado),
+  //    lo persistimos con el valor de la UF del día 1 del mes de inicio.
+  //    Notificaciones lee uf_peso_factor de aquí para el ajuste mensual, así queda
+  //    coherente desde el arranque. (Para NO persistir: quitar las 3 líneas marcadas ↓)
+  const updEstado = { estado: 'S', updated_at: new Date().toISOString() }
+  const _rev = String(dat.revision || '').toUpperCase()
+  const _unid = String(dat.unid || '').toUpperCase()
+  const _esUF = _rev === 'UF' || _unid === 'UF'
+  const _factorActual = Number(String(dat.uf_peso_factor ?? '').replace(/\./g, '').replace(/,/g, '.')) || 0
+  if (_esUF && _factorActual <= 1 && valorUfInicio > 1) {   // ← persistir factor UF (línea 1/3)
+    updEstado.uf_peso_factor = valorUfInicio                //   persistir factor UF (línea 2/3)
+    dat.uf_peso_factor = valorUfInicio                      //   reflejarlo en memoria (línea 3/3)
+  }
   const { error: e1 } = await supabaseAdmin
     .from('datos_arriendos')
-    .update({ estado: 'S', updated_at: new Date().toISOString() })
+    .update(updEstado)
     .eq('idadmon', idadmon)
   if (e1) return Response.json({ error: 'Error al cambiar estado: ' + e1.message }, { status: 500 })
 
@@ -227,12 +268,13 @@ export async function POST(req) {
   // ─────────────────────────────────────────────────────────────
   let iniciosGenerados = null
   try {
-    const yaRenta = await hayRentaDelMesInicio(idadmon, dat.fecha1)
+    const yaRenta = await hayRentaDelMesInicio(idadmon, fechaIni)
     const filas = construirCargosInicio(dat, {
       fechaHoy: fechaDDMMYYYY(new Date().toISOString().slice(0, 10)),
       dicom: dicom || { tiene: false, monto: 0 },
       proporcionalNota: proporcionalNota || null,
       yaHayRentaDelMesInicio: yaRenta,
+      valorUfInicio,
     })
     if (filas.length > 0) {
       const { error: eIns } = await supabaseAdmin.from('cuentas').insert(filas)
