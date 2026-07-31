@@ -1,3 +1,9 @@
+  // VERSION: v31 · 2026-07-30 · SA: Cuenta 1 se pone sola en 2105-05 en pagos a proveedor.
+//   Cuando la linea CUADRA con una factura de Compras (mismo importe, ±20 dias), el pago
+//   cancela la deuda del proveedor, asi que la contrapartida SIEMPRE es 2105-05 PROVEEDORES.
+//   Ahora se rellena sola la Cuenta 1 con 2105-05 (solo si estaba vacia y solo en cargos),
+//   y ademas se ofrece como sugerencia por si se borra. La persona se centra en la Cuenta 2.
+//   Respeta cualquier cuenta que ya se hubiera escrito a mano: no pisa nada.
 // VERSION: v30 · 2026-07-29 · SA: campo COMENTARIO por linea + autorelleno del origen.
 //   · Cada linea gana un campo "Comentario" (tercera fila, ancho completo) para notas
 //     libres y para dejar constancia de DE DONDE viene la cuenta.
@@ -126,6 +132,9 @@ import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
 import CuentaSelector from '@/app/components/ui/CuentaSelector'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+// Un pago que cuadra con una factura de compra cancela la deuda del proveedor: la
+// contrapartida en el banco es siempre esta cuenta.
+const CTA_PROVEEDORES = '2105-05'
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
 const EXT_PLANILLA = /\.(xlsx|xlsm|xls|csv)$/i
 const MES_LARGO = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -923,6 +932,24 @@ const wantScroll = useRef(false)
       .sort((a, b) => Math.abs(new Date(a.fecha).getTime() - fMov) - Math.abs(new Date(b.fecha).getTime() - fMov))
   }
 
+  // Pago que cuadra con una factura de Compras -> cancela al proveedor: Cuenta 1 = 2105-05.
+  // Se rellena sola en las lineas vacias (solo cargos) cuando ya estan cargadas las compras.
+  // No pisa lo escrito a mano y no se vuelve a meter si la persona la borra (depende de
+  // sel.id y compras, no de las lineas).
+  useEffect(() => {
+    if (!sel || Number(sel.monto) >= 0 || !Array.isArray(compras)) return
+    setLineas(ls => {
+      let cambio = false
+      const next = ls.map(l => {
+        if ((l.cuenta_1 || '').trim()) return l
+        const val = Math.abs(Number(l.monto) || 0) || Math.abs(Number(sel.monto) || 0)
+        if (matchCompras(val).length) { cambio = true; return { ...l, cuenta_1: CTA_PROVEEDORES } }
+        return l
+      })
+      return cambio ? next : ls
+    })
+  }, [sel?.id, compras]) // eslint-disable-line
+
   const abrir = (m) => { setSel(m); setGlosa(m.glosa || ''); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
   const setLinea = (i, campo, val) => setLineas(ls => ls.map((l, k) => k === i ? { ...l, [campo]: val } : l))
@@ -1293,6 +1320,10 @@ const wantScroll = useRef(false)
                   const sugs = matchCompras(Math.abs(Number(l.monto) || 0) || Math.abs(Number(sel.monto) || 0))
                   const ctasUnicas = Array.from(new Set(sugs.map(c => codDe(c.cuenta)).filter(Boolean)))
                   const sugCta2 = ctasUnicas.length === 1 ? ctasUnicas[0] : null
+                  // Si el pago cuadra con una compra, la Cuenta 1 natural es 2105-05
+                  // (proveedores); si no, la que sugiera la memoria por descripcion.
+                  const sug1 = sugs.length ? CTA_PROVEEDORES : (memoSel?.unica || null)
+                  const cta1EsProv = sugs.length > 0 && codDe(l.cuenta_1) === CTA_PROVEEDORES
                   const d1 = describeCuenta(l.cuenta_1)
                   const d2 = describeCuenta(l.cuenta_2)
                   return (
@@ -1310,9 +1341,10 @@ const wantScroll = useRef(false)
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Cuenta 1</div>
                         <CuentaSelector valor={l.cuenta_1} plan={plan} disabled={!canEdit}
-                          sugerida={memoSel?.unica || null} formato="codigo" estilo={selCta}
+                          sugerida={sug1} formato="codigo" estilo={selCta}
                           onChange={v => setLinea(i, 'cuenta_1', v)} />
                         {d1 && <div style={{ fontSize: 10.5, color: '#888780', marginTop: 3, lineHeight: 1.3 }}>{d1}</div>}
+                        {cta1EsProv && <div style={{ fontSize: 10, color: '#085041', marginTop: 2 }}>· puesta sola: pago a proveedor</div>}
                       </div>
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Cuenta 2 <span style={{ fontWeight: 400, color: '#B4B2A9' }}>· contrapartida</span></div>
