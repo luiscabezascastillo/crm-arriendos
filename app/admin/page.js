@@ -498,6 +498,9 @@ function AdminContent() {
   const [modalTerminoAbierto, setModalTerminoAbierto] = useState(false)
   const [motivoTermino, setMotivoTermino] = useState('')
   const [fechaTermino, setFechaTermino] = useState('')  // fecha nueva, se escribe DENTRO del modal
+  const [modalComponerAbierto, setModalComponerAbierto] = useState(false)  // selector de composición
+  const [inmueblesProp, setInmueblesProp] = useState([])   // combinaciones del propietario para elegir
+  const [cargandoComp, setCargandoComp] = useState(false)
   const [modalCorrAbierto, setModalCorrAbierto] = useState(false)
   const [motivoCorr, setMotivoCorr] = useState('')
 
@@ -844,6 +847,32 @@ function AdminContent() {
 
   // Guardar la corrección de la fecha de término desde el propio modal: escribe termino_actual
   // (la fecha del modal) y registra el motivo. No cambia el estado ni ningún otro campo.
+  // Abrir el selector de composición: carga las filas de `inmuebles` del propietario del contrato.
+  async function abrirComponer() {
+    if (!form.idprop) { setMsg({ type: 'warn', text: 'El contrato no tiene propietario (idprop) asignado.' }); return }
+    setModalComponerAbierto(true)
+    setCargandoComp(true)
+    try {
+      const res = await fetch('/api/inmuebles')
+      const d = await res.json()
+      if (res.ok) {
+        const idp = String(form.idprop).trim()
+        // Solo las de este propietario, combinaciones primero.
+        const suyas = (d.inmuebles || []).filter(x => String(x.idprop).trim() === idp)
+        suyas.sort((a, b) => (b.combinacion - a.combinacion) || String(a.idinmue).localeCompare(String(b.idinmue)))
+        setInmueblesProp(suyas)
+      }
+    } catch { /* silencioso: el modal muestra "sin resultados" */ }
+    setCargandoComp(false)
+  }
+
+  // Aplicar una composición elegida: cambia inmueble + idlinmue en el formulario (se guarda con Guardar).
+  function elegirComposicion(it) {
+    setForm(prev => ({ ...prev, inmueble: it.inmueble, idlinmue: it.idinmue }))
+    setModalComponerAbierto(false)
+    setMsg({ type: 'info', text: 'Composición actualizada a ' + it.idinmue + '. Revisa y pulsa Guardar para confirmar.' })
+  }
+
   async function guardarCorreccionTermino() {
     const nuevaFecha = fechaTermino || null
     const motivo = motivoTermino.trim()
@@ -1552,7 +1581,17 @@ function AdminContent() {
             <tr>
               <td style={labelCell} rowSpan={3}>INMUEBLE</td>
               <LB>Dirección 1</LB>
-              <td colSpan={4} style={inputCell}><IC name="inmueble" value={form.inmueble} onChange={handleChange} readOnly={roLog} /></td>
+              <td colSpan={4} style={inputCell}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <IC name="inmueble" value={form.inmueble} onChange={handleChange} readOnly={roLog} />
+                  {cap?.puedeComponerInmueble && form.idadmon && !isNew && (
+                    <button onClick={abrirComponer} title="Reasignar la composición del inmueble (elegir otra combinación de idinmue del propietario)"
+                      style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 5, border: '1px solid #0891b2', background: '#0891b2', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                      ⟳ Componer
+                    </button>
+                  )}
+                </div>
+              </td>
               <LB right>Moneda</LB>
               <td style={inputCell}><SC name="unid" value={form.unid} onChange={handleChange} readOnly={roLog} options={[{v:'$',l:'Pesos'},{v:'UF',l:'UF'}]} /></td>
               <LB right>Monto</LB>
@@ -1907,6 +1946,67 @@ function AdminContent() {
           )}
         </div>
       </div>
+
+      {/* ══ MODAL: Reasignar composición del inmueble ══ */}
+      {modalComponerAbierto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setModalComponerAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 22,
+            width: 'min(680px, 94vw)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <h3 style={{ margin: '0 0 6px', color: '#075985', fontSize: 17 }}>⟳ Reasignar composición del inmueble</h3>
+            <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px', lineHeight: 1.5 }}>
+              Elige la combinación de unidades para <b>{form.idadmon}</b> (propietario {form.idprop}). Solo se listan las
+              que ya existen en Inmuebles. Al elegir, se actualizan la dirección y el IDINMUE; revisa y pulsa Guardar.
+              Si la combinación que necesitas no está, créala antes en la vista de Inmuebles.
+            </p>
+            <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+              {cargandoComp ? (
+                <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Cargando…</div>
+              ) : inmueblesProp.length === 0 ? (
+                <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Este propietario no tiene inmuebles registrados.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>IDINMUE</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Inmueble</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>ROL</th>
+                      <th style={{ padding: '7px 10px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inmueblesProp.map((it, i) => {
+                      const actual = String(it.idinmue).trim() === String(form.idlinmue).trim()
+                      return (
+                        <tr key={i} style={{ background: it.combinacion ? '#f0fdfa' : '#fff', borderTop: '1px solid #eef2f7' }}>
+                          <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: it.combinacion ? 700 : 400 }}>{it.idinmue}</td>
+                          <td style={{ padding: '7px 10px', color: '#475569' }}>{it.inmueble}</td>
+                          <td style={{ padding: '7px 10px', fontFamily: 'monospace', color: '#64748b', fontSize: 11 }}>{it.rol || '—'}</td>
+                          <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                            {actual ? (
+                              <span style={{ fontSize: 11, color: '#0891b2', fontWeight: 600 }}>✓ actual</span>
+                            ) : (
+                              <button onClick={() => elegirComposicion(it)}
+                                style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid #0891b2', background: '#fff', color: '#0891b2', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Elegir
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setModalComponerAbierto(false)}
+                style={{ fontSize: 13, padding: '8px 16px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer' }}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL: Motivo de corrección de la FECHA DE TÉRMINO (supervisor) ══ */}
       {modalTerminoAbierto && (
