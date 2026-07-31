@@ -69,7 +69,7 @@ function EstadoBadge({ estado }) {
   return (
     <span title={desc ? `${estado} · ${desc}` : (estado || '')}
       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color, fontSize: 11, fontWeight: 600, cursor: 'help' }}>
+      padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color, fontSize: 11, fontWeight: 600 }}>
       {estado || '—'}
     </span>
   )
