@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v8 · 2026-08-01 · "Rellenar desde PDF" ahora también acepta ARRASTRAR y soltar el PDF sobre el botón (además del clic).
 // VERSION: v7 · 2026-08-01 · Botón "Rellenar desde PDF": sube el contrato (plantilla FCR), extrae datos por /api/cc1/extraer-contrato
 //   y PRERELLENA la ficha (no guarda ni activa). Solo sobre contratos en P. Anthony revisa y usa TERMINAR (P→S).
 // VERSION: v6 . 2026-07-29 . Administracion (supervisor) puede CORREGIR SOLO la fecha termino_actual
@@ -475,6 +476,7 @@ function AdminContent() {
   const [modalEmailAbierto, setModalEmailAbierto] = useState(false)  // modal "Cargar datos email"
   const pdfInputRef = useRef(null)                 // input file oculto para "Rellenar desde PDF"
   const [subiendoPDF, setSubiendoPDF] = useState(false)
+  const [pdfDrag, setPdfDrag] = useState(false)    // resaltado al arrastrar un PDF encima
   const [textoEmail, setTextoEmail] = useState('')
   const [modalFacturarAbierto, setModalFacturarAbierto] = useState(false)  // modal borrador + facturar
   const [plantillaFile, setPlantillaFile] = useState(null)
@@ -1339,13 +1341,28 @@ function AdminContent() {
           <>
             <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) rellenarDesdePDF(f) }} />
-            <button onClick={() => pdfInputRef.current && pdfInputRef.current.click()} disabled={subiendoPDF}
-              title="Sube el PDF del contrato (plantilla FCR) y se prerellenan los campos. No guarda ni activa: revisa y usa TERMINAR (P→S)."
+            <button
+              onClick={() => pdfInputRef.current && pdfInputRef.current.click()}
+              disabled={subiendoPDF}
+              onDragOver={e => { if (!subiendoPDF) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; if (!pdfDrag) setPdfDrag(true) } }}
+              onDragLeave={e => { e.preventDefault(); setPdfDrag(false) }}
+              onDrop={e => {
+                e.preventDefault(); setPdfDrag(false)
+                if (subiendoPDF) return
+                const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]
+                if (!f) return
+                const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')
+                if (!esPdf) { setMsg({ type: 'warn', text: '⚠ Suelta un archivo PDF.' }); return }
+                rellenarDesdePDF(f)
+              }}
+              title="Sube el PDF del contrato (plantilla FCR): pulsa o arrastra el archivo aquí. No guarda ni activa: revisa y usa TERMINAR (P→S)."
               style={{
-                padding: '5px 14px', borderRadius: 5, border: '1px solid #2563a8',
-                background: subiendoPDF ? '#9ca3af' : '#fff', color: subiendoPDF ? '#fff' : '#2563a8',
+                padding: '5px 14px', borderRadius: 5,
+                border: '1px ' + (pdfDrag ? 'dashed' : 'solid') + ' #2563a8',
+                background: subiendoPDF ? '#9ca3af' : (pdfDrag ? '#eff6ff' : '#fff'),
+                color: subiendoPDF ? '#fff' : '#2563a8',
                 fontSize: 12, fontWeight: 700, cursor: subiendoPDF ? 'default' : 'pointer', fontFamily: 'inherit',
-              }}>{subiendoPDF ? 'Leyendo PDF…' : '📄 Rellenar desde PDF'}</button>
+              }}>{subiendoPDF ? 'Leyendo PDF…' : (pdfDrag ? '📄 Suelta el contrato aquí' : '📄 Rellenar desde PDF')}</button>
           </>
         )}
 
