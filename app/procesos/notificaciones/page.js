@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v7 · 2026-08-01 · Buscador subido a la fila de controles (derecha) + barra de controles y cabecera de tabla STICKY bajo el TopNav (top 52 / 110).
 // VERSION: v6 · 2026-08-01 · Envío en tanda admite "Nota de corrección (disculpa)" opcional: manda los correos
 //   con el bloque ámbar de comunicación correctora, para reenvíos masivos con disculpa sin ir uno a uno.
 // VERSION: v5 · 2026-08-01 · Importe UF = cuota × valor_uf DEL MES (indices_mensuales), no el uf_peso_factor guardado.
@@ -971,7 +972,7 @@ export default function NotificacionesPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, position: 'sticky', top: 52, zIndex: 20, background: '#F3F4F6', padding: '12px 0', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Mes a procesar</label>
             <select value={mesSel} onChange={(e) => { setMesSel(e.target.value); limpiarSeleccion() }}
@@ -1002,19 +1003,19 @@ export default function NotificacionesPage() {
               border: '1px solid #6D28D9', background: '#F5F3FF', color: '#5B21B6' }}>
             ⚙ Calcular reajustes
           </button>
+          <div style={{ position: 'relative', marginLeft: 'auto' }}>
+            <input type="text" placeholder="IDADMON, inmueble, propietario, arrendatario…"
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#F9FAFB', fontSize: 12, color: '#374151', fontFamily: 'inherit', width: 260, outline: 'none' }} />
+          </div>
           <button onClick={seleccionarPendientes} disabled={kpis.pendientes === 0}
             title="Marca todos los pendientes de la vista filtrada"
-            style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8,
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8,
               border: '1px solid ' + (kpis.pendientes ? '#1D9E75' : '#D3D1C7'),
               background: kpis.pendientes ? '#E1F5EE' : '#F3F4F6', color: kpis.pendientes ? '#085041' : '#9CA3AF',
               cursor: kpis.pendientes ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
             ✓ Seleccionar pendientes ({kpis.pendientes})
           </button>
-          <div style={{ position: 'relative' }}>
-            <input type="text" placeholder="IDADMON, inmueble, propietario, arrendatario…"
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#F9FAFB', fontSize: 12, color: '#374151', fontFamily: 'inherit', width: 320, outline: 'none' }} />
-          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 18 }}>
@@ -1041,7 +1042,7 @@ export default function NotificacionesPage() {
             </colgroup>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
-                <th style={{ padding: '9px 10px', textAlign: 'center', borderBottom: '1px solid #E5E7EB' }}>
+                <th style={{ position: 'sticky', top: 110, zIndex: 10, background: '#F9FAFB', padding: '9px 10px', textAlign: 'center', borderBottom: '1px solid #E5E7EB' }}>
                   <input type="checkbox" checked={todosSel}
                     ref={(el) => { if (el) el.indeterminate = !todosSel && algunoSel }}
                     onChange={toggleTodos} style={{ cursor: 'pointer' }} />
@@ -1049,7 +1050,7 @@ export default function NotificacionesPage() {
                 {COLS.map((col) => {
                   const activo = !!filtros[col.key] || (orden && orden.col === col.key)
                   return (
-                    <th key={col.key} style={{ position: 'relative', padding: '9px 12px', textAlign: col.align, borderBottom: '1px solid #E5E7EB' }}>
+                    <th key={col.key} style={{ position: 'sticky', top: 110, zIndex: 10, background: '#F9FAFB', padding: '9px 12px', textAlign: col.align, borderBottom: '1px solid #E5E7EB' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start' }}>
                         <span style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{col.label}</span>
                         <button onClick={() => setFiltroAbierto(filtroAbierto === col.key ? null : col.key)} title="Filtrar / ordenar"
@@ -1069,7 +1070,7 @@ export default function NotificacionesPage() {
                     </th>
                   )
                 })}
-                <th style={{ padding: '9px 6px', borderBottom: '1px solid #E5E7EB' }}></th>
+                <th style={{ position: 'sticky', top: 110, zIndex: 10, background: '#F9FAFB', padding: '9px 6px', borderBottom: '1px solid #E5E7EB' }}></th>
               </tr>
             </thead>
             <tbody>
