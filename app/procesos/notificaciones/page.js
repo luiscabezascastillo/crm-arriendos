@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v6 · 2026-08-01 · Envío en tanda admite "Nota de corrección (disculpa)" opcional: manda los correos
+//   con el bloque ámbar de comunicación correctora, para reenvíos masivos con disculpa sin ir uno a uno.
 // VERSION: v5 · 2026-08-01 · Importe UF = cuota × valor_uf DEL MES (indices_mensuales), no el uf_peso_factor guardado.
 //   + Aviso al enviar/reenviar si el mes elegido no es la liquidación en curso (regla día 23), con confirmación.
 //   + Guarda el HTML enviado (html_enviado) y quién envió (enviado_por); botón "Ver carta enviada".
@@ -248,6 +250,7 @@ export default function NotificacionesPage() {
   const [enviando, setEnviando] = useState(false)
   const [confirmoMesDistinto, setConfirmoMesDistinto] = useState(false)  // gate cuando mesSel ≠ liquidación en curso
   const [modoPrueba, setModoPrueba] = useState(true)
+  const [notaTanda, setNotaTanda] = useState('')   // nota de corrección/disculpa opcional para envío en tanda
   const [correoPrueba, setCorreoPrueba] = useState('')
   const [resultado, setResultado] = useState(null)
   const [toast, setToast] = useState(null)
@@ -610,6 +613,7 @@ export default function NotificacionesPage() {
     if (seleccionados.size === 0) return
     setResultado(null)
     setConfirmoMesDistinto(false)
+    setNotaTanda('')
     setModalAbierto(true)
   }
   const aEnviar = useMemo(() => {
@@ -642,6 +646,7 @@ export default function NotificacionesPage() {
           mes: mesSel, mesLabel: mesLabel(mesSel),
           valorUf: idxMes ? idxMes.valor_uf : null,
           cc: CC_ENVIO,
+          notaCorreccion: notaTanda.trim() || null,
           emailOverride: modoPrueba ? (correoPrueba || null) : null,
           notificaciones,
         }),
@@ -1212,6 +1217,18 @@ export default function NotificacionesPage() {
               <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#991B1B', marginBottom: 14 }}>
                 ⚠ ENVÍO REAL: los correos llegarán a {aEnviar.length} arrendatario{aEnviar.length === 1 ? '' : 's'} (CC {CC_ENVIO}). Se marcarán como enviados con fecha y hora.
               </div>
+            )}
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
+              Nota de corrección / disculpa (opcional) — aparece destacada al inicio de todos los correos
+            </label>
+            <textarea value={notaTanda} onChange={(e) => setNotaTanda(e.target.value)} rows={3}
+              placeholder="Ej.: Le reenviamos su recordatorio con el importe correcto del mes. Disculpe las molestias."
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', marginBottom: 4, outline: 'none' }} />
+            {notaTanda.trim() && (
+              <p style={{ fontSize: 11, color: '#92400E', margin: '0 0 12px' }}>
+                Los {aEnviar.length} correos llevarán el bloque «Comunicación correctora» con esta nota.
+              </p>
             )}
 
             {resultado && (
