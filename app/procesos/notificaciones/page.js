@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v8 · 2026-08-01 · "Especial primeros meses" (campos meses/cantidad): la notificación aplica la MISMA regla que la
+//   liquidación (RPC calcular_liquidacion): si 1<=n_mes<=meses y cantidad>0, el importe es esa cantidad plana (sin UF/IPC).
 // VERSION: v7 · 2026-08-01 · Buscador subido a la fila de controles (derecha) + barra de controles y cabecera de tabla STICKY bajo el TopNav (top 52 / 110).
 // VERSION: v6 · 2026-08-01 · Envío en tanda admite "Nota de corrección (disculpa)" opcional: manda los correos
 //   con el bloque ámbar de comunicación correctora, para reenvíos masivos con disculpa sin ir uno a uno.
@@ -53,7 +55,28 @@ function splitEmails(s) {
 function esUF(revision) {
   return (revision || '').trim().toUpperCase() === 'UF'
 }
-function calcularApagar(c, valorUfMes) {
+// n_mes = número de mes desde el inicio, contando por mes de calendario (igual que la RPC:
+// (año*12+mes del periodo) - (año*12+mes de fecha_inicio) + 1). mes = 'YYYY-MM-01'.
+function nMesDesdeInicio(fechaInicio, mes) {
+  if (!fechaInicio || !mes) return null
+  const fi = String(fechaInicio).slice(0, 10)
+  const [ay, am] = fi.split('-').map(Number)
+  const [py, pm] = String(mes).slice(0, 10).split('-').map(Number)
+  if (!ay || !am || !py || !pm) return null
+  return (py * 12 + pm) - (ay * 12 + am) + 1
+}
+
+// Importe a pagar del mes. valorUfMes = valor_uf del mes procesado; mes = 'YYYY-MM-01'.
+// PRIORIDAD 1 — "Especial primeros meses" (igual que calcular_liquidacion):
+//   si cantidad>0 y 1<=n_mes<=meses, el importe es 'cantidad' plana (sin UF ni reajustes).
+// Si no, renta normal: UF (cuota × valor_uf del mes) o pesos (cuota + reajustes).
+function calcularApagar(c, valorUfMes, mes) {
+  const cantEsp = num(c.cantidad)
+  const nMeses = num(c.meses)
+  const nMes = nMesDesdeInicio(c.fecha_inicio, mes)
+  if (cantEsp > 0 && nMes != null && nMes >= 1 && nMes <= nMeses) {
+    return Math.round(cantEsp)
+  }
   if (esUF(c.revision)) {
     // El importe UF es cuota × valor de la UF DEL MES que se liquida (indices_mensuales).
     // NO se usa uf_peso_factor guardado: se queda desfasado de un mes a otro (fue la causa
@@ -276,7 +299,7 @@ export default function NotificacionesPage() {
           .select('mes, valor_uf, ipc_3m, ipc_6m, ipc_12m, uf_3m, uf_6m, uf_12m')
           .order('mes', { ascending: false }),
         supabase.from('datos_arriendos')
-          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
           .eq('estado', 'S'),
       ])
       const idxList = (idx || []).map(i => ({ ...i, mes: String(i.mes).slice(0, 10) }))
@@ -335,7 +358,7 @@ export default function NotificacionesPage() {
           setReajMsg(`✅ Guardados ${j.escritas} reajuste${j.escritas === 1 ? '' : 's'}. Recargando importes…`)
           await cargarNoti(mesSel)
           const { data: arr } = await supabase.from('datos_arriendos')
-            .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+            .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
             .eq('estado', 'S')
           if (arr) setContratos(arr)
         }
@@ -348,7 +371,7 @@ export default function NotificacionesPage() {
 
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
-      const apagarCalc = calcularApagar(c, idxMes?.valor_uf)
+      const apagarCalc = calcularApagar(c, idxMes?.valor_uf, mesSel)
       const av = ajusteVigente(c, mesSel)
       const tipoCom = tipoComunicacion(c, av, mesSel)
       const noti = notiMap.get(c.idadmon)
