@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v7 · 2026-08-01 · Botón "Rellenar desde PDF": sube el contrato (plantilla FCR), extrae datos por /api/cc1/extraer-contrato
+//   y PRERELLENA la ficha (no guarda ni activa). Solo sobre contratos en P. Anthony revisa y usa TERMINAR (P→S).
 // VERSION: v6 . 2026-07-29 . Administracion (supervisor) puede CORREGIR SOLO la fecha termino_actual
 //   en un contrato activo (por si la fecha de salida se equivoco o el arrendatario tardo en salir),
 //   sin desbloquear el resto del LOG. Pide motivo (registrado). El resto de campos siguen bloqueados.
@@ -471,6 +473,8 @@ function AdminContent() {
   const [personas, setPersonas] = useState({ arr1:{}, arr2:{}, aval1:{}, aval2:{} })
   const [modalAbierto, setModalAbierto] = useState(false)   // modal de edición de personas
   const [modalEmailAbierto, setModalEmailAbierto] = useState(false)  // modal "Cargar datos email"
+  const pdfInputRef = useRef(null)                 // input file oculto para "Rellenar desde PDF"
+  const [subiendoPDF, setSubiendoPDF] = useState(false)
   const [textoEmail, setTextoEmail] = useState('')
   const [modalFacturarAbierto, setModalFacturarAbierto] = useState(false)  // modal borrador + facturar
   const [plantillaFile, setPlantillaFile] = useState(null)
@@ -844,6 +848,69 @@ function AdminContent() {
     setBloqueado(false)   // desbloquea para que Neika revise y ajuste
     setModalEmailAbierto(false)
     setMsg({ type: 'ok', text: '✓ Datos precargados desde el email. Revisa, completa lo que falte y pulsa GUARDAR.' })
+  }
+
+  // Rellenar la ficha desde el PDF del contrato (plantilla FCR). Solo prerellena; NO guarda ni activa.
+  async function rellenarDesdePDF(file) {
+    if (!file) return
+    if (!form.idadmon && !isNew) { setMsg({ type: 'warn', text: 'Carga primero un IDADMON.' }); return }
+    if (form.estado && String(form.estado).trim().toUpperCase() !== 'P') {
+      setMsg({ type: 'warn', text: `⚠ Este contrato está en estado "${form.estado}", no en P. El PDF solo se carga sobre un IDADMON en captación (P).` })
+      return
+    }
+    setSubiendoPDF(true)
+    setMsg({ type: 'info', text: '📄 Leyendo el PDF…' })
+    try {
+      const fd = new FormData()
+      fd.append('archivo', file)
+      const res = await fetch('/api/cc1/extraer-contrato', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setMsg({ type: 'warn', text: '⚠ ' + (data.error || `Error ${res.status}`) })
+        return
+      }
+      const d = data.datos || {}
+      if (data.aviso) { setMsg({ type: 'warn', text: '⚠ ' + data.aviso }); return }
+      // Seguridad: si el IDADMON del contrato no coincide con la ficha cargada, NO se rellena.
+      if (form.idadmon && d.idadmon && d.idadmon.toUpperCase() !== String(form.idadmon).toUpperCase()) {
+        setMsg({ type: 'warn', text: `⚠ El contrato es de ${d.idadmon} pero la ficha cargada es ${form.idadmon}. No se rellenó nada. Carga el IDADMON correcto.` })
+        return
+      }
+      // Campos del contrato en datos_arriendos (los literales del PDF).
+      setForm(prev => ({
+        ...prev,
+        ...(d.arrendatario    ? { arrendatario: d.arrendatario } : {}),
+        ...(d.rut_arrendatario ? { rut: d.rut_arrendatario } : {}),
+        ...(d.email           ? { mail_arrendatario: d.email } : {}),
+        ...(d.telefono        ? { movil: d.telefono } : {}),
+        ...(d.fecha_inicio    ? { fecha_inicio: d.fecha_inicio } : {}),
+        ...(d.fecha_fin       ? { termino_inicial: d.fecha_fin } : {}),
+        ...(d.monto           ? { cuota: String(d.monto) } : {}),
+        ...(d.moneda          ? { unid: d.moneda } : {}),
+        ...(d.revision        ? { revision: d.revision } : {}),
+        ...(d.fecha_reajuste1 ? { fecha_reajuste1: d.fecha_reajuste1 } : {}),
+      }))
+      // Detalle del arrendatario 1.
+      setPersonas(prev => ({
+        ...prev,
+        arr1: {
+          ...prev.arr1,
+          ...(d.arrendatario    ? { nombre: d.arrendatario } : {}),
+          ...(d.rut_arrendatario ? { rut: d.rut_arrendatario } : {}),
+          ...(d.email           ? { email: d.email } : {}),
+          ...(d.telefono        ? { telefono: d.telefono } : {}),
+          ...(d.nacionalidad    ? { nacion: d.nacionalidad } : {}),
+          ...(d.domicilio       ? { domHabit: d.domicilio + (d.comuna_domicilio ? ', comuna de ' + d.comuna_domicilio : '') } : {}),
+        },
+      }))
+      setBloqueado(false)  // desbloquea para revisar
+      const sug = d.quien_cobra_sugerido ? ` "A quién pagar" (sugerencia: ${d.quien_cobra_sugerido}, revísalo).` : ''
+      setMsg({ type: 'ok', text: `✓ Datos precargados desde el PDF${d.idadmon ? ' (' + d.idadmon + ')' : ''}. REVISA todo —en especial la fecha del primer ajuste${sug}—, completa comisión / garantía / proporcional, y luego GUARDA y activa con TERMINAR (P→S). El PDF no ha guardado ni activado nada.` })
+    } catch (e) {
+      setMsg({ type: 'warn', text: '⚠ Error de red al leer el PDF: ' + (e?.message || e) })
+    } finally {
+      setSubiendoPDF(false)
+    }
   }
 
   // Guardar la corrección de la fecha de término desde el propio modal: escribe termino_actual
@@ -1266,6 +1333,20 @@ function AdminContent() {
               background: '#2563a8', color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit',
             }}>📩 Cargar datos email</button>
+        )}
+
+        {puedeEditarAhora && (
+          <>
+            <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) rellenarDesdePDF(f) }} />
+            <button onClick={() => pdfInputRef.current && pdfInputRef.current.click()} disabled={subiendoPDF}
+              title="Sube el PDF del contrato (plantilla FCR) y se prerellenan los campos. No guarda ni activa: revisa y usa TERMINAR (P→S)."
+              style={{
+                padding: '5px 14px', borderRadius: 5, border: '1px solid #2563a8',
+                background: subiendoPDF ? '#9ca3af' : '#fff', color: subiendoPDF ? '#fff' : '#2563a8',
+                fontSize: 12, fontWeight: 700, cursor: subiendoPDF ? 'default' : 'pointer', fontFamily: 'inherit',
+              }}>{subiendoPDF ? 'Leyendo PDF…' : '📄 Rellenar desde PDF'}</button>
+          </>
         )}
 
         {(form.estado === 'P' || form.estado === 'S') && puedeFacturarUsuario && (
