@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v5 · 2026-08-01 · Importe UF = cuota × valor_uf DEL MES (indices_mensuales), no el uf_peso_factor guardado.
+//   + Aviso al enviar/reenviar si el mes elegido no es la liquidación en curso (regla día 23), con confirmación.
+//   + Guarda el HTML enviado (html_enviado) y quién envió (enviado_por); botón "Ver carta enviada".
 // VERSION: v4 · 2026-07-28 · La columna COMUNIC. marcaba AJUSTE a TODO contrato de tipo IPC/pesos,
 //   aunque su reajuste no fuera de este mes. Ahora AJUSTE solo cuando el reajuste VIGENTE del mes
 //   tiene fecha dentro del propio mes procesado (usa ajusteVigente, que ya existía). El resto: —.
@@ -47,9 +50,14 @@ function splitEmails(s) {
 function esUF(revision) {
   return (revision || '').trim().toUpperCase() === 'UF'
 }
-function calcularApagar(c) {
+function calcularApagar(c, valorUfMes) {
   if (esUF(c.revision)) {
-    return Math.round(num(c.cuota) * num(c.uf_peso_factor))
+    // El importe UF es cuota × valor de la UF DEL MES que se liquida (indices_mensuales).
+    // NO se usa uf_peso_factor guardado: se queda desfasado de un mes a otro (fue la causa
+    // del envío de agosto con la UF de julio). Fallback al factor guardado solo si, por lo
+    // que sea, no llega el valor del mes (para no romper la fila).
+    const vuf = num(valorUfMes) > 1 ? num(valorUfMes) : num(c.uf_peso_factor)
+    return Math.round(num(c.cuota) * vuf)
   }
   const sumaReajustes =
     num(c.cantidad_reajuste1) + num(c.cantidad_reajuste2) + num(c.cantidad_reajuste3) +
@@ -238,6 +246,7 @@ export default function NotificacionesPage() {
   const [reenviando, setReenviando] = useState(false)
   const [reenvioResult, setReenvioResult] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [confirmoMesDistinto, setConfirmoMesDistinto] = useState(false)  // gate cuando mesSel ≠ liquidación en curso
   const [modoPrueba, setModoPrueba] = useState(true)
   const [correoPrueba, setCorreoPrueba] = useState('')
   const [resultado, setResultado] = useState(null)
@@ -284,7 +293,7 @@ export default function NotificacionesPage() {
     if (!mes) return
     const { data, error } = await supabase
       .from(TABLA_NOTI)
-      .select('idadmon, control_envio, comentario, apagar_enviado')
+      .select('idadmon, control_envio, comentario, apagar_enviado, email_usado, revision_enviada')
       .eq('mes_notificacion', mes)
     if (error) { setNotiMap(new Map()); return }
     const m = new Map()
@@ -335,7 +344,7 @@ export default function NotificacionesPage() {
 
   const todasFilas = useMemo(() => {
     return contratos.map((c) => {
-      const apagarCalc = calcularApagar(c)
+      const apagarCalc = calcularApagar(c, idxMes?.valor_uf)
       const av = ajusteVigente(c, mesSel)
       const tipoCom = tipoComunicacion(c, av, mesSel)
       const noti = notiMap.get(c.idadmon)
@@ -363,7 +372,7 @@ export default function NotificacionesPage() {
         ajusteMonto: av ? av.monto : 0,
       }
     })
-  }, [contratos, notiMap, mesSel])
+  }, [contratos, notiMap, mesSel, idxMes])
 
   const filaPorId = useMemo(() => {
     const m = new Map()
@@ -600,6 +609,7 @@ export default function NotificacionesPage() {
   function abrirModal() {
     if (seleccionados.size === 0) return
     setResultado(null)
+    setConfirmoMesDistinto(false)
     setModalAbierto(true)
   }
   const aEnviar = useMemo(() => {
@@ -648,6 +658,8 @@ export default function NotificacionesPage() {
         const p = (x) => String(x).padStart(2, '0')
         const sello = `${ahora.getFullYear()}-${p(ahora.getMonth() + 1)}-${p(ahora.getDate())} ${p(ahora.getHours())}:${p(ahora.getMinutes())}:${p(ahora.getSeconds())}`
         const okIds = data.detalle.filter((d) => d.ok).map((d) => d.idadmon)
+        const htmlPorId = new Map(data.detalle.filter((d) => d.ok && d.html).map((d) => [d.idadmon, d.html]))
+        const quienEnvia = session?.user?.email || null
         if (okIds.length) {
           const filasUpsert = okIds.map((id) => {
             const f = filaPorId.get(id)
@@ -656,6 +668,8 @@ export default function NotificacionesPage() {
               email_usado: f ? f.mail_arrendatario : null,
               apagar_enviado: f ? f.apagar : null,
               revision_enviada: f ? f.revision : null,
+              html_enviado: htmlPorId.get(id) || null,
+              enviado_por: quienEnvia,
               actualizado_en: new Date().toISOString(),
             }
           })
@@ -683,6 +697,44 @@ export default function NotificacionesPage() {
     setReenvioNota('')
     setReenvioCC('')
     setReenvioResult(null)
+    setConfirmoMesDistinto(false)
+  }
+
+  // Abre la carta REALMENTE enviada de una fila ya notificada este mes.
+  // Si se guardó el HTML (envíos nuevos), muestra la copia literal; si no (envíos
+  // antiguos), la reconstruye con lo registrado (apagar_enviado / revision_enviada).
+  async function verCartaEnviada(f) {
+    setMenuFila(null)
+    const noti = notiMap.get(f.idadmon)
+    setPreview({ idadmon: f.idadmon, loading: true })
+    // 1) Copia literal guardada (envíos nuevos): se pide solo esta fila.
+    try {
+      const { data: g } = await supabase.from(TABLA_NOTI)
+        .select('html_enviado').eq('idadmon', f.idadmon).eq('mes_notificacion', mesSel).maybeSingle()
+      if (g?.html_enviado) {
+        setPreview({ idadmon: f.idadmon, asunto: `Carta enviada · ${mesLabel(mesSel)}`, html: g.html_enviado, email: noti?.email_usado })
+        return
+      }
+    } catch { /* si falla, caemos a reconstruir */ }
+    // 2) Reconstrucción (envíos antiguos sin HTML guardado).
+    try {
+      const res = await fetch(ENDPOINT_PREVIEW, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mes: mesSel, mesLabel: mesLabel(mesSel), valorUf: idxMes ? idxMes.valor_uf : null,
+          notificacion: {
+            idadmon: f.idadmon, arrendatario: f.arrendatario, propiedad: f.inmueble,
+            apagar: noti?.apagar_enviado ?? f.apagar, revision: noti?.revision_enviada ?? f.revision,
+            ajusteTipo: f.ajusteTipo, ajusteMonto: f.ajusteMonto,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPreview({ idadmon: f.idadmon, asunto: '(reconstruida) ' + data.asunto, html: data.html, email: noti?.email_usado })
+    } catch (err) {
+      setPreview({ idadmon: f.idadmon, error: err.message })
+    }
   }
 
   async function reenviarCorreccion() {
@@ -780,6 +832,9 @@ export default function NotificacionesPage() {
             <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, width: 210,
               background: '#fff', border: '1px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 4 }}>
               <button onClick={() => verPreview(f)} style={menuItem}>👁 Vista previa del correo</button>
+              {f.envioEstado === ENVIO.ENVIADO && (
+                <button onClick={() => verCartaEnviada(f)} style={menuItem}>📄 Ver carta enviada</button>
+              )}
               <button onClick={() => abrirControl(f)} style={menuItem}>✎ Editar control de envío</button>
               {f.envioEstado !== ENVIO.PENDIENTE && f.envioEstado !== ENVIO.FALTAN && (
                 <button onClick={() => reabrir(f)} style={menuItem}>↺ Vaciar control (permitir envío)</button>
@@ -1079,6 +1134,12 @@ export default function NotificacionesPage() {
             <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', margin: '0 0 14px' }}>
               Este contrato ya fue notificado este mes. Vas a enviar un <strong>segundo correo corrector</strong> con el importe actual. Queda registrado quién y cuándo.
             </p>
+            {mesSel !== mesEnCurso && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 12px', margin: '0 0 14px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={confirmoMesDistinto} onChange={(e) => setConfirmoMesDistinto(e.target.checked)} />
+                <span>Estás corrigiendo <strong>{mesLabel(mesSel)}</strong>, no la liquidación en curso (<strong>{mesLabel(mesEnCurso)}</strong>). Marca para confirmar.</span>
+              </label>
+            )}
 
             <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Nota de corrección (aparece destacada en el correo)</label>
             <textarea value={reenvioNota} onChange={(e) => setReenvioNota(e.target.value)} rows={4}
@@ -1104,14 +1165,16 @@ export default function NotificacionesPage() {
                 style={{ fontSize: 13, padding: '9px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: reenviando ? 'default' : 'pointer' }}>
                 {reenvioResult?.ok ? 'Cerrar' : 'Cancelar'}
               </button>
-              {!reenvioResult?.ok && (
-                <button onClick={reenviarCorreccion} disabled={reenviando || reenvioNota.trim().length < 5}
-                  style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: 'none',
-                    background: (reenviando || reenvioNota.trim().length < 5) ? '#9CA3AF' : '#d97706', color: '#fff',
-                    cursor: (reenviando || reenvioNota.trim().length < 5) ? 'default' : 'pointer' }}>
-                  {reenviando ? 'Enviando…' : 'Enviar corrección'}
-                </button>
-              )}
+              {!reenvioResult?.ok && (() => {
+                const off = reenviando || reenvioNota.trim().length < 5 || (mesSel !== mesEnCurso && !confirmoMesDistinto)
+                return (
+                  <button onClick={reenviarCorreccion} disabled={off}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: 'none',
+                      background: off ? '#9CA3AF' : '#d97706', color: '#fff', cursor: off ? 'default' : 'pointer' }}>
+                    {reenviando ? 'Enviando…' : 'Enviar corrección'}
+                  </button>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -1127,6 +1190,17 @@ export default function NotificacionesPage() {
               {aEnviar.length !== seleccionados.size && ' (el resto ya enviados, inhibidos o sin datos)'} · total ${fmtMiles(aEnviar.reduce((s, f) => s + f.apagar, 0))}.
             </p>
 
+            {mesSel !== mesEnCurso && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
+                ⚠ Vas a enviar <strong>{mesLabel(mesSel)}</strong>, pero la liquidación en curso es <strong>{mesLabel(mesEnCurso)}</strong>. Si es una corrección de otro mes, adelante; si no, cambia el mes antes de enviar.
+              </div>
+            )}
+            {mesSel !== mesEnCurso && !modoPrueba && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#991B1B', marginBottom: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={confirmoMesDistinto} onChange={(e) => setConfirmoMesDistinto(e.target.checked)} />
+                Confirmo que quiero enviar <strong style={{ margin: '0 3px' }}>{mesLabel(mesSel)}</strong> aunque no sea la liquidación en curso.
+              </label>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', marginBottom: 10, cursor: 'pointer' }}>
               <input type="checkbox" checked={modoPrueba} onChange={(e) => setModoPrueba(e.target.checked)} />
               Modo prueba — enviar todo a un solo correo (no marca como enviado)
@@ -1163,13 +1237,17 @@ export default function NotificacionesPage() {
                 style={{ fontSize: 13, padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#374151', cursor: enviando ? 'default' : 'pointer', opacity: enviando ? 0.6 : 1 }}>
                 {resultado && !resultado.error ? 'Cerrar' : 'Cancelar'}
               </button>
-              {!(resultado && !resultado.error) && (
-                <button onClick={confirmarEnvio} disabled={enviando || aEnviar.length === 0}
-                  style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none',
-                    background: (enviando || aEnviar.length === 0) ? '#9CA3AF' : (modoPrueba ? '#1a56db' : '#DC2626'), color: '#fff', cursor: (enviando || aEnviar.length === 0) ? 'default' : 'pointer' }}>
-                  {enviando ? 'Enviando…' : (modoPrueba ? 'Enviar prueba' : 'Confirmar envío real')}
-                </button>
-              )}
+              {!(resultado && !resultado.error) && (() => {
+                const bloqueoMes = !modoPrueba && mesSel !== mesEnCurso && !confirmoMesDistinto
+                const off = enviando || aEnviar.length === 0 || bloqueoMes
+                return (
+                  <button onClick={confirmarEnvio} disabled={off}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none',
+                      background: off ? '#9CA3AF' : (modoPrueba ? '#1a56db' : '#DC2626'), color: '#fff', cursor: off ? 'default' : 'pointer' }}>
+                    {enviando ? 'Enviando…' : (modoPrueba ? 'Enviar prueba' : 'Confirmar envío real')}
+                  </button>
+                )
+              })()}
             </div>
           </div>
         </div>

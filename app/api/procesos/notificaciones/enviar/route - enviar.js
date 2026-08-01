@@ -1,11 +1,6 @@
-// VERSION: v2 · 2026-08-01 · BCC de archivo a info@ (copia de todo envío) + devuelve el HTML de cada carta para guardarlo en notificaciones_arriendo.html_enviado
 import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 import { plantillaArriendo, asuntoArriendo, splitEmails } from '@/lib/notifPlantilla'
-
-// Copia de archivo: cada correo enviado deja copia aquí, para tenerlo en un buzón
-// que controlamos (independiente de que Gmail lo guarde o no en "Enviados").
-const BCC_ARCHIVO = 'info@fondocapital.com'
 
 // Mismo transporte que el resto de correos del CRM (endpoint de deudas)
 const transporter = nodemailer.createTransport({
@@ -51,14 +46,11 @@ export async function POST(request) {
           from: `"Fondo Capital" <${process.env.GMAIL_USER}>`,
           to: destinatarios.join(', '),
           cc: cc || undefined,
-          // No archivamos las pruebas (emailOverride): solo los envíos reales.
-          bcc: emailOverride ? undefined : BCC_ARCHIVO,
           subject: asunto,
           html,
         })
         enviados++
-        // Devolvemos el HTML tal cual salió para que la página lo guarde en html_enviado.
-        detalle.push({ ok: true, idadmon: n.idadmon, email: destinatarios.join(', '), html })
+        detalle.push({ ok: true, idadmon: n.idadmon, email: destinatarios.join(', ') })
       } catch (err) {
         errores++
         detalle.push({ ok: false, idadmon: n.idadmon, error: err.message })
