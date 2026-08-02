@@ -1,4 +1,3 @@
-// VERSION: v3 · 2026-08-01 · La zona de carga admite ARRASTRAR y soltar el .xls/.xlsx (además del botón), con indicación visible.
 // VERSION: v2 · 2026-07-15 · Gate: subir cartola es SOLO Karina + Dirección (EDIT_EMAILS). Quien no
 //   esté en la lista se redirige a /procesos/bi/movimientos (que sí puede ver: son cuentas de clientes).
 //   No cambia nada de la lógica de carga/preview/guardado.
@@ -76,7 +75,6 @@ export default function BancoInternacionalPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [guardadoOk, setGuardadoOk] = useState(null)
-  const [arrastrando, setArrastrando] = useState(false)   // resaltado al arrastrar la cartola
   const [cargas, setCargas] = useState([])   // historial de últimas cargas
 
   const cargarHistorial = async () => {
@@ -109,8 +107,8 @@ export default function BancoInternacionalPage() {
     return d
   }
 
-  // Procesa un .xls/.xlsx (venga del botón o de arrastrar): parsea y previsualiza.
-  const procesarArchivo = async (file) => {
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]
     if (!file) return
     setError(null); setGuardadoOk(null); setPreview(null); setMovs([]); setNombreArchivo(file.name); setCargando(true)
     try {
@@ -127,22 +125,8 @@ export default function BancoInternacionalPage() {
       setError(err.message)
     } finally {
       setCargando(false)
+      e.target.value = ''  // permitir recargar el mismo archivo
     }
-  }
-
-  const onFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''  // permitir recargar el mismo archivo
-    if (file) await procesarArchivo(file)
-  }
-
-  // Soltar un archivo sobre la zona de carga.
-  const onDrop = (e) => {
-    e.preventDefault(); setArrastrando(false)
-    const file = e.dataTransfer?.files?.[0]
-    if (!file) return
-    if (!/\.xlsx?$/i.test(file.name || '')) { setError('Arrastra un archivo .xls o .xlsx de la cartola.'); return }
-    procesarArchivo(file)
   }
 
   const guardar = async () => {
@@ -195,22 +179,15 @@ export default function BancoInternacionalPage() {
           </div>
         </div>
 
-        {/* ZONA DE CARGA (clic o arrastrar) */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); if (!arrastrando) setArrastrando(true) }}
-          onDragLeave={(e) => { e.preventDefault(); setArrastrando(false) }}
-          onDrop={onDrop}
-          style={{ border: `${arrastrando ? '2px' : '1px'} dashed ${arrastrando ? '#1D9E75' : '#B4B2A9'}`, borderRadius: 10, padding: isMobile ? 16 : 22, background: arrastrando ? '#E1F5EE' : '#fff', textAlign: 'center', transition: 'background .12s' }}>
-          <div style={{ fontSize: 13, color: arrastrando ? '#085041' : '#5F5E5A', marginBottom: 10, fontWeight: arrastrando ? 600 : 400 }}>
-            {arrastrando
-              ? 'Suelta aquí la cartola (.xls / .xlsx)'
-              : 'Sube la cartola descargada del Banco Internacional (.xls / .xlsx)'}
+        {/* ZONA DE CARGA */}
+        <div style={{ border: '1px dashed #B4B2A9', borderRadius: 10, padding: isMobile ? 16 : 22, background: '#fff', textAlign: 'center' }}>
+          <div style={{ fontSize: 13, color: '#5F5E5A', marginBottom: 10 }}>
+            Sube la cartola descargada del Banco Internacional (.xls / .xlsx)
           </div>
           <label style={{ display: 'inline-block', fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             Seleccionar archivo
             <input type="file" accept=".xls,.xlsx" onChange={onFile} style={{ display: 'none' }} />
           </label>
-          <div style={{ fontSize: 12, color: '#888780', marginTop: 8 }}>o arrastra la cartola aquí</div>
           {nombreArchivo && <div style={{ fontSize: 12, color: '#888780', marginTop: 8 }}>{nombreArchivo}</div>}
         </div>
 
