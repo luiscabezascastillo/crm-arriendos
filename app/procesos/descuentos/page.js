@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v11 · 2026-08-01 · Botón "Crear devolución de garantía" en la ficha de un descuento T-: si el contrato tiene
+//   garantía en poder del DUEÑO, abre el formulario de alta YA RELLENO (PROPIETARIO, sucesor, monto=-garantía, tipo
+//   GARANTIAS, mes de liquidación en curso, texto estándar). Solo prerellena; el num y el guardado los hace el servidor.
 // VERSION: v10 · 2026-08-01 · La columna N (num) queda FIJA (sticky) a la izquierda: se sigue viendo al hacer scroll horizontal.
 // VERSION: v9 · 2026-08-01 · Celdas con DATOS corregidos (accion='corregir') se resaltan en BEIGE, en la lista y en la
 //   ficha (modo ver). Solo campos de datos (importes, IDADMON, mes, tipo…); comentarios/textos NO. Fuente: descuentos_bitacora.
@@ -128,6 +131,18 @@ function fmtFecha(s) {
 // Meses para el dropdown: el actual + los 5 siguientes, en formato "JULIO 2026".
 const MESES_NOM = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
   'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
+// Texto estándar de la carta para una devolución de garantía (>=45 chars que exige el endpoint).
+const TEXTO_DEVOL_GARANTIA = 'Descuento de la garantía en poder del Dueño para realizar el Término';
+// Mes de liquidación en curso (regla del día 23: día>=23 -> mes siguiente). Devuelve "AGOSTO 2026".
+function mesLiquidacionEnCurso() {
+  const h = new Date();
+  let mm = h.getMonth(), yy = h.getFullYear();
+  if (h.getDate() >= 23) { mm += 1; if (mm > 11) { mm = 0; yy += 1; } }
+  return `${MESES_NOM[mm]} ${yy}`;
+}
+// ¿es un descuento de término (T-...)?
+const esTerminoRep = (rep) => /^T-/i.test(String(rep || '').trim());
 function opcionesMes() {
   const hoy = new Date();
   const out = [];
@@ -328,6 +343,7 @@ export default function DescuentosPage() {
 
   // -------------------- ALTA --------------------
   const [showForm, setShowForm] = useState(false);
+  const [prefill, setPrefill] = useState(null);   // datos para prerellenar el alta (p.ej. devolución de garantía)
 
   // -------------------- FICHA (drawer) --------------------
   const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
@@ -392,7 +408,7 @@ export default function DescuentosPage() {
 
         <div style={{ display: 'flex', gap: 8 }}>
           {caps.crear && (
-            <button onClick={() => setShowForm((v) => !v)} style={btn(C.verde)}>
+            <button onClick={() => { setPrefill(null); setShowForm((v) => !v); }} style={btn(C.verde)}>
               {showForm ? 'Cerrar formulario' : '+ Añadir descuento'}
             </button>
           )}
@@ -421,7 +437,7 @@ export default function DescuentosPage() {
       {error && <div style={{ color: C.rojo, marginBottom: 10 }}>{error}</div>}
 
       {showForm && caps.crear && (
-        <FormAlta onCreado={() => { setShowForm(false); cargar(); }} />
+        <FormAlta inicial={prefill} onCreado={() => { setShowForm(false); setPrefill(null); cargar(); }} />
       )}
 
       {loading ? (
@@ -535,6 +551,7 @@ export default function DescuentosPage() {
           caps={caps}
           onClose={() => setDescSel(null)}
           onGuardado={async () => { await cargar(); }}
+          onCrearGarantia={(datos) => { setPrefill(datos); setDescSel(null); setShowForm(true); if (scrollRef.current) scrollRef.current.scrollIntoView?.({ behavior: 'smooth' }); }}
         />
       )}
       </div>
@@ -700,7 +717,7 @@ function Bitacora({ rows, loading, creado }) {
 }
 
 // ---------- FICHA DEL DESCUENTO (drawer lateral: ver / editar) ----------
-function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
+function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia }) {
   const [row, setRow] = useState(descuento);
   const [modo, setModo] = useState('ver');
   const [buf, setBuf] = useState({});
@@ -711,6 +728,36 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
   const [sucesor, setSucesor] = useState('');           // sucesor del inmueble (P/S/SQ) para sugerir ID relacionado
   const [sucesorMult, setSucesorMult] = useState(false);
   const [estadoId, setEstadoId] = useState('');         // estado del IDADMON principal (badge informativo en edición)
+  const [garInfo, setGarInfo] = useState(null);         // info de garantía del contrato (para el botón de devolución)
+
+  // Si el descuento es un T-... consulta la garantía del contrato (para ofrecer crear su devolución).
+  useEffect(() => {
+    if (!esTerminoRep(row.repercutir_a)) { setGarInfo(null); return; }
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/descuentos/garantia-info?idadmon=${encodeURIComponent(row.idadmon || '')}`, { cache: 'no-store' });
+        const j = await r.json();
+        if (vivo) setGarInfo(j && j.encontrado ? j : null);
+      } catch { if (vivo) setGarInfo(null); }
+    })();
+    return () => { vivo = false; };
+  }, [row.idadmon, row.repercutir_a]);
+
+  function lanzarDevolucionGarantia() {
+    if (!garInfo) return;
+    onCrearGarantia && onCrearGarantia({
+      idadmon: garInfo.sucesor || '',                    // principal = sucesor (si es único); si no, se rellena a mano
+      inmueble: garInfo.inmueble || row.inmueble || '',
+      propietario: garInfo.propietario || row.propietario || '',
+      repercutir_a: 'PROPIETARIO',
+      tipo: 'GARANTIAS',
+      monto_a_imputar: String(-Math.abs(garInfo.garantia || 0)),   // negativo = nos devuelve
+      mes_a_imputar: mesLiquidacionEnCurso(),
+      idadmon_relacionado: row.idadmon || '',            // referencia: el contrato terminado
+      texto_explicativo_para_carta_a_propietario: TEXTO_DEVOL_GARANTIA,
+    });
+  }
 
   useEffect(() => {
     let vivo = true;
@@ -830,6 +877,13 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
               <button disabled={saving} onClick={guardar} style={btn(C.verde)}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
               <button disabled={saving} onClick={() => { setModo('ver'); setErr(''); }} style={btn(C.gris)}>Cancelar</button>
             </>
+          )}
+          {modo === 'ver' && caps.crear && garInfo && garInfo.es_dueno && garInfo.garantia > 0 && (
+            <button onClick={lanzarDevolucionGarantia}
+              title={`Crear el descuento de devolución de la garantía (${garInfo.garantia.toLocaleString('es-CL')}) que tiene el DUEÑO. Se abre el alta ya rellena.`}
+              style={{ ...btn('#8a6d0a'), background: '#FBEFC7', color: '#8a6d0a', border: '1px solid #e6d38a' }}>
+              ➕ Devolución de garantía (−{garInfo.garantia.toLocaleString('es-CL')})
+            </button>
           )}
           {err && <span style={{ color: C.rojo, fontSize: 12 }}>{err}</span>}
         </div>
@@ -984,12 +1038,13 @@ function editorCampo(cfg, val, onChange) {
 // ¿el texto parece un enlace? (validación ligera, no bloqueante)
 const pareceURL = (s) => /^https?:\/\//i.test(String(s || '').trim());
 
-function FormAlta({ onCreado }) {
+function FormAlta({ onCreado, inicial }) {
   const [f, setF] = useState({
     mes_a_imputar: '', idadmon: '', inmueble: '', propietario: '',
     repercutir_a: 'PROPIETARIO', tipo: '', monto_a_imputar: '', monto_a_transferir: '',
     relacionado: '', link_admon: '', factura_boleta: 'NO', idadmon_relacionado: '',
     texto_explicativo_para_carta_a_propietario: '', aclaracion: '',
+    ...(inicial || {}),
   });
   const [estado, setEstado] = useState('');
   const [saving, setSaving] = useState(false);
