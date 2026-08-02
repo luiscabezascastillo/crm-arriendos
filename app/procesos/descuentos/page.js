@@ -1,4 +1,10 @@
 'use client';
+// VERSION: v6 · 2026-08-01 · CANDADO: no deja guardar un descuento imputado a PROPIETARIO si su IDADMON está
+//   en Q/N/N-DICOM (terminado) para meses AGOSTO 2026 en adelante (no entraría en la liquidación). Avisa y pide
+//   usar el IDADMON del contrato vigente (sucesor P/S/SQ). Mantiene: fila resaltada + sugerencia del sucesor (v5).
+// VERSION: v5 · 2026-08-01 · (a) La fila abierta en el drawer queda RESALTADA (blanca sobre gris) para no perderla.
+//   (b) En el drawer de edición, "IDADMON relacionado" muestra la SUGERENCIA del sucesor del inmueble (P/S/SQ),
+//   clicable, cuando el campo está vacío (para cualquier descuento, p.ej. TERMINO imputado a PROPIETARIO).
 // VERSION: v4 · 2026-07-17 · (a) Autorelleno de "IDADMON relacionado" con el sucesor en términos T-.
 //   (b) Aviso de confirmación al guardar (revisar datos + monto a transferir; no editable después).
 //   (c) Al imputar a ARRENDATARIO, selector obligatorio CARGO/ABONO que fija el signo del monto
@@ -128,11 +134,44 @@ function opcionesMes() {
 // Cuántas filas mostrar por defecto (las más recientes)
 const TOPE_DEFECTO = 100;
 
-const C = {
-  azul: '#1f4e79', azulClaro: '#dbe5f1', borde: '#c9d3e0',
+const C = {  azul: '#1f4e79', azulClaro: '#dbe5f1', borde: '#c9d3e0',
   verde: '#2e7d32', rojo: '#c62828', ambar: '#b8860b', gris: '#6b7280',
   fondo: '#f4f7fb',
 };
+
+// ── Candado "imputar a PROPIETARIO" (regla desde AGOSTO 2026) ──
+const MES_NUM = {
+  ENERO: 1, FEBRERO: 2, MARZO: 3, ABRIL: 4, MAYO: 5, JUNIO: 6, JULIO: 7,
+  AGOSTO: 8, SEPTIEMBRE: 9, SETIEMBRE: 9, OCTUBRE: 10, NOVIEMBRE: 11, DICIEMBRE: 12,
+};
+// ¿mes_a_imputar es AGOSTO 2026 o posterior? (los "----MES" anulados NO cuentan)
+function mesDesdeAgosto2026(mesTexto) {
+  const t = String(mesTexto || '').trim();
+  if (t.startsWith('-')) return false;                 // anulado (herencia VBA)
+  const m = t.toUpperCase().match(/([A-ZÑ]+)\s+(\d{4})/);
+  if (!m) return false;
+  const mm = MES_NUM[m[1]];
+  const anio = parseInt(m[2], 10);
+  if (!mm || !anio) return false;
+  return anio > 2026 || (anio === 2026 && mm >= 8);
+}
+// Devuelve un mensaje de bloqueo si el IDADMON no es imputable a PROPIETARIO (Q/N/N-DICOM), o '' si está bien.
+async function motivoNoImputableAPropietario(idadmon) {
+  const id = String(idadmon || '').trim();
+  if (!id) return '';
+  try {
+    const r = await fetch(`/api/descuentos/lookup-idadmon?idadmon=${encodeURIComponent(id)}`);
+    const j = await r.json();
+    const est = String(j.estado || '').trim().toUpperCase();
+    if (['Q', 'N', 'N-DICOM'].includes(est)) {
+      const suc = j.sucesor ? ` El contrato vigente del inmueble es ${j.sucesor} — usa ese IDADMON.` : '';
+      return `No se puede imputar a PROPIETARIO: el IDADMON ${id} está en estado ${est} (terminado), ` +
+             `así que este descuento NO entraría en la liquidación. Cambia el IDADMON al del contrato vigente (P/S/SQ).${suc}`;
+    }
+  } catch { /* si no se puede verificar, no bloqueamos aquí (lo cubre el servidor) */ }
+  return '';
+}
+
 
 export default function DescuentosPage() {
   const [caps, setCaps] = useState({ crear: false, corregir: false, verificar: false });
@@ -418,15 +457,21 @@ export default function DescuentosPage() {
               </tr>
             </thead>
             <tbody>
-              {visibles.map((r) => (
+              {visibles.map((r) => {
+                const activo = descSel && descSel.id === r.id;
+                return (
                 <tr key={r.id}
                   onMouseEnter={() => setHoverId(r.id)}
                   onMouseLeave={() => setHoverId((h) => (h === r.id ? null : h))}
                   title="Pincha para ver / editar la ficha"
                   style={{
-                    background: hoverId === r.id ? '#dbe9fb' : (r.verificado ? '#f1f8f1' : '#fff'),
+                    background: hoverId === r.id ? '#dbe9fb'
+                      : activo ? '#ffffff'
+                      : (r.verificado ? '#f1f8f1' : '#F1F1EE'),
                     cursor: 'pointer',
-                    boxShadow: hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
+                    fontWeight: activo ? 600 : 'normal',
+                    boxShadow: activo ? 'inset 4px 0 0 ' + C.ambar
+                      : hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
                   }}>
                   {COLS.map((c) => (
                     <td key={c.key}
@@ -436,7 +481,8 @@ export default function DescuentosPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
               {visibles.length === 0 && (
                 <tr><td colSpan={COLS.length} style={{ ...td(), textAlign: 'center', color: C.gris, padding: 20 }}>
                   No hay registros con los filtros actuales.
@@ -643,6 +689,8 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
   const [err, setErr] = useState('');
   const [bitaRows, setBitaRows] = useState([]);
   const [bitaLoad, setBitaLoad] = useState(true);
+  const [sucesor, setSucesor] = useState('');           // sucesor del inmueble (P/S/SQ) para sugerir ID relacionado
+  const [sucesorMult, setSucesorMult] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -658,10 +706,17 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
     return () => { vivo = false; };
   }, [row.id]);
 
-  function entrarEdicion() {
+  async function entrarEdicion() {
     const b = {};
     EDIT_CAMPOS.forEach(({ k }) => { b[k] = row[k] ?? ''; });
     setBuf(b); setErr(''); setModo('editar');
+    // Buscar el sucesor del inmueble (P/S/SQ) para sugerir "IDADMON relacionado".
+    setSucesor(''); setSucesorMult(false);
+    try {
+      const r = await fetch(`/api/descuentos/lookup-idadmon?idadmon=${encodeURIComponent(row.idadmon || '')}`);
+      const j = await r.json();
+      if (j.encontrado) { setSucesor(j.sucesor || ''); setSucesorMult(!!j.sucesor_multiple); }
+    } catch { /* si falla, simplemente no se sugiere */ }
   }
 
   async function recargarBitacora() {
@@ -677,6 +732,13 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
     const txt = String(buf.texto_explicativo_para_carta_a_propietario ?? '').trim();
     if (txt !== '' && txt.length < 15) {
       setErr('El texto para liquidación debe tener al menos 15 caracteres.'); return;
+    }
+    // CANDADO: imputar a PROPIETARIO exige IDADMON vigente (no Q/N/N-DICOM), de AGOSTO 2026 en adelante.
+    const repFinal = String(buf.repercutir_a ?? row.repercutir_a ?? '').trim().toUpperCase();
+    const mesFinal = buf.mes_a_imputar ?? row.mes_a_imputar;
+    if (repFinal === 'PROPIETARIO' && mesDesdeAgosto2026(mesFinal)) {
+      const bloqueo = await motivoNoImputableAPropietario(buf.idadmon ?? row.idadmon);
+      if (bloqueo) { setErr(bloqueo); return; }
     }
     const cambios = {};
     EDIT_CAMPOS.forEach(({ k }) => {
@@ -776,6 +838,29 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
                       <Campo label={LABELS[cfg.k] || cfg.k}>
                         {editorCampo(cfg, buf[cfg.k] ?? '', (val) => setBuf((b) => ({ ...b, [cfg.k]: val })))}
                       </Campo>
+                      {cfg.k === 'idadmon_relacionado' && (() => {
+                        const actual = String(buf.idadmon_relacionado ?? '').trim().toUpperCase();
+                        if (sucesor && !actual) {
+                          return (
+                            <div style={{ fontSize: 11, marginTop: 4, color: C.gris }}>
+                              Sugerencia:{' '}
+                              <button type="button"
+                                onClick={() => setBuf((b) => ({ ...b, idadmon_relacionado: sucesor }))}
+                                style={{ border: 'none', background: C.azulClaro || '#dbe5f1', color: C.azul, fontWeight: 700, borderRadius: 5, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11 }}>
+                                {sucesor} — usar
+                              </button>
+                              <span> · siguiente del inmueble en P/S/SQ</span>
+                            </div>
+                          );
+                        }
+                        if (sucesorMult && !actual) {
+                          return <div style={{ fontSize: 11, marginTop: 4, color: C.ambar }}>Hay varios contratos activos en el inmueble: escribe a mano el del nuevo ciclo.</div>;
+                        }
+                        if (sucesor && actual && actual === sucesor.toUpperCase()) {
+                          return <div style={{ fontSize: 11, marginTop: 4, color: C.verde }}>✓ Coincide con el sucesor del inmueble.</div>;
+                        }
+                        return null;
+                      })()}
                     </div>
                   );
                 })}
@@ -905,6 +990,11 @@ function FormAlta({ onCreado }) {
     if (textoLen < 15) { setErr('El texto para liquidación debe tener al menos 15 caracteres.'); return; }
     if (esArrendatario(f.repercutir_a) && !cargoAbono) {
       setErr('Al imputar a ARRENDATARIO, indica si es CARGO (se le cobra) o ABONO (a su favor).'); return;
+    }
+    // CANDADO: imputar a PROPIETARIO exige IDADMON vigente (no Q/N/N-DICOM), de AGOSTO 2026 en adelante.
+    if (String(f.repercutir_a || '').trim().toUpperCase() === 'PROPIETARIO' && mesDesdeAgosto2026(f.mes_a_imputar)) {
+      const bloqueo = await motivoNoImputableAPropietario(f.idadmon);
+      if (bloqueo) { setErr(bloqueo); return; }
     }
     // Aviso de confirmación: recuerda revisar antes de guardar (no se puede editar después)
     const falta = [];
