@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v12 · 2026-08-01 · (a) Se cargan TODOS los descuentos (el endpoint pagina): el buscador por Núm y los filtros
+//   operan sobre el total, no sobre 1000. (b) La cabecera de la página ya no queda tapada por el TopNav.
 // VERSION: v11 · 2026-08-01 · Botón "Crear devolución de garantía" en la ficha de un descuento T-: si el contrato tiene
 //   garantía en poder del DUEÑO, abre el formulario de alta YA RELLENO (PROPIETARIO, sucesor, monto=-garantía, tipo
 //   GARANTIAS, mes de liquidación en curso, texto estándar). Solo prerellena; el num y el guardado los hace el servidor.
@@ -369,7 +371,7 @@ export default function DescuentosPage() {
     if (!n) return;
     const row = rows.find((r) => String(r.num) === n);
     if (row) setDescSel(row);
-    else alert(`El Núm ${n} no está en la lista cargada. Pulsa "Ver todos (1000)" y reintenta.`);
+    else alert(`El Núm ${n} no existe en la lista de descuentos.`);
   }
 
   async function toggleVerificado(r) {
@@ -387,7 +389,7 @@ export default function DescuentosPage() {
   return (
     <>
       <TopNav />
-      <div style={{ padding: 20, background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ padding: '72px 20px 20px', background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <h1 style={{ color: C.azul, margin: 0, fontSize: 24 }}>Descuentos</h1>
 
