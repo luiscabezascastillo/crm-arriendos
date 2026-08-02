@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v8 · 2026-08-01 · El aviso "no válido para PROPIETARIO" del badge ahora NOMBRA el sucesor sugerido y es
+//   clicable: al pulsarlo, cambia el IDADMON al sucesor (P/S/SQ) de un golpe.
 // VERSION: v7 · 2026-08-01 · En edición, junto al IDADMON se muestra su ESTADO (no editable, badge de color, en vivo):
 //   verde si es válido (P/S/SQ), rojo si está terminado (Q/N/N-DICOM). Ayuda a ver de un vistazo si el IDADMON sirve.
 // VERSION: v6 · 2026-08-01 · CANDADO: no deja guardar un descuento imputado a PROPIETARIO si su IDADMON está
@@ -870,7 +872,18 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
                             <span style={{ background: bg, color: fg, border: '1px solid ' + brd, borderRadius: 5, padding: '1px 8px', fontWeight: 700 }}>
                               {noEnc ? 'no encontrado' : est}{vigente ? ' · vigente' : terminado ? ' · terminado' : ''}
                             </span>
-                            {terminado && esProp && <span style={{ color: C.rojo, fontWeight: 600 }}>no válido para PROPIETARIO — usa el sucesor</span>}
+                            {terminado && esProp && (
+                              sucesor
+                                ? <span style={{ color: C.rojo, fontWeight: 600 }}>
+                                    no válido para PROPIETARIO — usa{' '}
+                                    <button type="button"
+                                      onClick={() => setBuf((b) => ({ ...b, idadmon: sucesor }))}
+                                      style={{ border: 'none', background: '#e6f4ea', color: C.verde, fontWeight: 700, borderRadius: 5, padding: '1px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11 }}>
+                                      {sucesor}
+                                    </button>
+                                  </span>
+                                : <span style={{ color: C.rojo, fontWeight: 600 }}>no válido para PROPIETARIO — usa el sucesor vigente (P/S/SQ)</span>
+                            )}
                           </div>
                         );
                       })()}
