@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v7 · 2026-08-01 · En edición, junto al IDADMON se muestra su ESTADO (no editable, badge de color, en vivo):
+//   verde si es válido (P/S/SQ), rojo si está terminado (Q/N/N-DICOM). Ayuda a ver de un vistazo si el IDADMON sirve.
 // VERSION: v6 · 2026-08-01 · CANDADO: no deja guardar un descuento imputado a PROPIETARIO si su IDADMON está
 //   en Q/N/N-DICOM (terminado) para meses AGOSTO 2026 en adelante (no entraría en la liquidación). Avisa y pide
 //   usar el IDADMON del contrato vigente (sucesor P/S/SQ). Mantiene: fila resaltada + sugerencia del sucesor (v5).
@@ -691,6 +693,7 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
   const [bitaLoad, setBitaLoad] = useState(true);
   const [sucesor, setSucesor] = useState('');           // sucesor del inmueble (P/S/SQ) para sugerir ID relacionado
   const [sucesorMult, setSucesorMult] = useState(false);
+  const [estadoId, setEstadoId] = useState('');         // estado del IDADMON principal (badge informativo en edición)
 
   useEffect(() => {
     let vivo = true;
@@ -706,18 +709,32 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
     return () => { vivo = false; };
   }, [row.id]);
 
-  async function entrarEdicion() {
+  function entrarEdicion() {
     const b = {};
     EDIT_CAMPOS.forEach(({ k }) => { b[k] = row[k] ?? ''; });
     setBuf(b); setErr(''); setModo('editar');
-    // Buscar el sucesor del inmueble (P/S/SQ) para sugerir "IDADMON relacionado".
-    setSucesor(''); setSucesorMult(false);
-    try {
-      const r = await fetch(`/api/descuentos/lookup-idadmon?idadmon=${encodeURIComponent(row.idadmon || '')}`);
-      const j = await r.json();
-      if (j.encontrado) { setSucesor(j.sucesor || ''); setSucesorMult(!!j.sucesor_multiple); }
-    } catch { /* si falla, simplemente no se sugiere */ }
+    setSucesor(''); setSucesorMult(''); setEstadoId('');
   }
+
+  // En edición, consulta en vivo el estado y el sucesor del IDADMON del buffer (se actualiza al cambiarlo).
+  useEffect(() => {
+    if (modo !== 'editar') return;
+    const id = String(buf.idadmon || '').trim().toUpperCase();
+    if (!/^A\d{5}$/.test(id)) { setEstadoId(''); setSucesor(''); setSucesorMult(false); return; }
+    let vivo = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/descuentos/lookup-idadmon?idadmon=${encodeURIComponent(id)}`);
+        const j = await r.json();
+        if (!vivo) return;
+        if (j.encontrado) {
+          setEstadoId(String(j.estado || '').trim().toUpperCase());
+          setSucesor(j.sucesor || ''); setSucesorMult(!!j.sucesor_multiple);
+        } else { setEstadoId('NO ENCONTRADO'); setSucesor(''); setSucesorMult(false); }
+      } catch { if (vivo) setEstadoId(''); }
+    }, 350);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [buf.idadmon, modo]);
 
   async function recargarBitacora() {
     try {
@@ -838,6 +855,25 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
                       <Campo label={LABELS[cfg.k] || cfg.k}>
                         {editorCampo(cfg, buf[cfg.k] ?? '', (val) => setBuf((b) => ({ ...b, [cfg.k]: val })))}
                       </Campo>
+                      {cfg.k === 'idadmon' && estadoId && (() => {
+                        const est = estadoId;
+                        const terminado = ['Q', 'N', 'N-DICOM'].includes(est);
+                        const vigente = ['P', 'S', 'SQ'].includes(est);
+                        const noEnc = est === 'NO ENCONTRADO';
+                        const bg = terminado ? '#fde8e8' : vigente ? '#e6f4ea' : '#f3f4f6';
+                        const fg = terminado ? C.rojo : vigente ? C.verde : C.gris;
+                        const brd = terminado ? '#f0b4b4' : vigente ? '#a8d5b5' : C.borde;
+                        const esProp = String(buf.repercutir_a ?? '').trim().toUpperCase() === 'PROPIETARIO';
+                        return (
+                          <div style={{ marginTop: 4, fontSize: 11, color: C.gris, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span>Estado:</span>
+                            <span style={{ background: bg, color: fg, border: '1px solid ' + brd, borderRadius: 5, padding: '1px 8px', fontWeight: 700 }}>
+                              {noEnc ? 'no encontrado' : est}{vigente ? ' · vigente' : terminado ? ' · terminado' : ''}
+                            </span>
+                            {terminado && esProp && <span style={{ color: C.rojo, fontWeight: 600 }}>no válido para PROPIETARIO — usa el sucesor</span>}
+                          </div>
+                        );
+                      })()}
                       {cfg.k === 'idadmon_relacionado' && (() => {
                         const actual = String(buf.idadmon_relacionado ?? '').trim().toUpperCase();
                         if (sucesor && !actual) {
