@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v9 · 2026-08-01 · Celdas con DATOS corregidos (accion='corregir') se resaltan en BEIGE, en la lista y en la
+//   ficha (modo ver). Solo campos de datos (importes, IDADMON, mes, tipo…); comentarios/textos NO. Fuente: descuentos_bitacora.
 // VERSION: v8 · 2026-08-01 · El aviso "no válido para PROPIETARIO" del badge ahora NOMBRA el sucesor sugerido y es
 //   clicable: al pulsarlo, cambia el IDADMON al sucesor (P/S/SQ) de un golpe.
 // VERSION: v7 · 2026-08-01 · En edición, junto al IDADMON se muestra su ESTADO (no editable, badge de color, en vivo):
@@ -142,6 +144,8 @@ const C = {  azul: '#1f4e79', azulClaro: '#dbe5f1', borde: '#c9d3e0',
   verde: '#2e7d32', rojo: '#c62828', ambar: '#b8860b', gris: '#6b7280',
   fondo: '#f4f7fb',
 };
+const BEIGE = '#FBEFC7';          // resaltado de celda con dato corregido
+const BEIGE_TXT = '#8a6d0a';      // texto del "· corregido"
 
 // ── Candado "imputar a PROPIETARIO" (regla desde AGOSTO 2026) ──
 const MES_NUM = {
@@ -409,6 +413,8 @@ export default function DescuentosPage() {
             : 'Solo lectura.'}
         {' · '}
         <span style={{ color: C.azul, fontWeight: 600 }}>Pincha en cualquier fila para abrir su ficha (ver{caps.corregir ? ' / editar' : ''}).</span>
+        {' · '}
+        <span style={{ background: BEIGE, color: BEIGE_TXT, fontWeight: 600, borderRadius: 4, padding: '0 6px' }}>celda beige = dato corregido</span>
       </div>
 
       {error && <div style={{ color: C.rojo, marginBottom: 10 }}>{error}</div>}
@@ -477,13 +483,17 @@ export default function DescuentosPage() {
                     boxShadow: activo ? 'inset 4px 0 0 ' + C.ambar
                       : hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
                   }}>
-                  {COLS.map((c) => (
+                  {COLS.map((c) => {
+                    const corregida = Array.isArray(r.campos_corregidos) && r.campos_corregidos.includes(c.key);
+                    return (
                     <td key={c.key}
                       onClick={() => setDescSel(r)}
-                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer' }}>
+                      title={corregida ? 'Dato corregido' : undefined}
+                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer', ...(corregida ? { background: BEIGE } : {}) }}>
                       {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
                     </td>
-                  ))}
+                    );
+                  })}
                 </tr>
                 );
               })}
@@ -833,9 +843,10 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado }) {
                       const esEnlace = (k === 'relacionado' || k === 'link_admon');
                       const val = row[k];
                       const urlValida = esEnlace && /^https?:\/\//i.test(String(val || '').trim());
+                      const corregido = Array.isArray(row.campos_corregidos) && row.campos_corregidos.includes(k);
                       return (
-                        <div key={k} style={{ gridColumn: largo ? '1 / -1' : 'auto', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, color: C.gris }}>{LABELS[k] || k}</div>
+                        <div key={k} style={{ gridColumn: largo ? '1 / -1' : 'auto', minWidth: 0, background: corregido ? BEIGE : 'transparent', borderRadius: corregido ? 5 : 0, padding: corregido ? '3px 7px' : 0 }}>
+                          <div style={{ fontSize: 11, color: C.gris }}>{LABELS[k] || k}{corregido && <span style={{ color: BEIGE_TXT, fontWeight: 700 }}> · corregido</span>}</div>
                           {urlValida
                             ? <a href={String(val).trim()} target="_blank" rel="noopener noreferrer"
                                 style={{ fontSize: 13, color: C.azul, fontWeight: 600, textDecoration: 'none', wordBreak: 'break-all' }}>
