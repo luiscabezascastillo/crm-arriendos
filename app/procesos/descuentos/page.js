@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v13 · 2026-08-01 · Al buscar un descuento por Núm, su fila se centra en la lista (scroll) para ver el contexto
+//   de los descuentos vecinos. Si la fila no estaba entre las recientes, se muestran todas para poder centrarla.
 // VERSION: v12 · 2026-08-01 · (a) Se cargan TODOS los descuentos (el endpoint pagina): el buscador por Núm y los filtros
 //   operan sobre el total, no sobre 1000. (b) La cabecera de la página ya no queda tapada por el TopNav.
 // VERSION: v11 · 2026-08-01 · Botón "Crear devolución de garantía" en la ficha de un descuento T-: si el contrato tiene
@@ -232,6 +234,8 @@ export default function DescuentosPage() {
   const menuRef = useRef(null);
   const scrollRef = useRef(null);   // contenedor scrolleable de la tabla
   const ancladoRef = useRef(false); // para anclar al fondo solo una vez por carga
+  const rowRefs = useRef({});          // DOM de cada fila, por id, para centrar
+  const centrarPendiente = useRef(null); // id de la fila a centrar tras buscar por Núm
 
   useEffect(() => {
     function onDoc(e) {
@@ -351,6 +355,18 @@ export default function DescuentosPage() {
   const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
   const [hoverId, setHoverId] = useState(null);   // fila resaltada bajo el ratón
 
+  // Centrar en la lista la fila buscada por Núm (una vez renderizada).
+  useEffect(() => {
+    const id = centrarPendiente.current;
+    if (id == null) return;
+    const el = rowRefs.current[id];
+    if (el && el.scrollIntoView) {
+      ancladoRef.current = true;   // evita que el anclaje al fondo interfiera
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      centrarPendiente.current = null;
+    }
+  }, [descSel, visibles]);
+
   // -------------------- ANULAR / CAMBIAR por Núm (Dirección + Karina) --------------------
   async function anularNum() {
     const n = gestNum.trim().replace(/\D/g, '');
@@ -370,8 +386,13 @@ export default function DescuentosPage() {
     const n = gestNum.trim().replace(/\D/g, '');
     if (!n) return;
     const row = rows.find((r) => String(r.num) === n);
-    if (row) setDescSel(row);
-    else alert(`El Núm ${n} no existe en la lista de descuentos.`);
+    if (row) {
+      setDescSel(row);
+      centrarPendiente.current = row.id;
+      // si la fila no está entre las recientes visibles, mostrar todas para poder centrarla
+      const enVisibles = (verTodos || hayFiltroActivo) || filtradas.slice(-TOPE_DEFECTO).some((v) => v.id === row.id);
+      if (!enVisibles) setVerTodos(true);
+    } else alert(`El Núm ${n} no existe en la lista de descuentos.`);
   }
 
   async function toggleVerificado(r) {
@@ -490,6 +511,7 @@ export default function DescuentosPage() {
                 const activo = descSel && descSel.id === r.id;
                 return (
                 <tr key={r.id}
+                  ref={(el) => { if (el) rowRefs.current[r.id] = el; }}
                   onMouseEnter={() => setHoverId(r.id)}
                   onMouseLeave={() => setHoverId((h) => (h === r.id ? null : h))}
                   title="Pincha para ver / editar la ficha"
