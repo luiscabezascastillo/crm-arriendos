@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v14 · 2026-08-01 · CORRECCIÓN DE SIGNO: la devolución de garantía en poder del Dueño se crea con monto
+//   POSITIVO (positivo = se le descuenta al propietario, que es lo correcto al recuperarle la garantía). Antes iba
+//   en negativo (le sumaba) — error. Las creadas antes de este cambio hay que corregirlas a mano.
 // VERSION: v13 · 2026-08-01 · Al buscar un descuento por Núm, su fila se centra en la lista (scroll) para ver el contexto
 //   de los descuentos vecinos. Si la fila no estaba entre las recientes, se muestran todas para poder centrarla.
 // VERSION: v12 · 2026-08-01 · (a) Se cargan TODOS los descuentos (el endpoint pagina): el buscador por Núm y los filtros
@@ -776,7 +779,7 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
       propietario: garInfo.propietario || row.propietario || '',
       repercutir_a: 'PROPIETARIO',
       tipo: 'GARANTIAS',
-      monto_a_imputar: String(-Math.abs(garInfo.garantia || 0)),   // negativo = nos devuelve
+      monto_a_imputar: String(Math.abs(garInfo.garantia || 0)),   // POSITIVO = se le descuenta al propietario (recuperación)
       mes_a_imputar: mesLiquidacionEnCurso(),
       idadmon_relacionado: row.idadmon || '',            // referencia: el contrato terminado
       texto_explicativo_para_carta_a_propietario: TEXTO_DEVOL_GARANTIA,
@@ -906,7 +909,7 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
             <button onClick={lanzarDevolucionGarantia}
               title={`Crear el descuento de devolución de la garantía (${garInfo.garantia.toLocaleString('es-CL')}) que tiene el DUEÑO. Se abre el alta ya rellena.`}
               style={{ ...btn('#8a6d0a'), background: '#FBEFC7', color: '#8a6d0a', border: '1px solid #e6d38a' }}>
-              ➕ Devolución de garantía (−{garInfo.garantia.toLocaleString('es-CL')})
+              ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
             </button>
           )}
           {err && <span style={{ color: C.rojo, fontSize: 12 }}>{err}</span>}
