@@ -1,4 +1,5 @@
 'use client';
+// VERSION: v10 · 2026-08-01 · La columna N (num) queda FIJA (sticky) a la izquierda: se sigue viendo al hacer scroll horizontal.
 // VERSION: v9 · 2026-08-01 · Celdas con DATOS corregidos (accion='corregir') se resaltan en BEIGE, en la lista y en la
 //   ficha (modo ver). Solo campos de datos (importes, IDADMON, mes, tipo…); comentarios/textos NO. Fuente: descuentos_bitacora.
 // VERSION: v8 · 2026-08-01 · El aviso "no válido para PROPIETARIO" del badge ahora NOMBRA el sucesor sugerido y es
@@ -434,7 +435,7 @@ export default function DescuentosPage() {
             <thead>
               <tr>
                 {COLS.map((c, ci) => (
-                  <th key={c.key} style={{ ...th(), textAlign: c.align || 'left' }}>
+                  <th key={c.key} style={{ ...th(), textAlign: c.align || 'left', ...(ci === 0 ? { left: 0, zIndex: 12 } : {}) }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'space-between' }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
                       <button
@@ -483,13 +484,17 @@ export default function DescuentosPage() {
                     boxShadow: activo ? 'inset 4px 0 0 ' + C.ambar
                       : hoverId === r.id ? 'inset 3px 0 0 ' + C.azul : 'none',
                   }}>
-                  {COLS.map((c) => {
+                  {COLS.map((c, ci) => {
                     const corregida = Array.isArray(r.campos_corregidos) && r.campos_corregidos.includes(c.key);
+                    const fija = ci === 0;   // columna N: sticky a la izquierda
+                    const filaBg = hoverId === r.id ? '#dbe9fb' : (activo ? '#ffffff' : (r.verificado ? '#f1f8f1' : '#F1F1EE'));
                     return (
                     <td key={c.key}
                       onClick={() => setDescSel(r)}
                       title={corregida ? 'Dato corregido' : undefined}
-                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer', ...(corregida ? { background: BEIGE } : {}) }}>
+                      style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer',
+                        ...(corregida ? { background: BEIGE } : {}),
+                        ...(fija ? { position: 'sticky', left: 0, zIndex: 5, background: corregida ? BEIGE : filaBg } : {}) }}>
                       {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
                     </td>
                     );
