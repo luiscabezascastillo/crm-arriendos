@@ -1,6 +1,9 @@
+// VERSION: v2 · 2026-08-03 · Al crear un descuento imputado a FCR, se genera una alerta a Karina para que lo
+//   apruebe/rechace (un cargo a FCR requiere aprobación de Alberto). No rompe el alta si la alerta falla.
 // app/api/descuentos/crear/route.js
 import { sesionYCaps, registrarBitacora } from '@/lib/descuentosServer';
 import { nombreCorto, TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
+import { crearAlertaFcrSiHaceFalta } from '@/lib/descuentosAlertas';
 
 // MES A IMPUTAR "JULIO 2026" -> mmdd "2607" y fecha_contable "07/07/2026"
 const MESES = {
@@ -112,7 +115,13 @@ export async function POST(req) {
       campo: null, valor_anterior: null, valor_nuevo: null, usuario: email,
     }]);
 
-    return Response.json({ ok: true, row: ins });
+    // Si se imputa a FCR, avisar a Karina para que lo apruebe/rechace.
+    let alertaFcr = null;
+    if (repercutir === 'FCR') {
+      alertaFcr = await crearAlertaFcrSiHaceFalta(supa, { num: ins.num, idadmon });
+    }
+
+    return Response.json({ ok: true, row: ins, alertaFcr });
   } catch (e) {
     return Response.json({ error: e.error || 'Error' }, { status: e.status || 500 });
   }

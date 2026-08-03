@@ -1,6 +1,9 @@
+// VERSION: v2 · 2026-08-03 · Al corregir un descuento y quedar imputado a FCR, se genera una alerta a Karina
+//   para que lo apruebe/rechace. Anti-duplicado en el helper. No rompe la corrección si la alerta falla.
 // app/api/descuentos/corregir/route.js
 import { sesionYCaps, registrarBitacora } from '@/lib/descuentosServer';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
+import { crearAlertaFcrSiHaceFalta } from '@/lib/descuentosAlertas';
 
 // Campos que un corrector (Karina/Dirección) puede editar.
 // NO incluye creado_por/at ni el num original (trazabilidad intacta).
@@ -84,7 +87,13 @@ export async function POST(req) {
 
     await registrarBitacora(supa, filasBitacora);
 
-    return Response.json({ ok: true, row: upd });
+    // Si tras la corrección el descuento queda imputado a FCR, avisar a Karina.
+    let alertaFcr = null;
+    if (String(upd.repercutir_a || '').trim().toUpperCase() === 'FCR') {
+      alertaFcr = await crearAlertaFcrSiHaceFalta(supa, { num: upd.num, idadmon: upd.idadmon });
+    }
+
+    return Response.json({ ok: true, row: upd, alertaFcr });
   } catch (e) {
     return Response.json({ error: e.error || 'Error' }, { status: e.status || 500 });
   }
