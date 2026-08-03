@@ -1,7 +1,8 @@
+// VERSION: v2 · 2026-08-03 · Alertas de "Facturar inicio de contrato" (origen=factura_inicio): botón
+//   "Facturar corretaje" que abre un panel de confirmación (preview) para crear el descuento de corretaje
+//   al propietario, chequear/crear el cargo del arrendatario en cartola y generar el CSV SimpleFactura,
+//   y luego resolver la alerta. El resto de alertas siguen igual (Posponer / Resolver).
 // VERSION: v1 · 2026-07-28 · Pantalla propia de Alertas (/alertas) para Karina, Alberto y Luis.
-//   Tareas urgentes generadas por el CRM y fechas clave. Cada alerta se puede POSPONER (nueva
-//   fecha + motivo) o RESOLVER. Lee/escribe la tabla `alertas`, filtrada por para_email.
-//   El semáforo del botón del TopNav se calcula igual: rojo pendiente · ámbar pospuesta · verde.
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -23,6 +24,7 @@ const fmtFecha = (d) => {
   return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${x.getFullYear()}`
 }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
+const fmtPesos = (n) => '$' + Number(n || 0).toLocaleString('es-CL')
 
 export default function AlertasPage() {
   const { data: session, status } = useSession()
@@ -37,6 +39,15 @@ export default function AlertasPage() {
   const [posFecha, setPosFecha] = useState('')
   const [posMotivo, setPosMotivo] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  // --- Corretaje ---
+  const [corr, setCorr] = useState(null)         // alerta seleccionada para corretaje
+  const [corrData, setCorrData] = useState(null) // preview
+  const [corrLoad, setCorrLoad] = useState(false)
+  const [corrEjec, setCorrEjec] = useState(false)
+  const [crearCargoArr, setCrearCargoArr] = useState(false)
+  const [tipoArr, setTipoArr] = useState('39')
+  const [corrResultado, setCorrResultado] = useState(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -81,6 +92,64 @@ export default function AlertasPage() {
       .update({ estado: 'pendiente', resuelta_at: null, resuelta_por: null })
       .eq('id', a.id)
     if (!error) cargar()
+  }
+
+  // --- Corretaje: abrir panel + cargar preview ---
+  const esFacturaInicio = (a) => String(a.origen || '') === 'factura_inicio'
+  const abrirCorretaje = async (a) => {
+    setCorr(a); setCorrData(null); setCorrResultado(null); setCrearCargoArr(false); setCorrLoad(true)
+    try {
+      const r = await fetch(`/api/alertas/corretaje-preview?idadmon=${encodeURIComponent(a.ref_idadmon || '')}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (j.ok) {
+        setCorrData(j)
+        setTipoArr(j.arrendatario?.tipo_factura_sugerido || '39')
+        // sugerir crear cargo si el arrendatario aplica y NO existe en cartola
+        setCrearCargoArr(!!j.arrendatario?.aplica && !j.cargoArrendatario?.existe)
+      } else {
+        setCorrData({ error: j.error || 'Error al cargar' })
+      }
+    } catch (e) {
+      setCorrData({ error: String(e) })
+    }
+    setCorrLoad(false)
+  }
+  const cerrarCorretaje = () => { setCorr(null); setCorrData(null); setCorrResultado(null) }
+
+  const descargarCSV = (contenido, nombre) => {
+    if (!contenido) return
+    const blob = new Blob(['\ufeff' + contenido], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = nombre; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const ejecutarCorretaje = async () => {
+    if (!corr || !corrData || corrData.error || corrEjec) return
+    setCorrEjec(true)
+    try {
+      const r = await fetch('/api/alertas/corretaje-ejecutar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idadmon: corrData.idadmon,
+          alerta_id: corr.id,
+          crear_cargo_arrendatario: crearCargoArr,
+          tipo_arrendatario: tipoArr,
+        }),
+      })
+      const j = await r.json()
+      setCorrResultado(j)
+      if (j.ok) {
+        const mes = new Date().toISOString().slice(0, 7).replace('-', '')
+        if (j.csv?.facturas_csv) descargarCSV(j.csv.facturas_csv, `corretaje_facturas_33_${corrData.idadmon}.csv`)
+        if (j.csv?.boletas_csv) setTimeout(() => descargarCSV(j.csv.boletas_csv, `corretaje_boletas_39_${corrData.idadmon}.csv`), 700)
+        cargar()  // la alerta ya está resuelta
+      }
+    } catch (e) {
+      setCorrResultado({ error: String(e) })
+    }
+    setCorrEjec(false)
   }
 
   const visibles = alertas.filter(a => verResueltas ? true : a.estado !== 'resuelta')
@@ -134,6 +203,7 @@ export default function AlertasPage() {
                   const pospuesta = a.estado === 'pospuesta'
                   const objetivo = a.fecha_pospuesta || a.fecha_resolver
                   const vencida = objetivo && !resuelta && objetivo < hoyISO()
+                  const facturaInicio = esFacturaInicio(a)
                   return (
                     <tr key={a.id} style={{ opacity: resuelta ? 0.55 : 1 }}>
                       <td style={td}>
@@ -158,6 +228,10 @@ export default function AlertasPage() {
                           <button onClick={() => reabrir(a)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Reabrir</button>
                         ) : (
                           <span style={{ display: 'flex', gap: 6 }}>
+                            {facturaInicio && (
+                              <button onClick={() => abrirCorretaje(a)} title="Crear el descuento de corretaje, revisar el cargo del arrendatario y generar la facturación"
+                                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#6D28D9', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Facturar corretaje</button>
+                            )}
                             <button onClick={() => abrirPosponer(a)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: '#fff', color: '#0C447C', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Posponer</button>
                             <button onClick={() => resolver(a)} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Resolver</button>
                           </span>
@@ -178,16 +252,13 @@ export default function AlertasPage() {
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(480px, 100%)', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
             <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>Posponer alerta</div>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: '#2C2C2A' }}>{posponiendo.tema}</div>
-
             <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Nueva fecha para resolverla</label>
             <input type="date" value={posFecha} onChange={e => setPosFecha(e.target.value)}
               style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 14 }} />
-
             <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Motivo del aplazamiento</label>
             <textarea value={posMotivo} onChange={e => setPosMotivo(e.target.value)} rows={3}
               placeholder="Ej.: se retrasa la factura al mes siguiente para posponer el IVA"
               style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 18, resize: 'vertical' }} />
-
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setPosponiendo(null)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
@@ -196,6 +267,102 @@ export default function AlertasPage() {
                 {guardando ? 'Guardando…' : 'Posponer'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal CORRETAJE */}
+      {corr && (
+        <div onClick={cerrarCorretaje} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 24, width: 'min(640px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.28)' }}>
+            <div style={{ fontSize: 12, color: '#6D28D9', fontWeight: 700, marginBottom: 2 }}>FACTURAR CORRETAJE</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: '#2C2C2A' }}>{corr.tema}</div>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>{corr.ref_idadmon}</div>
+
+            {corrLoad && <div style={{ padding: 30, textAlign: 'center', color: '#999' }}>Cargando datos…</div>}
+            {corrData?.error && <div style={{ padding: 16, background: '#FEECEC', color: '#B23A3A', borderRadius: 8, fontSize: 13 }}>{corrData.error}</div>}
+
+            {corrData && !corrData.error && !corrResultado && (
+              <>
+                {/* BLOQUE 1: descuento propietario */}
+                <div style={{ border: '1px solid #E5E3DC', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', marginBottom: 6 }}>1 · Descuento al propietario</div>
+                  <div style={{ fontSize: 13, color: '#444' }}>{corrData.propietario.nombre} · <b>{fmtPesos(corrData.propietario.comision)}</b> (CORRETAJES, mes en curso)</div>
+                  {corrData.descuentoCorretaje.existe
+                    ? <div style={{ fontSize: 12, color: '#B23A3A', marginTop: 4 }}>⚠ Ya existe un descuento de corretaje (Nº {corrData.descuentoCorretaje.registros[0]?.num}); no se creará otro.</div>
+                    : <div style={{ fontSize: 12, color: '#0a7f4f', marginTop: 4 }}>Se creará el descuento y la factura/boleta del propietario lo lleva asociado.</div>}
+                </div>
+
+                {/* BLOQUE 2: cargo arrendatario */}
+                <div style={{ border: '1px solid #E5E3DC', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', marginBottom: 6 }}>2 · Cargo del arrendatario en cartola</div>
+                  {!corrData.arrendatario.aplica ? (
+                    <div style={{ fontSize: 12, color: '#888' }}>Este contrato no tiene comisión de arrendatario (0); no hay nada que cargar.</div>
+                  ) : corrData.cargoArrendatario.existe ? (
+                    <div style={{ fontSize: 13, color: '#0a7f4f' }}>✓ Ya registrado en cartola ({fmtPesos(corrData.cargoArrendatario.registros[0]?.cargo)}).</div>
+                  ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#444', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={crearCargoArr} onChange={e => setCrearCargoArr(e.target.checked)} />
+                      No encontrado — crear cargo COMISION de {fmtPesos(corrData.arrendatario.comision)} a {corrData.arrendatario.nombre}
+                    </label>
+                  )}
+                </div>
+
+                {/* BLOQUE 3: facturación */}
+                <div style={{ border: '1px solid #E5E3DC', borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', marginBottom: 8 }}>3 · Facturación (CSV SimpleFactura)</div>
+                  <div style={{ fontSize: 13, color: '#444', marginBottom: 8 }}>
+                    <b>Propietario:</b> tipo {corrData.propietario.tipo_factura === '33' ? 'FACTURA (33)' : 'BOLETA (39)'} · {fmtPesos(corrData.propietario.comision)}
+                    <span style={{ color: '#999' }}> (de propietarios)</span>
+                  </div>
+                  {corrData.arrendatario.aplica && (
+                    <div style={{ fontSize: 13, color: '#444', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <b>Arrendatario:</b>
+                      <select value={tipoArr} onChange={e => setTipoArr(e.target.value)}
+                        style={{ fontSize: 13, padding: '4px 8px', borderRadius: 6, border: '1px solid #D3D1C7', fontFamily: 'inherit' }}>
+                        <option value="39">BOLETA (39)</option>
+                        <option value="33">FACTURA (33)</option>
+                      </select>
+                      · {fmtPesos(corrData.arrendatario.comision)}
+                      <span style={{ fontSize: 11, color: '#999' }}>(sugerido; ajústalo si procede)</span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: '#a06d00', marginTop: 8, background: '#FEF6E7', borderRadius: 6, padding: '6px 8px' }}>
+                    Al facturar al arrendatario, verifica en cartolas que su cargo ya está registrado.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button onClick={cerrarCorretaje}
+                    style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+                  <button onClick={ejecutarCorretaje} disabled={corrEjec}
+                    style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', fontSize: 13, fontWeight: 700, cursor: corrEjec ? 'default' : 'pointer', fontFamily: 'inherit', opacity: corrEjec ? 0.6 : 1 }}>
+                    {corrEjec ? 'Procesando…' : 'Confirmar y ejecutar'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Resultado */}
+            {corrResultado && (
+              <div>
+                {corrResultado.error
+                  ? <div style={{ padding: 16, background: '#FEECEC', color: '#B23A3A', borderRadius: 8, fontSize: 13 }}>{corrResultado.error}</div>
+                  : (
+                    <div style={{ padding: 16, background: '#E9F8F0', borderRadius: 10, fontSize: 13, color: '#0a5c3b' }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>✓ Corretaje procesado</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {(corrResultado.avisos || []).map((m, i) => <li key={i} style={{ marginBottom: 4 }}>{m}</li>)}
+                      </ul>
+                      <div style={{ fontSize: 12, color: '#0a7f4f', marginTop: 8 }}>El/los CSV se han descargado. Súbelos a SimpleFactura.</div>
+                    </div>
+                  )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button onClick={cerrarCorretaje}
+                    style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#0C447C', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cerrar</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
