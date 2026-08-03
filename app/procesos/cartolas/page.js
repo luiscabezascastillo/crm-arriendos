@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v8 · 2026-08-03 · Tooltip (title) al pasar el ratón en Concepto, Comentarios, Justificantes,
+//   Propietario, Inmueble y updated_at, para ver el contenido completo cuando la celda lo trunca.
 // VERSION: v7 · 2026-07-28 · Cartola por IDADMON: editar el CARGO de los 5 movimientos
 //   más recientes (Dirección/Karina, incl. Término), con motivo obligatorio y auditoría. El valor va
 //   a cargo_manual (override; el original queda en `cargo` y sobrevive al re-volcado del LOG). Una
@@ -336,6 +338,16 @@ function TablaVista() {
     return {}
   }
 
+  // Columnas cuyo contenido se muestra completo en un tooltip al pasar el ratón.
+  const COLS_TOOLTIP = new Set(['concepto', 'comentarios', 'justificantes', 'propietario', 'inmueble', 'updated_at'])
+  const tooltipCelda = (r, c) => {
+    if (!COLS_TOOLTIP.has(c.key)) return undefined
+    let v = r[c.key]
+    if (v == null || v === '') return undefined
+    if (c.key === 'updated_at') { const d = String(v); return d.length >= 16 ? (d.slice(0, 10) + ' ' + d.slice(11, 16)) : d }
+    return String(v)
+  }
+
   const cell = (r, c) => {
     if (celdaEditable(r, c)) return (
       <input value={r[c.key] ?? ''} onChange={e => onLocal(r.id, c.key, e.target.value)}
@@ -447,7 +459,7 @@ function TablaVista() {
               {rows.map((r) => (
                 <tr key={r.id}>
                   {COLS.map((c, ci) => (
-                    <td key={ci} style={{ padding: celdaEditable(r, c) ? '2px 4px' : '5px 8px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
+                    <td key={ci} title={tooltipCelda(r, c)} style={{ padding: celdaEditable(r, c) ? '2px 4px' : '5px 8px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: bgCelda(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis' }}>
                       {cell(r, c)}
                     </td>
                   ))}
