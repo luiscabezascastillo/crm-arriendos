@@ -1,4 +1,7 @@
-// VERSION: v1 · 2026-08-03 · EJECUTA el corretaje de inicio desde la alerta, con lo confirmado en el panel:
+// VERSION: v2 · 2026-08-04 · FIX IVA: el CSV de SimpleFactura lleva el NETO (comision_d_base/comision_a_base),
+//   no el total. SimpleFactura AÑADE el IVA (IndicadorExento=0), así la factura queda en el total del LOG.
+//   Antes se pasaba el total (ya con IVA) y SimpleFactura lo volvía a multiplicar por 1.19. El descuento al
+//   propietario y el cargo al arrendatario siguen siendo el TOTAL con IVA.
 //   (1) crea el descuento de corretaje al PROPIETARIO (CORRETAJES, comision_d_total, mes en curso) —
 //   anti-duplicado; (2) si Karina lo marca, crea el cargo COMISION del arrendatario en cuentas
 //   (comision_a_total); (3) genera el/los CSV SimpleFactura (33 factura / 39 boleta) para propietario
@@ -88,12 +91,16 @@ export async function POST(req) {
 
   // --- Releer ficha (fuente de verdad para montos y datos) ---
   const { data: da, error: eDa } = await sb.from('datos_arriendos')
-    .select('idadmon, idprop, propietario, arrendatario, inmueble, rut, mail_arrendatario, comision_d_total, comision_a_total')
+    .select('idadmon, idprop, propietario, arrendatario, inmueble, rut, mail_arrendatario, comision_d_total, comision_a_total, comision_d_base, comision_a_base')
     .eq('idadmon', idadmon).maybeSingle()
   if (eDa || !da) return Response.json({ error: 'No se pudo leer datos_arriendos: ' + (eDa?.message || 'no existe') }, { status: 500 })
 
-  const comisionProp = n0(da.comision_d_total)
-  const comisionArr = n0(da.comision_a_total)
+  const comisionProp = n0(da.comision_d_total)   // TOTAL con IVA: para el descuento al propietario
+  const comisionArr = n0(da.comision_a_total)    // TOTAL con IVA: para el cargo en cartola
+  // NETO (sin IVA) para el CSV de SimpleFactura, que AÑADE el IVA (IndicadorExento=0).
+  // Si no hubiera base guardada, se deriva del total (/1.19) como respaldo.
+  const netoProp = n0(da.comision_d_base) || Math.round(comisionProp / 1.19)
+  const netoArr = n0(da.comision_a_base) || Math.round(comisionArr / 1.19)
 
   // ============ 1) DESCUENTO al propietario (CORRETAJES) ============
   if (comisionProp > 0) {
@@ -177,7 +184,7 @@ export async function POST(req) {
       id: tipoP === '33' ? ++idF : ++idB, tipo: tipoP,
       rut: p?.rut, razon: `${da.idprop}-${p?.propietario || da.propietario}`,
       correo: p?.mail1 || p?.email_2, direccion: p?.direccion,
-      monto: comisionProp, idadmon, inmueble: da.inmueble,
+      monto: netoProp, idadmon, inmueble: da.inmueble,   // NETO: SimpleFactura añade el IVA
     })
     if (tipoP === '33') filasFactura.push(linea); else filasBoleta.push(linea)
   }
@@ -187,7 +194,7 @@ export async function POST(req) {
     const linea = lineaReceptor({
       id: tipoA === '33' ? ++idF : ++idB, tipo: tipoA,
       rut: da.rut, razon: da.arrendatario, correo: da.mail_arrendatario,
-      direccion: da.inmueble, monto: comisionArr, idadmon, inmueble: da.inmueble,
+      direccion: da.inmueble, monto: netoArr, idadmon, inmueble: da.inmueble,   // NETO: SimpleFactura añade el IVA
     })
     if (tipoA === '33') filasFactura.push(linea); else filasBoleta.push(linea)
     resultado.avisos.push('Boleta/factura del arrendatario generada: verifica en cartolas que el cargo del arrendatario ya está registrado.')
