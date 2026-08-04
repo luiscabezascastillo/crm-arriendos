@@ -1,4 +1,4 @@
-// VERSION: v18 · 2026-07-28 · Compras: la fila que se está editando NO se oscurece.
+// VERSION: v20 · 2026-08-04 · Ficha de compra con 2 cuentas: Proveedores (2105-05, fija, no editable) y Cuenta gasto (sugerida por RUT, editable). Se quita la casilla Periodificación (es un proceso mensual agregado, no por compra).
 //   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
 //     encima del velo (queda con su color original) y lleva un realce verde a la izquierda.
 // VERSION: v17 · 2026-07-28 · Compras: tipo_doc normalizado a "código + sigla" única.
@@ -95,6 +95,16 @@ import CuentaSelector from '@/app/components/ui/CuentaSelector'
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
 const PAGADO_SUGERIDOS = ['SA', 'BI', 'TC SA']
+
+// Cuenta de proveedores: fija, contrapartida de toda factura de compra (no editable).
+const CUENTA_PROVEEDORES = '2105-05'
+const CUENTA_PROVEEDORES_DESC = '2105-05 PROVEEDORES'
+// Periodificación: cada CCB tiene su cuenta de costes acumulados 4301-xx (unívoca por descripción del plan).
+const CCB_A_PERIODIF = {
+  BB1: '4301-01', BB2: '4301-02', CC1: '4301-03', CC2: '4301-04', CC3: '4301-05', GG: '4301-10',
+}
+const periodifDeCcb = (ccb) => CCB_A_PERIODIF[String(ccb || '').trim().toUpperCase()] || null
+
 
 const clp = (n) => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const fmtFecha = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
@@ -624,7 +634,15 @@ const wantScroll = useRef(false)
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={{ fontSize: 12, color: '#888780' }}>CCB<input list="ccb-list-c" value={edit.ccb} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, ccb: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12, color: '#888780' }}>Pagado por<input list="pag-list-c" value={edit.pagado_por} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, pagado_por: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
-            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta
+
+            {/* 1 · Proveedores: fija, no editable (contrapartida de toda compra) */}
+            <label style={{ fontSize: 12, color: '#888780' }}>Proveedores
+              <input value={CUENTA_PROVEEDORES_DESC} disabled readOnly title="Contrapartida fija de toda factura de compra"
+                style={{ ...inp, marginTop: 4, background: '#F1F0EC', color: '#6b6b66', cursor: 'not-allowed' }} />
+            </label>
+
+            {/* 2 · Cuenta de gasto: sugerida por RUT, editable por Karina */}
+            <label style={{ fontSize: 12, color: '#888780' }}>Cuenta gasto
               <div style={{ marginTop: 4 }}>
                 <CuentaSelector
                   valor={edit.cuenta}
@@ -637,6 +655,7 @@ const wantScroll = useRef(false)
                 />
               </div>
             </label>
+
             <label style={{ fontSize: 12, color: '#888780' }}>Estado<input value={edit.estado} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, estado: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12, color: '#888780' }}>Glosa<input value={edit.glosa} disabled={!canEdit} onChange={e => setEdit(x => ({ ...x, glosa: e.target.value }))} style={{ ...inp, marginTop: 4 }} /></label>
             <datalist id="ccb-list-c">{CCB_SUGERIDOS.map(c => <option key={c} value={c} />)}</datalist>
