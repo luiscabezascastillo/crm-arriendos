@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v6 · 2026-08-04 · MARKUP por línea (patrón de Términos): en edición, Karina/Dirección ven y editan
+//   una columna "Markup %" por fila y el "Total cliente" (coste × (1+markup), default 20%). El coste original
+//   se conserva en base_imponible; el precio al cliente se calcula al vuelo con lineaConMarkup. Guarda markup_pct.
+//   PENDIENTE: vista cliente por defecto al abrir + lista con total markup + PDF profesional.
 // VERSION: v5 · 2026-07-31 · Nuevo motivo COTIZACIÓN: presupuesto para un inmueble que aún NO
 //   administramos (cliente potencial). No exige IDADMON. Se guarda con en_termino = null
 //   (true=término, false=incidencia, null=cotización). Ubicación y propietario a mano.
@@ -16,6 +20,8 @@ import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']   // ve/edita el markup, como Dirección
+const MARKUP_DEFAULT = 20
 
 // normaliza texto para buscar sin tildes ni mayusculas
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
@@ -37,7 +43,7 @@ const fmtFecha = s => {
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-// linea con totales recalculados
+// linea con totales recalculados (COSTE, sin markup). El markup se aplica en la presentación.
 function calcLinea(l) {
   const cant = Number(l.cantidad) || 0
   const cu = Number(l.coste_unit) || 0
@@ -45,7 +51,16 @@ function calcLinea(l) {
   const iva = Math.round(base * 0.19)
   return { ...l, base_imponible: base, iva, total: base + iva }
 }
-const LINEA_VACIA = { descripcion: '', cantidad: '', coste_unit: '', base_imponible: 0, iva: 0, total: 0 }
+// Precio de una línea CON markup aplicado (precio al cliente). Mismo patrón que Términos.
+// Si la línea no tiene markup_pct, usa MARKUP_DEFAULT.
+function lineaConMarkup(l) {
+  const base = Number(l.base_imponible) || 0
+  const mk = (l.markup_pct === '' || l.markup_pct == null) ? MARKUP_DEFAULT : (Number(l.markup_pct) || 0)
+  const baseMk = Math.round(base * (1 + mk / 100))
+  const ivaMk = Math.round(baseMk * 0.19)
+  return { base: baseMk, iva: ivaMk, total: baseMk + ivaMk, markup: mk }
+}
+const LINEA_VACIA = { descripcion: '', cantidad: '', coste_unit: '', base_imponible: 0, iva: 0, total: 0, markup_pct: '' }
 
 function hoyISO() { return new Date().toISOString().slice(0, 10) }
 
@@ -180,6 +195,9 @@ export default function PresupuestosPage() {
   const totBase = lineas.reduce((a, l) => a + (Number(l.base_imponible) || 0), 0)
   const totIva = lineas.reduce((a, l) => a + (Number(l.iva) || 0), 0)
   const totTotal = totBase + totIva
+  // Markup: lo ven/editan solo Karina y Dirección. Total al cliente (con markup, línea a línea).
+  const puedeMarkup = rol === 'admin' || DIRECCION_EMAILS.includes(email) || FINANZAS_EMAILS.includes(email)
+  const totClienteMk = lineas.reduce((a, l) => a + lineaConMarkup(l).total, 0)
 
   async function siguienteNumero() {
     const { data } = await supabase.from('presupuestos').select('numero')
@@ -216,7 +234,7 @@ export default function PresupuestosPage() {
     })
     const { data } = await supabase
       .from('presupuesto_detalle')
-      .select('orden, descripcion, cantidad, coste_unit, base_imponible, iva, total')
+      .select('orden, descripcion, cantidad, coste_unit, base_imponible, iva, total, markup_pct')
       .eq('presupuesto_id', r.id)
       .order('orden')
     setLineas((data && data.length ? data : [{ ...LINEA_VACIA }]).map(calcLinea))
@@ -291,6 +309,7 @@ export default function PresupuestosPage() {
         base_imponible: Number(l.base_imponible) || 0,
         iva: Number(l.iva) || 0,
         total: Number(l.total) || 0,
+        markup_pct: (l.markup_pct === '' || l.markup_pct == null) ? null : Number(l.markup_pct),
       }))
       const { error } = await supabase.from('presupuesto_detalle').insert(filas)
       if (error) { setMsg({ tipo: 'error', txt: 'Guardó la cabecera pero falló el detalle: ' + error.message }); setGuardando(false); return }
@@ -483,13 +502,15 @@ export default function PresupuestosPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#FAFAF8' }}>
-                    {['Descripción', 'Cant.', 'Coste unit.', 'Base imp.', 'IVA', 'Total', ''].map((h, i) => (
-                      <th key={i} style={{ padding: '8px', textAlign: i >= 1 && i <= 5 ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: .4 }}>{h}</th>
+                    {['Descripción', 'Cant.', 'Coste unit.', 'Base imp.', 'IVA', 'Total', ...(puedeMarkup ? ['Markup %', 'Total cliente'] : []), ''].map((h, i) => (
+                      <th key={i} style={{ padding: '8px', textAlign: (h && h !== 'Descripción' && h !== '') ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: h === 'Markup %' || h === 'Total cliente' ? '#185FA5' : '#888', textTransform: 'uppercase', letterSpacing: .4 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {lineas.map((l, i) => (
+                  {lineas.map((l, i) => {
+                    const cli = lineaConMarkup(l)
+                    return (
                     <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
                       <td style={{ padding: '4px 6px' }}><input style={{ ...(ro ? inputRo : input), padding: '6px 8px' }} value={l.descripcion} disabled={ro} onChange={e => setLinea(i, 'descripcion', e.target.value)} /></td>
                       <td style={{ padding: '4px 6px', width: 70 }}><input style={{ ...(ro ? inputRo : input), padding: '6px 8px', textAlign: 'right' }} type="number" value={l.cantidad} disabled={ro} onChange={e => setLinea(i, 'cantidad', e.target.value)} /></td>
@@ -497,13 +518,25 @@ export default function PresupuestosPage() {
                       <td style={{ ...tdNum, color: '#555' }}>{Number(l.base_imponible).toLocaleString('es-CL')}</td>
                       <td style={{ ...tdNum, color: '#888' }}>{Number(l.iva).toLocaleString('es-CL')}</td>
                       <td style={{ ...tdNum, fontWeight: 600 }}>{Number(l.total).toLocaleString('es-CL')}</td>
+                      {puedeMarkup && (
+                        <td style={{ padding: '4px 6px', width: 80 }}>
+                          <input style={{ ...(ro ? inputRo : input), padding: '6px 8px', textAlign: 'right' }} type="number"
+                            value={l.markup_pct === '' || l.markup_pct == null ? '' : l.markup_pct}
+                            placeholder={String(MARKUP_DEFAULT)} disabled={ro}
+                            onChange={e => setLinea(i, 'markup_pct', e.target.value)} />
+                        </td>
+                      )}
+                      {puedeMarkup && (
+                        <td style={{ ...tdNum, fontWeight: 700, color: '#185FA5' }}>{cli.total.toLocaleString('es-CL')}</td>
+                      )}
                       <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                         {!ro && <button onClick={() => quitarLinea(i)} title="Quitar" style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                   {lineas.length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: 16, textAlign: 'center', color: '#888' }}>Sin líneas.{!ro && ' Agrega la primera con "+ Agregar línea".'}</td></tr>
+                    <tr><td colSpan={puedeMarkup ? 9 : 7} style={{ padding: 16, textAlign: 'center', color: '#888' }}>Sin líneas.{!ro && ' Agrega la primera con "+ Agregar línea".'}</td></tr>
                   )}
                 </tbody>
                 <tfoot>
@@ -513,6 +546,8 @@ export default function PresupuestosPage() {
                     <td style={{ ...tdNum, fontWeight: 700 }}>{totBase.toLocaleString('es-CL')}</td>
                     <td style={{ ...tdNum, fontWeight: 700, color: '#888' }}>{totIva.toLocaleString('es-CL')}</td>
                     <td style={{ ...tdNum, fontWeight: 700, color: '#185FA5' }}>{totTotal.toLocaleString('es-CL')}</td>
+                    {puedeMarkup && <td></td>}
+                    {puedeMarkup && <td style={{ ...tdNum, fontWeight: 700, color: '#185FA5' }}>{totClienteMk.toLocaleString('es-CL')}</td>}
                     <td></td>
                   </tr>
                 </tfoot>
