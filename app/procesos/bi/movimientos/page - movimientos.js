@@ -1,3 +1,4 @@
+// VERSION: v19 · 2026-08-01 · Botón "Cargar cartola →" claro en la barra de acciones (solo Karina/Dirección) para ir a /procesos/bi; se retira el enlace discreto de la esquina.
 // VERSION: v18 · 2026-07-29 · Botón renombrado a "Copiar FALTA a CUENTAS". El mensaje tras
 //   copiar ahora informa de omitidos (ya estaban) y actualizados (reg existente con IDADMON
 //   corregido), no solo de copiados — antes decía "0 copiados" sin explicar y parecía no hacer nada.
@@ -822,8 +823,6 @@ export default function BiVista() {
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
             <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltroActivo ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
-          <button onClick={() => router.push('/procesos/bi')}
-            style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer', color: '#2C2C2A', whiteSpace: 'nowrap' }}>← Cargar cartola</button>
         </div>
 
         {!puedeEditar && (
@@ -848,6 +847,13 @@ export default function BiVista() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {refreshing ? 'Actualizando…' : '🔄 Refrescar lista'}
           </button>
+          {puedeEditar && (
+            <button onClick={() => router.push('/procesos/bi')}
+              title="Ir a la hoja de subir la cartola del Banco Internacional"
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #1D9E75', background: '#E1F5EE', color: '#085041', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              📥 Cargar cartola →
+            </button>
+          )}
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
             ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],

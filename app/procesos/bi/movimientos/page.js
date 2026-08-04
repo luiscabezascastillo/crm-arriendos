@@ -1,4 +1,4 @@
-// VERSION: v19 · 2026-08-01 · Botón "Cargar cartola →" claro en la barra de acciones (solo Karina/Dirección) para ir a /procesos/bi; se retira el enlace discreto de la esquina.
+// VERSION: v20 · 2026-08-04 · Botón "Exportar Excel" (xlsx) que vuelca EXACTAMENTE lo filtrado con las columnas visibles (patrón de Descuentos). Reactivada la columna LIQ. MES2 (mes de liquidación AAMM, editable con validación).
 // VERSION: v18 · 2026-07-29 · Botón renombrado a "Copiar FALTA a CUENTAS". El mensaje tras
 //   copiar ahora informa de omitidos (ya estaban) y actualizados (reg existente con IDADMON
 //   corregido), no solo de copiados — antes decía "0 copiados" sin explicar y parecía no hacer nada.
@@ -100,8 +100,7 @@ const COLS = [
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 170, align: 'left', filt: true },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
-  // LIQ. MES2 oculto de la vista (el dato sigue existiendo; no se edita a diario).
-  // { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
+  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
   // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
@@ -494,6 +493,28 @@ export default function BiVista() {
     } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
   }
 
+  // Exporta a Excel EXACTAMENTE lo filtrado (variable `filas`), con las columnas visibles de la tabla.
+  async function exportarExcel() {
+    const XLSX = await import('xlsx')
+    // columnas reales de datos (se excluyen las "sintéticas" de acción: _check1, _descuentos, etc.)
+    const cols = COLS.filter(c => !c.key.startsWith('_'))
+    const salida = filas.map(m => {
+      const o = {}
+      for (const c of cols) {
+        let v = m[c.key]
+        if (c.money) v = (v == null || v === '') ? '' : Number(v)   // montos como número
+        else v = v == null ? '' : v
+        o[c.h] = v
+      }
+      return o
+    })
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(salida)
+    XLSX.utils.book_append_sheet(wb, ws, 'BI Movimientos')
+    const hoy = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `BI_Movimientos_${hoy}.xlsx`)
+  }
+
   const copiarFaltan = async () => {
     if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     if (copiando) return
@@ -873,6 +894,12 @@ export default function BiVista() {
             title={verTodos ? 'Mostrar solo las más recientes' : 'Mostrar las 6.7k filas (puede ir más lento)'}
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: verTodos ? '#8A5A2B' : '#fff', color: verTodos ? '#fff' : '#6B4423', cursor: 'pointer' }}>
             {verTodos ? `Ver recientes (${TOPE_DEFECTO})` : `Ver todo (${filas.length})`}
+          </button>
+          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+          <button onClick={exportarExcel} disabled={filas.length === 0}
+            title="Exporta a Excel exactamente lo filtrado, con las columnas visibles"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #1c7d3f', background: filas.length === 0 ? '#eee' : '#EAF7EF', color: filas.length === 0 ? '#aaa' : '#1c7d3f', cursor: filas.length === 0 ? 'default' : 'pointer' }}>
+            ⭳ Exportar Excel ({filas.length})
           </button>
         </div>
 
