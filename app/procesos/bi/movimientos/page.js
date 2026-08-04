@@ -1,4 +1,4 @@
-// VERSION: v20 · 2026-08-04 · Botón "Exportar Excel" (xlsx) que vuelca EXACTAMENTE lo filtrado con las columnas visibles (patrón de Descuentos). Reactivada la columna LIQ. MES2 (mes de liquidación AAMM, editable con validación).
+// VERSION: v21 · 2026-08-04 · Columna "Descuento" movida a antes de COMENTARIOS (tras UNIQUE CONCEPT). Hereda v20 (Exportar Excel + LIQ. MES2).
 // VERSION: v18 · 2026-07-29 · Botón renombrado a "Copiar FALTA a CUENTAS". El mensaje tras
 //   copiar ahora informa de omitidos (ya estaban) y actualizados (reg existente con IDADMON
 //   corregido), no solo de copiados — antes decía "0 copiados" sin explicar y parecía no hacer nada.
@@ -99,11 +99,11 @@ const COLS = [
   { key: 'check2_pasar_a_cartola', h: 'check2',         w: 78,  align: 'left',  filt: true },
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 170, align: 'left', filt: true },
+  { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
   { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
   // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
   { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
-  { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
   // Columna +RUT (_asociar) oculta: el botón +RUT ahora vive dentro de la celda de UNIQUE CONCEPT, junto al de color.
   // { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
 ]
