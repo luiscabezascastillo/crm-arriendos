@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v17 · 2026-08-04 · Fix: tras "Pasar a Cartolas" se recarga la lista (la celda pasa a verde) y el botón
+//   cambia a "Modificar cargo/abono Cartola" con aviso de confirmación. Antes no se refrescaba.
 // VERSION: v16 · 2026-08-04 · ARRENDATARIO: al crear, aviso que confirma cargo/abono y el descuento se carga solo
 //   en cartola (endpoint crear v3). En la ficha, el botón pasa a "Modificar cargo/abono Cartola" si ya se pasó
 //   (rehace el movimiento con el signo actual). En el listado, la celda "Imputar a" va en verde claro si ya está
@@ -803,7 +805,9 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
     if (pasandoCartola) return;
     const monto = Number(row.monto_a_imputar) || 0;
     const tipoMov = monto >= 0 ? 'CARGO' : 'ABONO';
-    if (!window.confirm(`Pasar el descuento Nº ${row.num} a la cartola del arrendatario (${row.idadmon}) como ${tipoMov} de ${Math.abs(monto).toLocaleString('es-CL')}. ¿Continuar?`)) return;
+    const yaEstaba = !!(row.pasado_a_cartola || (pasadoLocal && !pasadoLocal.error));
+    const verbo = yaEstaba ? 'Rehacer en la cartola' : 'Pasar a la cartola';
+    if (!window.confirm(`${verbo} el descuento Nº ${row.num} (${row.idadmon}) como ${tipoMov} de ${Math.abs(monto).toLocaleString('es-CL')}. ¿Continuar?`)) return;
     setPasandoCartola(true); setErr('');
     try {
       const res = await fetch('/api/descuentos/pasar-cartola', {
@@ -813,9 +817,14 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
       const j = await res.json();
       if (j.ok) {
         setPasadoLocal({ tipo: j.tipo, monto: j.monto });
+        // reflejar en el objeto local para que el botón y el color cambien sin recargar toda la ficha
+        row.pasado_a_cartola = new Date().toISOString();
+        window.alert(j.accion === 'actualizar'
+          ? `Movimiento actualizado en cartola: ${j.tipo} de ${Number(j.monto).toLocaleString('es-CL')}.`
+          : `Descuento pasado a cartola: ${j.tipo} de ${Number(j.monto).toLocaleString('es-CL')}.`);
+        onGuardado && onGuardado();   // recarga la lista -> la celda "Imputar a" pasa a verde
       } else {
         setErr(j.error || 'No se pudo pasar a cartola');
-        if (j.yaPasado) setPasadoLocal({ ya: true });
       }
     } catch (e) {
       setErr('Error de red al pasar a cartola');
