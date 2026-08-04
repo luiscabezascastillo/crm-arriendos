@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v18 · 2026-08-04 · FCR: al crear exige pegar el email de aceptación de Karina (bloqueo). En la ficha,
+//   bloque "coste de empresa": Karina justifica y acepta (rojo→verde). En el listado, la celda "Imputar a" de un
+//   FCR de 2026+ va en rojo si no aceptado y verde si aceptado. Requiere que /listar traiga fcr_aceptado.
 // VERSION: v17 · 2026-08-04 · Fix: tras "Pasar a Cartolas" se recarga la lista (la celda pasa a verde) y el botón
 //   cambia a "Modificar cargo/abono Cartola" con aviso de confirmación. Antes no se refrescaba.
 // VERSION: v16 · 2026-08-04 · ARRENDATARIO: al crear, aviso que confirma cargo/abono y el descuento se carga solo
@@ -542,11 +545,14 @@ export default function DescuentosPage() {
                     const filaBg = hoverId === r.id ? '#dbe9fb' : (activo ? '#ffffff' : (r.verificado ? '#f1f8f1' : '#F1F1EE'));
                     // Celda "Imputar a": verde claro si ya está en cartola, rojizo si es ARRENDATARIO sin pasar.
                     const esArrRow = c.key === 'repercutir_a' && String(r.repercutir_a || '').trim().toUpperCase() === 'ARRENDATARIO' && !String(r.mes_a_imputar || '').startsWith('----');
-                    const bgCartola = esArrRow ? (r.pasado_a_cartola ? '#DCF3E3' : '#FBE4E4') : null;
+                    // FCR de 2026+: rojo si no aceptado por Karina, verde si aceptado (coste de empresa validado).
+                    const esFcrRow = c.key === 'repercutir_a' && String(r.repercutir_a || '').trim().toUpperCase() === 'FCR' && !String(r.mes_a_imputar || '').startsWith('----') && /20(2[6-9]|[3-9]\d)/.test(String(r.mes_a_imputar || ''));
+                    const bgCartola = esArrRow ? (r.pasado_a_cartola ? '#DCF3E3' : '#FBE4E4')
+                      : esFcrRow ? (r.fcr_aceptado ? '#DCF3E3' : '#FBE4E4') : null;
                     return (
                     <td key={c.key}
                       onClick={() => setDescSel(r)}
-                      title={esArrRow ? (r.pasado_a_cartola ? 'Ya imputado a Cartolas' : 'Pendiente de imputar a Cartolas') : (corregida ? 'Dato corregido' : undefined)}
+                      title={esArrRow ? (r.pasado_a_cartola ? 'Ya imputado a Cartolas' : 'Pendiente de imputar a Cartolas') : esFcrRow ? (r.fcr_aceptado ? 'Coste FCR aceptado por Karina' : 'Cargo a FCR pendiente de aceptación de Karina') : (corregida ? 'Dato corregido' : undefined)}
                       style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer',
                         ...(corregida ? { background: BEIGE } : {}),
                         ...(bgCartola ? { background: bgCartola } : {}),
@@ -771,6 +777,9 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
   const [garInfo, setGarInfo] = useState(null);         // info de garantía del contrato (para el botón de devolución)
   const [pasandoCartola, setPasandoCartola] = useState(false);   // Mejora 1: pasar descuento ARRENDATARIO a cartola
   const [pasadoLocal, setPasadoLocal] = useState(null);          // marca local tras pasar (sin recargar)
+  const [fcrJustif, setFcrJustif] = useState('');                // justificación para aceptar coste FCR
+  const [fcrSaving, setFcrSaving] = useState(false);
+  const [fcrAceptadoLocal, setFcrAceptadoLocal] = useState(null);
 
   // Si el descuento es un T-... consulta la garantía del contrato (para ofrecer crear su devolución).
   useEffect(() => {
@@ -799,6 +808,29 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
       idadmon_relacionado: row.idadmon || '',            // referencia: el contrato terminado
       texto_explicativo_para_carta_a_propietario: TEXTO_DEVOL_GARANTIA,
     });
+  }
+
+  async function aceptarFcr() {
+    if (fcrSaving) return;
+    if (fcrJustif.trim().length < 15) { setErr('La justificación debe tener al menos 15 caracteres.'); return; }
+    if (!window.confirm(`Aceptar el descuento Nº ${row.num} como COSTE DE EMPRESA (FCR). Quedará registrado con tu justificación. ¿Continuar?`)) return;
+    setFcrSaving(true); setErr('');
+    try {
+      const res = await fetch('/api/descuentos/aceptar-fcr', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, justificacion: fcrJustif.trim() }),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        row.fcr_aceptado = true; row.fcr_justificacion = fcrJustif.trim();
+        setFcrAceptadoLocal({ justif: fcrJustif.trim() });
+        window.alert('Descuento aceptado como coste de empresa (FCR).');
+        onGuardado && onGuardado();
+      } else {
+        setErr(j.error || 'No se pudo aceptar');
+      }
+    } catch (e) { setErr('Error de red al aceptar'); }
+    setFcrSaving(false);
   }
 
   async function pasarACartola() {
@@ -986,6 +1018,50 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
 
         {/* cuerpo */}
         <div style={{ overflow: 'auto', padding: '14px 18px', flex: 1 }}>
+          {/* Bloque FCR: aceptación como coste de empresa (solo si el descuento es FCR) */}
+          {modo === 'ver' && String(row.repercutir_a || '').trim().toUpperCase() === 'FCR' && (() => {
+            const aceptado = !!(row.fcr_aceptado || fcrAceptadoLocal)
+            const puedeIntentar = !!caps.corregir   // Karina/Dirección; el endpoint exige que sea Karina
+            return (
+              <div style={{ marginBottom: 16, border: `1px solid ${aceptado ? '#bfe3c9' : '#f0c9c9'}`, borderRadius: 8, padding: 12, background: aceptado ? '#F1F9F3' : '#FDF2F2' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: aceptado ? '#1c7d3f' : '#b23a3a', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>
+                  {aceptado ? '✓ Coste de empresa aceptado (FCR)' : '⚠ Cargo a FCR — requiere aceptación de Karina'}
+                </div>
+                {row.fcr_email_aceptacion && (
+                  <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>
+                    <b>Email de aceptación (adjuntado al crear):</b><br />
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{row.fcr_email_aceptacion}</span>
+                  </div>
+                )}
+                {aceptado ? (
+                  <div style={{ fontSize: 12, color: '#333' }}>
+                    <b>Justificación:</b> {row.fcr_justificacion || (fcrAceptadoLocal && fcrAceptadoLocal.justif)}<br />
+                    {row.fcr_aceptado_por && <span style={{ color: '#888' }}>Aceptado por {row.fcr_aceptado_por}{row.fcr_aceptado_at ? ' · ' + new Date(row.fcr_aceptado_at).toLocaleString('es-CL') : ''}</span>}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: '#8a4a4a', marginBottom: 8 }}>
+                      Un cargo a FCR es un coste de la empresa. Requiere aprobación de Karina y Dirección. Justifica por qué se acepta como coste de empresa; si no, repercútelo a propietario o arrendatario (no debe quedar cargado a la empresa).
+                    </div>
+                    {puedeIntentar ? (
+                      <>
+                        <textarea value={fcrJustif} onChange={e => setFcrJustif(e.target.value)} rows={2}
+                          placeholder="Justificación de por qué se acepta como coste de empresa (mín. 15 caracteres)…"
+                          style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '1px solid #d9b3b3', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 8, resize: 'vertical' }} />
+                        <button onClick={aceptarFcr} disabled={fcrSaving}
+                          style={{ ...btn(C.verde), fontSize: 12 }}>
+                          {fcrSaving ? 'Aceptando…' : 'Aceptar como coste FCR'}
+                        </button>
+                        <div style={{ fontSize: 11, color: '#a06d00', marginTop: 4 }}>La aceptación como coste de empresa la realiza Karina.</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#b23a3a', fontStyle: 'italic' }}>Solo Karina puede aceptar este cargo como coste de empresa.</div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })()}
           {modo === 'ver'
             ? SECCIONES_VER.map((sec) => (
                 <div key={sec.titulo} style={{ marginBottom: 16 }}>
@@ -1139,7 +1215,7 @@ function FormAlta({ onCreado, inicial }) {
     mes_a_imputar: '', idadmon: '', inmueble: '', propietario: '',
     repercutir_a: 'PROPIETARIO', tipo: '', monto_a_imputar: '', monto_a_transferir: '',
     relacionado: '', link_admon: '', factura_boleta: 'NO', idadmon_relacionado: '',
-    texto_explicativo_para_carta_a_propietario: '', aclaracion: '',
+    texto_explicativo_para_carta_a_propietario: '', aclaracion: '', fcr_email_aceptacion: '',
     ...(inicial || {}),
   });
   const [estado, setEstado] = useState('');
@@ -1207,6 +1283,10 @@ function FormAlta({ onCreado, inicial }) {
     if (esArrendatario(f.repercutir_a) && !cargoAbono) {
       setErr('Al imputar a ARRENDATARIO, indica si es CARGO (se le cobra) o ABONO (a su favor).'); return;
     }
+    // FCR: exige el email de aceptación de Karina (evidencia obligatoria).
+    if (String(f.repercutir_a || '').trim().toUpperCase() === 'FCR' && String(f.fcr_email_aceptacion || '').trim().length < 15) {
+      setErr('Un cargo a FCR requiere adjuntar el email de Karina que lo acepta (mínimo 15 caracteres). Sin él no se puede crear.'); return;
+    }
     // CANDADO: imputar a PROPIETARIO exige IDADMON vigente (no Q/N/N-DICOM), de AGOSTO 2026 en adelante.
     if (String(f.repercutir_a || '').trim().toUpperCase() === 'PROPIETARIO' && mesDesdeAgosto2026(f.mes_a_imputar)) {
       const bloqueo = await motivoNoImputableAPropietario(f.idadmon);
@@ -1273,6 +1353,16 @@ function FormAlta({ onCreado, inicial }) {
           <select value={f.repercutir_a} onChange={(e) => cambiarRepercutir(e.target.value)} style={inp}>
             {REPERCUTIR_A.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
+          {String(f.repercutir_a || '').trim().toUpperCase() === 'FCR' && (
+            <div style={{ marginTop: 6, padding: 8, background: '#FDF2F2', border: '1px solid #f0c9c9', borderRadius: 6 }}>
+              <div style={{ fontSize: 11, color: '#b23a3a', fontWeight: 600, marginBottom: 4 }}>
+                Un cargo a FCR requiere el email de Karina que lo acepta. Pégalo aquí (obligatorio).
+              </div>
+              <textarea value={f.fcr_email_aceptacion || ''} onChange={(e) => set('fcr_email_aceptacion', e.target.value)} rows={2}
+                placeholder="Pega aquí el email/asunto de Karina aceptando este cargo a FCR…"
+                style={{ ...inp, resize: 'vertical', fontSize: 12 }} />
+            </div>
+          )}
         </Campo>
         <Campo label="Tipo *">
           <select value={f.tipo} onChange={(e) => set('tipo', e.target.value)} style={inp}>

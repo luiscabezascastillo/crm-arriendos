@@ -1,4 +1,4 @@
-// VERSION: v3 · 2026-08-04 · ARRENDATARIO: al crear el descuento se CARGA AUTOMÁTICAMENTE en la cartola del
+// VERSION: v4 · 2026-08-04 · FCR: exige adjuntar el email de aceptación de Karina al crear (bloqueo). ARRENDATARIO: al crear el descuento se CARGA AUTOMÁTICAMENTE en la cartola del
 //   arrendatario (cargo si +, abono si −) y se marca pasado_a_cartola. Si la carga falla, el descuento se crea
 //   igual (queda sin pasar, para gestionarlo con el botón). FCR: sigue generando alerta a Karina (v2). No rompe
 //   el alta si algo secundario falla.
@@ -53,6 +53,12 @@ export async function POST(req) {
       return Response.json({ error: 'El texto para liquidación debe tener al menos 45 caracteres' }, { status: 400 });
     }
 
+    // FCR: exige la copia/referencia del email de Karina que acepta el cargo (evidencia obligatoria).
+    const fcrEmail = String(b.fcr_email_aceptacion || '').trim();
+    if (repercutir === 'FCR' && fcrEmail.length < 15) {
+      return Response.json({ error: 'Un cargo a FCR requiere adjuntar el email de Karina que lo acepta (mínimo 15 caracteres). Sin él no se puede crear.' }, { status: 400 });
+    }
+
     const montoImputar = Math.round(Number(b.monto_a_imputar));
     if (!Number.isFinite(montoImputar)) return Response.json({ error: 'MONTO A IMPUTAR inválido' }, { status: 400 });
     const montoTransferir = b.monto_a_transferir === '' || b.monto_a_transferir == null
@@ -94,6 +100,7 @@ export async function POST(req) {
       admon_piensa_que_se_necesita_factura_boleta: String(b.factura_boleta || '').trim() || null,
       texto_explicativo_para_carta_a_propietario: texto,
       aclaracion: String(b.aclaracion || '').trim() || null,
+      fcr_email_aceptacion: repercutir === 'FCR' ? fcrEmail : null,
       tipo,
       mmdd,
       fecha_contable: fechaContable,
