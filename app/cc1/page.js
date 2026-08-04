@@ -1,4 +1,4 @@
-// VERSION: v7 · 2026-07-30 · Color de fondo por estado en las 2 primeras columnas (idadmon/inmueble),
+// VERSION: v8 · 2026-08-04 · Botón "Exportar Excel" en la barra del LOG: vuelca a xlsx EXACTAMENTE lo filtrado (búsqueda + filtros Excel + orden), con las columnas del listado + arrendatario y un flag Vencido.
 //   como en el Excel: P marrón, SQ amarillo-ámbar pálido, Q violeta, N gris, N-DICOM rojizo. Además,
 //   un P cuyo DEPARTAMENTO (idinmue en rango 01-49) tiene otra versión en SQ se pinta marrón+violeta
 //   (idadmon marrón, inmueble violeta) → señal de que el piso sigue ocupado y la visita se coordina
@@ -147,6 +147,7 @@ function OperacionesBtn({ opciones, router }) {
 
 
 const Ico = {
+  download: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   comment: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   edit:  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   users: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></svg>,
@@ -366,6 +367,30 @@ export default function CC1Page() {
   }
   const hayFiltros = search || hayAlgunFiltro || orden?.key
   const propiedades = filtradas  // scroll continuo: se muestran todas las filas filtradas
+
+  // Exporta a Excel EXACTAMENTE lo filtrado (`filtradas`), con las columnas del LOG + arrendatario.
+  async function exportarExcel() {
+    const XLSX = await import('xlsx')
+    const salida = filtradas.map(p => ({
+      IDADMON: p.idadmon || '',
+      Inmueble: p.inmueble || '',
+      Propietario: p.propietario || '',
+      Estado: p.estado || '',
+      Cuota: (p.cuota == null || p.cuota === '') ? '' : Number(p.cuota),
+      Unidad: p.unid || '',
+      'Término actual': p.termino_actual ? String(p.termino_actual).slice(0, 10) : '',
+      Vencido: (alertaTermino(p.termino_actual, p.estado)?.text === 'Vencido') ? 'SÍ' : '',
+      IDPROP: p.idprop || '',
+      IDINMUE: p.idlinmue || '',
+      Arrendatario: p.arrendatario || '',
+    }))
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(salida)
+    XLSX.utils.book_append_sheet(wb, ws, 'LOG')
+    const hoy = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `LOG_propiedades_${hoy}.xlsx`)
+  }
+
   const irAFormulario = () => router.push('/admin')
   const recuperar = () => {
     const v = recuperarId.trim().toUpperCase()
@@ -443,6 +468,7 @@ export default function CC1Page() {
         {puedeEditar && (
           <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
         )}
+        <ActionBtn label={`Exportar Excel (${filtradas.length})`} bg="#1c7d3f" icon={Ico.download} onClick={exportarExcel} />
       </div>
 
       <div style={{ padding: '20px 24px' }}>
