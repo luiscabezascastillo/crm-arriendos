@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v15 · 2026-08-03 · Mejora 1: botón "Pasar a Cartolas" en la ficha de un descuento de ARRENDATARIO
+//   (inserta en cuentas: cargo si +, abono si −; concepto = num + texto; marca pasado_a_cartola). Si ya se pasó,
+//   muestra "✓ En cartola". Reutiliza el patrón del botón de garantía.
 // VERSION: v14 · 2026-08-01 · CORRECCIÓN DE SIGNO: la devolución de garantía en poder del Dueño se crea con monto
 //   POSITIVO (positivo = se le descuenta al propietario, que es lo correcto al recuperarle la garantía). Antes iba
 //   en negativo (le sumaba) — error. Las creadas antes de este cambio hay que corregirlas a mano.
@@ -756,6 +759,8 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
   const [sucesorMult, setSucesorMult] = useState(false);
   const [estadoId, setEstadoId] = useState('');         // estado del IDADMON principal (badge informativo en edición)
   const [garInfo, setGarInfo] = useState(null);         // info de garantía del contrato (para el botón de devolución)
+  const [pasandoCartola, setPasandoCartola] = useState(false);   // Mejora 1: pasar descuento ARRENDATARIO a cartola
+  const [pasadoLocal, setPasadoLocal] = useState(null);          // marca local tras pasar (sin recargar)
 
   // Si el descuento es un T-... consulta la garantía del contrato (para ofrecer crear su devolución).
   useEffect(() => {
@@ -784,6 +789,30 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
       idadmon_relacionado: row.idadmon || '',            // referencia: el contrato terminado
       texto_explicativo_para_carta_a_propietario: TEXTO_DEVOL_GARANTIA,
     });
+  }
+
+  async function pasarACartola() {
+    if (pasandoCartola) return;
+    const monto = Number(row.monto_a_imputar) || 0;
+    const tipoMov = monto >= 0 ? 'CARGO' : 'ABONO';
+    if (!window.confirm(`Pasar el descuento Nº ${row.num} a la cartola del arrendatario (${row.idadmon}) como ${tipoMov} de ${Math.abs(monto).toLocaleString('es-CL')}. ¿Continuar?`)) return;
+    setPasandoCartola(true); setErr('');
+    try {
+      const res = await fetch('/api/descuentos/pasar-cartola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id }),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        setPasadoLocal({ tipo: j.tipo, monto: j.monto });
+      } else {
+        setErr(j.error || 'No se pudo pasar a cartola');
+        if (j.yaPasado) setPasadoLocal({ ya: true });
+      }
+    } catch (e) {
+      setErr('Error de red al pasar a cartola');
+    }
+    setPasandoCartola(false);
   }
 
   useEffect(() => {
@@ -912,6 +941,21 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
               ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
             </button>
           )}
+          {/* Mejora 1: pasar a cartola (solo ARRENDATARIO, no anulado) */}
+          {modo === 'ver' && caps.crear
+            && String(row.repercutir_a || '').trim().toUpperCase() === 'ARRENDATARIO'
+            && !String(row.mes_a_imputar || '').startsWith('----')
+            && (
+              (row.pasado_a_cartola || pasadoLocal)
+                ? <span style={{ fontSize: 12, color: C.verde, fontWeight: 600 }}>
+                    ✓ En cartola{pasadoLocal && pasadoLocal.tipo ? ` (${pasadoLocal.tipo} ${Number(pasadoLocal.monto).toLocaleString('es-CL')})` : ''}
+                  </span>
+                : <button onClick={pasarACartola} disabled={pasandoCartola}
+                    title="Insertar este descuento en la cartola del arrendatario (cargo si es positivo, abono si es negativo)."
+                    style={{ ...btn('#5b21b6'), background: '#EDE7F9', color: '#5b21b6', border: '1px solid #c9b6ef' }}>
+                    {pasandoCartola ? 'Pasando…' : '📥 Pasar a Cartolas'}
+                  </button>
+            )}
           {err && <span style={{ color: C.rojo, fontSize: 12 }}>{err}</span>}
         </div>
 
