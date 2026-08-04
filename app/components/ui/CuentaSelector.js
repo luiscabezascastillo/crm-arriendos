@@ -1,4 +1,4 @@
-// VERSION: v3 · 2026-07-30 · El desplegable ya no se corta en 80 cuentas.
+// VERSION: v4 · 2026-08-04 · La sugerencia por histórico solo ofrece cuentas de gasto/coste (41xx/42xx), nunca 2105-05 u otras.
 //   Sin texto de busqueda mostraba solo las primeras 80 por codigo; con 121 imputables,
 //   las 4301-xx caian mas alla del corte y la lista terminaba en 4201-41 (parecia que
 //   faltaban en el plan, pero solo era el tope). Subido a 500: el plan entero cabe y se
@@ -82,7 +82,7 @@ export default function CuentaSelector({
         style={base}
       />
 
-      {!abierto && sugerida && !String(valor || '').trim() && (
+      {!abierto && sugerida && /^4[12]/.test(String(sugerida)) && !String(valor || '').trim() && (
         <button
           onClick={() => onChange(
             formato === 'codigo+desc' && planMap[sugerida]

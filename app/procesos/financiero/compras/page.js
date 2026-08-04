@@ -1,4 +1,4 @@
-// VERSION: v20 · 2026-08-04 · Ficha de compra con 2 cuentas: Proveedores (2105-05, fija, no editable) y Cuenta gasto (sugerida por RUT, editable). Se quita la casilla Periodificación (es un proceso mensual agregado, no por compra).
+// VERSION: v21 · 2026-08-04 · memoriaRut (sugerencia de Cuenta gasto) solo aprende de cuentas 41xx/42xx, nunca 2105-05. Casilla Proveedores fija.
 //   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
 //     encima del velo (queda con su color original) y lleva un realce verde a la izquierda.
 // VERSION: v17 · 2026-07-28 · Compras: tipo_doc normalizado a "código + sigla" única.
@@ -427,6 +427,9 @@ const wantScroll = useRef(false)
       const rut = String(c.rut || '').trim()
       const cod = String(c.cuenta || '').trim().match(/^[0-9]{4}-[0-9]{2}/)
       if (!rut || !cod) continue
+      // Solo cuentas de gasto/coste (41xx / 42xx) son sugeribles como "Cuenta gasto".
+      // Nunca 2105-05 (proveedores) ni otras que se hayan guardado por error.
+      if (!/^4[12]/.test(cod[0])) continue
       const e = acc[rut] || (acc[rut] = { ctas: {}, n: 0 })
       e.ctas[cod[0]] = (e.ctas[cod[0]] || 0) + 1
       e.n++
