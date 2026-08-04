@@ -1,9 +1,12 @@
-// VERSION: v2 · 2026-08-03 · Al crear un descuento imputado a FCR, se genera una alerta a Karina para que lo
-//   apruebe/rechace (un cargo a FCR requiere aprobación de Alberto). No rompe el alta si la alerta falla.
+// VERSION: v3 · 2026-08-04 · ARRENDATARIO: al crear el descuento se CARGA AUTOMÁTICAMENTE en la cartola del
+//   arrendatario (cargo si +, abono si −) y se marca pasado_a_cartola. Si la carga falla, el descuento se crea
+//   igual (queda sin pasar, para gestionarlo con el botón). FCR: sigue generando alerta a Karina (v2). No rompe
+//   el alta si algo secundario falla.
 // app/api/descuentos/crear/route.js
 import { sesionYCaps, registrarBitacora } from '@/lib/descuentosServer';
 import { nombreCorto, TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
 import { crearAlertaFcrSiHaceFalta } from '@/lib/descuentosAlertas';
+import { pasarDescuentoACartola } from '@/app/api/descuentos/pasar-cartola/route';
 
 // MES A IMPUTAR "JULIO 2026" -> mmdd "2607" y fecha_contable "07/07/2026"
 const MESES = {
@@ -121,7 +124,26 @@ export async function POST(req) {
       alertaFcr = await crearAlertaFcrSiHaceFalta(supa, { num: ins.num, idadmon });
     }
 
-    return Response.json({ ok: true, row: ins, alertaFcr });
+    // ARRENDATARIO: cargar automáticamente en la cartola (cargo si +, abono si −).
+    // Si falla, el descuento queda creado pero sin pasar (se gestiona luego con el botón).
+    let cartola = null;
+    if (repercutir === 'ARRENDATARIO') {
+      try {
+        const r = await pasarDescuentoACartola(supa, ins, email);
+        if (r.ok) {
+          await supa.from('descuentos')
+            .update({ pasado_a_cartola: new Date().toISOString(), pasado_a_cartola_por: email })
+            .eq('id', ins.id);
+          cartola = { ok: true, tipo: r.tipo, monto: r.monto, accion: r.accion };
+        } else {
+          cartola = { ok: false, error: r.error };
+        }
+      } catch (e) {
+        cartola = { ok: false, error: String((e && e.message) || e) };
+      }
+    }
+
+    return Response.json({ ok: true, row: ins, alertaFcr, cartola });
   } catch (e) {
     return Response.json({ error: e.error || 'Error' }, { status: e.status || 500 });
   }

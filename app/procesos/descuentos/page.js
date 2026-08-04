@@ -1,4 +1,8 @@
 'use client';
+// VERSION: v16 · 2026-08-04 · ARRENDATARIO: al crear, aviso que confirma cargo/abono y el descuento se carga solo
+//   en cartola (endpoint crear v3). En la ficha, el botón pasa a "Modificar cargo/abono Cartola" si ya se pasó
+//   (rehace el movimiento con el signo actual). En el listado, la celda "Imputar a" va en verde claro si ya está
+//   en cartola y rojizo si falta. Requiere que /api/descuentos/listar traiga el campo pasado_a_cartola.
 // VERSION: v15 · 2026-08-03 · Mejora 1: botón "Pasar a Cartolas" en la ficha de un descuento de ARRENDATARIO
 //   (inserta en cuentas: cargo si +, abono si −; concepto = num + texto; marca pasado_a_cartola). Si ya se pasó,
 //   muestra "✓ En cartola". Reutiliza el patrón del botón de garantía.
@@ -534,12 +538,16 @@ export default function DescuentosPage() {
                     const corregida = Array.isArray(r.campos_corregidos) && r.campos_corregidos.includes(c.key);
                     const fija = ci === 0;   // columna N: sticky a la izquierda
                     const filaBg = hoverId === r.id ? '#dbe9fb' : (activo ? '#ffffff' : (r.verificado ? '#f1f8f1' : '#F1F1EE'));
+                    // Celda "Imputar a": verde claro si ya está en cartola, rojizo si es ARRENDATARIO sin pasar.
+                    const esArrRow = c.key === 'repercutir_a' && String(r.repercutir_a || '').trim().toUpperCase() === 'ARRENDATARIO' && !String(r.mes_a_imputar || '').startsWith('----');
+                    const bgCartola = esArrRow ? (r.pasado_a_cartola ? '#DCF3E3' : '#FBE4E4') : null;
                     return (
                     <td key={c.key}
                       onClick={() => setDescSel(r)}
-                      title={corregida ? 'Dato corregido' : undefined}
+                      title={esArrRow ? (r.pasado_a_cartola ? 'Ya imputado a Cartolas' : 'Pendiente de imputar a Cartolas') : (corregida ? 'Dato corregido' : undefined)}
                       style={{ ...td(), textAlign: c.align || 'left', cursor: 'pointer',
                         ...(corregida ? { background: BEIGE } : {}),
+                        ...(bgCartola ? { background: bgCartola } : {}),
                         ...(fija ? { position: 'sticky', left: 0, zIndex: 5, background: corregida ? BEIGE : filaBg } : {}) }}>
                       {renderCelda(r, c.key, { caps, toggleVerificado, col: c })}
                     </td>
@@ -941,21 +949,29 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
               ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
             </button>
           )}
-          {/* Mejora 1: pasar a cartola (solo ARRENDATARIO, no anulado) */}
+          {/* Mejora 1: pasar/modificar cartola (solo ARRENDATARIO, no anulado) */}
           {modo === 'ver' && caps.crear
             && String(row.repercutir_a || '').trim().toUpperCase() === 'ARRENDATARIO'
             && !String(row.mes_a_imputar || '').startsWith('----')
-            && (
-              (row.pasado_a_cartola || pasadoLocal)
-                ? <span style={{ fontSize: 12, color: C.verde, fontWeight: 600 }}>
-                    ✓ En cartola{pasadoLocal && pasadoLocal.tipo ? ` (${pasadoLocal.tipo} ${Number(pasadoLocal.monto).toLocaleString('es-CL')})` : ''}
-                  </span>
-                : <button onClick={pasarACartola} disabled={pasandoCartola}
-                    title="Insertar este descuento en la cartola del arrendatario (cargo si es positivo, abono si es negativo)."
+            && (() => {
+              const yaPasado = !!(row.pasado_a_cartola || (pasadoLocal && !pasadoLocal.error))
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {yaPasado && (
+                    <span style={{ fontSize: 12, color: C.verde, fontWeight: 600 }}>
+                      ✓ En cartola{pasadoLocal && pasadoLocal.tipo ? ` (${pasadoLocal.tipo} ${Number(pasadoLocal.monto).toLocaleString('es-CL')})` : ''}
+                    </span>
+                  )}
+                  <button onClick={pasarACartola} disabled={pasandoCartola}
+                    title={yaPasado
+                      ? 'Rehacer el movimiento en la cartola con el signo/importe actual del descuento (por si era abono en vez de cargo, o cambió el importe).'
+                      : 'Insertar este descuento en la cartola del arrendatario (cargo si es positivo, abono si es negativo).'}
                     style={{ ...btn('#5b21b6'), background: '#EDE7F9', color: '#5b21b6', border: '1px solid #c9b6ef' }}>
-                    {pasandoCartola ? 'Pasando…' : '📥 Pasar a Cartolas'}
+                    {pasandoCartola ? 'Procesando…' : (yaPasado ? 'Modificar cargo/abono Cartola' : '📥 Pasar a Cartolas')}
                   </button>
-            )}
+                </span>
+              )
+            })()}
           {err && <span style={{ color: C.rojo, fontSize: 12 }}>{err}</span>}
         </div>
 
@@ -1194,9 +1210,15 @@ function FormAlta({ onCreado, inicial }) {
     if (!String(f.tipo || '').trim()) falta.push('Tipo');
     const avisoTransf = !String(f.monto_a_transferir || '').trim()
       ? '\n\n• "Monto a transferir" está VACÍO. Si este descuento implica una transferencia, complételo.' : '';
+    // ARRENDATARIO: se cargará automáticamente en cartola. Confirmar signo (cargo/abono).
+    const esArr = esArrendatario(f.repercutir_a);
+    const montoNum = Math.round(Number(f.monto_a_imputar) || 0);
+    const avisoCartola = esArr
+      ? `\n\n• Este descuento se cargará DIRECTAMENTE en la CARTOLA del arrendatario como ${montoNum >= 0 ? 'CARGO (se le cobra)' : 'ABONO (a su favor)'} de ${Math.abs(montoNum).toLocaleString('es-CL')}. Confirma que el signo es correcto.`
+      : '';
     const mensaje =
       'Antes de guardar, revise que están todos los datos.' +
-      avisoTransf +
+      avisoTransf + avisoCartola +
       '\n\nUna vez guardado, el descuento NO se podrá modificar.' +
       '\n\n¿Guardar el descuento?';
     if (!window.confirm(mensaje)) return;   // cancela → sigue editando
@@ -1207,6 +1229,14 @@ function FormAlta({ onCreado, inicial }) {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Error al crear');
+      // Informar del resultado de la carga automática a cartola (si aplica)
+      if (esArr && j.cartola) {
+        if (j.cartola.ok) {
+          window.alert(`Descuento creado y cargado en la cartola del arrendatario (${j.cartola.tipo} de ${Number(j.cartola.monto).toLocaleString('es-CL')}).`);
+        } else {
+          window.alert(`El descuento se creó, pero NO se pudo cargar en cartola automáticamente (${j.cartola.error || 'error'}). Queda pendiente: podrás cargarlo desde su ficha con el botón "Pasar a Cartolas".`);
+        }
+      }
       onCreado();
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }

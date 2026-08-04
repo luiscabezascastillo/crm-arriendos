@@ -1,7 +1,9 @@
-// VERSION: v1 · 2026-08-03 · Pasa un descuento de ARRENDATARIO a la cartola (tabla cuentas):
-//   monto >= 0 -> CARGO ; monto < 0 -> ABONO (a favor del arrendatario). El concepto lleva el num
-//   y el texto de liquidación. Marca el descuento con pasado_a_cartola/por para no duplicar.
-//   Solo Dirección y Karina. Anti-duplicado por el propio marcaje.
+// VERSION: v2 · 2026-08-04 · Pasa/actualiza un descuento de ARRENDATARIO en la cartola (tabla cuentas).
+//   Idempotente por num: si NO existe el movimiento (concepto empieza por "{num} ") lo CREA; si YA existe,
+//   lo ACTUALIZA con el signo/importe actual del descuento (cargo si +, abono si −). Esto permite:
+//   (1) la carga AUTOMÁTICA al crear el descuento, y (2) el botón "Modificar cargo/abono Cartola" para
+//   corregir el signo si Karina detecta que era abono en vez de cargo (o al revés).
+//   Marca pasado_a_cartola/por. Solo Dirección y Karina.
 // app/api/descuentos/pasar-cartola/route.js
 
 import { getServerSession } from 'next-auth'
@@ -23,6 +25,60 @@ function fechaHoy() {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
+// Lógica central reutilizable: crea o actualiza el movimiento en cuentas para un descuento ARRENDATARIO.
+// Devuelve { ok, accion:'crear'|'actualizar', tipo:'cargo'|'abono', monto } o { error }.
+export async function pasarDescuentoACartola(sb, descuento, email) {
+  const d = descuento
+  const rep = String(d.repercutir_a || '').trim().toUpperCase()
+  if (rep !== 'ARRENDATARIO') return { error: `No es ARRENDATARIO (es ${rep || 'sin destino'}).` }
+  if (String(d.mes_a_imputar || '').startsWith('----')) return { error: 'Descuento anulado (mes ----).' }
+
+  const monto = n0(d.monto_a_imputar)
+  if (monto === 0) return { error: 'El monto es 0; nada que cargar.' }
+  const esCargo = monto > 0
+  const abs = Math.abs(monto)
+  const texto = String(d.texto_explicativo_para_carta_a_propietario || '').trim()
+  const concepto = `${d.num} ${texto}`.trim().slice(0, 250)
+
+  // ¿ya existe el movimiento de este num en cuentas? (concepto empieza por "{num} ")
+  const { data: existentes } = await sb.from('cuentas')
+    .select('id, cargo, abono, concepto')
+    .eq('idadmon', d.idadmon)
+    .ilike('concepto', `${d.num} %`)
+    .limit(5)
+  const movimiento = (existentes || []).find(c => String(c.concepto || '').startsWith(`${d.num} `))
+
+  if (movimiento) {
+    // ACTUALIZAR (corregir signo/importe)
+    const { error: eU } = await sb.from('cuentas')
+      .update({
+        concepto,
+        cargo: esCargo ? abs : 0,
+        abono: esCargo ? 0 : abs,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', movimiento.id)
+    if (eU) return { error: 'No se pudo actualizar en cartola: ' + eU.message }
+    return { ok: true, accion: 'actualizar', tipo: esCargo ? 'cargo' : 'abono', monto: abs, cuentas_id: movimiento.id }
+  }
+
+  // CREAR
+  const fila = {
+    fecha: fechaHoy(),
+    idadmon: d.idadmon,
+    concepto,
+    cargo: esCargo ? abs : 0,
+    abono: esCargo ? 0 : abs,
+    estado: 'S',
+    propietario: d.propietario || '',
+    inmueble: d.inmueble || '',
+    updated_at: new Date().toISOString(),
+  }
+  const { data: ins, error: eI } = await sb.from('cuentas').insert(fila).select().single()
+  if (eI) return { error: 'No se pudo insertar en cartola: ' + eI.message }
+  return { ok: true, accion: 'crear', tipo: esCargo ? 'cargo' : 'abono', monto: abs, cuentas_id: ins.id }
+}
+
 export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -35,61 +91,15 @@ export async function POST(req) {
   if (!id) return Response.json({ error: 'Falta id del descuento' }, { status: 400 })
 
   const sb = svc()
-
-  // 1) Leer el descuento
   const { data: d, error: eD } = await sb.from('descuentos').select('*').eq('id', id).single()
   if (eD || !d) return Response.json({ error: 'Descuento no encontrado' }, { status: 404 })
 
-  // 2) Validaciones
-  const rep = String(d.repercutir_a || '').trim().toUpperCase()
-  if (rep !== 'ARRENDATARIO') {
-    return Response.json({ error: `Este descuento no es de ARRENDATARIO (es ${rep || 'sin destino'}). Solo se pasan a cartola los del arrendatario.` }, { status: 400 })
-  }
-  if (String(d.mes_a_imputar || '').startsWith('----')) {
-    return Response.json({ error: 'El descuento está anulado (mes ----); no se pasa a cartola.' }, { status: 400 })
-  }
-  if (d.pasado_a_cartola) {
-    return Response.json({ error: `Ya se pasó a cartola el ${new Date(d.pasado_a_cartola).toLocaleString('es-CL')}${d.pasado_a_cartola_por ? ' por ' + d.pasado_a_cartola_por : ''}.`, yaPasado: true }, { status: 409 })
-  }
+  const res = await pasarDescuentoACartola(sb, d, email)
+  if (res.error) return Response.json({ error: res.error }, { status: 400 })
 
-  const monto = n0(d.monto_a_imputar)
-  if (monto === 0) return Response.json({ error: 'El monto es 0; nada que cargar.' }, { status: 400 })
-
-  const esCargo = monto > 0
-  const abs = Math.abs(monto)
-  const texto = String(d.texto_explicativo_para_carta_a_propietario || '').trim()
-  const concepto = `${d.num} ${texto}`.trim().slice(0, 250)
-
-  // 3) Insertar en cuentas (cartola)
-  const fila = {
-    fecha: fechaHoy(),
-    idadmon: d.idadmon,
-    concepto,
-    cargo: esCargo ? abs : 0,
-    abono: esCargo ? 0 : abs,
-    estado: 'S',
-    propietario: d.propietario || '',
-    inmueble: d.inmueble || '',
-    updated_at: new Date().toISOString(),
+  // marcar pasado (si aún no lo estaba)
+  if (!d.pasado_a_cartola) {
+    await sb.from('descuentos').update({ pasado_a_cartola: new Date().toISOString(), pasado_a_cartola_por: email }).eq('id', id)
   }
-  const { data: ins, error: eIns } = await sb.from('cuentas').insert(fila).select().single()
-  if (eIns) return Response.json({ error: 'No se pudo insertar en cartola: ' + eIns.message }, { status: 500 })
-
-  // 4) Marcar el descuento como pasado
-  const { error: eUpd } = await sb.from('descuentos')
-    .update({ pasado_a_cartola: new Date().toISOString(), pasado_a_cartola_por: email })
-    .eq('id', id)
-  if (eUpd) {
-    // La fila ya se insertó; avisar pero no romper. (Reintentar el marcaje evitaría duplicar en un 2º clic.)
-    return Response.json({ ok: true, aviso: 'Se cargó en cartola, pero no se pudo marcar el descuento como pasado: ' + eUpd.message, cuentas_id: ins.id, tipo: esCargo ? 'cargo' : 'abono', monto: abs })
-  }
-
-  return Response.json({
-    ok: true,
-    cuentas_id: ins.id,
-    idadmon: d.idadmon,
-    tipo: esCargo ? 'cargo' : 'abono',
-    monto: abs,
-    concepto,
-  })
+  return Response.json({ ok: true, ...res })
 }
