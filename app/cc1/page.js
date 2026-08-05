@@ -1,3 +1,5 @@
+// VERSION: v9 · 2026-08-05 · Botón "DICOM" en la barra del LOG → /cc1/dicom (hoja de informes DICOM
+//   Equifax + pago). Visible para todos los que ven el LOG, igual que "Comentarios". Hereda v8.
 // VERSION: v8 · 2026-08-04 · Botón "Exportar Excel" en la barra del LOG: vuelca a xlsx EXACTAMENTE lo filtrado (búsqueda + filtros Excel + orden), con las columnas del listado + arrendatario y un flag Vencido.
 //   como en el Excel: P marrón, SQ amarillo-ámbar pálido, Q violeta, N gris, N-DICOM rojizo. Además,
 //   un P cuyo DEPARTAMENTO (idinmue en rango 01-49) tiene otra versión en SQ se pinta marrón+violeta
@@ -465,6 +467,7 @@ export default function CC1Page() {
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => router.push('/cc1/inmuebles')} />
         <ActionBtn label="Comentarios"                bg="#7c3aed" icon={Ico.comment} onClick={() => router.push('/cc1/comentarios')} />
+        <ActionBtn label="DICOM"                      bg="#6d28d9" icon={Ico.lock} onClick={() => router.push('/cc1/dicom')} />
         {puedeEditar && (
           <ActionBtn label="Calcular ajustes"           bg="#d97706" icon={Ico.calc}  onClick={() => router.push('/procesos/notificaciones')} />
         )}
