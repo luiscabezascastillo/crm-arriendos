@@ -1,4 +1,4 @@
-// VERSION: v2 · 2026-07-20 · Botón "Guardar observación" a la izquierda (antes quedaba fuera de pantalla a la derecha)
+// VERSION: v3 · 2026-08-05 · El selector de meses de CARTAS ahora va desde ENERO 2025 hasta 1 mes por delante del actual (antes solo 6 meses atrás, empezaba en febrero 2026). El mes por defecto (mesEnCurso, regla día 23) no cambia.
 // VERSION: v1 · 2026-07-20 · Buscador "ir a propietario" + filtro "Solo no enviadas" en la barra de controles
 'use client'
 
@@ -64,9 +64,16 @@ const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 const aammToTxt = aamm => { if (!aamm || String(aamm).length !== 4) return aamm; const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }
 function generarMeses() {
+  // Desde ENERO 2025 hasta 1 mes por delante del actual (de más reciente a más antiguo en el desplegable).
   const out = []; const hoy = new Date()
-  for (let i = 6; i >= -1; i--) { const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1); out.push(String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0')) }
-  return out
+  const inicioY = 2025, inicioM = 0            // enero 2025
+  const finD = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)   // 1 mes adelante
+  let d = new Date(inicioY, inicioM, 1)
+  while (d <= finD) {
+    out.push(String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0'))
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+  }
+  return out   // orden cronológico (antiguo → reciente), como antes
 }
 function mesEnCurso() { const h = new Date(); let y = h.getFullYear(), m = h.getMonth(); if (h.getDate() >= 23) { m += 1; if (m > 11) { m = 0; y += 1 } } return String(y).slice(2) + String(m + 1).padStart(2, '0') }
 
