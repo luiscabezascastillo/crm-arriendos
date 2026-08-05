@@ -1,4 +1,4 @@
-// VERSION: v2 · 2026-08-04 · FIX IVA: el CSV de SimpleFactura lleva el NETO (comision_d_base/comision_a_base),
+// VERSION: v3 · 2026-08-04 · El descuento de corretaje ahora incluye texto_para_contabilidad (misma fórmula que el alta normal: "{num} {idadmon} CORRETAJES PROPIETARIO {texto}"), mmdd y fecha_contable. Antes salía vacío el Texto contab. Hereda v2 (fix IVA neto en CSV).
 //   no el total. SimpleFactura AÑADE el IVA (IndicadorExento=0), así la factura queda en el total del LOG.
 //   Antes se pasaba el total (ya con IVA) y SimpleFactura lo volvía a multiplicar por 1.19. El descuento al
 //   propietario y el cargo al arrendatario siguen siendo el TOTAL con IVA.
@@ -117,6 +117,13 @@ export async function POST(req) {
       const num = String(maxNum + 1)
       const mesTxt = mesLiquidacionEnCurso()
       const texto = `Corretaje por gestión de arriendo — inicio de contrato ${idadmon}`
+      // Texto de contabilidad: misma fórmula que el alta normal de descuentos.
+      const textoContab = `${num} ${idadmon} CORRETAJES PROPIETARIO ${texto}`
+      // mmdd y fecha contable del mes en curso (criterio FCR: día 7)
+      const _hoy = new Date()
+      const _mm = _hoy.getMonth() + 1, _yyyy = _hoy.getFullYear()
+      const _mmdd = `${String(_yyyy).slice(2)}${String(_mm).padStart(2, '0')}`
+      const _fechaContable = `${String(_mm).padStart(2, '0')}/07/${_yyyy}`
       const fila = {
         num,
         fecha: new Date().toLocaleDateString('es-CL'),
@@ -129,6 +136,9 @@ export async function POST(req) {
         monto_a_imputar: String(comisionProp),   // positivo = se le descuenta al propietario
         tipo: 'CORRETAJES',
         texto_explicativo_para_carta_a_propietario: texto,
+        texto_para_contabilidad: textoContab,
+        mmdd: _mmdd,
+        fecha_contable: _fechaContable,
         creado_por: email,
         creado_at: new Date().toISOString(),
         verificado: false,
