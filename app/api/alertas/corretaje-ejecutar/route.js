@@ -1,3 +1,7 @@
+// VERSION: v4 · 2026-08-06 · Fix anti-duplicado del descuento de corretaje: ahora EXCLUYE los anulados
+//   (mes_a_imputar='----MES'). Antes, un corretaje anulado bloqueaba la re-facturación → la factura salía
+//   pero el descuento NO se creaba (caso A00888/A00873: solo quedaban sus anulados 5173/5175). Se mantiene
+//   el candado para no duplicar descuentos ACTIVOS. Hereda v3.
 // VERSION: v3 · 2026-08-04 · El descuento de corretaje ahora incluye texto_para_contabilidad (misma fórmula que el alta normal: "{num} {idadmon} CORRETAJES PROPIETARIO {texto}"), mmdd y fecha_contable. Antes salía vacío el Texto contab. Hereda v2 (fix IVA neto en CSV).
 //   no el total. SimpleFactura AÑADE el IVA (IndicadorExento=0), así la factura queda en el total del LOG.
 //   Antes se pasaba el total (ya con IVA) y SimpleFactura lo volvía a multiplicar por 1.19. El descuento al
@@ -104,12 +108,14 @@ export async function POST(req) {
 
   // ============ 1) DESCUENTO al propietario (CORRETAJES) ============
   if (comisionProp > 0) {
-    // anti-duplicado
+    // anti-duplicado: SOLO cuenta descuentos de corretaje ACTIVOS. Los ANULADOS (mes_a_imputar='----MES')
+    // NO bloquean, para que un corretaje anulado y vuelto a facturar SÍ recree el descuento.
     const { data: yaDesc } = await sb.from('descuentos')
-      .select('num').eq('idadmon', idadmon).eq('tipo', 'CORRETAJES').limit(1)
+      .select('num').eq('idadmon', idadmon).eq('tipo', 'CORRETAJES')
+      .neq('mes_a_imputar', '----MES').limit(1)
     if (yaDesc && yaDesc.length) {
       resultado.descuento = { creado: false, motivo: 'ya_existe', num: yaDesc[0].num }
-      resultado.avisos.push(`Ya existía un descuento de corretaje (Nº ${yaDesc[0].num}); no se ha duplicado.`)
+      resultado.avisos.push(`Ya existía un descuento de corretaje activo (Nº ${yaDesc[0].num}); no se ha duplicado.`)
     } else {
       // num correlativo
       const { data: maxRow } = await sb.from('descuentos').select('num').order('id', { ascending: false }).limit(200)
