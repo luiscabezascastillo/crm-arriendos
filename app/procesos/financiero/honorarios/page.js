@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-06 · Honorarios: filtros estilo Excel en TODAS las columnas (buscador +
+//   recuento por valor + ordenar ↑↓), incluidas Brutos/Retenido/Pagado. Botón "⬇ Exportar a Excel"
+//   que baja lo filtrado (mismo patrón que Compras y SA). Hereda v3.
 // VERSION: v3 · 2026-07-26 · Honorarios: cabecera compartida FinancieroHeader (3 lineas, fija).
 //   El offset pegajoso lo calcula el componente (TopNav + FinancieroNav). Antes esta
 //   pagina media solo el hermano inmediato y la cabecera se escondia tras el TopNav.
@@ -44,7 +47,7 @@ async function parseHonorarios(file, XLSX) {
   const idxHas = (...subs) => H.findIndex(h => subs.every(s => h.includes(s.toUpperCase())))
   const pick = (...specs) => { for (const s of specs) { const i = Array.isArray(s) ? idxHas(...s) : idxExact(s); if (i >= 0) return i } return -1 }
   const C = {
-    folio: pick('N°', 'N\u00b0', 'Nº'), fecha: pick('Fecha'), estado: pick('Estado'), anul: pick(['ANULA']),
+    folio: pick('N°', 'N°', 'Nº'), fecha: pick('Fecha'), estado: pick('Estado'), anul: pick(['ANULA']),
     rut: pick('Rut', ['RUT']), nombre: pick(['NOMBRE']), soc: pick(['PROF']), brutos: pick('Brutos', ['BRUTOS']),
     ret: pick('Retenido', ['RETEN']), pag: pick('Pagado', ['PAGADO']), ccb: pick('CCB', ['COSTO'], ['CENTRO']),
   }
@@ -67,9 +70,9 @@ const COLDEFS = [
   { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
   { key: 'nombre', label: 'Emisor', w: '1fr', align: 'left', get: v => v.nombre || '', filter: 'text' },
   { key: 'ccb', label: 'CCB', w: '74px', align: 'left', get: v => v.ccb || '', filter: 'list' },
-  { key: 'brutos', label: 'Brutos', w: '104px', align: 'right', get: v => v.brutos, filter: null },
-  { key: 'retenido', label: 'Retenido', w: '96px', align: 'right', get: v => v.retenido, filter: null },
-  { key: 'pagado', label: 'Pagado', w: '104px', align: 'right', get: v => v.pagado, filter: null },
+  { key: 'brutos', label: 'Brutos', w: '104px', align: 'right', get: v => v.brutos, fmt: clp, filter: 'list' },
+  { key: 'retenido', label: 'Retenido', w: '96px', align: 'right', get: v => v.retenido, fmt: clp, filter: 'list' },
+  { key: 'pagado', label: 'Pagado', w: '104px', align: 'right', get: v => v.pagado, fmt: clp, filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -77,35 +80,79 @@ function CcbChip({ ccb }) {
   if (!ccb) return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: '#FBE9E7', color: '#B23A3A' }}>revisar</span>
   return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: '#EEF3F8', color: '#0C447C' }}>{ccb}</span>
 }
-function Card({ label, value, color }) {
-  return (<div style={{ background: '#fff', border: '0.5px solid #E0DED6', borderRadius: 10, padding: '10px 14px', minWidth: 108, flex: '1 1 auto' }}>
-    <div style={{ fontSize: 11, color: '#888780', marginBottom: 3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
-}
-function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
+
+// Filtro estilo Excel: ordenar ↑↓ + buscador en la lista + valores distintos con recuento.
+// Mismo componente que Compras/SA, aplicado también a las columnas numéricas (fmt = clp).
+function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrden }) {
   const active = state && (state.text || (state.sel && state.sel.length))
-  const distinct = useMemo(() => { if (col.filter !== 'list') return []; const s = new Set(); for (const m of movs) s.add(String(col.get(m))); return Array.from(s).sort() }, [movs, col])
   const s = state || { text: '', sel: [] }
+  const [busca, setBusca] = useState('')
+
+  // valores distintos CON RECUENTO (como Excel)
+  const distinct = useMemo(() => {
+    const m = new Map()
+    for (const v of movs) { const k = String(col.get(v) ?? ''); m.set(k, (m.get(k) || 0) + 1) }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }))
+  }, [movs, col])
+
+  // el buscador filtra la LISTA de valores, no las filas
+  const visibles = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return q ? distinct.filter(([v]) => v.toLowerCase().includes(q) || (col.fmt && col.fmt(v).toLowerCase().includes(q))) : distinct
+  }, [distinct, busca]) // eslint-disable-line
+
   const toggle = (v) => { const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]; setState({ ...s, sel }) }
+  const ordenar = (dir) => { setOrden({ key: col.key, dir }); setOpen(null) }
+  const esFecha = col.key === 'fecha'
+  const esNum = ['brutos', 'retenido', 'pagado', 'folio'].includes(col.key)
+  const asc = esFecha ? 'Más antiguas primero' : esNum ? 'Menor a mayor' : 'A → Z'
+  const desc = esFecha ? 'Más recientes primero' : esNum ? 'Mayor a menor' : 'Z → A'
+  const activoOrden = orden && orden.key === col.key
+
   return (
     <span style={{ position: 'relative', marginLeft: 4 }}>
-      <button onClick={(e) => { e.stopPropagation(); setOpen(open === col.key ? null : col.key) }} title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>▼</button>
+      <button onClick={(e) => { e.stopPropagation(); setBusca(''); setOpen(open === col.key ? null : col.key) }} title="Ordenar y filtrar"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : (activoOrden ? '#0C447C' : '#B4B2A9'), fontSize: 11, padding: 0 }}>
+        {activoOrden ? (orden.dir === 'desc' ? '▼' : '▲') : '▼'}
+      </button>
       {open === col.key && (<>
         <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 220, textAlign: 'left', fontWeight: 400 }}>
-          <input value={s.text} onChange={e => setState({ ...s, text: e.target.value })} placeholder="Contiene…" autoFocus style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 8 }} />
-          {col.filter === 'list' && distinct.length <= 40 && (<>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
-              <button onClick={() => setState({ ...s, sel: distinct.slice() })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>Todos</button>
-              <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
-            </div>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-              {distinct.map(v => (<label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
-                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span></label>))}
-            </div></>)}
-          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
+        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 250, textAlign: 'left', fontWeight: 400 }}>
+
+          <button onClick={() => ordenar('asc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'asc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↑ {asc}</button>
+          <button onClick={() => ordenar('desc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'desc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↓ {desc}</button>
+          <div style={{ borderTop: '0.5px solid #ECEAE3', margin: '8px 0' }} />
+
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar en la lista…" autoFocus
+            style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 6 }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
+            <button onClick={() => setState({ ...s, sel: visibles.map(([v]) => v) })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>
+              Marcar {busca ? `los ${visibles.length} visibles` : 'todos'}
+            </button>
+            <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
+          </div>
+
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {visibles.length === 0 && <div style={{ fontSize: 11, color: '#B4B2A9', padding: '6px 0' }}>Sin coincidencias</div>}
+            {visibles.slice(0, 400).map(([v, n]) => (
+              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : (col.fmt ? col.fmt(v) : v)}</span>
+                <span style={{ fontSize: 10, color: '#B4B2A9' }}>{n}</span>
+              </label>))}
+            {visibles.length > 400 && <div style={{ fontSize: 10, color: '#B4B2A9', padding: '4px 0' }}>…y {visibles.length - 400} más. Afina la búsqueda.</div>}
+          </div>
+
+          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setBusca(''); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
         </div></>)}
     </span>
   )
+}
+
+function Card({ label, value, color }) {
+  return (<div style={{ background: '#fff', border: '0.5px solid #E0DED6', borderRadius: 10, padding: '10px 14px', minWidth: 108, flex: '1 1 auto' }}>
+    <div style={{ fontSize: 11, color: '#888780', marginBottom: 3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
 }
 
 export default function HonorariosPage() {
@@ -116,10 +163,11 @@ export default function HonorariosPage() {
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [honorarios, setHonorarios] = useState([]); const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState({ key: 'fecha', dir: 'asc' })
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
   const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null)
   const canEdit = EDITORES.includes(session?.user?.email)
-const wantScroll = useRef(false); const handleFileRef = useRef(null)
+  const wantScroll = useRef(false); const handleFileRef = useRef(null)
   const [topTabla, setTopTabla] = useState(0)
 
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
@@ -135,7 +183,48 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
   const resumen = useMemo(() => { const r = { n: honorarios.length, brutos: 0, retenido: 0, pagado: 0, revisar: 0 }; for (const v of honorarios) { r.brutos += v.brutos || 0; r.retenido += v.retenido || 0; r.pagado += v.pagado || 0; if (!v.ccb) r.revisar++ } return r }, [honorarios])
+
   const filtradas = useMemo(() => honorarios.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [honorarios, filters])
+
+  const valOrden = (c, v) => {
+    if (c.key === 'fecha') return v.fecha || ''
+    if (['brutos', 'retenido', 'pagado', 'folio'].includes(c.key)) return Number(v[c.key] ?? 0)
+    return String(c.get(v) ?? '').toLowerCase()
+  }
+  const vista = useMemo(() => {
+    const c = COLDEFS.find(x => x.key === orden.key)
+    if (!c) return filtradas
+    const arr = filtradas.slice()
+    arr.sort((a, b) => {
+      const va = valOrden(c, a), vb = valOrden(c, b)
+      let r = va < vb ? -1 : va > vb ? 1 : 0
+      if (r === 0) r = (Number(a.folio) || 0) - (Number(b.folio) || 0)
+      return orden.dir === 'desc' ? -r : r
+    })
+    return arr
+  }, [filtradas, orden]) // eslint-disable-line
+
+  // Exportar a Excel lo FILTRADO (y ordenado) — disponible también en solo lectura.
+  const exportar = async () => {
+    if (!vista.length) return
+    const XLSX = await import('xlsx')
+    const filas = vista.map(v => ({
+      Boleta: v.folio ?? '',
+      Fecha: fmtFecha(v.fecha),
+      Emisor: v.nombre || '',
+      RUT: v.rut || '',
+      CCB: v.ccb || '',
+      Brutos: v.brutos ?? '',
+      Retenido: v.retenido ?? '',
+      Pagado: v.pagado ?? '',
+      Estado: v.estado || '',
+      Mes: mesLabel(v.mes),
+    }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Honorarios')
+    const sello = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `Honorarios-filtrado-${sello}.xlsx`)
+  }
 
   const abrir = (v) => { setSel(v); setSavedFlag(false); setEdit({ ccb: v.ccb || '', estado: v.estado || '' }) }
   const cerrar = () => { setSel(null) }
@@ -208,6 +297,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
         acciones={<>
           <button onClick={() => fileRef.current?.click()} disabled={!canEdit || uploading} title={canEdit ? 'Subir, arrastrar o pegar un Libro de Honorarios' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: 'none', background: (!canEdit || uploading) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (!canEdit || uploading) ? 'default' : 'pointer' }}>⬆ {uploading ? 'Procesando…' : 'Cargar honorarios del mes'}</button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileInput} style={{ display: 'none' }} />
+          <button onClick={exportar} disabled={!vista.length} title="Exportar lo filtrado a Excel" style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: vista.length ? '#2C2C2A' : '#B4B2A9', cursor: vista.length ? 'pointer' : 'default' }}>⬇ Exportar a Excel</button>
           {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el archivo</span>}
         </>}
         metricas={[
@@ -228,11 +318,11 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={honorarios} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center' }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={honorarios} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
-          ) : filtradas.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin honorarios para este filtro.</div>
-          ) : filtradas.map(v => (
+          ) : vista.length === 0 ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin honorarios para este filtro.</div>
+          ) : vista.map(v => (
             <div key={v.id} onClick={() => abrir(v)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center' }} onMouseEnter={e => e.currentTarget.style.background = '#FAFAF7'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
               <div style={{ fontWeight: 600, color: '#0C447C' }}>{v.folio}</div>
               <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(v.fecha)}</div>
@@ -244,7 +334,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las boletas  ·  ' : '')}{filtradas.length} de {honorarios.length} boletas. Pincha una para revisar/editar.</div>
+        <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las boletas  ·  ' : '')}{vista.length} de {honorarios.length} boletas. Pincha una para revisar/editar.</div>
       </div>
 
       {sel && (<>
