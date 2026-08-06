@@ -1,7 +1,3 @@
-// VERSION: v2 · 2026-08-06 · Fix anti-duplicado del PREVIEW del corretaje: ahora EXCLUYE
-//   los anulados (mes_a_imputar='----MES'). Antes un corretaje ANULADO (p.ej. Nº 5174)
-//   mostraba "Ya existe un descuento de corretaje... no se creará otro" y bloqueaba la
-//   re-facturación en el modal. Mismo criterio que corretaje-ejecutar v4. Hereda v1.
 // VERSION: v1 · 2026-08-03 · PREVIEW del corretaje de inicio de contrato (para el panel de la alerta).
 //   Reúne, sin ejecutar nada: comisión del propietario (comision_d_total) y del arrendatario
 //   (comision_a_total), si ya existe el cargo COMISION del arrendatario en cartola (cuentas),
@@ -61,13 +57,10 @@ export async function GET(req) {
     .eq('idadmon', idadmon).ilike('concepto', '%COMISION%')
   const cargoArrExiste = (cargos || []).length > 0
 
-  // 4) ¿Ya existe un descuento de corretaje (CORRETAJES) ACTIVO para este idadmon?
-  //    Los ANULADOS (mes_a_imputar='----MES') NO cuentan: un corretaje anulado no debe
-  //    mostrar "ya existe" ni bloquear la re-facturación (mismo criterio que corretaje-ejecutar v4).
+  // 4) ¿Ya existe un descuento de corretaje (CORRETAJES) para este idadmon?
   const { data: descs } = await sb.from('descuentos')
     .select('num, tipo, repercutir_a, monto_a_imputar, mes_a_imputar')
     .eq('idadmon', idadmon).eq('tipo', 'CORRETAJES')
-    .neq('mes_a_imputar', '----MES')
   const descuentoExiste = (descs || []).length > 0
 
   return Response.json({
