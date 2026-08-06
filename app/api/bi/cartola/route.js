@@ -1,3 +1,7 @@
+// VERSION: v3 · 2026-08-06 · Al guardar la cartola se SELLA liquidacion_mes2 (mes de liquidación AAMM,
+//   corte día ≥23 → mes siguiente). Antes solo se ponía `mes` (mes natural) y liquidacion_mes2 quedaba
+//   en null, de modo que la RPC calcular_liquidacion (que empareja los abonos por liquidacion_mes2 = p_mes)
+//   no los contaba como recibidos y salían en FALTAN aunque el pago estuviera. Queda editable en BI·movimientos.
 // VERSION: v2 · 2026-07-21 · El check2 'FALTA' se pone solo en los ABONOS. Antes se marcaba todo,
 //   y los cargos se quedaban en FALTA para siempre (nunca pasan a cuentas), ensuciando la lista.
 import { NextResponse } from 'next/server'
@@ -11,6 +15,17 @@ const REG_BASE = 22714                                    // último reg numerad
 
 function extraerRut(d) { const m = RUT.exec(String(d || '')); return m ? m[1].toUpperCase() : null }
 function aammDe(f) { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(f || '')); return m ? m[3].slice(2) + m[2] : null }
+
+// Mes de liquidación (AAMM) al que pertenece el pago: corte día ≥23 → mes siguiente.
+// Mismo criterio que mesEnCurso() en la vista FALTAN y que la RPC calcular_liquidacion.
+// Se sella como valor por defecto al subir; sigue siendo editable en BI·movimientos.
+function liqMes2De(f) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(f || ''))
+  if (!m) return null
+  let dd = parseInt(m[1], 10), mm = parseInt(m[2], 10), yy = parseInt(m[3], 10)
+  if (dd >= 23) { mm += 1; if (mm > 12) { mm = 1; yy += 1 } }
+  return String(yy).slice(2) + String(mm).padStart(2, '0')
+}
 
 export async function POST(req) {
   let body
@@ -115,7 +130,11 @@ export async function POST(req) {
         // Excepción histórica: las REVERSAS sí deben pasarse; se marcan a mano (son muy pocas).
         check2_pasar_a_cartola: m.abono > 0 ? 'FALTA' : null, reg: null,
         unique_concept: s.sug, idadmon2: s.sug, comentarios: s.nota || null,
-        mes: aammDe(m.fecha), updated_at: ahora,
+        mes: aammDe(m.fecha),
+        // Mes de liquidación al que pertenece el pago (corte día ≥23). Sin esto la RPC
+        // calcular_liquidacion no lo cuenta como recibido y sale en FALTAN. Editable después.
+        liquidacion_mes2: liqMes2De(m.fecha),
+        updated_at: ahora,
       }
     })
 
