@@ -1,3 +1,5 @@
+// VERSION: v6 · 2026-08-07 · CARTAS: el buscador de IDADMON del modal de comentarios ya no fuerza mayúsculas (se puede
+//   escribir en mayúsculas o minúsculas; la búsqueda normaliza internamente). Hereda v5.
 // VERSION: v5 · 2026-08-07 · CARTAS: botón "Cargar saldo de término" por línea de IDADMON. Cuando un contrato
 //   activo tiene un término terminado con déficit (saldo no cubierto por la garantía), aparece una subfila
 //   para CARGAR ese saldo como descuento al PROPIETARIO (o QUITARLO antes de liquidar). Vía /api/liquidaciones/
@@ -858,7 +860,7 @@ export default function CartasPage() {
               {/* Buscar IDADMON */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <input value={comIdadmon}
-                  onChange={e => setComIdadmon(e.target.value.toUpperCase())}
+                  onChange={e => setComIdadmon(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') cargarComentarios() }}
                   placeholder="IDADMON (p. ej. A00886)" autoFocus
                   style={{ flex: 1, fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontFamily: MONO }} />
