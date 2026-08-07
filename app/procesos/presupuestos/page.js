@@ -1,4 +1,14 @@
 'use client'
+// VERSION: v8 · 2026-08-07 · PDF + Email del presupuesto CON markup, desde la hoja (como en Términos). Botón "PDF con
+//   markup + email" disponible para cualquiera con acceso al proceso presupuestos (Adalis, Fabiola, Christian, Karina,
+//   Dirección). Llama a /api/presupuestos/pdf (markup por línea, Interno=0), abre el PDF en pestaña nueva y un borrador
+//   de email (mailto) al propietario con el enlace del PDF, editable antes de enviar. NUNCA genera el PDF de coste
+//   (sin markup): ese sigue siendo solo la vista en pantalla de Karina/Dirección. Hereda v7.
+// VERSION: v7 · 2026-08-07 · TIPO por línea (INTERNO/EXTERNO). Nueva columna "Tipo" editable por cualquiera con acceso
+//   al proceso presupuestos (Adalis, Cristhian, Fabiola, Karina, Dirección). En las líneas marcadas INTERNO el markup
+//   POR DEFECTO es 0% (trabajo propio de FCR, sin margen sobre coste); EXTERNO sigue con 20% por defecto. El markup
+//   sigue siendo editable solo por Karina/Dirección y, si ponen un valor explícito, ese manda sobre el default.
+//   Persiste presupuesto_detalle.tipo_ejecucion ('INTERNO'/'EXTERNO', default 'EXTERNO'). Hereda v6.
 // VERSION: v6 · 2026-08-04 · MARKUP por línea (patrón de Términos): en edición, Karina/Dirección ven y editan
 //   una columna "Markup %" por fila y el "Total cliente" (coste × (1+markup), default 20%). El coste original
 //   se conserva en base_imponible; el precio al cliente se calcula al vuelo con lineaConMarkup. Guarda markup_pct.
@@ -51,16 +61,22 @@ function calcLinea(l) {
   const iva = Math.round(base * 0.19)
   return { ...l, base_imponible: base, iva, total: base + iva }
 }
+// Tipo de ejecución de la línea. INTERNO = trabajo propio de FCR (sin margen sobre coste => markup 0 por defecto).
+// EXTERNO = proveedor externo (markup 20% por defecto). Normaliza cualquier valor guardado.
+const esInterno = (l) => norm(l?.tipo_ejecucion) === 'interno'
+const tipoDe = (l) => (esInterno(l) ? 'INTERNO' : 'EXTERNO')
+// Markup por defecto de la línea según su tipo: INTERNO => 0, EXTERNO => MARKUP_DEFAULT.
+const markupDefault = (l) => (esInterno(l) ? 0 : MARKUP_DEFAULT)
 // Precio de una línea CON markup aplicado (precio al cliente). Mismo patrón que Términos.
-// Si la línea no tiene markup_pct, usa MARKUP_DEFAULT.
+// Si la línea no tiene markup_pct explícito, usa el default según el tipo (INTERNO 0 / EXTERNO 20).
 function lineaConMarkup(l) {
   const base = Number(l.base_imponible) || 0
-  const mk = (l.markup_pct === '' || l.markup_pct == null) ? MARKUP_DEFAULT : (Number(l.markup_pct) || 0)
+  const mk = (l.markup_pct === '' || l.markup_pct == null) ? markupDefault(l) : (Number(l.markup_pct) || 0)
   const baseMk = Math.round(base * (1 + mk / 100))
   const ivaMk = Math.round(baseMk * 0.19)
   return { base: baseMk, iva: ivaMk, total: baseMk + ivaMk, markup: mk }
 }
-const LINEA_VACIA = { descripcion: '', cantidad: '', coste_unit: '', base_imponible: 0, iva: 0, total: 0, markup_pct: '' }
+const LINEA_VACIA = { descripcion: '', cantidad: '', coste_unit: '', base_imponible: 0, iva: 0, total: 0, markup_pct: '', tipo_ejecucion: 'EXTERNO' }
 
 function hoyISO() { return new Date().toISOString().slice(0, 10) }
 
@@ -86,6 +102,7 @@ export default function PresupuestosPage() {
   const [form, setForm] = useState(FORM_VACIO)
   const [lineas, setLineas] = useState([])
   const [guardando, setGuardando] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [qRaw, setQRaw] = useState([])        // IDADMON estado Q (datos_arriendos)
   const [qCargado, setQCargado] = useState(false)
@@ -234,10 +251,10 @@ export default function PresupuestosPage() {
     })
     const { data } = await supabase
       .from('presupuesto_detalle')
-      .select('orden, descripcion, cantidad, coste_unit, base_imponible, iva, total, markup_pct')
+      .select('orden, descripcion, cantidad, coste_unit, base_imponible, iva, total, markup_pct, tipo_ejecucion')
       .eq('presupuesto_id', r.id)
       .order('orden')
-    setLineas((data && data.length ? data : [{ ...LINEA_VACIA }]).map(calcLinea))
+    setLineas((data && data.length ? data : [{ ...LINEA_VACIA }]).map(l => calcLinea({ ...l, tipo_ejecucion: tipoDe(l) })))
     setEditando(r)
   }
 
@@ -245,6 +262,39 @@ export default function PresupuestosPage() {
     const d = new Date(fecha)
     if (isNaN(d.getTime())) return null
     return (d.getFullYear() % 100) * 100 + (d.getMonth() + 1)
+  }
+
+  // PDF con markup (precio cliente) + borrador de email. Disponible para todos los del proceso.
+  // Usa lo GUARDADO en BD (no los cambios sin guardar): si acabas de editar, guarda primero.
+  async function generarPDFyEmail() {
+    if (!editando || !editando.id) { setMsg({ tipo: 'error', txt: 'Guarda el presupuesto antes de generar el PDF.' }); return }
+    setPdfBusy(true); setMsg(null)
+    try {
+      const res = await fetch('/api/presupuestos/pdf', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presupuesto_id: editando.id }),
+      })
+      const j = await res.json()
+      if (!res.ok || !j.ok) { setMsg({ tipo: 'error', txt: j.error || 'No se pudo generar el PDF.' }); setPdfBusy(false); return }
+      const url = j.pdf_url
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')   // PDF (con markup) descargable en pestaña nueva
+      // Borrador de email al propietario con el enlace del PDF, editable antes de enviar.
+      const nombre = j?.para?.nombre || form.propietario || ''
+      const to = j?.para?.to || ''
+      const asunto = `Presupuesto ${j.numero || form.numero || ''} · ${j.inmueble || form.ubicacion || ''}`.trim()
+      const cuerpo = [
+        `Estimado/a ${nombre || ''},`, '',
+        `Adjuntamos el presupuesto ${j.numero || form.numero || ''}${j.inmueble ? ' correspondiente a ' + j.inmueble : ''}.`,
+        url ? `\nPresupuesto (PDF): ${url}` : '',
+        '', 'Un saludo,', 'Fondo Capital Rent',
+      ].join('\n')
+      const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+      window.location.href = mailto
+      setMsg({ tipo: 'ok', txt: url ? 'PDF con markup generado (abierto en otra pestaña). Se abrió el borrador de email; revisa el destinatario antes de enviar.' : 'PDF generado.' })
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: 'Error al generar el PDF: ' + (e?.message || e) })
+    }
+    setPdfBusy(false)
   }
 
   async function guardar() {
@@ -310,6 +360,7 @@ export default function PresupuestosPage() {
         iva: Number(l.iva) || 0,
         total: Number(l.total) || 0,
         markup_pct: (l.markup_pct === '' || l.markup_pct == null) ? null : Number(l.markup_pct),
+        tipo_ejecucion: tipoDe(l),
       }))
       const { error } = await supabase.from('presupuesto_detalle').insert(filas)
       if (error) { setMsg({ tipo: 'error', txt: 'Guardó la cabecera pero falló el detalle: ' + error.message }); setGuardando(false); return }
@@ -502,8 +553,8 @@ export default function PresupuestosPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#FAFAF8' }}>
-                    {['Descripción', 'Cant.', 'Coste unit.', 'Base imp.', 'IVA', 'Total', ...(puedeMarkup ? ['Markup %', 'Total cliente'] : []), ''].map((h, i) => (
-                      <th key={i} style={{ padding: '8px', textAlign: (h && h !== 'Descripción' && h !== '') ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: h === 'Markup %' || h === 'Total cliente' ? '#185FA5' : '#888', textTransform: 'uppercase', letterSpacing: .4 }}>{h}</th>
+                    {['Descripción', 'Cant.', 'Coste unit.', 'Base imp.', 'IVA', 'Total', 'Tipo', ...(puedeMarkup ? ['Markup %', 'Total cliente'] : []), ''].map((h, i) => (
+                      <th key={i} style={{ padding: '8px', textAlign: (h && h !== 'Descripción' && h !== 'Tipo' && h !== '') ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: h === 'Markup %' || h === 'Total cliente' ? '#185FA5' : '#888', textTransform: 'uppercase', letterSpacing: .4 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -518,11 +569,22 @@ export default function PresupuestosPage() {
                       <td style={{ ...tdNum, color: '#555' }}>{Number(l.base_imponible).toLocaleString('es-CL')}</td>
                       <td style={{ ...tdNum, color: '#888' }}>{Number(l.iva).toLocaleString('es-CL')}</td>
                       <td style={{ ...tdNum, fontWeight: 600 }}>{Number(l.total).toLocaleString('es-CL')}</td>
+                      <td style={{ padding: '4px 6px', width: 110 }}>
+                        {ro ? (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: esInterno(l) ? '#0f766e' : '#185FA5' }}>{tipoDe(l)}</span>
+                        ) : (
+                          <select style={{ ...input, padding: '6px 8px', cursor: 'pointer', color: esInterno(l) ? '#0f766e' : '#185FA5', fontWeight: 600 }}
+                            value={tipoDe(l)} onChange={e => setLinea(i, 'tipo_ejecucion', e.target.value)}>
+                            <option value="EXTERNO">Externo</option>
+                            <option value="INTERNO">Interno</option>
+                          </select>
+                        )}
+                      </td>
                       {puedeMarkup && (
                         <td style={{ padding: '4px 6px', width: 80 }}>
                           <input style={{ ...(ro ? inputRo : input), padding: '6px 8px', textAlign: 'right' }} type="number"
                             value={l.markup_pct === '' || l.markup_pct == null ? '' : l.markup_pct}
-                            placeholder={String(MARKUP_DEFAULT)} disabled={ro}
+                            placeholder={String(markupDefault(l))} disabled={ro}
                             onChange={e => setLinea(i, 'markup_pct', e.target.value)} />
                         </td>
                       )}
@@ -536,7 +598,7 @@ export default function PresupuestosPage() {
                     )
                   })}
                   {lineas.length === 0 && (
-                    <tr><td colSpan={puedeMarkup ? 9 : 7} style={{ padding: 16, textAlign: 'center', color: '#888' }}>Sin líneas.{!ro && ' Agrega la primera con "+ Agregar línea".'}</td></tr>
+                    <tr><td colSpan={puedeMarkup ? 10 : 8} style={{ padding: 16, textAlign: 'center', color: '#888' }}>Sin líneas.{!ro && ' Agrega la primera con "+ Agregar línea".'}</td></tr>
                   )}
                 </tbody>
                 <tfoot>
@@ -546,6 +608,7 @@ export default function PresupuestosPage() {
                     <td style={{ ...tdNum, fontWeight: 700 }}>{totBase.toLocaleString('es-CL')}</td>
                     <td style={{ ...tdNum, fontWeight: 700, color: '#888' }}>{totIva.toLocaleString('es-CL')}</td>
                     <td style={{ ...tdNum, fontWeight: 700, color: '#185FA5' }}>{totTotal.toLocaleString('es-CL')}</td>
+                    <td></td>
                     {puedeMarkup && <td></td>}
                     {puedeMarkup && <td style={{ ...tdNum, fontWeight: 700, color: '#185FA5' }}>{totClienteMk.toLocaleString('es-CL')}</td>}
                     <td></td>
@@ -558,6 +621,13 @@ export default function PresupuestosPage() {
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center' }}>
             {!ro && faltaId && <span style={{ fontSize: 12, color: '#b91c1c' }}>Asigna un IDADMON para poder crear.</span>}
+            {editando && editando.id && (
+              <button onClick={generarPDFyEmail} disabled={pdfBusy}
+                title="Genera el PDF con markup (precio al cliente) y abre el borrador de email al propietario. Usa lo guardado: si acabas de cambiar algo, guarda primero."
+                style={{ ...input, width: 'auto', cursor: pdfBusy ? 'not-allowed' : 'pointer', background: '#065f46', color: '#fff', border: 'none', fontWeight: 600, opacity: pdfBusy ? 0.6 : 1 }}>
+                {pdfBusy ? 'Generando…' : '📄 PDF con markup + email'}
+              </button>
+            )}
             <button onClick={() => setEditando(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>{ro ? 'Cerrar' : 'Cancelar'}</button>
             {!ro && (
               <button onClick={guardar} disabled={guardando || histNuevo || faltaId} style={{ ...input, width: 'auto', cursor: (guardando || histNuevo || faltaId) ? 'not-allowed' : 'pointer', background: (histNuevo || faltaId) ? '#9ca3af' : '#185FA5', color: '#fff', border: 'none', fontWeight: 600, opacity: (guardando || histNuevo || faltaId) ? 0.6 : 1 }}>
