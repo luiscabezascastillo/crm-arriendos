@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v21 · 2026-08-07 · Ficha T-: si la devolución de garantía YA existe (garantia-info.devolucion_existente),
+//   el botón se sustituye por "✓ Garantía ya figura en descuento Nº X" (no re-ofrece crearla). Hereda v20.
 // VERSION: v20 · 2026-08-07 · Filtro de columna estilo Excel (como en otras hojas): "Marcar todos / Limpiar" + casillas
 //   con recuento, para poder VACIAR y marcar solo 2-3 valores y filtrar por esos (antes solo había "solo"/"Cerrar").
 //   Multi-selección real. Hereda v19.
@@ -1013,11 +1015,16 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
             </>
           )}
           {modo === 'ver' && caps.crear && garInfo && garInfo.es_dueno && garInfo.garantia > 0 && (
-            <button onClick={lanzarDevolucionGarantia}
-              title={`Crear el descuento de devolución de la garantía (${garInfo.garantia.toLocaleString('es-CL')}) que tiene el DUEÑO. Se abre el alta ya rellena.`}
-              style={{ ...btn('#8a6d0a'), background: '#FBEFC7', color: '#8a6d0a', border: '1px solid #e6d38a' }}>
-              ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
-            </button>
+            garInfo.devolucion_existente
+              ? <span title={`La devolución de garantía ya está creada (descuento Nº ${garInfo.devolucion_existente.num})`}
+                  style={{ ...btn('#166534'), background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC', cursor: 'default' }}>
+                  ✓ Garantía ya figura en descuento Nº {garInfo.devolucion_existente.num}
+                </span>
+              : <button onClick={lanzarDevolucionGarantia}
+                  title={`Crear el descuento de devolución de la garantía (${garInfo.garantia.toLocaleString('es-CL')}) que tiene el DUEÑO. Se abre el alta ya rellena.`}
+                  style={{ ...btn('#8a6d0a'), background: '#FBEFC7', color: '#8a6d0a', border: '1px solid #e6d38a' }}>
+                  ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
+                </button>
           )}
           {/* Complemento al propietario: descuento PROPIETARIO sobre el idadmon_relacionado, mismo monto/concepto,
               por el saldo del término no cubierto por la garantía. Solo T- con relacionado y no anulado. */}

@@ -1,4 +1,7 @@
 // app/api/descuentos/garantia-info/route.js
+// VERSION: v2 · 2026-08-07 · Devuelve además `devolucion_existente` = {num} si ya hay un descuento GARANTIAS ACTIVO
+//   con idadmon_relacionado = este término (para que la ficha muestre "Garantía ya figura en descuento Nº X" en vez
+//   de re-ofrecer crearla). Hereda v1.
 // VERSION: v1 · 2026-08-01 · Dado el IDADMON de un contrato terminado, devuelve su garantía y quién la tiene, más el
 //   sucesor vigente (P/S/SQ) del inmueble. Lo usa el botón "Crear devolución de garantía". Solo lectura.
 import { sesionYCaps } from '@/lib/descuentosServer';
@@ -63,6 +66,20 @@ export async function GET(req) {
     // Datos del sucesor a heredar (inmueble/propietario): del único, o del término si no hay único.
     const base = sucesorUnico || term;
 
+    // ¿Ya existe la devolución de garantía de ESTE término? (descuento GARANTIAS activo con
+    // idadmon_relacionado = idadmon). Si existe, la ficha muestra un aviso en vez de re-ofrecer crearla.
+    let devolucion_existente = null;
+    {
+      const { data: dev } = await supa
+        .from('descuentos')
+        .select('num, idadmon, mes_a_imputar')
+        .eq('tipo', 'GARANTIAS')
+        .eq('idadmon_relacionado', idadmon)
+        .neq('mes_a_imputar', '----MES')
+        .limit(1);
+      if (dev && dev.length) devolucion_existente = { num: dev[0].num, idadmon: dev[0].idadmon };
+    }
+
     return Response.json({
       encontrado: true,
       idadmon,
@@ -76,6 +93,7 @@ export async function GET(req) {
       sucesor: sucesorUnico ? sucesorUnico.idadmon : '',
       sucesor_multiple: sucesores.length > 1,
       sucesores: sucesores.map((s) => `${s.idadmon}:${s.estado}`),
+      devolucion_existente,
     });
   } catch (e) {
     return Response.json({ error: e.error || 'Error' }, { status: e.status || 500 });
