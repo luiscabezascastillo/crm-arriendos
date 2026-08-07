@@ -1,7 +1,9 @@
-﻿'use client';
+'use client';
+// VERSION: v2 · 2026-08-07 · Monta <TabTitle/> para que el título de cada pestaña muestre el proceso abierto.
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
+import TabTitle from "./components/ui/TabTitle";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -18,7 +20,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es" className={`${dmSans.variable} ${dmMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <TabTitle />
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );
