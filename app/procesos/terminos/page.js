@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v25 · 2026-08-07 · Botón "Enviar Presupuesto" ACTIVADO (antes disabled placeholder). Al pulsar: genera el PDF del presupuesto (descargable, se abre en pestaña nueva) y abre los borradores de email con el enlace del PDF añadido, para enviarlo si se quiere. Gate: solo Karina + Dirección (puedeVerMarkup), igual que el endpoint generar-presupuesto-pdf. Hereda v24.
 // VERSION: v24 · 2026-08-07 · Fix del desplegable de filtro: los botones "Más antiguas / Más recientes primero" se apilan bien. El `white-space: nowrap` de la cabecera se heredaba dentro del menú y ponía los dos botones en la misma línea (el 2º se salía a la derecha y parecía no existir). Se fuerza white-space normal en el menú y display block en los botones de orden. Hereda v23.
 // VERSION: v23 · 2026-08-07 · LISTA de Términos: (1) cabecera + fila de filtros FIJA al hacer scroll (sticky bajo el TopNav 52px); (2) filtros estilo Excel en TODAS las columnas (buscador + recuento + ordenar ↑↓, como Compras); (3) botón "⬇ Exportar a Excel" que baja lo filtrado. Hereda v22.
 // VERSION: v22 · 2026-07-19 · MARKUP ÚNICO: el presupuesto del término se muestra CON markup
@@ -178,6 +179,7 @@ export default function TerminosPage() {
   const [form, setForm] = useState(FORM_T)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
   const [completandoWf, setCompletandoWf] = useState(false)
   const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
   const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
@@ -441,6 +443,41 @@ export default function TerminosPage() {
   }
 
   // ── Borradores de email (notificación de liquidación, N16/N17) ──
+  // Enviar Presupuesto: genera el PDF (descargable) y abre los borradores de email con el enlace añadido.
+  // Gate real en el endpoint (solo Karina + Dirección); aquí se refuerza con puedeVerMarkup.
+  async function generarYEnviarPresupuesto() {
+    if (!puedeVerMarkup) return
+    setPresuGen(true); setMsg(null)
+    try {
+      const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
+      const url = data.pdf_url || null
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')   // PDF descargable en pestaña nueva
+      setMsg({ tipo: 'ok', txt: url ? 'PDF del presupuesto generado (abierto en otra pestaña para descargar). Abajo tienes el email por si quieres enviarlo.' : 'Presupuesto generado.' })
+      // Abrir los borradores de email y añadir el enlace del PDF al cuerpo de cada uno.
+      await abrirBorradores()
+      if (url) {
+        setEmailPanel(p => {
+          if (!p || !p.drafts) return p
+          const nd = {}
+          for (const k of Object.keys(p.drafts)) {
+            const d = p.drafts[k]; const cuerpo = d.cuerpo || ''
+            nd[k] = { ...d, cuerpo: cuerpo.includes(url) ? cuerpo : (cuerpo + `\n\nPresupuesto detallado (PDF): ${url}`) }
+          }
+          return { ...p, drafts: nd }
+        })
+      }
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: String(e?.message || e) })
+    } finally {
+      setPresuGen(false)
+    }
+  }
+
   async function abrirBorradores() {
     setEmailPanel({ loading: true, drafts: {} })
     const dests = ['arrendatario', 'propietario']
@@ -734,7 +771,9 @@ export default function TerminosPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
-            <button disabled title="Próximamente (falta endpoint PDF)" style={btn('#7c3aed', true)}>Enviar Presupuesto</button>
+            <button onClick={puedeVerMarkup ? generarYEnviarPresupuesto : undefined} disabled={!puedeVerMarkup || presuGen}
+              title={puedeVerMarkup ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Karina y Dirección pueden generar/enviar presupuestos'}
+              style={btn('#7c3aed', !puedeVerMarkup || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
             <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
