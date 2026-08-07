@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v26 · 2026-08-07 · LISTA de Términos: columnas nuevas desde vw_termino_resultado en el orden pedido —
+//   Garantía entregada · Quién la tiene · Datos económicos (balance) · Total servicios · Total reparaciones · Resultado.
+//   La vista ya exponía garantia/quien/servicios/balance; solo se piden y se pintan (cero cambios en BD). Export y
+//   orden actualizados; ancho del contenedor a 1600. Hereda v25.
 // VERSION: v25 · 2026-08-07 · Botón "Enviar Presupuesto" ACTIVADO (antes disabled placeholder). Al pulsar: genera el PDF del presupuesto (descargable, se abre en pestaña nueva) y abre los borradores de email con el enlace del PDF añadido, para enviarlo si se quiere. Gate: solo Karina + Dirección (puedeVerMarkup), igual que el endpoint generar-presupuesto-pdf. Hereda v24.
 // VERSION: v24 · 2026-08-07 · Fix del desplegable de filtro: los botones "Más antiguas / Más recientes primero" se apilan bien. El `white-space: nowrap` de la cabecera se heredaba dentro del menú y ponía los dos botones en la misma línea (el 2º se salía a la derecha y parecía no existir). Se fuerza white-space normal en el menú y display block en los botones de orden. Hereda v23.
 // VERSION: v23 · 2026-08-07 · LISTA de Términos: (1) cabecera + fila de filtros FIJA al hacer scroll (sticky bajo el TopNav 52px); (2) filtros estilo Excel en TODAS las columnas (buscador + recuento + ordenar ↑↓, como Compras); (3) botón "⬇ Exportar a Excel" que baja lo filtrado. Hereda v22.
@@ -82,6 +86,8 @@ function calcResult(L, markup, garantia, repPresu, quien) {
 }
 
 // Columnas de la LISTA de términos (con accesor get() y formato para el filtro numérico)
+const fmtMoneyCol = v => v === '' ? '(vacío)' : fmtPesos(v)
+const getMoney = k => r => r[k] == null ? '' : String(Math.round(Number(r[k])))
 const COLDEFS_T = [
   { key: 'idadmon', label: 'IDADMON', get: r => String(r.idadmon || '') },
   { key: 'fecha_entrega', label: 'F. Entrega', get: r => r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '' },
@@ -89,8 +95,12 @@ const COLDEFS_T = [
   { key: 'arrendatario', label: 'Arrendatario', get: r => r.arrendatario || '' },
   { key: 'inmueble', label: 'Inmueble', get: r => r.inmueble || '' },
   { key: 'estado', label: 'Estado', get: r => String(r.estado || '') },
-  { key: 'resultado', label: 'Resultado término', get: r => r.resultado == null ? '' : String(Math.round(Number(r.resultado))), fmt: v => v === '' ? '(vacío)' : fmtPesos(v), num: true, alignR: true },
-  { key: 'reparaciones', label: 'Total reparaciones', get: r => r.reparaciones == null ? '' : String(Math.round(Number(r.reparaciones))), fmt: v => v === '' ? '(vacío)' : fmtPesos(v), num: true, alignR: true },
+  { key: 'garantia', label: 'Garantía entregada', get: getMoney('garantia'), fmt: fmtMoneyCol, num: true, alignR: true },
+  { key: 'quien', label: 'Quién la tiene', get: r => r.quien || '' },
+  { key: 'balance', label: 'Datos económicos', get: getMoney('balance'), fmt: fmtMoneyCol, num: true, alignR: true },
+  { key: 'servicios', label: 'Total servicios', get: getMoney('servicios'), fmt: fmtMoneyCol, num: true, alignR: true },
+  { key: 'reparaciones', label: 'Total reparaciones', get: getMoney('reparaciones'), fmt: fmtMoneyCol, num: true, alignR: true },
+  { key: 'resultado', label: 'Resultado término', get: getMoney('resultado'), fmt: fmtMoneyCol, num: true, alignR: true },
 ]
 
 // Filtro estilo Excel (idéntico al de Compras/Honorarios): ordenar ↑↓ + buscador + valores con recuento.
@@ -246,19 +256,25 @@ export default function TerminosPage() {
       const { data: tt } = await supabase.from('terminos').select('idadmon, fecha_entrega').in('idadmon', ids.slice(i, i + 300))
       ;(tt || []).forEach(t => { fechas[(t.idadmon || '').trim()] = t.fecha_entrega })
     }
-    // resultado y reparaciones desde la vista vw_termino_resultado (defensivo: si no existe, quedan null)
+    // garantía, quién, servicios, reparaciones, datos económicos (balance) y resultado
+    // desde la vista vw_termino_resultado (defensivo: si no existe, quedan null)
     const calc = {}
     try {
       for (let i = 0; i < ids.length; i += 300) {
-        const { data: vr } = await supabase.from('vw_termino_resultado').select('idadmon, resultado, reparaciones').in('idadmon', ids.slice(i, i + 300))
-        ;(vr || []).forEach(v => { calc[(v.idadmon || '').trim()] = { resultado: v.resultado, reparaciones: v.reparaciones } })
+        const { data: vr } = await supabase.from('vw_termino_resultado').select('idadmon, garantia, quien, servicios, reparaciones, balance, resultado').in('idadmon', ids.slice(i, i + 300))
+        ;(vr || []).forEach(v => { calc[(v.idadmon || '').trim()] = { garantia: v.garantia, quien: v.quien, servicios: v.servicios, reparaciones: v.reparaciones, balance: v.balance, resultado: v.resultado } })
       }
     } catch (e) { /* vista no disponible aún: las columnas mostrarán — */ }
     // fecha_entrega: terminos.fecha_entrega, con respaldo en datos_arriendos.termino_actual
     base.forEach(r => {
       r.fecha_entrega = fechas[r.idadmon] || r.termino_actual || null
-      r.resultado = calc[r.idadmon]?.resultado ?? null
-      r.reparaciones = calc[r.idadmon]?.reparaciones ?? null
+      const c = calc[r.idadmon] || {}
+      r.garantia = c.garantia ?? null
+      r.quien = c.quien ?? null
+      r.balance = c.balance ?? null
+      r.servicios = c.servicios ?? null
+      r.resultado = c.resultado ?? null
+      r.reparaciones = c.reparaciones ?? null
     })
     setListaIds(base.sort((a, b) => a.idadmon.localeCompare(b.idadmon)))
     setListaCargada(true)
@@ -574,7 +590,7 @@ export default function TerminosPage() {
     const q = norm(busca)
     const valOrden = (key, r) => {
       if (key === 'fecha_entrega') return r.fecha_entrega || ''
-      if (key === 'resultado' || key === 'reparaciones') return r[key] == null ? -Infinity : Number(r[key])
+      if (['resultado', 'reparaciones', 'garantia', 'balance', 'servicios'].includes(key)) return r[key] == null ? -Infinity : Number(r[key])
       const c = COLDEFS_T.find(x => x.key === key)
       return norm(c ? c.get(r) : (r[key] || ''))
     }
@@ -605,8 +621,12 @@ export default function TerminosPage() {
         Arrendatario: r.arrendatario || '',
         Inmueble: r.inmueble || '',
         Estado: r.estado || '',
-        'Resultado término': r.resultado == null ? '' : Math.round(Number(r.resultado)),
+        'Garantía entregada': r.garantia == null ? '' : Math.round(Number(r.garantia)),
+        'Quién la tiene': r.quien || '',
+        'Datos económicos': r.balance == null ? '' : Math.round(Number(r.balance)),
+        'Total servicios': r.servicios == null ? '' : Math.round(Number(r.servicios)),
         'Total reparaciones': r.reparaciones == null ? '' : Math.round(Number(r.reparaciones)),
+        'Resultado término': r.resultado == null ? '' : Math.round(Number(r.resultado)),
       }))
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Terminos')
@@ -616,7 +636,7 @@ export default function TerminosPage() {
     return (
       <>
         <TopNav />
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
+        <div style={{ maxWidth: 1600, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>Términos</h1>
           <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Panel de término · arriendo, descuentos, presupuesto y workflow</div>
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Búsqueda rápida…" style={{ ...input, marginBottom: 14, maxWidth: 520 }} />
@@ -640,7 +660,7 @@ export default function TerminosPage() {
                     ))}<th style={{ position: 'sticky', top: 52, zIndex: 20, background: '#FAFAF8', borderBottom: '1px solid #E8E6E0', width: 1 }}></th>
                   </tr></thead>
                   <tbody>
-                    {rows.length === 0 ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
+                    {rows.length === 0 ? <tr><td colSpan={13} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
                       : rows.map(r => (
                         <tr key={r.idadmon} style={{ borderBottom: '1px solid #F3F4F6' }}>
                           <td style={{ padding: '10px 12px' }}><span onClick={() => abrir(r.idadmon)} title="Abrir término" style={{ color: '#185FA5', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>{r.idadmon}</span></td>
@@ -649,8 +669,12 @@ export default function TerminosPage() {
                           <td style={{ padding: '10px 12px', color: '#1a1a2e' }}>{r.arrendatario || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#555' }}>{r.inmueble || '—'}</td>
                           <td style={{ padding: '10px 12px', color: '#888' }}>{r.estado || '—'}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: r.resultado == null ? '#bbb' : (Number(r.resultado) < 0 ? '#dc2626' : '#16a34a') }}>{r.resultado == null ? '—' : fmtPesos(r.resultado)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: '#1a1a2e', fontWeight: 600 }}>{r.garantia == null ? '—' : fmtPesos(r.garantia)}</td>
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontSize: 12, fontWeight: 600, color: r.quien ? '#374151' : '#bbb' }}>{r.quien || '—'}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: '#555' }}>{r.balance == null ? '—' : fmtPesos(r.balance)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: '#555' }}>{r.servicios == null ? '—' : fmtPesos(r.servicios)}</td>
                           <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: '#555' }}>{r.reparaciones == null ? '—' : fmtPesos(r.reparaciones)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: r.resultado == null ? '#bbb' : (Number(r.resultado) < 0 ? '#dc2626' : '#16a34a') }}>{r.resultado == null ? '—' : fmtPesos(r.resultado)}</td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}><button onClick={() => abrir(r.idadmon)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid #185FA5', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}>Abrir término →</button></td>
                         </tr>
                       ))}
