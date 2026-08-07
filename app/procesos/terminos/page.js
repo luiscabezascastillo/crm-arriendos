@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v24 · 2026-08-07 · Fix del desplegable de filtro: los botones "Más antiguas / Más recientes primero" se apilan bien. El `white-space: nowrap` de la cabecera se heredaba dentro del menú y ponía los dos botones en la misma línea (el 2º se salía a la derecha y parecía no existir). Se fuerza white-space normal en el menú y display block en los botones de orden. Hereda v23.
 // VERSION: v23 · 2026-08-07 · LISTA de Términos: (1) cabecera + fila de filtros FIJA al hacer scroll (sticky bajo el TopNav 52px); (2) filtros estilo Excel en TODAS las columnas (buscador + recuento + ordenar ↑↓, como Compras); (3) botón "⬇ Exportar a Excel" que baja lo filtrado. Hereda v22.
 // VERSION: v22 · 2026-07-19 · MARKUP ÚNICO: el presupuesto del término se muestra CON markup
 //   (precio al cliente) como principal; el resultado del término usa ese total con markup (repPresu
@@ -118,9 +119,9 @@ function HeaderFilterT({ col, movs, state, setState, open, setOpen, orden, setOr
       </button>
       {open === col.key && (<>
         <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
-        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 61, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 250, textAlign: 'left' }}>
-          <button onClick={() => ordenar('asc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'asc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↑ {asc}</button>
-          <button onClick={() => ordenar('desc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'desc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↓ {desc}</button>
+        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 61, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 250, textAlign: 'left', whiteSpace: 'normal' }}>
+          <button onClick={() => ordenar('asc')} style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'asc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↑ {asc}</button>
+          <button onClick={() => ordenar('desc')} style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'desc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↓ {desc}</button>
           <div style={{ borderTop: '0.5px solid #ECEAE3', margin: '8px 0' }} />
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar en la lista…" autoFocus
             style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 6 }} />
