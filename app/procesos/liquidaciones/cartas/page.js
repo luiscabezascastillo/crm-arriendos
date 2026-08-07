@@ -1,3 +1,7 @@
+// VERSION: v5 · 2026-08-07 · CARTAS: botón "Cargar saldo de término" por línea de IDADMON. Cuando un contrato
+//   activo tiene un término terminado con déficit (saldo no cubierto por la garantía), aparece una subfila
+//   para CARGAR ese saldo como descuento al PROPIETARIO (o QUITARLO antes de liquidar). Vía /api/liquidaciones/
+//   saldo-termino; queda en bitácora y reflejado en Términos. Solo Karina + Dirección. Hereda v4.
 // VERSION: v4 · 2026-08-06 · CARTAS: marca visible cuando un propietario tiene observación de Alberto. Chip "📝 Observación" junto a Pendiente/Enviada y el botón "Observaciones" en ámbar aunque esté cerrado. Antes, al cerrar la zona no se sabía que había observación guardada. Hereda v3.
 // VERSION: v3 · 2026-08-05 · El selector de meses de CARTAS ahora va desde ENERO 2025 hasta 1 mes por delante del actual (antes solo 6 meses atrás, empezaba en febrero 2026). El mes por defecto (mesEnCurso, regla día 23) no cambia.
 // VERSION: v1 · 2026-07-20 · Buscador "ir a propietario" + filtro "Solo no enviadas" en la barra de controles
@@ -100,6 +104,8 @@ export default function CartasPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [bloques, setBloques] = useState([])
+  const [saldosTermino, setSaldosTermino] = useState({})   // idadmon activo -> { estado, deficit, descuento_num, termino }
+  const [saldoBusy, setSaldoBusy] = useState(null)
   const [actualizado, setActualizado] = useState(null)
   const [obsAbierta, setObsAbierta] = useState({})   // idprop -> bool (expandido)
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
@@ -142,7 +148,29 @@ export default function CartasPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) cargar(mes) }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargar(mes); cargarSaldos() } }, [accesoOk])
+
+  // Saldos de término pendientes/cargados por idadmon activo (para el botón por línea)
+  async function cargarSaldos() {
+    try {
+      const r = await fetch('/api/liquidaciones/saldo-termino')
+      const d = await r.json()
+      const map = {}
+      for (const s of (d.saldos || [])) { if (s.idadmon && (s.estado === 'pendiente' || s.estado === 'cargado')) map[s.idadmon] = s }
+      setSaldosTermino(map)
+    } catch { /* silencioso */ }
+  }
+  async function accionSaldo(idadmon, accion) {
+    if (!esDireccion) return
+    setSaldoBusy(idadmon)
+    try {
+      const r = await fetch('/api/liquidaciones/saldo-termino', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idadmon, mes, accion }) })
+      const d = await r.json()
+      if (!r.ok || d.error) { alert(d.error || 'No se pudo completar la acción.'); return }
+      await cargarSaldos()
+      await cargar(mes)   // recalcula la liquidación con el descuento ya creado/anulado
+    } catch (e) { alert(String(e?.message || e)) } finally { setSaldoBusy(null) }
+  }
 
   async function cargar(m) {
     setCargando(true); setError(null); setBloques([])
@@ -653,6 +681,21 @@ export default function CartasPage() {
                         <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
                         <span style={{ fontSize: 12, minWidth: 92, textAlign: 'right', color: '#6366F1', fontWeight: 700 }}>💬 Nota</span>
                         <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
+                      </div>
+                    )
+                    // 4) Saldo de término sin saldo (déficit) → cargar/quitar descuento al propietario
+                    const st = saldosTermino[x.idadmon]
+                    if (st && !x.esP) subfilas.push(
+                      <div key={x.idadmon + i + 'st'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: st.estado === 'cargado' ? '#F0FDF4' : '#FFF7ED' }}>
+                        <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                        <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right', color: st.estado === 'cargado' ? '#166534' : '#B45309' }}>{fmt(st.deficit)}</span>
+                        {st.estado === 'pendiente'
+                          ? (esDireccion
+                              ? <button onClick={() => accionSaldo(x.idadmon, 'crear')} disabled={saldoBusy === x.idadmon} title={`Crea un descuento al propietario por el saldo no cubierto por la garantía del término ${st.termino}`} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #F59E0B', background: '#FEF3C7', color: '#92400E', cursor: saldoBusy === x.idadmon ? 'default' : 'pointer' }}>{saldoBusy === x.idadmon ? 'Cargando…' : `Cargar saldo del término ${st.termino}`}</button>
+                              : <span style={{ fontSize: 12, color: '#92400E' }}>Saldo de término {st.termino} pendiente de cargar</span>)
+                          : <span style={{ fontSize: 12, color: '#166534', display: 'flex', alignItems: 'center', gap: 8 }}>✓ Saldo del término {st.termino} cargado al propietario · descuento Nº {st.descuento_num}
+                              {esDireccion && <button onClick={() => accionSaldo(x.idadmon, 'quitar')} disabled={saldoBusy === x.idadmon} title="Anula el descuento (antes de liquidar)" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', color: '#B91C1C', cursor: saldoBusy === x.idadmon ? 'default' : 'pointer' }}>{saldoBusy === x.idadmon ? '…' : 'Quitar'}</button>}
+                            </span>}
                       </div>
                     )
                     return [filaInmueble, ...subfilas]
