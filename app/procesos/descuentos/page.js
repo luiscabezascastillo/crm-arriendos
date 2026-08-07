@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v20 · 2026-08-07 · Filtro de columna estilo Excel (como en otras hojas): "Marcar todos / Limpiar" + casillas
+//   con recuento, para poder VACIAR y marcar solo 2-3 valores y filtrar por esos (antes solo había "solo"/"Cerrar").
+//   Multi-selección real. Hereda v19.
 // VERSION: v19 · 2026-08-07 · Botón "Complemento al propietario" en la ficha de un descuento T- (con IDADMON relacionado):
 //   abre el alta ya rellena con un descuento PROPIETARIO sobre el idadmon_relacionado, MISMO monto y concepto,
 //   texto "Saldo del término no cubierto por la garantía — {concepto}", idadmon_relacionado = el término (para reflejo
@@ -274,6 +277,13 @@ export default function DescuentosPage() {
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'es'));
   }
 
+  // Recuento por valor (para mostrarlo al lado de cada casilla, estilo Excel)
+  function conteosDe(col) {
+    const m = {};
+    rows.forEach((r) => { const v = cellFilterValue(r, col); m[v] = (m[v] || 0) + 1; });
+    return m;
+  }
+
   function cellFilterValue(r, col) {
     let v = r[col];
     if (col === 'verificado') v = r[col] ? 'Sí' : 'No';
@@ -362,6 +372,14 @@ export default function DescuentosPage() {
   function limpiarFiltro(col) {
     setFiltros((prev) => { const n = { ...prev }; delete n[col]; return n; });
     setMenuCol(null);
+  }
+  // "Marcar todos": quita el filtro (todos marcados), SIN cerrar el menú
+  function marcarTodos(col) {
+    setFiltros((prev) => { const n = { ...prev }; delete n[col]; return n; });
+  }
+  // "Limpiar": deja la selección vacía (todas desmarcadas), SIN cerrar el menú → luego marcas solo las que quieras
+  function limpiarSeleccion(col) {
+    setFiltros((prev) => ({ ...prev, [col]: new Set() }));
   }
   const colFiltrada = (col) => filtros[col] && filtros[col].size > 0
     && filtros[col].size < valoresUnicos(col).length;
@@ -514,10 +532,12 @@ export default function DescuentosPage() {
                         lado={ci < COLS.length / 2 ? 'left' : 'right'}
                         valores={valoresUnicos(c.key)}
                         seleccion={filtros[c.key]}
+                        conteos={conteosDe(c.key)}
                         busca={busca} setBusca={setBusca}
                         onToggle={(v) => toggleValor(c.key, v)}
                         onSolo={(v) => soloEste(c.key, v)}
-                        onTodos={() => limpiarFiltro(c.key)}
+                        onTodos={() => marcarTodos(c.key)}
+                        onLimpiar={() => limpiarSeleccion(c.key)}
                         onCerrar={() => setMenuCol(null)}
                       />
                     )}
@@ -695,8 +715,10 @@ function CeldaTextoContab({ texto }) {
 
 // ---------- menú de filtro estilo Excel ----------
 const FiltroMenu = forwardRef(function FiltroMenu(
-  { valores, seleccion, busca, setBusca, onToggle, onSolo, onTodos, onCerrar, lado = 'right' }, ref) {
-  const sel = seleccion && seleccion.size > 0 ? seleccion : new Set(valores); // sin filtro = todos
+  { valores, seleccion, conteos = {}, busca, setBusca, onToggle, onSolo, onTodos, onLimpiar, onCerrar, lado = 'right' }, ref) {
+  // seleccion: Set. Sin filtro (undefined) = todos marcados. Set vacío = todos DESmarcados (tras "Limpiar").
+  const marcado = (v) => seleccion ? seleccion.has(v) : true;
+  const activo = seleccion && seleccion.size > 0;
   const visibles = valores.filter((v) => v.toLowerCase().includes(busca.toLowerCase()));
   // Las columnas de la izquierda abren el menú hacia la derecha (left:0) y las de
   // la derecha hacia la izquierda (right:0), para que nunca tape su propia columna.
@@ -705,25 +727,28 @@ const FiltroMenu = forwardRef(function FiltroMenu(
     <div ref={ref} style={{
       position: 'absolute', zIndex: 50, top: '100%', ...anchoLado, marginTop: 4,
       background: '#fff', color: '#222', border: '1px solid #b9c2d0', borderRadius: 6,
-      boxShadow: '0 6px 18px rgba(0,0,0,.18)', width: 230, padding: 8, textAlign: 'left',
+      boxShadow: '0 6px 18px rgba(0,0,0,.18)', width: 250, padding: 8, textAlign: 'left',
       fontWeight: 400, fontSize: 12,
     }}>
       <input autoFocus placeholder="Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)}
         style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', marginBottom: 6, fontSize: 12 }} />
-      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-        <button onClick={onTodos} style={btnMini('#1f4e79')}>Mostrar todos</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11 }}>
+        <a onClick={onTodos} style={{ color: '#1f4e79', cursor: 'pointer', fontWeight: 600 }}>Marcar todos</a>
+        <a onClick={onLimpiar} style={{ color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>Limpiar</a>
       </div>
       <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4, padding: 4 }}>
         {visibles.map((v) => (
           <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0', cursor: 'pointer' }}>
-            <input type="checkbox" checked={sel.has(v)} onChange={() => onToggle(v)} />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
-            <a onClick={() => onSolo(v)} style={linkMini}>solo</a>
+            <input type="checkbox" checked={marcado(v)} onChange={() => onToggle(v)} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span>
+            <span style={{ color: '#b4b2a9', fontSize: 10 }}>{conteos[v] ?? ''}</span>
+            <a onClick={(e) => { e.preventDefault(); onSolo(v); }} style={linkMini}>solo</a>
           </label>
         ))}
         {visibles.length === 0 && <div style={{ color: '#999', padding: 4 }}>Sin coincidencias</div>}
       </div>
-      <div style={{ textAlign: 'right', marginTop: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+        {activo ? <a onClick={onTodos} style={{ color: '#b45309', cursor: 'pointer', fontSize: 11 }}>Quitar filtro</a> : <span />}
         <button onClick={onCerrar} style={btnMini('#6b7280')}>Cerrar</button>
       </div>
     </div>
