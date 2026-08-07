@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v7 · 2026-08-07 · TRANSFER por tandas: (1) los ya transferidos muestran chip "Transferido" (azul, no clicable)
+//   en vez del botón Validar/✓ — para no desvalidar por error; (2) tarjeta arriba "Validado (tanda)" que suma en vivo
+//   lo validado-sin-transferir; (3) filtro de estado (Todos / Sin transferir / Validados / Transferidos); (4) exportar
+//   a Excel lo filtrado. Los KPIs de arriba y el contador de propietarios siguen sobre el total del mes. Hereda v6.
 // VERSION: v6 · 2026-07-19 · Fase 2b: en mes CONGELADO la columna Validado es solo-lectura (sin botón Validar ni quitar validación)
 // VERSION: v5 · 2026-07-19 · Fase 2: mes CONGELADO lee la foto (liquidacion_congelada_propietario + detalle de liquidacion_idadmon); mes en vivo sin cambios
 // VERSION: v4 · 2026-07-19 · Fase 1 coherencia: en mes CONGELADO solo se muestra el indicador 🔒 CONGELADA (se ocultan Recalcular fuentes y Congelar mes)
@@ -62,6 +66,7 @@ export default function LiquidacionesPage() {
   const [expandido, setExpandido] = useState(null)        // idprop expandido
   const [pagoAbierto, setPagoAbierto] = useState(null)    // idadmon con desglose de recibido abierto
   const [busca, setBusca] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('todos')   // todos | sin_transferir | validados | transferidos
   const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
   const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
   const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
@@ -278,10 +283,21 @@ export default function LiquidacionesPage() {
   }
 
   const q = norm(busca)
-  const lista = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
+  const esTransferido = (p) => !cobraDueno.has(p.idprop) && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
+  const estaValidado = (p) => !!(validaciones[p.idprop] && validaciones[p.idprop].validado)
+  // listaBusca = solo búsqueda (para los KPIs y contadores del MES). lista = + filtro de estado (para la tabla/export).
+  const listaBusca = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
+  const lista = listaBusca.filter(p => {
+    if (filtroEstado === 'todos') return true
+    const t = esTransferido(p), v = estaValidado(p)
+    if (filtroEstado === 'sin_transferir') return !cobraDueno.has(p.idprop) && !t
+    if (filtroEstado === 'validados') return v && !t
+    if (filtroEstado === 'transferidos') return t
+    return true
+  })
 
-  // Totales del mes (los "cobra dueño" NO cuentan: no se les transfiere)
-  const totMes = lista.reduce((a, p) => {
+  // Totales del mes (sobre la búsqueda, NO sobre el filtro de estado; los "cobra dueño" NO cuentan)
+  const totMes = listaBusca.reduce((a, p) => {
     if (cobraDueno.has(p.idprop)) return a
     return {
       transferir: a.transferir + n0(p.total_transferir),
@@ -290,8 +306,36 @@ export default function LiquidacionesPage() {
       falta: a.falta + n0(p.total_falta),
     }
   }, { transferir: 0, transferido: 0, comision: 0, falta: 0 })
-  const nCobraDueno = lista.filter(p => cobraDueno.has(p.idprop)).length
+  const nCobraDueno = listaBusca.filter(p => cobraDueno.has(p.idprop)).length
   const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
+  // Tanda en curso: lo VALIDADO que aún NO se ha transferido (suma en vivo al ir validando)
+  const validadoTanda = listaBusca.reduce((s, p) => (!cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)) ? s + n0(p.total_transferir) : s, 0)
+  const nValidadoTanda = listaBusca.filter(p => !cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)).length
+
+  // Exportar a Excel lo que se ve (con el filtro aplicado)
+  async function exportarExcel() {
+    const XLSX = await import('xlsx')
+    const filas = lista.map(p => {
+      const t = esTransferido(p), v = estaValidado(p), cd = cobraDueno.has(p.idprop)
+      return {
+        Propietario: p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario,
+        'Nº props': n0(p.n_propiedades),
+        'A cobrar': n0(p.total_base),
+        Recibido: n0(p.total_recibido),
+        'Comisión': n0(p.total_comision),
+        IVA: n0(p.total_iva),
+        Descuentos: n0(p.total_descuentos),
+        'A transferir': cd ? '' : n0(p.total_transferir),
+        Transferido: n0(transf[p.idprop]) || '',
+        'Validado por': (validaciones[p.idprop] && validaciones[p.idprop].validado) ? nombreCorto(validaciones[p.idprop].validado_por) : '',
+        Estado: cd ? 'cobra dueño' : (t ? 'Transferido' : (v ? 'Validado' : 'Pendiente')),
+      }
+    })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Liquidacion')
+    const sello = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `Liquidacion-${aammToTxt(mes).replace(/\s+/g, '-')}-${sello}.xlsx`)
+  }
 
   const card = { background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, padding: 16, marginBottom: 16 }
   const metric = { flex: 1, minWidth: 130, background: '#FAFAF8', borderRadius: 8, padding: '10px 14px' }
@@ -369,6 +413,15 @@ export default function LiquidacionesPage() {
           </select>
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar propietario…"
             style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', width: 240 }} />
+          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} title="Filtrar la tabla por estado de transferencia"
+            style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', background: filtroEstado === 'todos' ? '#fff' : '#EEF2FF', color: filtroEstado === 'todos' ? '#1a1a2e' : '#3730A3', fontWeight: filtroEstado === 'todos' ? 400 : 700 }}>
+            <option value="todos">Estado: Todos</option>
+            <option value="sin_transferir">Sin transferir</option>
+            <option value="validados">Validados (sin transf.)</option>
+            <option value="transferidos">Transferidos</option>
+          </select>
+          <button onClick={exportarExcel} title="Exporta a Excel lo que ves (con el filtro aplicado)"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: 7, border: '1px solid #C7D2FE', background: '#fff', color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit' }}>⬇ Excel</button>
           {estadoCongelado === 'congelada' ? (
             <span title="Este mes está congelado (cerrado y protegido). No se recalcula."
               style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 7, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
@@ -419,7 +472,11 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
-          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{lista.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
+          <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{listaBusca.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
+          <div style={{ ...metric, background: nValidadoTanda ? '#F0FDF4' : '#FAFAF8', border: nValidadoTanda ? '1px solid #16a34a' : '1px solid transparent' }} title="Validados que aún NO se han transferido — el importe de la tanda que estás preparando">
+            <div style={metricLbl}>Validado (tanda)</div>
+            <div style={{ ...metricVal, color: nValidadoTanda ? '#166534' : '#9CA3AF' }}>{fmtPesos(validadoTanda)}{nValidadoTanda > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a' }}> · {nValidadoTanda}</span>}</div>
+          </div>
         </div>
 
         {/* Títulos de columnas (parte de la cabecera fija) */}
@@ -480,6 +537,9 @@ export default function LiquidacionesPage() {
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
                     <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
+                        : pagadoOk
+                          /* Ya transferido: sin botón de validar (para no desvalidar por error). Chip azul. */
+                          ? <span title="Ya transferido" style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#DBEAFE', color: '#1E40AF', whiteSpace: 'nowrap' }}>Transferido</span>
                         : estadoCongelado === 'congelada'
                           /* Mes congelado: solo lectura. Muestra la validación tal como quedó, sin poder cambiarla. */
                           ? (validaciones[p.idprop] && validaciones[p.idprop].validado
