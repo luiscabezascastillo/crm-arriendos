@@ -1,4 +1,8 @@
 'use client';
+// VERSION: v19 · 2026-08-07 · Botón "Complemento al propietario" en la ficha de un descuento T- (con IDADMON relacionado):
+//   abre el alta ya rellena con un descuento PROPIETARIO sobre el idadmon_relacionado, MISMO monto y concepto,
+//   texto "Saldo del término no cubierto por la garantía — {concepto}", idadmon_relacionado = el término (para reflejo
+//   en Términos). Mismo patrón que la Devolución de garantía. Karina revisa y confirma. Hereda v18.
 // VERSION: v18 · 2026-08-04 · FCR: al crear exige pegar el email de aceptación de Karina (bloqueo). En la ficha,
 //   bloque "coste de empresa": Karina justifica y acepta (rojo→verde). En el listado, la celda "Imputar a" de un
 //   FCR de 2026+ va en rojo si no aceptado y verde si aceptado. Requiere que /listar traiga fcr_aceptado.
@@ -990,6 +994,33 @@ function FichaDescuento({ descuento, caps, onClose, onGuardado, onCrearGarantia 
               ➕ Devolución de garantía ({garInfo.garantia.toLocaleString('es-CL')})
             </button>
           )}
+          {/* Complemento al propietario: descuento PROPIETARIO sobre el idadmon_relacionado, mismo monto/concepto,
+              por el saldo del término no cubierto por la garantía. Solo T- con relacionado y no anulado. */}
+          {modo === 'ver' && caps.crear
+            && esTerminoRep(row.repercutir_a)
+            && String(row.idadmon_relacionado || '').trim()
+            && !String(row.mes_a_imputar || '').startsWith('----')
+            && (() => {
+              const montoTxt = String(Math.abs(Math.round(Number(String(row.monto_a_imputar || '0').replace(/\./g, '').replace(/[^0-9.\-]/g, '')) || 0)))
+              const concepto = String(row.texto_explicativo_para_carta_a_propietario || row.tipo || '').trim()
+              return (
+                <button onClick={() => onCrearGarantia && onCrearGarantia({
+                  idadmon: String(row.idadmon_relacionado || '').trim(),
+                  inmueble: '',
+                  propietario: row.propietario || '',
+                  repercutir_a: 'PROPIETARIO',
+                  tipo: row.tipo || 'TERMINO',
+                  monto_a_imputar: montoTxt,
+                  mes_a_imputar: mesLiquidacionEnCurso(),
+                  idadmon_relacionado: row.idadmon || '',
+                  texto_explicativo_para_carta_a_propietario: `Saldo del término no cubierto por la garantía — ${concepto}`.trim(),
+                })}
+                  title={`Crear un descuento al PROPIETARIO sobre ${row.idadmon_relacionado} por el mismo importe (${montoTxt}), por el saldo del término no cubierto por la garantía. Se abre el alta ya rellena.`}
+                  style={{ ...btn('#0f766e'), background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7' }}>
+                  ➕ Complemento al propietario ({montoTxt})
+                </button>
+              )
+            })()}
           {/* Mejora 1: pasar/modificar cartola (solo ARRENDATARIO, no anulado) */}
           {modo === 'ver' && caps.crear
             && String(row.repercutir_a || '').trim().toUpperCase() === 'ARRENDATARIO'

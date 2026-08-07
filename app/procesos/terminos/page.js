@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v28 · 2026-08-07 · Panel de Término: refleja TODOS los cargos al propietario derivados del término (idadmon_relacionado=término, repercutir_a=PROPIETARIO): saldo sin saldo, complementos y devolución de garantía. Lista Nº/monto/destino. Hereda v27.
 // VERSION: v27 · 2026-08-07 · Panel de Término: refleja si el SALDO SIN SALDO ya se cargó al propietario (descuento
 //   origen='termino_sin_saldo' con idadmon_relacionado = este término). Aviso verde "Saldo cargado al propietario ·
 //   Nº X" (o gris si se quitó). El cargo se crea/quita desde Cartas. Hereda v26.
@@ -294,16 +295,13 @@ export default function TerminosPage() {
       supabase.from('workflow_instances').select('id').eq('idadmon', idadmon).eq('workflow_codigo', 'TERMINO').limit(1),
       supabase.from('ggcc_agua_luz').select('id, aamm, mes, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua').eq('idadmon', idadmon).order('aamm', { ascending: false }).limit(1),
       supabase.from('cuentas').select('cargo, abono').eq('idadmon', idadmon),
-      // Cargo del saldo del término al propietario (si ya se pasó desde Cartas): descuento con idadmon_relacionado = este término
-      supabase.from('descuentos').select('num, mes_a_imputar, monto_a_imputar, idadmon, mmdd').eq('idadmon_relacionado', idadmon).eq('origen', 'termino_sin_saldo'),
+      // Cargos al PROPIETARIO derivados de este término (saldo sin saldo, complementos, devolución de garantía…):
+      // descuentos con idadmon_relacionado = este término y repercutir_a = PROPIETARIO.
+      supabase.from('descuentos').select('num, mes_a_imputar, monto_a_imputar, idadmon, tipo, texto_explicativo_para_carta_a_propietario').eq('idadmon_relacionado', idadmon).eq('repercutir_a', 'PROPIETARIO'),
     ])
-    const cargoTSS = (() => {
-      const rows = (cargoRes && cargoRes.data) || []
-      const activo = rows.find(r => String(r.mes_a_imputar || '') !== '----MES')
-      if (activo) return { estado: 'cargado', num: activo.num, monto: n0(activo.monto_a_imputar), idadmon: activo.idadmon, mes: activo.mes_a_imputar }
-      if (rows.length) return { estado: 'quitado', num: rows[0].num, monto: n0(rows[0].monto_a_imputar), idadmon: rows[0].idadmon }
-      return null
-    })()
+    const cargosProp = ((cargoRes && cargoRes.data) || [])
+      .filter(r => String(r.mes_a_imputar || '') !== '----MES')
+      .map(r => ({ num: r.num, monto: n0(r.monto_a_imputar), idadmon: r.idadmon, mes: r.mes_a_imputar, tipo: r.tipo, texto: r.texto_explicativo_para_carta_a_propietario || '' }))
     const ggcc = (ggccRes.data && ggccRes.data[0]) || null
     const cuentasMovs = cuentasRes ? (cuentasRes.data || []) : []
     const balanceCuentas = cuentasMovs.reduce((a, r) => a + n0(r.cargo) - n0(r.abono), 0)
@@ -409,7 +407,7 @@ export default function TerminosPage() {
       .select('num, fecha_contable, idadmon, inmueble, propietario, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
       .in('idadmon', idsResumen).order('num')
 
-    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc, cargoTSS })
+    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc, cargosProp })
     setLoadingPanel(false)
   }
 
@@ -702,7 +700,7 @@ export default function TerminosPage() {
 
   // ───────── PANEL ─────────
   const A = panel?.arriendo
-  const cargoTSS = panel?.cargoTSS || null   // reflejo: ¿ya se cargó el saldo del término al propietario?
+  const cargosProp = panel?.cargosProp || []   // reflejo: cargos al propietario derivados de este término
   const presupuestos = panel?.presupuestos || []
   const detalle = panel?.detalle || []
   const descuentos = panel?.descuentos || []
@@ -972,15 +970,17 @@ export default function TerminosPage() {
                       <div style={{ fontSize: 30, fontWeight: 800, color: R.resultado < 0 ? '#dc2626' : '#16a34a' }}>{fmtPesos(R.resultado)}</div>
                     </div>
 
-                    {/* Reflejo: saldo del término cargado al propietario (desde Cartas) */}
-                    {cargoTSS && cargoTSS.estado === 'cargado' && (
+                    {/* Reflejo: cargos al propietario derivados de este término */}
+                    {cargosProp.length > 0 && (
                       <div style={{ background: '#F0FDF4', border: '1px solid #16a34a', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12.5, color: '#166534' }}>
-                        ✓ <b>Saldo cargado al propietario</b> — descuento Nº {cargoTSS.num} de {fmtPesos(cargoTSS.monto)} imputado a <b>{cargoTSS.idadmon}</b>{cargoTSS.mes ? ` (${cargoTSS.mes})` : ''}. Se creó desde Cartas.
-                      </div>
-                    )}
-                    {cargoTSS && cargoTSS.estado === 'quitado' && (
-                      <div style={{ background: '#F7F6F2', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12.5, color: '#888' }}>
-                        El saldo se cargó y luego se <b>quitó</b> (descuento Nº {cargoTSS.num} anulado). No está aplicado.
+                        <div style={{ fontWeight: 800, marginBottom: 4 }}>✓ Cargado al propietario ({cargosProp.length})</div>
+                        {cargosProp.map((c, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
+                            <span style={{ fontWeight: 700, minWidth: 44 }}>Nº {c.num}</span>
+                            <span style={{ fontFamily: 'monospace', minWidth: 90, textAlign: 'right' }}>{fmtPesos(c.monto)}</span>
+                            <span style={{ color: '#166534' }}>→ {c.idadmon}{c.mes ? ` (${c.mes})` : ''}{c.texto ? ` · ${String(c.texto).slice(0, 60)}` : ''}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
 
