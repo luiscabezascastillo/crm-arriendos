@@ -1,11 +1,12 @@
 'use client'
+// VERSION: v23 · 2026-08-07 · LISTA de Términos: (1) cabecera + fila de filtros FIJA al hacer scroll (sticky bajo el TopNav 52px); (2) filtros estilo Excel en TODAS las columnas (buscador + recuento + ordenar ↑↓, como Compras); (3) botón "⬇ Exportar a Excel" que baja lo filtrado. Hereda v22.
 // VERSION: v22 · 2026-07-19 · MARKUP ÚNICO: el presupuesto del término se muestra CON markup
 //   (precio al cliente) como principal; el resultado del término usa ese total con markup (repPresu
 //   con markup, se jubila el markup como monto suelto). El % (terminos.markup_fcr, default 20) es
 //   editable solo por Karina/Dirección, con drop-down "ver coste sin markup" y el margen FCR. Los
 //   demás solo ven el presupuesto comunicable. Hereda v21.
 //   ('use client' debe ir 1º; VERSION en línea 2.)
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -78,6 +79,71 @@ function calcResult(L, markup, garantia, repPresu, quien) {
   return { sg, ss, sr, markup: n0(markup), garantia: n0(garantia), totalCargos, resultado, conSaldo, esFCR, tipo }
 }
 
+// Columnas de la LISTA de términos (con accesor get() y formato para el filtro numérico)
+const COLDEFS_T = [
+  { key: 'idadmon', label: 'IDADMON', get: r => String(r.idadmon || '') },
+  { key: 'fecha_entrega', label: 'F. Entrega', get: r => r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '' },
+  { key: 'propietario', label: 'Propietario', get: r => r.propietario || '' },
+  { key: 'arrendatario', label: 'Arrendatario', get: r => r.arrendatario || '' },
+  { key: 'inmueble', label: 'Inmueble', get: r => r.inmueble || '' },
+  { key: 'estado', label: 'Estado', get: r => String(r.estado || '') },
+  { key: 'resultado', label: 'Resultado término', get: r => r.resultado == null ? '' : String(Math.round(Number(r.resultado))), fmt: v => v === '' ? '(vacío)' : fmtPesos(v), num: true, alignR: true },
+  { key: 'reparaciones', label: 'Total reparaciones', get: r => r.reparaciones == null ? '' : String(Math.round(Number(r.reparaciones))), fmt: v => v === '' ? '(vacío)' : fmtPesos(v), num: true, alignR: true },
+]
+
+// Filtro estilo Excel (idéntico al de Compras/Honorarios): ordenar ↑↓ + buscador + valores con recuento.
+function HeaderFilterT({ col, movs, state, setState, open, setOpen, orden, setOrden }) {
+  const active = state && (state.text || (state.sel && state.sel.length))
+  const s = state || { text: '', sel: [] }
+  const [busca, setBusca] = useState('')
+  const distinct = useMemo(() => {
+    const m = new Map()
+    for (const v of movs) { const k = String(col.get(v) ?? ''); m.set(k, (m.get(k) || 0) + 1) }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }))
+  }, [movs, col])
+  const visibles = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return q ? distinct.filter(([v]) => v.toLowerCase().includes(q) || (col.fmt && String(col.fmt(v)).toLowerCase().includes(q))) : distinct
+  }, [distinct, busca]) // eslint-disable-line
+  const toggle = (v) => { const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]; setState({ ...s, sel }) }
+  const ordenar = (dir) => { setOrden({ key: col.key, dir }); setOpen(null) }
+  const asc = col.key === 'fecha_entrega' ? 'Más antiguas primero' : col.num ? 'Menor a mayor' : 'A → Z'
+  const desc = col.key === 'fecha_entrega' ? 'Más recientes primero' : col.num ? 'Mayor a menor' : 'Z → A'
+  const activoOrden = orden && orden.key === col.key
+  return (
+    <span style={{ position: 'relative', marginLeft: 4, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+      <button onClick={(e) => { e.stopPropagation(); setBusca(''); setOpen(open === col.key ? null : col.key) }} title="Ordenar y filtrar"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : (activoOrden ? '#0C447C' : '#B4B2A9'), fontSize: 11, padding: 0 }}>
+        {activoOrden ? (orden.dir === 'desc' ? '▼' : '▲') : '▼'}
+      </button>
+      {open === col.key && (<>
+        <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 61, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 250, textAlign: 'left' }}>
+          <button onClick={() => ordenar('asc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'asc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↑ {asc}</button>
+          <button onClick={() => ordenar('desc')} style={{ width: '100%', textAlign: 'left', fontSize: 12, padding: '5px 6px', border: 'none', borderRadius: 6, background: activoOrden && orden.dir === 'desc' ? '#E1F5EE' : 'transparent', cursor: 'pointer', color: '#2C2C2A' }}>↓ {desc}</button>
+          <div style={{ borderTop: '0.5px solid #ECEAE3', margin: '8px 0' }} />
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar en la lista…" autoFocus
+            style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 6 }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
+            <button onClick={() => setState({ ...s, sel: visibles.map(([v]) => v) })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>Marcar {busca ? `los ${visibles.length} visibles` : 'todos'}</button>
+            <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {visibles.length === 0 && <div style={{ fontSize: 11, color: '#B4B2A9', padding: '6px 0' }}>Sin coincidencias</div>}
+            {visibles.slice(0, 400).map(([v, n]) => (
+              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : (col.fmt ? col.fmt(v) : v)}</span>
+                <span style={{ fontSize: 10, color: '#B4B2A9' }}>{n}</span>
+              </label>))}
+            {visibles.length > 400 && <div style={{ fontSize: 10, color: '#B4B2A9', padding: '4px 0' }}>…y {visibles.length - 400} más. Afina la búsqueda.</div>}
+          </div>
+          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setBusca(''); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
+        </div></>)}
+    </span>
+  )
+}
+
 export default function TerminosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -92,6 +158,10 @@ export default function TerminosPage() {
   const [filtros, setFiltros] = useState({ idadmon: '', fecha_entrega: '', propietario: '', arrendatario: '', inmueble: '', estado: 'Q' })
   const [sortCol, setSortCol] = useState('idadmon')
   const [sortDir, setSortDir] = useState('desc')
+  // Filtros estilo Excel de la LISTA (col.key -> {text, sel}). Estado arranca en 'Q' (como antes).
+  const [filters, setFilters] = useState({ estado: { text: '', sel: ['Q'] } })
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState({ key: 'idadmon', dir: 'asc' })
 
   const [idadmonSel, setIdadmonSel] = useState('')
   const [panel, setPanel] = useState(null)
@@ -463,29 +533,48 @@ export default function TerminosPage() {
 
   // ───────── LISTA ─────────
   if (modo === 'lista') {
-    const COLS = [{ key: 'idadmon', label: 'IDADMON' }, { key: 'fecha_entrega', label: 'F. Entrega' }, { key: 'propietario', label: 'Propietario' }, { key: 'arrendatario', label: 'Arrendatario' }, { key: 'inmueble', label: 'Inmueble' }, { key: 'estado', label: 'Estado' }, { key: 'resultado', label: 'Resultado término' }, { key: 'reparaciones', label: 'Total reparaciones' }]
-    const NUM_COLS = ['resultado', 'reparaciones']
-    const estadosDisp = [...new Set(listaIds.map(r => up(r.estado)).filter(Boolean))].sort()
     const q = norm(busca)
+    const valOrden = (key, r) => {
+      if (key === 'fecha_entrega') return r.fecha_entrega || ''
+      if (key === 'resultado' || key === 'reparaciones') return r[key] == null ? -Infinity : Number(r[key])
+      const c = COLDEFS_T.find(x => x.key === key)
+      return norm(c ? c.get(r) : (r[key] || ''))
+    }
     let rows = listaIds.filter(r => {
-      if (filtros.estado !== '__all__' && up(r.estado) !== filtros.estado) return false
-      if (filtros.idadmon && !norm(r.idadmon).includes(norm(filtros.idadmon))) return false
-      if (filtros.arrendatario && !norm(r.arrendatario).includes(norm(filtros.arrendatario))) return false
-      if (filtros.inmueble && !norm(r.inmueble).includes(norm(filtros.inmueble))) return false
-      if (filtros.propietario && !norm(r.propietario).includes(norm(filtros.propietario))) return false
-      if (filtros.fecha_entrega && !norm(r.fecha_entrega).includes(norm(filtros.fecha_entrega))) return false
+      for (const c of COLDEFS_T) {
+        const f = filters[c.key]; if (!f) continue
+        const val = String(c.get(r) ?? '')
+        if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false
+        if (f.sel && f.sel.length && !f.sel.includes(val)) return false
+      }
       if (q && !norm([r.idadmon, r.arrendatario, r.inmueble].join(' ')).includes(q)) return false
       return true
     }).sort((a, b) => {
-      if (sortCol === 'resultado' || sortCol === 'reparaciones') {
-        const va = a[sortCol] == null ? -Infinity : Number(a[sortCol]), vb = b[sortCol] == null ? -Infinity : Number(b[sortCol])
-        return sortDir === 'asc' ? va - vb : vb - va
-      }
-      const va = norm(a[sortCol]), vb = norm(b[sortCol]); if (va < vb) return sortDir === 'asc' ? -1 : 1; if (va > vb) return sortDir === 'asc' ? 1 : -1; return 0
+      const va = valOrden(orden.key, a), vb = valOrden(orden.key, b)
+      let cmp = va < vb ? -1 : va > vb ? 1 : 0
+      if (cmp === 0) cmp = norm(a.idadmon) < norm(b.idadmon) ? -1 : (norm(a.idadmon) > norm(b.idadmon) ? 1 : 0)
+      return orden.dir === 'desc' ? -cmp : cmp
     })
-    const inpFiltro = { width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '4px 6px', fontSize: 12, border: '1px solid #E5E7EB', borderRadius: 5, fontFamily: 'inherit', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }
-    const flecha = c => sortCol === c ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
-    const toggleSort = c => { if (sortCol === c) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(c); setSortDir('asc') } }
+    const estSel = (filters.estado && filters.estado.sel) || []
+    const estadoLbl = estSel.length ? estSel.join(', ') : 'todos'
+    const exportar = async () => {
+      if (!rows.length) return
+      const XLSX = await import('xlsx')
+      const filas = rows.map(r => ({
+        IDADMON: r.idadmon || '',
+        'F. Entrega': r.fecha_entrega ? fmtFecha(r.fecha_entrega) : '',
+        Propietario: r.propietario || '',
+        Arrendatario: r.arrendatario || '',
+        Inmueble: r.inmueble || '',
+        Estado: r.estado || '',
+        'Resultado término': r.resultado == null ? '' : Math.round(Number(r.resultado)),
+        'Total reparaciones': r.reparaciones == null ? '' : Math.round(Number(r.reparaciones)),
+      }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Terminos')
+      const sello = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(wb, `Terminos-${sello}.xlsx`)
+    }
     return (
       <>
         <TopNav />
@@ -495,18 +584,22 @@ export default function TerminosPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Búsqueda rápida…" style={{ ...input, marginBottom: 14, maxWidth: 520 }} />
           {!listaCargada ? <div style={{ color: '#888' }}>Cargando…</div> : (
             <>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>{rows.length} resultado{rows.length === 1 ? '' : 's'} · estado: <b>{filtros.estado === '__all__' ? 'todos' : filtros.estado}</b></div>
-              <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#888' }}>{rows.length} resultado{rows.length === 1 ? '' : 's'} · estado: <b>{estadoLbl}</b></div>
+                <button onClick={exportar} disabled={!rows.length} title="Exporta a Excel lo que ves filtrado"
+                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: rows.length ? '#185FA5' : '#B4B2A9', cursor: rows.length ? 'pointer' : 'default', fontFamily: 'inherit' }}>⬇ Exportar a Excel</button>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'visible' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ background: '#FAFAF8', borderBottom: '1px solid #E8E6E0' }}>
-                    {COLS.map(c => (
-                      <th key={c.key} style={{ padding: '8px 12px', textAlign: 'left', verticalAlign: 'top' }}>
-                        <div onClick={() => toggleSort(c.key)} style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: .5, userSelect: 'none' }}>{c.label}{flecha(c.key)}</div>
-                        {c.key === 'estado' ? <select value={filtros.estado} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))} style={inpFiltro}><option value="__all__">Todos</option>{estadosDisp.map(s => <option key={s} value={s}>{s}</option>)}</select>
-                          : NUM_COLS.includes(c.key) ? <div style={{ ...inpFiltro, border: 'none', color: '#bbb', paddingLeft: 0 }}>(ordenar ↕)</div>
-                          : <input value={filtros[c.key]} onChange={e => setFiltros(f => ({ ...f, [c.key]: e.target.value }))} placeholder="filtrar…" style={inpFiltro} />}
+                  <thead><tr>
+                    {COLDEFS_T.map(c => (
+                      <th key={c.key} style={{ position: 'sticky', top: 52, zIndex: 20, background: '#FAFAF8', borderBottom: '1px solid #E8E6E0', padding: '10px 12px', textAlign: c.alignR ? 'right' : 'left', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: .5 }}>
+                          <span>{c.label}</span>
+                          <HeaderFilterT col={c} movs={listaIds} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} />
+                        </span>
                       </th>
-                    ))}<th style={{ width: 1 }}></th>
+                    ))}<th style={{ position: 'sticky', top: 52, zIndex: 20, background: '#FAFAF8', borderBottom: '1px solid #E8E6E0', width: 1 }}></th>
                   </tr></thead>
                   <tbody>
                     {rows.length === 0 ? <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#888' }}>Sin resultados.</td></tr>
