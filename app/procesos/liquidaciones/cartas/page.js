@@ -1,3 +1,9 @@
+// VERSION: v7 · 2026-08-07 · CARTAS: "Dejar en espera" un inmueble cuyo arrendatario no ha pagado. Botón por línea de
+//   IDADMON (Alberto/Dirección/Karina): retiene su neto para NO transferirlo en esta oleada y pagarlo cuando llegue el
+//   dinero, antes de congelar. El banco ayuda: marca "falta cobrar $X" si recibido<renta y "💰 ya se recibió" cuando
+//   entra el dinero (con botón Liberar). Los totales del propietario se parten en "A transferir ahora" (sin retenidos)
+//   y "En espera". Persistido en liquidacion_retenidos (vía /api/liquidaciones/retener) → se refleja también en
+//   TRANSFER y avisa al congelar. Hereda v6.
 // VERSION: v6 · 2026-08-07 · CARTAS: el buscador de IDADMON del modal de comentarios ya no fuerza mayúsculas (se puede
 //   escribir en mayúsculas o minúsculas; la búsqueda normaliza internamente). Hereda v5.
 // VERSION: v5 · 2026-08-07 · CARTAS: botón "Cargar saldo de término" por línea de IDADMON. Cuando un contrato
@@ -108,6 +114,8 @@ export default function CartasPage() {
   const [bloques, setBloques] = useState([])
   const [saldosTermino, setSaldosTermino] = useState({})   // idadmon activo -> { estado, deficit, descuento_num, termino }
   const [saldoBusy, setSaldoBusy] = useState(null)
+  const [retenidos, setRetenidos] = useState({})   // idadmon -> true (línea en espera este mes)
+  const [retBusy, setRetBusy] = useState(null)
   const [actualizado, setActualizado] = useState(null)
   const [obsAbierta, setObsAbierta] = useState({})   // idprop -> bool (expandido)
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
@@ -150,7 +158,28 @@ export default function CartasPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) { cargar(mes); cargarSaldos() } }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargar(mes); cargarSaldos(); cargarRetenidos(mes) } }, [accesoOk])
+
+  // Líneas "en espera" (retenidas) del mes: set de idadmon que NO se transfieren esta oleada.
+  async function cargarRetenidos(m) {
+    try {
+      const r = await fetch('/api/liquidaciones/retener?mes=' + encodeURIComponent(m))
+      const d = await r.json()
+      const map = {}
+      for (const s of (d.retenidos || [])) if (s.idadmon) map[s.idadmon] = true
+      setRetenidos(map)
+    } catch { /* silencioso */ }
+  }
+  async function accionRetener(idadmon, accion) {
+    if (!esDireccion) return
+    setRetBusy(idadmon)
+    try {
+      const r = await fetch('/api/liquidaciones/retener', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idadmon, mes, accion }) })
+      const d = await r.json()
+      if (!r.ok || d.error) { alert(d.error || 'No se pudo completar la acción.'); return }
+      await cargarRetenidos(mes)
+    } catch (e) { alert(String(e?.message || e)) } finally { setRetBusy(null) }
+  }
 
   // Saldos de término pendientes/cargados por idadmon activo (para el botón por línea)
   async function cargarSaldos() {
@@ -559,7 +588,7 @@ export default function CartasPage() {
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <label style={{ fontSize: 13, color: '#666' }}>Mes:</label>
-          <select value={mes} onChange={e => { setMes(e.target.value); cargar(e.target.value) }}
+          <select value={mes} onChange={e => { setMes(e.target.value); cargar(e.target.value); cargarRetenidos(e.target.value) }}
             style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13 }}>
             {generarMeses().map(mm => <option key={mm} value={mm}>{aammToTxt(mm)}</option>)}
           </select>
@@ -591,6 +620,9 @@ export default function CartasPage() {
           const abierta = !!obsAbierta[b.idprop]
           const tieneOvr = (b.inmuebles || []).some(x => x.override)
           const tieneObs = (obsTexto[b.idprop] || '').trim().length > 0
+          // Split por morosidad: neto retenido (líneas "en espera") y "A transferir ahora" = total - retenido.
+          const retTot = (b.inmuebles || []).reduce((a, x) => a + ((!x.esP && retenidos[x.idadmon]) ? n0(x.aTransferir) : 0), 0)
+          const aTransferirAhora = n0(b.totales.aTransferir) - retTot
           return (
             <div key={b.idprop} id={'liq-' + b.idprop} style={{ scrollMarginTop: 110, border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
@@ -700,6 +732,38 @@ export default function CartasPage() {
                             </span>}
                       </div>
                     )
+                    // 5) Retención por morosidad: "dejar en espera" / "liberar" un inmueble no cobrado
+                    if (!x.esP && !x.esProp) {
+                      const enEspera = !!retenidos[x.idadmon]
+                      const renta = n0(x.aCobrar)
+                      const falta = Math.max(0, renta - n0(x.recibido))
+                      const cobrado = renta > 0 && n0(x.recibido) >= renta
+                      if (enEspera) {
+                        subfilas.push(
+                          <div key={x.idadmon + i + 'ret'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: cobrado ? '#F0FDF4' : '#EFF6FF' }}>
+                            <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                            <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right', color: cobrado ? '#166534' : '#1D4ED8' }}>{fmt(x.aTransferir)}</span>
+                            {cobrado
+                              ? <span style={{ fontSize: 12, color: '#166534', display: 'flex', alignItems: 'center', gap: 8 }}>💰 En espera · <b>ya se recibió el pago</b> — listo para transferir
+                                  {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Libera la línea: su neto vuelve a A transferir para pagarlo en esta/próxima oleada" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #16A34A', background: '#DCFCE7', color: '#166534', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '▶ Liberar'}</button>}
+                                </span>
+                              : <span style={{ fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8 }}>⏸ En espera · arrendatario no ha pagado{falta ? ` (falta ${falta.toLocaleString('es-CL')})` : ''} — no se transfiere ahora
+                                  {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Quita la espera: su neto vuelve a A transferir" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', color: '#1D4ED8', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : 'Quitar espera'}</button>}
+                                </span>}
+                          </div>
+                        )
+                      } else if (falta > 0) {
+                        subfilas.push(
+                          <div key={x.idadmon + i + 'mor'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: '#FFF7ED' }}>
+                            <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                            <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right', color: '#B45309' }}>{falta.toLocaleString('es-CL')}</span>
+                            <span style={{ fontSize: 12, color: '#92400E', display: 'flex', alignItems: 'center', gap: 8 }}>⚠ falta cobrar (arrendatario no ha pagado del todo)
+                              {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'retener')} disabled={retBusy === x.idadmon} title="Deja este inmueble en espera: no se transfiere ahora; se paga cuando llegue el dinero" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #3B82F6', background: '#DBEAFE', color: '#1D4ED8', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '⏸ Dejar en espera'}</button>}
+                            </span>
+                          </div>
+                        )
+                      }
+                    }
                     return [filaInmueble, ...subfilas]
                   })}
                   {/* TOTALES */}
@@ -716,7 +780,13 @@ export default function CartasPage() {
               {/* Fila de cierre: estado + transferido + diferencia */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #E5E7EB', background: '#FAFAFA' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 20, background: ec.bg, color: ec.c }}>{b.estado}</span>
-                <span style={{ fontSize: 12, color: '#555' }}>A transferir: <b>{fmt(b.totales.aTransferir)}</b></span>
+                {retTot > 0
+                  ? <>
+                      <span style={{ fontSize: 12, color: '#166534' }}>A transferir ahora: <b>{fmt(aTransferirAhora)}</b></span>
+                      <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 6, background: '#DBEAFE', color: '#1D4ED8' }}>⏸ En espera (moroso): {fmt(retTot)}</span>
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>(total {fmt(b.totales.aTransferir)})</span>
+                    </>
+                  : <span style={{ fontSize: 12, color: '#555' }}>A transferir: <b>{fmt(b.totales.aTransferir)}</b></span>}
                 <span style={{ fontSize: 12, color: '#555' }}>Transferido al propietario: <b>{fmt(b.transferido)}</b></span>
                 <span style={{ fontSize: 12, color: '#555' }}>Diferencia:
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>

@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v9 · 2026-08-07 · TRANSFER: refleja las líneas "en espera" (retenidas en CARTAS por arrendatario moroso).
+//   "A transferir" pasa a ser "a transferir AHORA" = total − retenido; se añade KPI "En espera" y chip por propietario;
+//   la validación/Transferido usan el importe de ahora (así el propietario con su parte pagada queda ✓ aunque el moroso
+//   siga pendiente). Al Congelar, avisa si quedan líneas en espera sin cobrar. Fuente: /api/liquidaciones/retener. Hereda v8.
 // VERSION: v8 · 2026-08-07 · TRANSFER: filtros estilo Excel por columna en la cabecera (buscador + recuento + ordenar ↑↓,
 //   como Compras/Términos), aplicados a las filas de propietario. El export (⬇ Excel) ya existía y respeta los filtros.
 //   Los KPIs siguen sobre el total del mes. Hereda v7.
@@ -128,6 +132,8 @@ export default function LiquidacionesPage() {
   const [ordenCol, setOrdenCol] = useState({ key: null, dir: 'asc' })
   const [ultimaAct, setUltimaAct] = useState(null)   // marca de hora de la última lectura
   const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
+  const [retMap, setRetMap] = useState({})     // idprop -> neto retenido (líneas "en espera" este mes)
+  const [retList, setRetList] = useState([])   // filas retenidas enriquecidas (para el aviso de congelar)
   const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
   const [valSaving, setValSaving] = useState(null)          // idprop guardándose
   const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
@@ -147,7 +153,19 @@ export default function LiquidacionesPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes) } }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes); cargarRetenidos(mes) } }, [accesoOk])
+
+  // Líneas "en espera" del mes (retenidas en CARTAS): neto retenido por propietario + lista para el aviso de congelar.
+  async function cargarRetenidos(m) {
+    try {
+      const r = await fetch('/api/liquidaciones/retener?mes=' + encodeURIComponent(m))
+      const d = await r.json()
+      const list = d.retenidos || []
+      const map = {}
+      for (const s of list) { const k = s.idprop; if (k) map[k] = n0(map[k]) + n0(s.neto) }
+      setRetMap(map); setRetList(list)
+    } catch { setRetMap({}); setRetList([]) }
+  }
 
   async function cargarMes(m) {
     setCargando(true); setError(null); setExpandido(null); setDetalles({}); setPagoAbierto(null)
@@ -270,7 +288,7 @@ export default function LiquidacionesPage() {
     setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm, inicios } }))
   }
 
-  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m) }
+  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m); cargarRetenidos(m) }
 
   // Consulta si el mes está congelado (para el indicador de candado)
   async function consultarCongelado(m) {
@@ -342,7 +360,10 @@ export default function LiquidacionesPage() {
   }
 
   const q = norm(busca)
-  const esTransferido = (p) => !cobraDueno.has(p.idprop) && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
+  // Retenido (en espera) por propietario y "a transferir AHORA" = total − retenido.
+  const retDe = (p) => n0(retMap[p.idprop])
+  const aTransAhora = (p) => n0(p.total_transferir) - retDe(p)
+  const esTransferido = (p) => !cobraDueno.has(p.idprop) && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= aTransAhora(p)
   const estaValidado = (p) => !!(validaciones[p.idprop] && validaciones[p.idprop].validado)
   // listaBusca = solo búsqueda (para los KPIs y contadores del MES). lista = + filtro de estado (para la tabla/export).
   const listaBusca = (propietarios || []).filter(p => !q || norm([p.propietario, p.idprop].join(' ')).includes(q))
@@ -355,7 +376,7 @@ export default function LiquidacionesPage() {
     { key: 'comision', label: 'Comisión', num: true, alignR: true, fmt: money, get: p => String(n0(p.total_comision)) },
     { key: 'iva', label: 'IVA', num: true, alignR: true, fmt: money, get: p => String(n0(p.total_iva)) },
     { key: 'descuentos', label: 'Descuentos', num: true, alignR: true, fmt: money, get: p => String(n0(p.total_descuentos)) },
-    { key: 'a_transferir', label: 'A transferir', num: true, alignR: true, fmt: money, get: p => cobraDueno.has(p.idprop) ? '' : String(n0(p.total_transferir)) },
+    { key: 'a_transferir', label: 'A transferir', num: true, alignR: true, fmt: money, get: p => cobraDueno.has(p.idprop) ? '' : String(aTransAhora(p)) },
     { key: 'transferido', label: 'Transferido', num: true, alignR: true, fmt: money, get: p => String(n0(transf[p.idprop])) },
     { key: 'validado', label: 'Validado', center: true, get: p => cobraDueno.has(p.idprop) ? '(cobra dueño)' : (esTransferido(p) ? 'Transferido' : (estaValidado(p) ? `Validado ${nombreCorto(validaciones[p.idprop] && validaciones[p.idprop].validado_por)}` : 'Pendiente')) },
     { key: 'estado', label: 'Estado', center: true, get: p => cobraDueno.has(p.idprop) ? '(cobra dueño)' : (alertasDe(p).length ? '⚠ Con alerta' : '✓ OK') },
@@ -392,7 +413,7 @@ export default function LiquidacionesPage() {
   const totMes = listaBusca.reduce((a, p) => {
     if (cobraDueno.has(p.idprop)) return a
     return {
-      transferir: a.transferir + n0(p.total_transferir),
+      transferir: a.transferir + aTransAhora(p),
       transferido: a.transferido + n0(transf[p.idprop]),
       comision: a.comision + n0(p.total_comision) + n0(p.total_iva),
       falta: a.falta + n0(p.total_falta),
@@ -400,8 +421,11 @@ export default function LiquidacionesPage() {
   }, { transferir: 0, transferido: 0, comision: 0, falta: 0 })
   const nCobraDueno = listaBusca.filter(p => cobraDueno.has(p.idprop)).length
   const faltaTransferir = Math.max(0, totMes.transferir - totMes.transferido)
+  // En espera (morosos): neto retenido total del mes + nº de líneas aún sin cobrar (para el aviso de congelar).
+  const totEspera = listaBusca.reduce((a, p) => cobraDueno.has(p.idprop) ? a : a + retDe(p), 0)
+  const retenidosPend = (retList || []).filter(r => !r.cobrado)
   // Tanda en curso: lo VALIDADO que aún NO se ha transferido (suma en vivo al ir validando)
-  const validadoTanda = listaBusca.reduce((s, p) => (!cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)) ? s + n0(p.total_transferir) : s, 0)
+  const validadoTanda = listaBusca.reduce((s, p) => (!cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)) ? s + aTransAhora(p) : s, 0)
   const nValidadoTanda = listaBusca.filter(p => !cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)).length
 
   // Exportar a Excel lo que se ve (con el filtro aplicado)
@@ -462,9 +486,14 @@ export default function LiquidacionesPage() {
                 <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.55, marginBottom: 8 }}>
                   Al congelar, este mes queda <b>cerrado y protegido</b>: se guarda una foto definitiva con los datos actuales (se recalcula una última vez) y ya <b>no se recalculará automáticamente</b>.
                 </div>
-                <div style={{ fontSize: 13, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 12px', marginBottom: 20 }}>
+                <div style={{ fontSize: 13, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 12px', marginBottom: retenidosPend.length > 0 ? 12 : 20 }}>
                   Úsalo solo cuando el mes esté revisado y cuadrado. Si te has equivocado de mes, pulsa Cancelar.
                 </div>
+                {retenidosPend.length > 0 && (
+                  <div style={{ fontSize: 13, color: '#1E40AF', background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 8, padding: '9px 12px', marginBottom: 20 }}>
+                    ⏸ Quedan <b>{retenidosPend.length}</b> línea(s) <b>en espera sin cobrar</b> (arrendatarios morosos), por <b>{fmtPesos(retenidosPend.reduce((a, r) => a + n0(r.neto), 0))}</b>. Si congelas ahora, ese saldo queda pendiente en la foto del mes. Confirma solo si es lo que quieres.
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                   <button onClick={() => setModalCongelar(false)} disabled={congelando}
                     style={{ fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -562,6 +591,7 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>A transferir</div><div style={metricVal}>{fmtPesos(totMes.transferir)}</div></div>
           <div style={metric}><div style={metricLbl}>Transferido</div><div style={{ ...metricVal, color: '#0C447C' }}>{fmtPesos(totMes.transferido)}</div></div>
           <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
+          {totEspera > 0 && <div style={{ ...metric, background: '#EFF6FF', border: '1px solid #93C5FD' }} title="Neto retenido en espera (arrendatarios morosos) — se transfiere cuando llegue el dinero, antes de congelar"><div style={metricLbl}>En espera (morosos)</div><div style={{ ...metricVal, color: '#1D4ED8' }}>{fmtPesos(totEspera)}{retenidosPend.length > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#3B82F6' }}> · {retenidosPend.length} sin cobrar</span>}</div></div>}
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
           <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{listaBusca.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
@@ -602,7 +632,8 @@ export default function LiquidacionesPage() {
               const pie = detObj ? detObj.pie : []
               const sumaDesc = detObj ? detObj.sumaDesc : {}
               const cd = cobraDueno.has(p.idprop)
-              const pagadoOk = !cd && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= n0(p.total_transferir)
+              const enEspera = retDe(p)
+              const pagadoOk = !cd && n0(transf[p.idprop]) > 0 && n0(transf[p.idprop]) >= aTransAhora(p)
               const GRID = '1.4fr 0.75fr 0.75fr 0.65fr 0.6fr 0.75fr 0.85fr 0.55fr 0.75fr'
               return (
                 <div key={p.idprop} style={{ borderTop: '1px solid #F0EEE8' }}>
@@ -615,13 +646,14 @@ export default function LiquidacionesPage() {
                       <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
                       {cd && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280', whiteSpace: 'nowrap' }}>cobra dueño</span>}
                       {pagadoOk && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>✓ transferido</span>}
+                      {enEspera > 0 && <span title="Tiene un inmueble en espera (arrendatario moroso): su neto no se transfiere hasta que llegue el dinero" style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DBEAFE', color: '#1D4ED8', whiteSpace: 'nowrap' }}>⏸ en espera {fmtPesos(enEspera)}</span>}
                     </div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_base)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{fmtPesos(p.total_recibido)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_comision) === 0 ? '—' : fmtPesos(p.total_comision)}</div>
                     <div style={{ textAlign: 'right', color: '#666' }}>{n0(p.total_iva) === 0 ? '—' : fmtPesos(p.total_iva)}</div>
                     <div style={{ textAlign: 'right', color: n0(p.total_descuentos) ? (n0(p.total_descuentos) < 0 ? '#dc2626' : '#1D9E75') : '#ccc' }}>{n0(p.total_descuentos) ? fmtPesos(p.total_descuentos) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(p.total_transferir)}</div>
+                    <div style={{ textAlign: 'right', fontWeight: 700, color: cd ? '#9CA3AF' : '#1a1a2e' }}>{cd ? '—' : fmtPesos(aTransAhora(p))}{enEspera > 0 && <div style={{ fontSize: 10, fontWeight: 600, color: '#1D4ED8' }}>⏸ +{fmtPesos(enEspera)} en espera</div>}</div>
                     <div style={{ textAlign: 'right', color: n0(transf[p.idprop]) ? '#0C447C' : '#ccc' }}>{n0(transf[p.idprop]) ? fmtPesos(transf[p.idprop]) : '—'}</div>
                     <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       {cd ? <span style={{ color: '#D1D5DB' }}>—</span>
