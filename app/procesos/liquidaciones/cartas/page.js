@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-08-06 · CARTAS: marca visible cuando un propietario tiene observación de Alberto. Chip "📝 Observación" junto a Pendiente/Enviada y el botón "Observaciones" en ámbar aunque esté cerrado. Antes, al cerrar la zona no se sabía que había observación guardada. Hereda v3.
 // VERSION: v3 · 2026-08-05 · El selector de meses de CARTAS ahora va desde ENERO 2025 hasta 1 mes por delante del actual (antes solo 6 meses atrás, empezaba en febrero 2026). El mes por defecto (mesEnCurso, regla día 23) no cambia.
 // VERSION: v1 · 2026-07-20 · Buscador "ir a propietario" + filtro "Solo no enviadas" en la barra de controles
 'use client'
@@ -559,6 +560,7 @@ export default function CartasPage() {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
           const tieneOvr = (b.inmuebles || []).some(x => x.override)
+          const tieneObs = (obsTexto[b.idprop] || '').trim().length > 0
           return (
             <div key={b.idprop} id={'liq-' + b.idprop} style={{ scrollMarginTop: 110, border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
@@ -568,6 +570,7 @@ export default function CartasPage() {
                   {envios[b.idprop]?.fecha_envio
                     ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
+                  {tieneObs && <span title="Este propietario tiene una observación de Alberto" style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>📝 Observación</span>}
                   {tieneOvr && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>⚠ AJUSTADA</span>}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
@@ -674,8 +677,8 @@ export default function CartasPage() {
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>
                 </span>
                 <button onClick={() => setObsAbierta(o => ({ ...o, [b.idprop]: !o[b.idprop] }))}
-                  style={{ order: -1, fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 7, border: '1px solid #D3D1C7', background: abierta ? '#EEF2FF' : '#fff', color: '#374151', cursor: 'pointer' }}>
-                  {abierta ? '▾ Cerrar observaciones' : '＋ Observaciones de Alberto'}
+                  style={{ order: -1, fontSize: 12, fontWeight: (tieneObs && !abierta) ? 800 : 600, padding: '5px 12px', borderRadius: 7, border: (tieneObs && !abierta) ? '1px solid #F59E0B' : '1px solid #D3D1C7', background: abierta ? '#EEF2FF' : (tieneObs ? '#FEF3C7' : '#fff'), color: (tieneObs && !abierta) ? '#92400E' : '#374151', cursor: 'pointer' }}>
+                  {abierta ? '▾ Cerrar observaciones' : (tieneObs ? '📝 Observación de Alberto' : '＋ Observaciones de Alberto')}
                 </button>
               </div>
 
