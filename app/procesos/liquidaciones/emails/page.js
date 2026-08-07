@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v6 · 2026-08-07 · Nota "en espera" en la carta: si un inmueble está retenido en la liquidación (arrendatario
+//   moroso, marcado en CARTAS), su línea lleva una nota avisando de que la transferencia de ese arriendo se aplaza hasta
+//   conseguir el cobro. La nota viaja en el bloque (notaEspera) → sale en el PDF (borrador y envío). Hereda v5.
 // VERSION: v5 · 2026-07-20 · Botón "Guardar observación" a la izquierda (antes quedaba fuera de pantalla)
 // VERSION: v4 · 2026-07-20 · Texto informativo del CC actualizado (administracion@ + karina.morales@)
 // VERSION: v3 · 2026-07-20 · Buscador "ir a propietario" (scroll+realce) + filtro "Solo no enviadas" en la barra de controles
@@ -99,6 +102,15 @@ export default function CartasPage() {
         supabase.from('liquidacion_envios_log').select('idprop, fecha_envio, enviado_por, reducido').eq('mes', m).order('fecha_envio', { ascending: false }),
       ])
 
+      // Líneas "en espera" (retenidas por morosidad, marcadas en CARTAS): set de idadmon para la nota de la carta.
+      const retSet = new Set()
+      try {
+        const rr = await fetch('/api/liquidaciones/retener?mes=' + encodeURIComponent(m))
+        const dd = await rr.json()
+        for (const s of (dd.retenidos || [])) if (s.idadmon) retSet.add(s.idadmon)
+      } catch { /* silencioso: sin nota si falla */ }
+      const NOTA_ESPERA = 'Transferencia de este arriendo aplazada: el arrendatario aún no ha pagado. Se le transferirá el importe correspondiente en cuanto se consiga el cobro.'
+
       // Historial de envíos del mes (todos, incl. reenvíos), agrupado por idprop, más recientes primero
       const hist = {}
       for (const l of rLog.data || []) (hist[l.idprop] = hist[l.idprop] || []).push(l)
@@ -194,6 +206,7 @@ export default function CartasPage() {
           ggcc: esP ? 0 : s.ggcc, luz: esP ? 0 : s.luz, agua: esP ? 0 : s.agua,
           nota: esProp ? '' : notaDe(r.idadmon), des: esProp ? [] : (des[r.idadmon] || []),
           ajuste: (esP || esProp) ? 0 : n0(ajustes[r.idadmon] || 0),
+          notaEspera: (!esP && !esProp && retSet.has(r.idadmon)) ? NOTA_ESPERA : '',
         })
       }
 

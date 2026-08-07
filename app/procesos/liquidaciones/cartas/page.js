@@ -1,3 +1,7 @@
+// VERSION: v8 · 2026-08-07 · CARTAS espera, ajustes: (1) se ignoran desvíos de pago < 50.000 (no se marca moroso);
+//   (2) solo aplica a contratos que cobra FCR y NUNCA a Paola (P001); (3) la línea en espera muestra nota de
+//   "transferencia aplazada hasta el cobro" (misma que sale en la carta); (4) acción "Justificar (incobrable)" con
+//   motivo para cerrar la espera cuando el arrendatario no va a pagar, sin que afecte a futuro ni al DJ 1835. Hereda v7.
 // VERSION: v7 · 2026-08-07 · CARTAS: "Dejar en espera" un inmueble cuyo arrendatario no ha pagado. Botón por línea de
 //   IDADMON (Alberto/Dirección/Karina): retiene su neto para NO transferirlo en esta oleada y pagarlo cuando llegue el
 //   dinero, antes de congelar. El banco ayuda: marca "falta cobrar $X" si recibido<renta y "💰 ya se recibió" cuando
@@ -23,6 +27,8 @@ import TopNav from '@/app/components/ui/TopNav'
 import BuscarLiquidacion from '@/app/components/ui/BuscarLiquidacion'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+const UMBRAL_MOROSO = 50000   // desvíos de pago menores a esto se ignoran (no se marca moroso)
+const IDPROP_PAOLA = 'P001'   // Paola cobra ella, no FCR: nunca se marca como moroso
 
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 // parseo de texto de pesos: "550.020" -> 550020 · "25000" -> 25000
@@ -172,9 +178,14 @@ export default function CartasPage() {
   }
   async function accionRetener(idadmon, accion) {
     if (!esDireccion) return
+    let motivo = null
+    if (accion === 'justificar') {
+      motivo = (typeof window !== 'undefined' ? window.prompt('Justificar como INCOBRABLE (el arrendatario no va a pagar).\n\nEscribe el motivo (obligatorio) — quedará registrado para el DJ 1835:', '') : '') || ''
+      if (!motivo.trim()) { alert('Cancelado: falta el motivo de la justificación.'); return }
+    }
     setRetBusy(idadmon)
     try {
-      const r = await fetch('/api/liquidaciones/retener', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idadmon, mes, accion }) })
+      const r = await fetch('/api/liquidaciones/retener', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idadmon, mes, accion, motivo: motivo ? motivo.trim() : undefined }) })
       const d = await r.json()
       if (!r.ok || d.error) { alert(d.error || 'No se pudo completar la acción.'); return }
       await cargarRetenidos(mes)
@@ -732,27 +743,31 @@ export default function CartasPage() {
                             </span>}
                       </div>
                     )
-                    // 5) Retención por morosidad: "dejar en espera" / "liberar" un inmueble no cobrado
-                    if (!x.esP && !x.esProp) {
+                    // 5) Retención por morosidad: "dejar en espera" / "liberar" / "justificar" un inmueble no cobrado.
+                    //    Solo contratos que cobra FCR y nunca Paola (P001); se ignoran desvíos < 50.000.
+                    const esFCR = String(x.por || 'FCR').trim().toUpperCase() === 'FCR'
+                    const esPaola = b.idprop === IDPROP_PAOLA
+                    if (!x.esP && !x.esProp && esFCR && !esPaola) {
                       const enEspera = !!retenidos[x.idadmon]
                       const renta = n0(x.aCobrar)
                       const falta = Math.max(0, renta - n0(x.recibido))
-                      const cobrado = renta > 0 && n0(x.recibido) >= renta
+                      const cobrado = renta > 0 && falta < UMBRAL_MOROSO   // desvío < 50.000 = cobrado
                       if (enEspera) {
                         subfilas.push(
                           <div key={x.idadmon + i + 'ret'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: cobrado ? '#F0FDF4' : '#EFF6FF' }}>
                             <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
                             <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right', color: cobrado ? '#166534' : '#1D4ED8' }}>{fmt(x.aTransferir)}</span>
                             {cobrado
-                              ? <span style={{ fontSize: 12, color: '#166534', display: 'flex', alignItems: 'center', gap: 8 }}>💰 En espera · <b>ya se recibió el pago</b> — listo para transferir
-                                  {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Libera la línea: su neto vuelve a A transferir para pagarlo en esta/próxima oleada" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #16A34A', background: '#DCFCE7', color: '#166534', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '▶ Liberar'}</button>}
+                              ? <span style={{ fontSize: 12, color: '#166534', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>💰 En espera · <b>ya se recibió el pago</b> — listo para transferir
+                                  {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Libera la línea: su neto vuelve a A transferir para pagarlo en esta/próxima oleada" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #16A34A', background: '#DCFCE7', color: '#166534', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '▶ Liberar (pagar)'}</button>}
                                 </span>
-                              : <span style={{ fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8 }}>⏸ En espera · arrendatario no ha pagado{falta ? ` (falta ${falta.toLocaleString('es-CL')})` : ''} — no se transfiere ahora
+                              : <span style={{ fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>⏸ Transferencia aplazada · arrendatario no ha pagado{falta ? ` (falta ${falta.toLocaleString('es-CL')})` : ''} — se transferirá al conseguir el cobro
                                   {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Quita la espera: su neto vuelve a A transferir" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', color: '#1D4ED8', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : 'Quitar espera'}</button>}
+                                  {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'justificar')} disabled={retBusy === x.idadmon} title="El arrendatario NO va a pagar (incobrable): cierra la espera con un motivo, para que quede justificado y no afecte a futuro ni al DJ 1835" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '✖ Justificar (incobrable)'}</button>}
                                 </span>}
                           </div>
                         )
-                      } else if (falta > 0) {
+                      } else if (falta >= UMBRAL_MOROSO) {
                         subfilas.push(
                           <div key={x.idadmon + i + 'mor'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: '#FFF7ED' }}>
                             <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>

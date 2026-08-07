@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-07 · app/api/liquidaciones/retener/route.js · "cobrado" con umbral 50.000 + acción 'justificar'.
 // VERSION: v1 · 2026-08-07 · app/api/liquidaciones/retener/route.js
 //   "Dejar en espera" un IDADMON dentro de la liquidación de un propietario: cuando el arrendatario de ESE inmueble
 //   no ha pagado, se retiene su neto (no se transfiere ahora) y se paga en una oleada posterior cuando llegue el
@@ -6,7 +7,9 @@
 //   GET  ?mes=AAMM → { retenidos:[{ idadmon, idprop, propietario, renta, recibido, neto, cobrado, motivo, usuario }] }
 //     enriquece con calcular_liquidacion(mes): renta=base, recibido=recibido_banco, neto=neto_transferir,
 //     cobrado = recibido >= renta (ya llegó el dinero → listo para transferir/liberar).
-//   POST { mes, idadmon, accion:'retener'|'liberar', motivo? } → marca/libera; escribe liquidacion_retenidos_log.
+//   POST { mes, idadmon, accion:'retener'|'liberar'|'justificar', motivo? } → marca/libera/justifica; log.
+//     'justificar' = el arrendatario NO va a pagar (incobrable): se cierra la espera con motivo, para que quede
+//     justificado y no afecte a futuro ni al DJ 1835.
 //   Gate: Alberto + Luis + Karina (o rol admin).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
@@ -21,6 +24,7 @@ function svc() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 }
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
+const UMBRAL = 50000   // desvíos de pago menores a esto se consideran cobrados (se ignoran)
 function autorizado(session) {
   const email = session?.user?.email
   return { email, ok: !!email && (OK_EMAILS.includes(email) || session?.user?.role === 'admin') }
@@ -68,7 +72,7 @@ export async function GET(req) {
     return {
       idadmon: id, idprop: m.idprop, propietario: m.propietario,
       renta: Math.round(m.renta), recibido: Math.round(m.recibido), neto: Math.round(m.neto),
-      cobrado: m.recibido >= m.renta && m.renta > 0,
+      cobrado: m.renta > 0 && (m.renta - m.recibido) < UMBRAL,   // desvío < 50.000 = cobrado
       motivo: r.motivo || '', usuario: r.usuario || '',
     }
   })
@@ -88,7 +92,7 @@ export async function POST(req) {
   const motivo = String(body.motivo || '').trim() || null
   if (!idadmon) return Response.json({ error: 'Falta idadmon' }, { status: 400 })
   if (!/^\d{4}$/.test(mes)) return Response.json({ error: 'Mes inválido (AAMM)' }, { status: 400 })
-  if (!['retener', 'liberar'].includes(accion)) return Response.json({ error: 'Acción inválida' }, { status: 400 })
+  if (!['retener', 'liberar', 'justificar'].includes(accion)) return Response.json({ error: 'Acción inválida' }, { status: 400 })
 
   const sb = svc()
   const nowIso = new Date().toISOString()
@@ -99,9 +103,10 @@ export async function POST(req) {
     }, { onConflict: 'mes,idadmon' })
     if (error) return Response.json({ error: error.message }, { status: 500 })
   } else {
-    const { error } = await sb.from('liquidacion_retenidos')
-      .update({ retenido: false, liberado_por: email, liberado_at: nowIso })
-      .eq('mes', mes).eq('idadmon', idadmon)
+    // liberar (llegó el dinero) o justificar (incobrable): ambos cierran la espera. 'justificar' guarda el motivo.
+    const upd = { retenido: false, liberado_por: email, liberado_at: nowIso }
+    if (accion === 'justificar' && motivo) upd.motivo = motivo
+    const { error } = await sb.from('liquidacion_retenidos').update(upd).eq('mes', mes).eq('idadmon', idadmon)
     if (error) return Response.json({ error: error.message }, { status: 500 })
   }
   try { await sb.from('liquidacion_retenidos_log').insert({ mes, idadmon, accion, motivo, usuario: email }) } catch {}
