@@ -1,3 +1,6 @@
+// VERSION: v9 · 2026-08-07 · CARTAS: los DESCUENTOS asociados a un IDADMON en estado P (depto en captación/desocupado)
+//   ahora también salen como subfila (↳ verde con su texto), igual que en S/SQ. Antes se ocultaban por el gate !esP.
+//   Ajuste/override siguen solo para contratos activos. Hereda v8.
 // VERSION: v8 · 2026-08-07 · CARTAS espera, ajustes: (1) se ignoran desvíos de pago < 50.000 (no se marca moroso);
 //   (2) solo aplica a contratos que cobra FCR y NUNCA a Paola (P001); (3) la línea en espera muestra nota de
 //   "transferencia aplazada hasta el cobro" (misma que sale en la carta); (4) acción "Justificar (incobrable)" con
@@ -694,15 +697,15 @@ export default function CartasPage() {
                     //   descuento (verde) · ajuste del mes (ámbar) · comentario (gris)
                     // Réplica del desglose de la pantalla principal de Liquidaciones.
                     const subfilas = []
-                    if (!x.esP) {
-                      // 1) Descuentos
-                      ;(x.des || []).forEach((dd, j) => subfilas.push(
+                    // 1) Descuentos — también en líneas P (deptos en captación con descuento asignado)
+                    ;(x.des || []).forEach((dd, j) => subfilas.push(
                         <div key={x.idadmon + i + 'd' + j} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
                           <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
                           <span style={{ fontFamily: MONO, color: '#16A34A', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(dd.monto)}</span>
                           <span style={{ fontSize: 12, color: '#4B5563' }}>{dd.texto || 'Descuento'}</span>
                         </div>
                       ))
+                    if (!x.esP) {
                       // 2) Ajuste del mes
                       if (x.ajuste) subfilas.push(
                         <div key={x.idadmon + i + 'aj'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2' }}>
