@@ -1,3 +1,7 @@
+// VERSION: v4 · 2026-08-07 · CANDADO ANTI-REENVÍO REAL. Una carta que YA tiene fecha_envio este mes se OMITE (no se
+//   reenvía) salvo que su idprop venga en el array `reenviar` (reenvío explícito y confirmado desde la pantalla). Antes
+//   el candado era solo informativo y, si la carta quedaba seleccionada (p. ej. tras un timeout 504), se reenviaba y
+//   llegaba duplicada al propietario. Ahora reintentar un envío fallido es seguro: solo salen las que faltan. Hereda v3.
 // VERSION: v3 · 2026-07-20 · CC de liquidaciones pasa a lista: administracion@ + karina.morales@ (antes solo administracion@).
 // VERSION: v2 · 2026-07-20 · El envío acepta cartas no cuadradas SOLO si tienen desbloqueo justificado
 //   (desbloqueo_motivo) en liquidacion_envios. El upsert de ENVIADA conserva el rastro del desbloqueo.
@@ -55,7 +59,9 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { mes, mesTxt, fecha, despedida, logoDataUrl, envios } = body || {}
+  const { mes, mesTxt, fecha, despedida, logoDataUrl, envios, reenviar } = body || {}
+  // idprops con reenvío explícito autorizado (confirmado en pantalla). El resto de ya-enviadas se OMITE.
+  const reenviarSet = new Set(Array.isArray(reenviar) ? reenviar.map(x => String(x || '').trim()) : [])
   if (!mes || !Array.isArray(envios) || envios.length === 0) {
     return Response.json({ error: 'Faltan datos (mes / envios)' }, { status: 400 })
   }
@@ -88,6 +94,10 @@ export async function POST(req) {
       const { data: prev } = await admin
         .from('liquidacion_envios').select('fecha_envio').eq('mes', mes).eq('idprop', idprop).maybeSingle()
       const esReenvio = !!prev?.fecha_envio
+      // CANDADO: si ya se envió y NO es un reenvío autorizado explícitamente, se OMITE (evita duplicados).
+      if (esReenvio && !reenviarSet.has(String(idprop).trim())) {
+        results.push({ ...marca, ok: false, motivo: 'ya_enviada_omitida', ya_enviada: true }); continue
+      }
 
       // PDF (comprimido a 1 página si se pidió el toggle "1 pág.")
       let pdfBytes

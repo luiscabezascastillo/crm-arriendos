@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v11 · 2026-08-07 · ANTI-DUPLICADOS. Al confirmar el reenvío de una carta ya enviada (checkbox ámbar) se
+//   registra su idprop como "reenvío autorizado" y solo esos van en el campo `reenviar` al servidor; el resto de
+//   ya-enviadas el backend las OMITE (candado real). Además, tras enviar (aunque falle con 504) se refrescan los
+//   candados desde la BD, para ver al momento cuáles salieron. Requiere enviar-cartas v4. Hereda v10.
 // VERSION: v10 · 2026-08-07 · EMAILS: los filtros "Solo OK" y "Solo OK DESC" ahora son "por enviar": ocultan también
 //   las cartas YA ENVIADAS (antes seguían apareciendo). Así al filtrar para enviar solo se ven las que faltan. Hereda v9.
 // VERSION: v9 · 2026-08-07 · EMAILS filtros y selección: (1) "Seleccionar todas las enviables" ya NO re-marca las YA
@@ -73,6 +77,7 @@ export default function CartasPage() {
   const [historialEnv, setHistorialEnv] = useState({})   // idprop -> [envios del log, más recientes primero]
   const [emailProp, setEmailProp] = useState({})     // idprop -> email
   const [seleccion, setSeleccion] = useState({})     // idprop -> bool (marcado para enviar)
+  const [reenvioOk, setReenvioOk] = useState({})     // idprop -> true = reenvío YA CONFIRMADO (autorizado al servidor)
   const [previewAbierto, setPreviewAbierto] = useState(false)
   const [obsGuardando, setObsGuardando] = useState({})
   const [despedida, setDespedida] = useState('Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentamente, Servicio de Información al Cliente.')
@@ -326,6 +331,22 @@ export default function CartasPage() {
     setBorradorLoading(null)
   }
 
+  // Re-lee los candados (liquidacion_envios) desde la BD y actualiza el estado, para reflejar al momento
+  // qué cartas quedaron enviadas (útil tras un 504, donde el servidor sí envió algunas).
+  async function refrescarEnvios() {
+    try {
+      const { data } = await supabase
+        .from('liquidacion_envios')
+        .select('idprop, estado_envio, fecha_envio, email_dest, enviado_por, desbloqueo_motivo, desbloqueado_por')
+        .eq('mes', mes)
+      const env = {}
+      for (const e of data || []) env[e.idprop] = e
+      setEnvios(env)
+      // Quita de la selección las que ya tienen candado (ya no hay que reenviarlas).
+      setSeleccion(prev => { const n = { ...prev }; for (const e of data || []) if (e.fecha_envio) delete n[e.idprop]; return n })
+    } catch { /* silencioso */ }
+  }
+
   // FASE B — envío real de las cartas seleccionadas
   async function enviarSeleccionadas() {
     if (!seleccionadas.length || enviando) return
@@ -346,12 +367,15 @@ export default function CartasPage() {
         idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b,
         reducir: !!reducir1p[b.idprop],
       }))
+      // reenviar = solo las ya-enviadas cuyo reenvío se confirmó explícitamente (checkbox ámbar). El resto de
+      // ya-enviadas el servidor las OMITE, así reintentar tras un 504 no duplica nada.
+      const reenviar = seleccionadas.filter(b => reenvioOk[b.idprop] && envios[b.idprop]?.fecha_envio).map(b => b.idprop)
       const res = await fetch('/api/liquidaciones/enviar-cartas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios }),
+        body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios, reenviar }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { setResultadoEnvio({ error: data.error || `Error ${res.status}` }); setEnviando(false); return }
+      if (!res.ok) { await refrescarEnvios(); setResultadoEnvio({ error: (data.error || `Error ${res.status}`) + ' — se refrescaron los candados; revisa cuáles quedaron ✓ Enviada y reintenta solo las que falten (no se duplican).' }); setEnviando(false); return }
       setResultadoEnvio(data)
       // Marcar en memoria las enviadas (candado) y quitarlas de la selección
       const okIds = (data.results || []).filter(r => r.ok)
@@ -369,7 +393,8 @@ export default function CartasPage() {
         setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
       }
     } catch (err) {
-      setResultadoEnvio({ error: err.message })
+      await refrescarEnvios()
+      setResultadoEnvio({ error: (err.message || 'Error') + ' — se refrescaron los candados; reintenta solo las que falten (no se duplican).' })
     }
     setEnviando(false)
   }
@@ -507,9 +532,14 @@ export default function CartasPage() {
                   {puedeEnviar && (enviable(b) ? (
                     <input type="checkbox" checked={!!seleccion[b.idprop]}
                       onChange={() => {
-                        // Reenvío: si ya se envió y la estás marcando, pide confirmación.
-                        if (!seleccion[b.idprop] && envios[b.idprop]?.fecha_envio &&
-                            !window.confirm(`La liquidación de ${b.idprop} — ${b.propietario} YA fue enviada.\n\n¿Desea volver a enviarla (reenvío)?`)) return
+                        // Reenvío: si ya se envió y la estás marcando, pide confirmación y AUTORIZA el reenvío (solo así se reenvía).
+                        const marcando = !seleccion[b.idprop]
+                        if (marcando && envios[b.idprop]?.fecha_envio) {
+                          if (!window.confirm(`La liquidación de ${b.idprop} — ${b.propietario} YA fue enviada.\n\n¿Desea volver a enviarla (reenvío)?`)) return
+                          setReenvioOk(r => ({ ...r, [b.idprop]: true }))
+                        } else if (!marcando) {
+                          setReenvioOk(r => { const n = { ...r }; delete n[b.idprop]; return n })
+                        }
                         toggleSel(b.idprop)
                       }}
                       title={envios[b.idprop]?.fecha_envio ? 'Ya enviada — marca para REENVIAR (pedirá confirmación)' : (estaDesbloqueada(b) ? `Desbloqueada por ${envios[b.idprop]?.desbloqueado_por || '—'}: ${envios[b.idprop]?.desbloqueo_motivo || ''}` : 'Seleccionar para enviar')}
