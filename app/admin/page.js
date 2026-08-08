@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v10 · 2026-08-07 · ADMINISTRACIÓN SIEMPRE CON IVA. El "Tipo" de ADMON MES solo ofrece variantes con IVA
+//   (% + IVA / FIJO + IVA) y elijas lo que elijas se fuerza adicionar_iva='SI'; se muestra siempre "+ IVA". Al guardar
+//   (GUARDAR y Cerrar/Facturar) se fuerza adicionar_iva='SI' en datos_arriendos. Antes se podía quedar sin IVA y la
+//   comisión de administración salía sin IVA en la liquidación. Hereda v9.
 // VERSION: v9 · 2026-08-07 · CORRETAJE (Datos Económicos): las celdas Cantidad/Con IVA/Total del propietario y del
 //   arrendatario ahora son EDITABLES por Anthony/Dirección (antes solo lectura). Al poner/cambiar la Cantidad se fuerza
 //   Con IVA = 19% redondeado y Total = Cantidad + IVA (Anthony puede alterarlos después). Y NO se deja pasar de P a S
@@ -1004,7 +1008,7 @@ function AdminContent() {
       return
     }
 
-    const payload = { ...form, updated_at: new Date().toISOString() }
+    const payload = { ...form, adicionar_iva: 'SI', updated_at: new Date().toISOString() }   // administración siempre con IVA
     delete payload.id
     // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
     for (const k in payload) { if (payload[k] === '') payload[k] = null }
@@ -1140,7 +1144,7 @@ function AdminContent() {
     setIniciosPanel(null); setIniciosErrores([]); setDicomTiene(false); setDicomMonto(''); setPropNota('')
     try {
       // Guardar la ficha ANTES de validar/facturar (el endpoint lee de la BD)
-      const payload = { ...form, updated_at: new Date().toISOString() }
+      const payload = { ...form, adicionar_iva: 'SI', updated_at: new Date().toISOString() }   // administración siempre con IVA
       delete payload.id
       for (const k in payload) { if (payload[k] === '') payload[k] = null }
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
@@ -1242,14 +1246,14 @@ function AdminContent() {
   // salvo corrección excepcional activa (Anthony/Dirección). IDADMON y estado quedan fuera.
   const roLog = ro || (form.estado !== 'P' && !isNew && !correccionAbierta)
   // ADMON MES "Tipo": composición de si_fijo_admon (F=fijo) + adicionar_iva (SI).
+  // La administración SIEMPRE lleva IVA: se muestra "+ IVA" y al elegir cualquier tipo se fuerza adicionar_iva='SI'.
   const tipoAdmon = (form.si_fijo_admon || form.adicionar_iva)
-    ? ((form.si_fijo_admon === 'F' ? 'FIJO' : '%') + (form.adicionar_iva === 'SI' ? ' + IVA' : ''))
+    ? ((form.si_fijo_admon === 'F' ? 'FIJO' : '%') + ' + IVA')
     : ''
   const setTipoAdmon = (val) => {
     if (!permiteEdicionContractual('tipoAdmon', false)) return
     const fijo = String(val).startsWith('FIJO')
-    const iva = String(val).includes('+ IVA')
-    setForm(p => ({ ...p, si_fijo_admon: fijo ? 'F' : '', adicionar_iva: iva ? 'SI' : 'NO' }))
+    setForm(p => ({ ...p, si_fijo_admon: fijo ? 'F' : '', adicionar_iva: 'SI' }))   // IVA obligatorio
   }
 
   return (
@@ -2014,7 +2018,7 @@ function AdminContent() {
             {/* ADMON MES — Cuantía=pct_adm, Tipo=si_fijo_admon+adicionar_iva */}
             <div>
               <div style={{ background: ECG.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ADMON MES</div>
-              <EcoCell label="Tipo" name="tipoAdmon" value={tipoAdmon} onChange={e => setTipoAdmon(e.target.value)} ro={roLog} pal={ECG} options={['', '%', '% + IVA', 'FIJO', 'FIJO + IVA']} />
+              <EcoCell label="Tipo" name="tipoAdmon" value={tipoAdmon} onChange={e => setTipoAdmon(e.target.value)} ro={roLog} pal={ECG} options={['', '% + IVA', 'FIJO + IVA']} />
               <EcoCell label="Cuantía" name="pct_adm" value={form.pct_adm} onChange={handleChange} ro={roLog} bold pal={ECG} />
               <EcoCell label="Especial" name="mowner" value={form.mowner} onChange={handleChange} ro={roLog} pal={ECG} />
             </div>
