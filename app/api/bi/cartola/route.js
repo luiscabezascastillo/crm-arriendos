@@ -1,3 +1,6 @@
+// VERSION: v7 · 2026-08-07 · AUTO-CLASIFICAR TRANSFERENCIAS A PROPIETARIOS. Al cargar la cartola, todo CARGO cuyo
+//   detalle contenga un idprop "P###" (P + 3 dígitos, p. ej. P105) se marca solo con unique_concept='PROPIETARIOS'
+//   (así lo cuenta la RPC transferido_propietario sin tener que etiquetarlo a mano). idadmon2 queda null. Hereda v6.
 // VERSION: v6 · 2026-08-06 · El match por datos_arriendos.rut TAMBIÉN auto-pasa a cuentas desde el 1er
 //   pago (el RUT recibido es el del arrendatario del contrato, fiable), igual que bi_admon. Los ambiguos
 //   (varios contratos con ese RUT) siguen en FALTA para el +RUT.
@@ -120,10 +123,18 @@ export async function POST(req) {
     }
   }
 
+  // Un CARGO con un idprop "P###" en el detalle es una transferencia a propietario.
+  const idpropEnDetalle = (detalle) => { const mm = String(detalle || '').match(/\bP\d{3}\b/i); return mm ? mm[0].toUpperCase() : null }
+
   const sugerir = (m) => {
     const tipo = m.abono > 0 ? 'abono' : 'cargo'
     const rut = extraerRut(m.detalle)
     let sug = null, ambiguo = false, cands = null, nota = null, fuente = null
+    // Cargo con P### → transferencia a propietario: unique_concept = PROPIETARIOS (sin idadmon2).
+    if (tipo === 'cargo') {
+      const idp = idpropEnDetalle(m.detalle)
+      if (idp) return { tipo, rut, sug: null, ambiguo: false, cands: null, nota: `Transferencia a propietario ${idp} — auto`, fuente: 'propietario', uniqueConcept: 'PROPIETARIOS' }
+    }
     if (tipo === 'abono' && rut) {
       const a = mapa[rut]
       if (a && a.ids.size > 0) {
@@ -139,12 +150,12 @@ export async function POST(req) {
         else nota = 'RUT no está en bi_admon — revisar/añadir'
       }
     }
-    return { tipo, rut, sug, ambiguo, cands, nota, fuente }
+    return { tipo, rut, sug, ambiguo, cands, nota, fuente, uniqueConcept: sug }
   }
 
   const preview = nuevos.map(m => { const s = sugerir(m); return {
     fecha: m.fecha, detalle: m.detalle, ndoc: m.ndoc, cargo: m.cargo, abono: m.abono, saldo: m.saldo,
-    rut: s.rut, idadmon_sugerido: s.sug, unique_concept: s.sug, ambiguo: s.ambiguo, candidatos: s.cands,
+    rut: s.rut, idadmon_sugerido: s.sug, unique_concept: s.uniqueConcept, ambiguo: s.ambiguo, candidatos: s.cands,
     tipo: s.tipo, nota: s.nota, fuente: s.fuente,
   }})
 
@@ -152,6 +163,7 @@ export async function POST(req) {
     recibidos: asc.length, nuevos: nuevos.length, duplicados,
     abonos: preview.filter(p => p.tipo === 'abono').length,
     cargos: preview.filter(p => p.tipo === 'cargo').length,
+    propietarios: preview.filter(p => p.unique_concept === 'PROPIETARIOS').length,
     sugeridos: preview.filter(p => p.idadmon_sugerido && !p.ambiguo).length,
     ambiguos: preview.filter(p => p.ambiguo).length,
     sin_match: preview.filter(p => p.tipo === 'abono' && !p.idadmon_sugerido).length,
@@ -179,7 +191,7 @@ export async function POST(req) {
         cargos: iTxt(m.cargo), abonos: iTxt(m.abono), saldos: iTxt(m.saldo),
         check1: String(c1),
         check2_pasar_a_cartola: m.abono > 0 ? 'FALTA' : null, reg: null,
-        unique_concept: s.sug, idadmon2: s.sug, comentarios: s.nota || null,
+        unique_concept: s.uniqueConcept, idadmon2: s.sug, comentarios: s.nota || null,
         mes: aammDe(m.fecha),
         liquidacion_mes2: liqMes2De(m.fecha),
         updated_at: ahora,
