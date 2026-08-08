@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v9 · 2026-08-07 · CORRETAJE (Datos Económicos): las celdas Cantidad/Con IVA/Total del propietario y del
+//   arrendatario ahora son EDITABLES por Anthony/Dirección (antes solo lectura). Al poner/cambiar la Cantidad se fuerza
+//   Con IVA = 19% redondeado y Total = Cantidad + IVA (Anthony puede alterarlos después). Y NO se deja pasar de P a S
+//   mientras una Cantidad de corretaje esté sin su IVA (siempre es afecto a IVA). Hereda v8.
 // VERSION: v8 · 2026-08-01 · "Rellenar desde PDF" ahora también acepta ARRASTRAR y soltar el PDF sobre el botón (además del clic).
 // VERSION: v7 · 2026-08-01 · Botón "Rellenar desde PDF": sube el contrato (plantilla FCR), extrae datos por /api/cc1/extraer-contrato
 //   y PRERELLENA la ficha (no guarda ni activa). Solo sobre contratos en P. Anthony revisa y usa TERMINAR (P→S).
@@ -722,6 +726,10 @@ function AdminContent() {
   async function cambiarEstado() {
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (!nuevoEstado) { setMsg({ type: 'warn', text: 'Elige el nuevo estado.' }); return }
+    if (nuevoEstado === 'S' && (form.estado === 'P' || isNew)) {
+      const f = faltaIvaCorretaje()
+      if (f.length) { setMsg({ type: 'error', text: `No se puede pasar de P a S: falta el IVA del corretaje (${f.join(' y ')}). Complétalo en Datos Económicos.` }); return }
+    }
     if (!window.confirm(`¿Cambiar ${form.idadmon} de "${form.estado || '—'}" a "${nuevoEstado}"?\nSe enviará el aviso a cambiosdeestado@ y, si corresponde, se creará el nuevo IDADMON en P.`)) return
     setCambiando(true); setMsg({ type: 'info', text: 'Procesando cambio de estado...' })
     try {
@@ -1091,10 +1099,42 @@ function AdminContent() {
   }
 
   // TERMINAR (P→S): fase 1 = validar inicios; si OK, abre panel DICOM. Fase 2 = ejecutar.
+  // Corretaje: fuerza IVA (19% redondeado) y Total = Cantidad + IVA al editar la Cantidad; el IVA sigue a su edición.
+  // Editable por Anthony/Dirección (cuando el LOG es editable). 'd' = propietario/dueño, 'a' = arrendatario.
+  const numE = v => Number(String(v ?? '').replace(/\./g, '').replace(/[^\d.-]/g, '')) || 0
+  function setCorretaje(lado, campo, raw) {
+    const kBase = `comision_${lado}_base`, kIva = `iva_comision_${lado}`, kTot = `comision_${lado}_total`
+    const val = String(raw ?? '').replace(/\./g, '').replace(/[^\d]/g, '')
+    setForm(prev => {
+      const next = { ...prev }
+      if (campo === 'base') {
+        next[kBase] = val
+        const b = numE(val); const iva = b > 0 ? Math.round(b * IVA_TASA) : 0
+        next[kIva] = b > 0 ? String(iva) : ''
+        next[kTot] = b > 0 ? String(b + iva) : ''
+      } else if (campo === 'iva') {
+        next[kIva] = val
+        const b = numE(prev[kBase]); const iva = numE(val)
+        next[kTot] = (b > 0 || iva > 0) ? String(b + iva) : ''
+      } else {
+        next[kTot] = val
+      }
+      return next
+    })
+  }
+  // Corretaje siempre afecto a IVA: si hay Cantidad sin IVA, no se puede activar (P→S).
+  function faltaIvaCorretaje() {
+    const falta = []
+    if (numE(form.comision_d_base) > 0 && numE(form.iva_comision_d) <= 0) falta.push('propietario')
+    if (numE(form.comision_a_base) > 0 && numE(form.iva_comision_a) <= 0) falta.push('arrendatario')
+    return falta
+  }
+
   async function cerrarYFacturar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (form.estado !== 'P') { setMsg({ type: 'warn', text: 'Esta acción solo aplica a contratos en estado P.' }); return }
+    { const f = faltaIvaCorretaje(); if (f.length) { setMsg({ type: 'error', text: `No se puede pasar de P a S: falta el IVA del corretaje (${f.join(' y ')}). Complétalo en Datos Económicos.` }); return } }
     if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nSe validarán los datos de inicio. Si están correctos, se pedirá el DICOM y luego el estado pasará de P a S, se generarán los cargos de inicio y se enviará la solicitud de facturación a Finanzas.`)) return
     setCambiando(true); setMsg({ type: 'info', text: 'Validando datos de inicio…' })
     setIniciosPanel(null); setIniciosErrores([]); setDicomTiene(false); setDicomMonto(''); setPropNota('')
@@ -1950,9 +1990,9 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>PROPIETARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentD" value={logEcon.porcentD} onChange={e => setLogEconCampo('porcentD', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={() => {}} ro money />
-                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={() => {}} ro money />
-                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={() => {}} ro money bold />
+                <EcoCell label="Cantidad" name="comision_d_base" value={form.comision_d_base} onChange={e => setCorretaje('d', 'base', e.target.value)} ro={roLog} money />
+                <EcoCell label="Con IVA" name="iva_comision_d" value={form.iva_comision_d} onChange={e => setCorretaje('d', 'iva', e.target.value)} ro={roLog} money />
+                <EcoCell label="Total" name="comision_d_total" value={form.comision_d_total} onChange={e => setCorretaje('d', 'total', e.target.value)} ro={roLog} money bold />
                 <EcoCell label="C. Esp." name="cEspProp" value={logEcon.cEspProp} onChange={e => setLogEconCampo('cEspProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentProp" value={logEcon.comentProp} onChange={e => setLogEconCampo('comentProp', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_cobrado" value={form.comision_cobrado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
@@ -1963,9 +2003,9 @@ function AdminContent() {
               <div style={{ background: ECO.sub, color: '#fff', textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '3px 0', letterSpacing: '0.04em' }}>ARRENDATARIO</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gridAutoFlow: 'column' }}>
                 <EcoCell label="Porcentaje" name="porcentA" value={logEcon.porcentA} onChange={e => setLogEconCampo('porcentA', e.target.value)} ro={roLog} />
-                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={() => {}} ro money />
-                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={() => {}} ro money />
-                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={() => {}} ro money bold />
+                <EcoCell label="Cantidad" name="comision_a_base" value={form.comision_a_base} onChange={e => setCorretaje('a', 'base', e.target.value)} ro={roLog} money />
+                <EcoCell label="Con IVA" name="iva_comision_a" value={form.iva_comision_a} onChange={e => setCorretaje('a', 'iva', e.target.value)} ro={roLog} money />
+                <EcoCell label="Total" name="comision_a_total" value={form.comision_a_total} onChange={e => setCorretaje('a', 'total', e.target.value)} ro={roLog} money bold />
                 <EcoCell label="C. Esp." name="cEspArr" value={logEcon.cEspArr} onChange={e => setLogEconCampo('cEspArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Coment." name="comentArr" value={logEcon.comentArr} onChange={e => setLogEconCampo('comentArr', e.target.value)} ro={roLog} />
                 <EcoCell label="Bol/Fac" name="comision_a_pagado" value={form.comision_a_pagado} onChange={handleChange} ro={roLog} options={['', 'BOLETA', 'FACTURA']} />
