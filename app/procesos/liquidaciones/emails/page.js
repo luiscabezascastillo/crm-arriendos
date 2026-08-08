@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v10 · 2026-08-07 · EMAILS: los filtros "Solo OK" y "Solo OK DESC" ahora son "por enviar": ocultan también
+//   las cartas YA ENVIADAS (antes seguían apareciendo). Así al filtrar para enviar solo se ven las que faltan. Hereda v9.
 // VERSION: v9 · 2026-08-07 · EMAILS filtros y selección: (1) "Seleccionar todas las enviables" ya NO re-marca las YA
 //   ENVIADas (solo enviables no enviadas y de lo que esté a la vista); el contador refleja eso. (2) Nuevos filtros de
 //   pantalla: por estado (Todos / Solo OK / Solo OK DESC) y por texto (IDPROP o nombre); solo se muestran las que pasan.
@@ -393,8 +395,9 @@ export default function CartasPage() {
   const qFiltro = normTxt(filtroTexto)
   const visibles = bloques.filter(b => {
     if (soloNoEnviadas && estaEnviada(b)) return false
-    if (filtroEstadoEnvio === 'ok' && b.estado !== 'OK') return false
-    if (filtroEstadoEnvio === 'okdesc' && b.estado !== 'OK DESC') return false
+    // "Solo OK / OK DESC" son filtros de "por enviar": ocultan también las ya enviadas.
+    if (filtroEstadoEnvio === 'ok' && (b.estado !== 'OK' || estaEnviada(b))) return false
+    if (filtroEstadoEnvio === 'okdesc' && (b.estado !== 'OK DESC' || estaEnviada(b))) return false
     if (qFiltro && !normTxt(`${b.idprop} ${b.propietario}`).includes(qFiltro)) return false
     return true
   })
@@ -458,8 +461,8 @@ export default function CartasPage() {
           <select value={filtroEstadoEnvio} onChange={e => setFiltroEstadoEnvio(e.target.value)}
             style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12 }}>
             <option value="todas">Todos los estados</option>
-            <option value="ok">Solo OK</option>
-            <option value="okdesc">Solo OK DESC</option>
+            <option value="ok">Solo OK · por enviar</option>
+            <option value="okdesc">Solo OK DESC · por enviar</option>
           </select>
           <input value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)} placeholder="IDPROP o nombre del propietario…"
             style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12, minWidth: 240 }} />
