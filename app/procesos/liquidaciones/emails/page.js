@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v12 · 2026-08-07 · ENVÍO POR LOTES. El envío se parte en tandas de 5 y hace una petición por tanda, en
+//   secuencia, con progreso ("Enviando X/Y…"). Cada petición cabe de sobra en los 60s → se elimina el timeout 504 de
+//   los envíos masivos. Si una tanda falla, sigue con las demás y al final avisa; reintentar es seguro (candado v11).
+//   Hereda v11.
 // VERSION: v11 · 2026-08-07 · ANTI-DUPLICADOS. Al confirmar el reenvío de una carta ya enviada (checkbox ámbar) se
 //   registra su idprop como "reenvío autorizado" y solo esos van en el campo `reenviar` al servidor; el resto de
 //   ya-enviadas el backend las OMITE (candado real). Además, tras enviar (aunque falle con 504) se refrescan los
@@ -33,6 +37,7 @@ import TopNav from '@/app/components/ui/TopNav'
 import BuscarLiquidacion from '@/app/components/ui/BuscarLiquidacion'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+const TANDA_ENVIO = 5   // nº de cartas por petición (para no pasar el límite de 60s de la función → evita el 504)
 
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
 // parseo de texto de pesos: "550.020" -> 550020 · "25000" -> 25000
@@ -82,6 +87,7 @@ export default function CartasPage() {
   const [obsGuardando, setObsGuardando] = useState({})
   const [despedida, setDespedida] = useState('Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentamente, Servicio de Información al Cliente.')
   const [enviando, setEnviando] = useState(false)
+  const [progreso, setProgreso] = useState(null)   // { hechas, total } durante el envío por tandas
   const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
   const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
   const [reducir1p, setReducir1p] = useState({})   // idprop -> true = forzar 1 página (borrador + envío)
@@ -362,39 +368,51 @@ export default function CartasPage() {
       if (!ok) return
     }
     setEnviando(true); setResultadoEnvio(null)
-    try {
-      const envios = seleccionadas.map(b => ({
-        idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b,
-        reducir: !!reducir1p[b.idprop],
-      }))
-      // reenviar = solo las ya-enviadas cuyo reenvío se confirmó explícitamente (checkbox ámbar). El resto de
-      // ya-enviadas el servidor las OMITE, así reintentar tras un 504 no duplica nada.
-      const reenviar = seleccionadas.filter(b => reenvioOk[b.idprop] && envios[b.idprop]?.fecha_envio).map(b => b.idprop)
-      const res = await fetch('/api/liquidaciones/enviar-cartas', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios, reenviar }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) { await refrescarEnvios(); setResultadoEnvio({ error: (data.error || `Error ${res.status}`) + ' — se refrescaron los candados; revisa cuáles quedaron ✓ Enviada y reintenta solo las que falten (no se duplican).' }); setEnviando(false); return }
-      setResultadoEnvio(data)
-      // Marcar en memoria las enviadas (candado) y quitarlas de la selección
-      const okIds = (data.results || []).filter(r => r.ok)
-      if (okIds.length) {
-        setEnvios(prev => {
-          const next = { ...prev }
-          for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest, enviado_por: r.enviado_por }
-          return next
+    // Partir la selección en tandas de TANDA_ENVIO y enviar una petición por tanda (evita el timeout 504).
+    const items = seleccionadas.slice()
+    const total = items.length
+    const tandas = []
+    for (let i = 0; i < items.length; i += TANDA_ENVIO) tandas.push(items.slice(i, i + TANDA_ENVIO))
+    const okAll = [], fallidasAll = [], erroresTanda = []
+    let hechas = 0
+    setProgreso({ hechas: 0, total })
+    for (const tanda of tandas) {
+      try {
+        const enviosT = tanda.map(b => ({ idprop: b.idprop, propietario: b.propietario, email: emailProp[b.idprop] || '', bloque: b, reducir: !!reducir1p[b.idprop] }))
+        const reenviar = tanda.filter(b => reenvioOk[b.idprop] && envios[b.idprop]?.fecha_envio).map(b => b.idprop)
+        const res = await fetch('/api/liquidaciones/enviar-cartas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mes, mesTxt: aammToTxt(mes), fecha: new Date().toLocaleDateString('es-CL'), despedida, envios: enviosT, reenviar }),
         })
-        setHistorialEnv(prev => {
-          const next = { ...prev }
-          for (const r of okIds) next[r.idprop] = [{ idprop: r.idprop, fecha_envio: r.fecha_envio, enviado_por: r.enviado_por, reducido: !!reducir1p[r.idprop] }, ...(next[r.idprop] || [])]
-          return next
-        })
-        setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) { erroresTanda.push(data.error || `Error ${res.status}`) }
+        else {
+          const okIds = (data.results || []).filter(r => r.ok)
+          okAll.push(...okIds)
+          fallidasAll.push(...(data.results || []).filter(r => !r.ok && r.motivo !== 'ya_enviada_omitida'))
+          if (okIds.length) {
+            setEnvios(prev => { const next = { ...prev }; for (const r of okIds) next[r.idprop] = { ...(next[r.idprop] || {}), estado_envio: 'ENVIADA', fecha_envio: r.fecha_envio, email_dest: r.email_dest, enviado_por: r.enviado_por }; return next })
+            setHistorialEnv(prev => { const next = { ...prev }; for (const r of okIds) next[r.idprop] = [{ idprop: r.idprop, fecha_envio: r.fecha_envio, enviado_por: r.enviado_por, reducido: !!reducir1p[r.idprop] }, ...(next[r.idprop] || [])]; return next })
+            setSeleccion(prev => { const next = { ...prev }; for (const r of okIds) delete next[r.idprop]; return next })
+          }
+        }
+      } catch (err) {
+        erroresTanda.push(err.message || 'Error de red')
       }
-    } catch (err) {
-      await refrescarEnvios()
-      setResultadoEnvio({ error: (err.message || 'Error') + ' — se refrescaron los candados; reintenta solo las que falten (no se duplican).' })
+      hechas += tanda.length
+      setProgreso({ hechas, total })
+    }
+    await refrescarEnvios()
+    setProgreso(null)
+    if (okAll.length === 0 && erroresTanda.length) {
+      setResultadoEnvio({ error: `No se envió ninguna. ${erroresTanda[0]} — reintenta (no se duplica).` })
+    } else {
+      setResultadoEnvio({
+        enviadas: okAll.length,
+        fallidas: fallidasAll.length,
+        results: okAll.concat(fallidasAll),
+        aviso: erroresTanda.length ? `⚠ ${erroresTanda.length} tanda(s) fallaron; se enviaron ${okAll.length}. Reintenta el envío: solo saldrán las que falten (no se duplican).` : null,
+      })
     }
     setEnviando(false)
   }
@@ -773,6 +791,7 @@ export default function CartasPage() {
                 ) : (
                   <div style={{ marginTop: 12, fontSize: 12, borderRadius: 8, padding: '10px 12px', background: resultadoEnvio.fallidas ? '#FFFBEB' : '#ECFDF5', border: '1px solid ' + (resultadoEnvio.fallidas ? '#FDE68A' : '#A7F3D0'), color: '#065F46' }}>
                     <b>{resultadoEnvio.enviadas} enviada(s)</b>{resultadoEnvio.fallidas ? `, ${resultadoEnvio.fallidas} no enviada(s)` : ''}.
+                    {resultadoEnvio.aviso && <div style={{ marginTop: 6, color: '#92400E', fontWeight: 600 }}>{resultadoEnvio.aviso}</div>}
                     {(resultadoEnvio.results || []).filter(r => !r.ok).length > 0 && (
                       <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#92400E' }}>
                         {(resultadoEnvio.results || []).filter(r => !r.ok).map(r => (
@@ -792,7 +811,7 @@ export default function CartasPage() {
               <button onClick={enviarSeleccionadas} disabled={enviando || seleccionadas.length === 0}
                 title="Genera el PDF, envía por email y pone candado"
                 style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: (enviando || !seleccionadas.length) ? '#9CA3AF' : '#1D9E75', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (enviando || !seleccionadas.length) ? 'not-allowed' : 'pointer' }}>
-                {enviando ? 'Enviando…' : `✉ Confirmar envío (${seleccionadas.length})`}
+                {enviando ? (progreso ? `Enviando ${progreso.hechas}/${progreso.total}…` : 'Enviando…') : `✉ Confirmar envío (${seleccionadas.length})`}
               </button>
             </div>
           </div>
