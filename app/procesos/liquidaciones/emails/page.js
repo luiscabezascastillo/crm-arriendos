@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v13 · 2026-08-07 · FILTRO por estado ampliado: además de OK / OK DESC ahora se puede filtrar por TO SEE y
+//   por CHECK (para revisarlas o desbloquearlas). "Todos los estados" muestra todo; OK/OK DESC siguen ocultando las ya
+//   enviadas ("por enviar"). La selección de envío se hace a mano sobre lo filtrado. Hereda v12.
 // VERSION: v12 · 2026-08-07 · ENVÍO POR LOTES. El envío se parte en tandas de 5 y hace una petición por tanda, en
 //   secuencia, con progreso ("Enviando X/Y…"). Cada petición cabe de sobra en los 60s → se elimina el timeout 504 de
 //   los envíos masivos. Si una tanda falla, sigue con las demás y al final avisa; reintentar es seguro (candado v11).
@@ -441,6 +444,9 @@ export default function CartasPage() {
     // "Solo OK / OK DESC" son filtros de "por enviar": ocultan también las ya enviadas.
     if (filtroEstadoEnvio === 'ok' && (b.estado !== 'OK' || estaEnviada(b))) return false
     if (filtroEstadoEnvio === 'okdesc' && (b.estado !== 'OK DESC' || estaEnviada(b))) return false
+    // TO SEE y CHECK: filtro por estado (para revisar/desbloquear); no se ocultan por "enviada" (no son enviables).
+    if (filtroEstadoEnvio === 'tosee' && b.estado !== 'TO SEE') return false
+    if (filtroEstadoEnvio === 'check' && b.estado !== 'CHECK') return false
     if (qFiltro && !normTxt(`${b.idprop} ${b.propietario}`).includes(qFiltro)) return false
     return true
   })
@@ -506,6 +512,8 @@ export default function CartasPage() {
             <option value="todas">Todos los estados</option>
             <option value="ok">Solo OK · por enviar</option>
             <option value="okdesc">Solo OK DESC · por enviar</option>
+            <option value="tosee">Solo TO SEE</option>
+            <option value="check">Solo CHECK</option>
           </select>
           <input value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)} placeholder="IDPROP o nombre del propietario…"
             style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12, minWidth: 240 }} />
