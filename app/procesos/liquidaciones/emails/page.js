@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v8 · 2026-08-07 · EMAILS, dos arreglos: (1) fila TOTALES desalineada una celda (tenía 5 huecos iniciales,
+//   heredado de CARTAS con columna "Final"; ahora 4) → cuadra con las columnas. (2) El checkbox de una carta YA ENVIADA
+//   se muestra en ámbar y, al marcarlo para reenviar, pide confirmación "ya enviada, ¿reenviar?". Hereda v7.
 // VERSION: v7 · 2026-08-07 · Los DESCUENTOS asociados a un IDADMON en estado P (depto en captación) también salen como
 //   subfila en la pantalla de EMAILS, igual que en S/SQ (antes ocultos por el gate !esP). El PDF lo pinta lib/liquidacionPdf. Hereda v6.
 // VERSION: v6 · 2026-08-07 · Nota "en espera" en la carta: si un inmueble está retenido en la liquidación (arrendatario
@@ -463,8 +466,15 @@ export default function CartasPage() {
               <div style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: '#E0E7FF', borderBottom: '1px solid #C7D2FE' }}>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                   {puedeEnviar && (enviable(b) ? (
-                    <input type="checkbox" checked={!!seleccion[b.idprop]} onChange={() => toggleSel(b.idprop)}
-                      title={estaDesbloqueada(b) ? `Desbloqueada por ${envios[b.idprop]?.desbloqueado_por || '—'}: ${envios[b.idprop]?.desbloqueo_motivo || ''}` : 'Seleccionar para enviar'} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                    <input type="checkbox" checked={!!seleccion[b.idprop]}
+                      onChange={() => {
+                        // Reenvío: si ya se envió y la estás marcando, pide confirmación.
+                        if (!seleccion[b.idprop] && envios[b.idprop]?.fecha_envio &&
+                            !window.confirm(`La liquidación de ${b.idprop} — ${b.propietario} YA fue enviada.\n\n¿Desea volver a enviarla (reenvío)?`)) return
+                        toggleSel(b.idprop)
+                      }}
+                      title={envios[b.idprop]?.fecha_envio ? 'Ya enviada — marca para REENVIAR (pedirá confirmación)' : (estaDesbloqueada(b) ? `Desbloqueada por ${envios[b.idprop]?.desbloqueado_por || '—'}: ${envios[b.idprop]?.desbloqueo_motivo || ''}` : 'Seleccionar para enviar')}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: envios[b.idprop]?.fecha_envio ? '#d97706' : undefined, outline: envios[b.idprop]?.fecha_envio ? '2px solid #f59e0b' : undefined, outlineOffset: 1, borderRadius: 3 }} />
                   ) : (
                     <input type="checkbox" disabled checked={false}
                       title={envios[b.idprop]?.fecha_envio ? 'Ya enviada' : 'No se puede enviar hasta que esté en OK (o se desbloquee con justificación)'} style={{ width: 16, height: 16 }} />
@@ -591,7 +601,7 @@ export default function CartasPage() {
                   })}
                   {/* TOTALES */}
                   <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 6, padding: '7px 12px', borderTop: '2px solid #CBD5E1', background: '#F1F5F9', fontWeight: 700, fontSize: 11.5 }}>
-                    <div>TOTALES</div><div /><div /><div /><div /><div />
+                    <div>TOTALES</div><div /><div /><div /><div />
                     <div style={rt}>{fmt(b.totales.aCobrar)}</div><div style={rt}>{fmt(b.totales.recibido)}</div><div />
                     <div style={rt}>{fmt(b.totales.admon)}</div><div style={rt}>{fmt(b.totales.iva)}</div><div style={rt}>{fmt(b.totales.descuentos)}</div>
                     <div style={rt}>{fmt(b.totales.aTransferir)}</div>
