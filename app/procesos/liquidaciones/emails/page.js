@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v9 · 2026-08-07 · EMAILS filtros y selección: (1) "Seleccionar todas las enviables" ya NO re-marca las YA
+//   ENVIADas (solo enviables no enviadas y de lo que esté a la vista); el contador refleja eso. (2) Nuevos filtros de
+//   pantalla: por estado (Todos / Solo OK / Solo OK DESC) y por texto (IDPROP o nombre); solo se muestran las que pasan.
+//   Hereda v8.
 // VERSION: v8 · 2026-08-07 · EMAILS, dos arreglos: (1) fila TOTALES desalineada una celda (tenía 5 huecos iniciales,
 //   heredado de CARTAS con columna "Final"; ahora 4) → cuadra con las columnas. (2) El checkbox de una carta YA ENVIADA
 //   se muestra en ámbar y, al marcarlo para reenviar, pide confirmación "ya enviada, ¿reenviar?". Hereda v7.
@@ -75,6 +79,8 @@ export default function CartasPage() {
   const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
   const [reducir1p, setReducir1p] = useState({})   // idprop -> true = forzar 1 página (borrador + envío)
   const [soloNoEnviadas, setSoloNoEnviadas] = useState(false)   // filtro: ocultar propietarios ya enviados
+  const [filtroEstadoEnvio, setFiltroEstadoEnvio] = useState('todas')   // 'todas' | 'ok' | 'okdesc'
+  const [filtroTexto, setFiltroTexto] = useState('')            // filtra por IDPROP o nombre (oculta el resto)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -289,7 +295,8 @@ export default function CartasPage() {
   const seleccionadas = bloques.filter(b => seleccion[b.idprop] && enviable(b))
   function toggleSel(idprop) { setSeleccion(s => ({ ...s, [idprop]: !s[idprop] })) }
   function seleccionarTodasEnviables() {
-    const s = {}; for (const b of bloques) if (enviable(b)) s[b.idprop] = true; setSeleccion(s)
+    // Solo las enviables que aún NO se han enviado y que están a la vista (respeta los filtros).
+    const s = {}; for (const b of enviablesVisibles) s[b.idprop] = true; setSeleccion(s)
   }
   function limpiarSeleccion() { setSeleccion({}) }
 
@@ -381,7 +388,18 @@ export default function CartasPage() {
   // (todo el mes), no sobre lo filtrado; el filtro es solo visual.
   const estaEnviada = b => !!envios[b.idprop]?.fecha_envio
   const nNoEnviadas = bloques.filter(b => !estaEnviada(b)).length
-  const visibles = soloNoEnviadas ? bloques.filter(b => !estaEnviada(b)) : bloques
+  // Filtros de la pantalla: no-enviadas + estado (OK / OK DESC) + texto (IDPROP o nombre). Solo se muestran las que pasan.
+  const normTxt = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const qFiltro = normTxt(filtroTexto)
+  const visibles = bloques.filter(b => {
+    if (soloNoEnviadas && estaEnviada(b)) return false
+    if (filtroEstadoEnvio === 'ok' && b.estado !== 'OK') return false
+    if (filtroEstadoEnvio === 'okdesc' && b.estado !== 'OK DESC') return false
+    if (qFiltro && !normTxt(`${b.idprop} ${b.propietario}`).includes(qFiltro)) return false
+    return true
+  })
+  // Enviables NO enviadas dentro de lo que se ve ahora (para "Seleccionar todas" sin re-marcar las ya enviadas).
+  const enviablesVisibles = visibles.filter(b => enviable(b) && !estaEnviada(b))
 
   return (
     <>
@@ -434,6 +452,24 @@ export default function CartasPage() {
           />
         </div>
 
+        {/* Filtros de la lista: estado + texto (IDPROP/nombre). Solo se muestran las que pasan. */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Filtrar:</span>
+          <select value={filtroEstadoEnvio} onChange={e => setFiltroEstadoEnvio(e.target.value)}
+            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12 }}>
+            <option value="todas">Todos los estados</option>
+            <option value="ok">Solo OK</option>
+            <option value="okdesc">Solo OK DESC</option>
+          </select>
+          <input value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)} placeholder="IDPROP o nombre del propietario…"
+            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12, minWidth: 240 }} />
+          {(filtroEstadoEnvio !== 'todas' || filtroTexto) && (
+            <button onClick={() => { setFiltroEstadoEnvio('todas'); setFiltroTexto('') }}
+              style={{ fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>Quitar filtros</button>
+          )}
+          <span style={{ fontSize: 12, color: '#64748B' }}>Mostrando <b>{visibles.length}</b> de {bloques.length}</span>
+        </div>
+
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}
 
@@ -441,7 +477,7 @@ export default function CartasPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Envío de cartas:</span>
             <button onClick={seleccionarTodasEnviables} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-              Seleccionar todas las enviables ({bloques.filter(enviable).length})
+              Seleccionar todas las enviables ({enviablesVisibles.length})
             </button>
             <button onClick={limpiarSeleccion} style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 7, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>
               Quitar selección
