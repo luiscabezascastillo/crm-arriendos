@@ -1,6 +1,9 @@
 // app/api/liquidaciones/facturar/route.js
+// VERSION: v2 · 2026-08-10 · UPSERT: si la fila del propietario para el mes NO existe (mes aún no preparado/congelado),
+//   se CREA con lo mínimo (mes, idprop) + nombre y tipo_factura tomados de `propietarios`, para poder facturar EN VIVO
+//   antes de "Preparar mes". Si ya existe y no está cerrada, se actualiza como siempre. Cerrada -> 409. Hereda v1.
 // VERSION: v1 · 2026-07-08 · guarda facturar/comentario por propietario en liquidacion_idprop
-// Verificar: Select-String route.js -Pattern "VERSION: v1"
+// Verificar: Select-String route.js -Pattern "VERSION: v2"
 //
 // Edita el estado de facturación de UN propietario en un mes.
 // Solo Alberto, Luis, Karina. Solo si el mes NO está cerrado.
@@ -42,14 +45,16 @@ export async function POST(req) {
 
   const sb = svc()
 
-  // no editar si la fila esta cerrada (sellada)
+  // ¿Existe la fila? maybeSingle -> null si no existe (mes aún no preparado), sin lanzar error.
   const { data: fila, error: eSel } = await sb
-    .from('liquidacion_idprop').select('cerrado').eq('mes', mes).eq('idprop', idprop).single()
-  if (eSel) return Response.json({ error: 'No existe esa fila: ' + eSel.message }, { status: 404 })
+    .from('liquidacion_idprop').select('cerrado').eq('mes', mes).eq('idprop', idprop).maybeSingle()
+  if (eSel) return Response.json({ error: 'lectura: ' + eSel.message }, { status: 500 })
   if (fila?.cerrado) return Response.json({ error: 'Mes cerrado: no se puede editar.' }, { status: 409 })
 
-  // construir patch solo con lo que venga
-  const patch = { updated_at: new Date().toISOString() }
+  const now = new Date().toISOString()
+
+  // Construir el patch solo con lo que venga.
+  const patch = { updated_at: now }
   if (body.facturar !== undefined) {
     const f = String(body.facturar).toUpperCase().trim()
     if (!FACTURAR_VALIDOS.includes(f)) return Response.json({ error: 'facturar debe ser SI/NO/DESPUES/HECHO' }, { status: 400 })
@@ -59,6 +64,31 @@ export async function POST(req) {
     patch.comentario = String(body.comentario)
   }
 
+  if (!fila) {
+    // La fila NO existe (mes no preparado): crearla con lo mínimo + tipo/nombre permanentes del propietario,
+    // para que facturar/comentario se guarden aunque el mes no esté congelado.
+    let prop = null
+    try {
+      const r = await sb.from('propietarios').select('nombre, tipo_factura').eq('idprop', idprop).maybeSingle()
+      prop = r.data || null
+    } catch { /* si falla, se crea sin nombre/tipo */ }
+    const nueva = {
+      mes,
+      idprop,
+      nombre: prop?.nombre || null,
+      tipo_factura: prop?.tipo_factura || null,
+      facturar: patch.facturar || 'NO',
+      comentario: patch.comentario ?? null,
+      cerrado: false,
+      created_at: now,
+      updated_at: now,
+    }
+    const { error: eIns } = await sb.from('liquidacion_idprop').insert(nueva)
+    if (eIns) return Response.json({ error: 'insert: ' + eIns.message }, { status: 500 })
+    return Response.json({ ok: true, creada: true, mes, idprop, ...nueva })
+  }
+
+  // La fila existe y no está cerrada: actualizar.
   const { error: eUpd } = await sb
     .from('liquidacion_idprop').update(patch).eq('mes', mes).eq('idprop', idprop)
   if (eUpd) return Response.json({ error: 'update: ' + eUpd.message }, { status: 500 })
