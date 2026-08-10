@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v17 · 2026-08-10 · El texto de un depto en captación (P) se edita EN LÍNEA sobre la celda Arrendatario (clic →
+//   "RESERVADO" o lo que sea) por quien emite (Alberto/Luis/Karina). Se guarda por idadmon en `captacion_etiqueta` y sale
+//   igual en el PDF; vacío = vuelve a "EN CAPTACION ARRENDATARIO". Hereda v16.
+// VERSION: v16 · 2026-08-10 · Etiqueta libre de captación: si un depto en estado P tiene una etiqueta en `captacion_etiqueta`
+//   la carta muestra ESE texto en vez de "EN CAPTACION ARRENDATARIO". Hereda v15.
 // VERSION: v15 · 2026-08-10 · EMAILS se ve COMO SALDRÁ la carta: la línea en espera muestra su "A transferir" ATENUADO
 //   con una subfila "en espera"; la fila TOTALES, el cierre y el MODAL DE ENVÍO muestran "A transferir ahora" (sin lo
 //   retenido) y el importe "En espera de cobro". Antes el modal enseñaba el bruto. Hereda v14.
@@ -85,6 +90,9 @@ export default function CartasPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [bloques, setBloques] = useState([])
+  const [editCap, setEditCap] = useState(null)     // idadmon cuyo texto de captación (P) se está editando
+  const [editCapTxt, setEditCapTxt] = useState('')
+  const [capBusy, setCapBusy] = useState(null)
   const [actualizado, setActualizado] = useState(null)
   const [obsAbierta, setObsAbierta] = useState({})   // idprop -> bool (expandido)
   const [obsTexto, setObsTexto] = useState({})       // idprop -> texto
@@ -124,7 +132,7 @@ export default function CartasPage() {
       const ids = [...new Set(rows.map(r => r.idadmon))]
       const idprops = new Set(rows.map(r => r.idprop))
 
-      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps, rLog] = await Promise.all([
+      const [rArr, rServ, rDesc, rCom, rCargos, rObs, rEnvios, rProps, rLog, rCap] = await Promise.all([
         supabase.from('datos_arriendos').select('*').in('idadmon', ids),
         supabase.from('ggcc_agua_luz').select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').in('idadmon', ids),
         supabase.from('descuentos').select('idadmon, monto_a_imputar, texto_explicativo_para_carta_a_propietario').in('idadmon', ids).eq('mes_a_imputar', aammToTxt(m)).eq('repercutir_a', 'PROPIETARIO'),
@@ -134,7 +142,11 @@ export default function CartasPage() {
         supabase.from('liquidacion_envios').select('idprop, estado_envio, fecha_envio, email_dest, enviado_por, desbloqueo_motivo, desbloqueado_por').eq('mes', m),
         supabase.from('propietarios').select('idprop, mail1, nombre').in('idprop', [...idprops]),
         supabase.from('liquidacion_envios_log').select('idprop, fecha_envio, enviado_por, reducido').eq('mes', m).order('fecha_envio', { ascending: false }),
+        supabase.from('captacion_etiqueta').select('idadmon, etiqueta').in('idadmon', ids),
       ])
+      // Etiqueta libre para deptos en captación (P): sustituye "EN CAPTACION ARRENDATARIO" en la carta.
+      const capEtiq = {}
+      for (const c of (rCap?.data || [])) if (c.idadmon && String(c.etiqueta || '').trim()) capEtiq[c.idadmon] = String(c.etiqueta).trim()
 
       // Líneas "en espera" (retenidas por morosidad, marcadas en CARTAS): set de idadmon para la nota de la carta.
       const retSet = new Set()
@@ -231,7 +243,7 @@ export default function CartasPage() {
           propiedad: r.inmueble,
           comienzo: (esP || esProp) ? '' : fmtFecha(campo(d, ['fecha_inicio'])),
           final: esP ? '' : fmtFecha(campo(d, ['termino_actual', 'fecha_fin', 'fecha_final', 'fecha_termino', 'finalizacion', 'termino', 'fecha_fin_contrato'])),
-          arrendatario: esP ? 'EN CAPTACION ARRENDATARIO' : campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
+          arrendatario: esP ? (capEtiq[r.idadmon] || 'EN CAPTACION ARRENDATARIO') : campo(d, ['arrendatario', 'arrendatario1', 'nombre_arrendatario', 'arrendatario_nombre']),
           rut: esP ? '' : campo(d, ['rut', 'rut_arrendatario', 'rut1']),
           por: esP ? '' : campo(d, ['quien_cobra'], 'FCR'),
           aCobrar: esP ? 0 : n0(r.base), recibido: esP ? 0 : n0(r.recibido_banco),
@@ -295,6 +307,20 @@ export default function CartasPage() {
   }
 
   // ¿Se puede enviar esta carta? OK/OK DESC, o CHECK/TO SEE con DESBLOQUEO justificado registrado.
+  // Editar el texto de la carta para un depto en captación (P): "RESERVADO", etc. Lo hace quien emite.
+  async function guardarCap(idadmon) {
+    if (!puedeEnviar) return
+    const val = (editCapTxt || '').trim()
+    setCapBusy(idadmon)
+    try {
+      if (!val) await supabase.from('captacion_etiqueta').delete().eq('idadmon', idadmon)
+      else await supabase.from('captacion_etiqueta').upsert({ idadmon, etiqueta: val, actualizado_por: email, actualizado_at: new Date().toISOString() }, { onConflict: 'idadmon' })
+      const mostrar = val || 'EN CAPTACION ARRENDATARIO'
+      setBloques(prev => prev.map(b => ({ ...b, inmuebles: b.inmuebles.map(x => (x.idadmon === idadmon && x.esP ? { ...x, arrendatario: mostrar } : x)) })))
+    } catch (e) { alert('No se pudo guardar: ' + (e?.message || e)) }
+    finally { setCapBusy(null); setEditCap(null); setEditCapTxt('') }
+  }
+
   function estaDesbloqueada(b) {
     return !!String(envios[b.idprop]?.desbloqueo_motivo || '').trim()
   }
@@ -655,7 +681,19 @@ export default function CartasPage() {
                       <div style={{ ...td, ...bgP, fontFamily: MONO, fontWeight: 600 }}>{x.idadmon}</div>
                       <div style={{ ...td, ...bgP }} title={x.propiedad || ''}>{x.propiedad || '—'}</div>
                       <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.comienzo || vP}</div>
-                      <div style={{ ...td, ...bgP }} title={x.arrendatario || ''}>{x.arrendatario || '—'}</div>
+                      <div style={{ ...td, ...bgP }} title={x.arrendatario || ''}>
+                        {x.esP && puedeEnviar
+                          ? (editCap === x.idadmon
+                              ? <input autoFocus value={editCapTxt} disabled={capBusy === x.idadmon}
+                                  onChange={(e) => setEditCapTxt(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') guardarCap(x.idadmon); if (e.key === 'Escape') { setEditCap(null); setEditCapTxt('') } }}
+                                  onBlur={() => guardarCap(x.idadmon)} placeholder="EN CAPTACION ARRENDATARIO"
+                                  style={{ width: '100%', fontSize: 11, padding: '2px 4px', border: '1px solid #7c3aed', borderRadius: 4, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                              : <span onClick={() => { setEditCap(x.idadmon); setEditCapTxt(x.arrendatario === 'EN CAPTACION ARRENDATARIO' ? '' : (x.arrendatario || '')) }}
+                                  title="Clic para cambiar el texto de la carta (p. ej. RESERVADO)"
+                                  style={{ cursor: 'pointer', borderBottom: '1px dashed #C4B5FD' }}>{x.arrendatario || '—'} <span style={{ color: '#7c3aed', fontSize: 10 }}>✎</span></span>)
+                          : (x.arrendatario || '—')}
+                      </div>
                       <div style={{ ...td, ...bgP, fontFamily: MONO }}>{x.rut || vP}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.aCobrar)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.recibido)}</div>
