@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v10 · 2026-08-10 · TRANSFER: el selector de meses ahora va desde ENERO 2025 (2501) hasta 1 mes por delante del actual, IGUAL que CARTAS (antes usaba una ventana móvil de 6 meses atrás → empezaba en feb-2026, dejando fuera 2501–2601). Solo cambia generarMeses(); el mes por defecto (mesEnCurso, regla día 23) no cambia. Hereda v9.
 // VERSION: v9 · 2026-08-07 · TRANSFER: refleja las líneas "en espera" (retenidas en CARTAS por arrendatario moroso).
 //   "A transferir" pasa a ser "a transferir AHORA" = total − retenido; se añade KPI "En espera" y chip por propietario;
 //   la validación/Transferido usan el importe de ahora (así el propietario con su parte pagada queda ✓ aunque el moroso
@@ -36,17 +37,18 @@ const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}
 // Mes AAMM -> etiqueta legible y viceversa
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 const aammToTxt = aamm => { if (!aamm || aamm.length !== 4) return aamm; const a = aamm.slice(0, 2), m = parseInt(aamm.slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }
-// Genera lista de meses AAMM desde 2412 hacia atrás y adelante (para el selector)
+// Genera la lista de meses AAMM del selector: desde ENERO 2025 (2501) hasta 1 mes por
+// delante del actual. Misma lógica que CARTAS (page cartas.js) para que no se desincronicen.
 function generarMeses() {
-  const out = []
-  const hoy = new Date()
-  for (let i = 6; i >= -1; i--) {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
-    const aa = String(d.getFullYear()).slice(2)
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    out.push(aa + mm)
+  const out = []; const hoy = new Date()
+  const inicioY = 2025, inicioM = 0            // enero 2025
+  const finD = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)   // 1 mes adelante
+  let d = new Date(inicioY, inicioM, 1)
+  while (d <= finD) {
+    out.push(String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0'))
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
   }
-  return out
+  return out   // orden cronológico (antiguo → reciente)
 }
 
 // Filtro estilo Excel por columna (ordenar ↑↓ + buscador + valores con recuento). Igual que Compras/Términos.
