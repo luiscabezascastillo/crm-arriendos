@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v22 · 2026-08-10 · Filtro multi-selección arreglado: "Limpiar" ahora VACÍA la vista (antes, set vacío se
+//   trataba como "sin filtro" y seguía mostrando todo, por eso parecía que no filtraba). Flujo: Limpiar → marca 2-3 (o
+//   usa el buscador) → se muestran solo esas. Pista añadida en el menú. Hereda v21.
 // VERSION: v21 · 2026-08-07 · Ficha T-: si la devolución de garantía YA existe (garantia-info.devolucion_existente),
 //   el botón se sustituye por "✓ Garantía ya figura en descuento Nº X" (no re-ofrece crearla). Hereda v20.
 // VERSION: v20 · 2026-08-07 · Filtro de columna estilo Excel (como en otras hojas): "Marcar todos / Limpiar" + casillas
@@ -295,13 +298,13 @@ export default function DescuentosPage() {
   const filtradas = useMemo(() => {
     return rows.filter((r) =>
       Object.entries(filtros).every(([col, set]) => {
-        if (!set || set.size === 0) return true; // sin filtro activo
-        return set.has(cellFilterValue(r, col));
+        if (!set) return true;                     // columna sin filtro (clave ausente)
+        return set.has(cellFilterValue(r, col));   // set vacío (tras "Limpiar") => no pasa nada; marca las que quieras
       })
     );
   }, [rows, filtros]);
 
-  const hayFiltroActivo = Object.values(filtros).some((s) => s && s.size > 0);
+  const hayFiltroActivo = Object.values(filtros).some((s) => s instanceof Set);
 
   // Exportar a Excel EXACTAMENTE lo filtrado (todas las columnas: vista + ficha).
   async function exportarExcel() {
@@ -383,7 +386,7 @@ export default function DescuentosPage() {
   function limpiarSeleccion(col) {
     setFiltros((prev) => ({ ...prev, [col]: new Set() }));
   }
-  const colFiltrada = (col) => filtros[col] && filtros[col].size > 0
+  const colFiltrada = (col) => filtros[col] instanceof Set
     && filtros[col].size < valoresUnicos(col).length;
 
   // -------------------- ALTA --------------------
@@ -737,6 +740,9 @@ const FiltroMenu = forwardRef(function FiltroMenu(
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11 }}>
         <a onClick={onTodos} style={{ color: '#1f4e79', cursor: 'pointer', fontWeight: 600 }}>Marcar todos</a>
         <a onClick={onLimpiar} style={{ color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>Limpiar</a>
+      </div>
+      <div style={{ fontSize: 10, color: '#8a8a80', marginBottom: 6, lineHeight: 1.3 }}>
+        Para ver <b>solo algunos</b>: pulsa <b>Limpiar</b> y marca los que quieras (o usa el buscador).
       </div>
       <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4, padding: 4 }}>
         {visibles.map((v) => (
