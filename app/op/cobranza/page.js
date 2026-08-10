@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v9 · 2026-08-10 · Multa/interés automático en la reclamación: días de mora × % diario × deuda
+//   (prefijado desde multa_diaria del contrato, editable). Muestra total y lo inyecta en la plantilla
+//   ({{multa}}/{{total}}) y en monto_reclamado. Hereda v8.
 // VERSION: v8 · 2026-08-10 · Botón "Expediente (PDF)" en el panel y en Casos: abre /api/cobranza/expediente
 //   (HTML imprimible con toda la secuencia de gestiones) para entregar al aval/abogado o respaldar al dueño. Hereda v7.
 // VERSION: v7 · 2026-08-10 · Pestaña "Casos" con semáforo del propietario (🟢/🟡/🔴 según avisos al propietario
@@ -293,11 +296,15 @@ function CobranzaDrawer({ fila, onClose }) {
   const [resultado, setResultado] = useState('enviado')
   const [emailDestino, setEmailDestino] = useState('')
   const [enviarEmail, setEnviarEmail] = useState(true)
+  const [pct, setPct] = useState(1)   // % diario de multa/interés
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
 
   const tipo = fila.grupo === 'termino' ? 'termino' : 'vigente'
   const deuda = num(fila.deuda)
+  const dias = (fila.dias_mora != null) ? fila.dias_mora : diasDesdeFecha(fila.ultimo_abono)
+  const multa = (dias && dias > 0) ? Math.round(deuda * (Number(pct) / 100) * dias) : 0
+  const total = deuda + multa
 
   function cargar() {
     setLoading(true)
@@ -313,6 +320,12 @@ function CobranzaDrawer({ fila, onClose }) {
     const c = info?.contrato || {}
     setEmailDestino(dest === 'aval' ? (c.mail_avalista || '') : dest === 'propietario' ? '' : (c.mail_arrendatario || ''))
   }, [dest, info])
+
+  // % de multa prefijado desde el contrato si parece un porcentaje razonable
+  useEffect(() => {
+    const md = Number(info?.contrato?.multa_diaria)
+    if (md && md > 0 && md <= 10) setPct(md)
+  }, [info])
 
   const contrato = info?.contrato || {}
   const gestiones = info?.gestiones || []
@@ -331,11 +344,20 @@ function CobranzaDrawer({ fila, onClose }) {
       '{{propietario}}': contrato.propietario || fila.propietario || '',
       '{{propiedad}}': contrato.inmueble || fila.inmueble || '',
       '{{monto}}': num(deuda).toLocaleString('es-CL'),
-      '{{dias_mora}}': String(fila.dias_mora ?? ''),
+      '{{dias_mora}}': String(dias ?? ''),
+      '{{multa}}': num(multa).toLocaleString('es-CL'),
+      '{{total}}': num(total).toLocaleString('es-CL'),
       '{{mes}}': mesActualTxt(),
     }
   }
   function render(t) { let s = String(t || ''); const v = valores(); for (const k in v) s = s.split(k).join(v[k]); return s }
+
+  // recomputar el texto de la plantilla si cambia el % (para que la multa/total salgan al día)
+  useEffect(() => {
+    if (!plantillaId) return
+    const p = plantillas.find(x => String(x.id) === String(plantillaId))
+    if (p) { setAsunto(render(p.asunto)); setContenido(render(p.cuerpo)) }
+  }, [pct]) // eslint-disable-line
 
   function elegirPlantilla(id) {
     setPlantillaId(id)
@@ -366,7 +388,7 @@ function CobranzaDrawer({ fila, onClose }) {
         etapa: p?.etapa || null, asunto, contenido, resultado, acuse,
         plantilla_id: plantillaId || null,
         destinatario_nombre: destNombre || null, destinatario_rut: destRut || null,
-        monto_adeudado: deuda, dias_mora: fila.dias_mora ?? null,
+        monto_adeudado: deuda, dias_mora: dias ?? null, monto_reclamado: total,
         enviar: vaAEnviar, email_destino: emailDestino,
         contrato: { propietario: contrato.propietario || fila.propietario, inmueble: contrato.inmueble || fila.inmueble,
           arrendatario: contrato.arrendatario || fila.arrendatario, rut: contrato.rut, avalista: contrato.avalista, rut_avalista: contrato.rut_avalista },
@@ -452,6 +474,21 @@ function CobranzaDrawer({ fila, onClose }) {
               {plantillasDest.map(p => <option key={p.id} value={p.id}>{p.etapa}</option>)}
             </select>
           </div>
+          {dias > 0 && (
+            <div style={{ marginBottom: 10, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: '#7a5b0b' }}>
+                  Multa/interés: <b>{money(multa)}</b> <span style={{ color: C.sub }}>({dias}d × {pct}% de {money(deuda)})</span> · Total: <b>{money(total)}</b>
+                </div>
+                <label style={{ fontSize: 12, color: '#7a5b0b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  % diario
+                  <input type="number" step="0.1" min="0" max="10" value={pct} onChange={e => setPct(parseFloat(e.target.value) || 0)}
+                    style={{ width: 64, padding: '5px 7px', border: '1px solid #E0DDD8', borderRadius: 6, fontSize: 12 }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>Informativo; usa {'{{multa}}'} y {'{{total}}'} en las plantillas. Aplicar el cargo a la cuenta sigue en Morosidad.</div>
+            </div>
+          )}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Asunto</div>
             <input style={s.inp} value={asunto} onChange={e => setAsunto(e.target.value)} placeholder="Asunto" />
