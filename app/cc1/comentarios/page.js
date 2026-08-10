@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-10 · FIX permisos de Dirección: la detección usaba rol === 'admin' (código muerto), por lo que
+//   Dirección NUNCA podía editar/borrar comentarios de otros. Ahora Dirección se reconoce por rol 'direccion' o por ser
+//   uno de los correos de Dirección (Alberto/Luis/Karina) → puede editar/borrar CUALQUIER comentario. Hereda v3.
 // VERSION: v3 · 2026-07-28 · "Reutilizar" comentarios de meses anteriores: por contrato, un
 //   desplegable "Ver comentarios anteriores" carga bajo demanda su historial (otros meses) y
 //   junto a cada uno un botón que copia el texto al campo de añadir (editable antes de guardar).
@@ -16,8 +19,11 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '../../components/ui/TopNav'
 
-// Dirección puede editar/borrar cualquier comentario; el resto solo los suyos.
-const ROL_DIRECCION = 'admin'
+// Dirección puede editar/borrar CUALQUIER comentario; el resto solo los suyos.
+// OJO: 'admin' NO existe como rol (código muerto). Dirección se reconoce por el rol real
+// 'direccion' o por ser uno de los correos de Dirección (Alberto y Luis).
+// (Si más adelante Karina también debe editar todo, añadir su correo aquí.)
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 const aAAMM = (d) => String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0')
 const MES_LARGO = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -53,7 +59,7 @@ export default function ComentariosPage() {
   const email = session?.user?.email || ''
   const rol = session?.user?.role || ''
   const persona = (session?.user?.name || email.split('@')[0] || '').trim()
-  const esDireccion = rol === ROL_DIRECCION
+  const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(email)
 
   const [congelados, setCongelados] = useState(new Set())
   const meses = useMemo(() => mesesDisponibles(congelados), [congelados])
