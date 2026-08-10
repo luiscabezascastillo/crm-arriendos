@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v12 · 2026-08-10 · Candado de re-emisión corregido: el aviso NO va al "Generar CSV" (los HECHO ya no se
+//   re-emiten: el generador solo toma los SI), sino al CAMBIAR un propietario que ya está en HECHO → pide confirmación
+//   porque re-emitir es un procedimiento especial (evita emitir dos veces). Hereda v11.
 // VERSION: v11 · 2026-08-10 · FACTURAR SIN CONGELAR: si el mes no está congelado (liquidacion_idadmon vacío), la página
 //   lee EN VIVO —Admon+IVA de calcular_liquidacion (como TRANSFER/CARTAS/EMAILS) y el tipo 33/39 de propietarios.tipo_factura—
 //   en vez de exigir "Preparar mes". El camino congelado (meses cerrados) queda intacto. Además, al Generar CSV, si hay
@@ -107,11 +110,6 @@ export default function FacturasPage() {
 
   async function generarCSV() {
     if (generando) return
-    // Candado: si hay propietarios ya EMITIDOS (HECHO), pedir confirmación antes de re-generar.
-    const yaHechas = Object.values(propMap).filter(p => String(p.facturar || '') === 'HECHO')
-    if (yaHechas.length && !window.confirm(
-      `Hay ${yaHechas.length} propietario(s) ya marcados como HECHO (factura ya emitida).\n\n` +
-      `Si continúas podrían volver a generarse. ¿Generar de todas formas?`)) return
     setGenerando(true); setError(null); setResumenGen(null)
     try {
       const res = await fetch('/api/liquidaciones/generar-csv', {
@@ -267,6 +265,20 @@ export default function FacturasPage() {
     setGuardando('')
   }
 
+  // Cambiar el estado "Facturar". Si el propietario YA está en HECHO (factura emitida), re-emitir
+  // es un procedimiento especial: se pide confirmación explícita para no emitir dos veces.
+  function cambiarFacturar(idprop, actual, nuevo) {
+    if (nuevo === actual) return
+    if (String(actual || '').toUpperCase() === 'HECHO') {
+      const ok = window.confirm(
+        'Esta facturación ya está EMITIDA (HECHO).\n\n' +
+        'Volver a emitirla es un procedimiento especial (riesgo de emitir dos veces). ' +
+        'Solo cambia su estado si de verdad necesitas re-emitir.\n\n¿Continuar?')
+      if (!ok) return
+    }
+    guardar(idprop, { facturar: nuevo })
+  }
+
   if (accesoOk === null || status === 'loading') return <div style={{ padding: 40, fontSize: 14, color: '#666' }}>Comprobando acceso…</div>
   if (accesoOk === false) return null
 
@@ -418,7 +430,7 @@ export default function FacturasPage() {
                   <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                     {nuevoProp ? (
                       <select value={fact} disabled={cerrado || guardando === f.idprop}
-                        onChange={e => guardar(f.idprop, { facturar: e.target.value })}
+                        onChange={e => cambiarFacturar(f.idprop, fact, e.target.value)}
                         style={{ fontSize: 12, fontWeight: 700, padding: '3px 6px', borderRadius: 8, border: 'none', background: fc.bg, color: fc.fg, cursor: cerrado ? 'default' : 'pointer' }}>
                         {FACT_OPCIONES.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
