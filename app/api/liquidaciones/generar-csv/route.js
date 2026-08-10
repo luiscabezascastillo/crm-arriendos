@@ -1,6 +1,10 @@
 // app/api/liquidaciones/generar-csv/route.js
+// VERSION: v2 · 2026-08-10 · FACTURAR SIN PREPARAR: si el mes NO está preparado (liquidacion_idadmon sin filas), las
+//   líneas (comisión por inmueble) se calculan EN VIVO desde calcular_liquidacion —igual que la página/CARTAS/EMAILS—,
+//   tomando el estado de datos_arriendos para excluir los P. El tipo (33/39) sigue saliendo de liquidacion_idprop
+//   (la fila la crea el upsert de facturar/route v2) y el HECHO+fecha_emision se marca sobre esa fila. Hereda v1.
 // VERSION: v1 · 2026-07-08 · genera los 2 CSV SimpleFactura (33 facturas / 39 boletas)
-// Verificar: Select-String route.js -Pattern "VERSION: v1"
+// Verificar: Select-String route.js -Pattern "VERSION: v2"
 //
 // Filtro: SOLO propietarios con facturar='SI' (cualquier otro valor queda fuera).
 // Excluye Paola (P001) y estado P. Separa por tipo_factura: 33->facturas, 39/41->boletas.
@@ -89,12 +93,37 @@ export async function POST(req) {
   if (idpropsSI.length === 0) return Response.json({ ok: true, facturas_csv: '', boletas_csv: '', resumen: { aviso: 'No hay propietarios con facturar=SI.' } })
   const tipoDe = {}; for (const c of cabs || []) tipoDe[c.idprop] = (c.tipo_factura || '').trim()
 
-  // 2) Lineas (inmuebles) de esos propietarios, sin estado P
-  const { data: lins, error: eLin } = await sb.from('liquidacion_idadmon')
-    .select('idadmon, idprop, propietario, inmueble, comision, estado')
-    .eq('mes', mes).in('idprop', idpropsSI)
-  if (eLin) return Response.json({ error: 'lineas: ' + eLin.message }, { status: 500 })
-  const lineas = (lins || []).filter(l => (l.estado || '').toUpperCase() !== 'P' && numOf(l.comision) > 0)
+  // 2) Lineas (inmuebles) de esos propietarios, sin estado P.
+  //    Si el mes está PREPARADO (liquidacion_idadmon con filas), se leen de ahí (la foto).
+  //    Si NO, se calculan EN VIVO desde calcular_liquidacion (igual que la página/CARTAS/EMAILS),
+  //    tomando el estado de datos_arriendos para excluir los P. Así se puede facturar sin preparar.
+  const { data: anyFroz, error: eAny } = await sb.from('liquidacion_idadmon').select('idadmon').eq('mes', mes).limit(1)
+  if (eAny) return Response.json({ error: 'chequeo mes: ' + eAny.message }, { status: 500 })
+  const esCongelado = (anyFroz || []).length > 0
+
+  let lineas = []
+  if (esCongelado) {
+    const { data: lins, error: eLin } = await sb.from('liquidacion_idadmon')
+      .select('idadmon, idprop, propietario, inmueble, comision, estado')
+      .eq('mes', mes).in('idprop', idpropsSI)
+    if (eLin) return Response.json({ error: 'lineas: ' + eLin.message }, { status: 500 })
+    lineas = (lins || []).filter(l => (l.estado || '').toUpperCase() !== 'P' && numOf(l.comision) > 0)
+  } else {
+    const { data: liq, error: eLiq } = await sb.rpc('calcular_liquidacion', { p_mes: mes })
+    if (eLiq) return Response.json({ error: 'calcular_liquidacion: ' + eLiq.message }, { status: 500 })
+    const setSI = new Set(idpropsSI)
+    const rows = (liq || []).filter(r => setSI.has(r.idprop))
+    const ids = [...new Set(rows.map(r => r.idadmon))]
+    const estadoDe = {}
+    if (ids.length) {
+      const { data: arr } = await sb.from('datos_arriendos').select('idadmon, estado').in('idadmon', ids)
+      for (const d of (arr || [])) estadoDe[d.idadmon] = String(d.estado || '').toUpperCase()
+    }
+    lineas = rows.map(r => ({
+      idadmon: r.idadmon, idprop: r.idprop, propietario: r.propietario,
+      inmueble: r.inmueble, comision: r.comision, estado: estadoDe[r.idadmon] || '',
+    })).filter(l => l.estado !== 'P' && numOf(l.comision) > 0)
+  }
 
   // 3) Datos de propietarios (cliente)
   const { data: props } = await sb.from('propietarios')
