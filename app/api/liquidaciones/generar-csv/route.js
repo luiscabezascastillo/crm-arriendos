@@ -1,4 +1,8 @@
 // app/api/liquidaciones/generar-csv/route.js
+// VERSION: v4 · 2026-08-10 · COMPLEMENTARIAS al CSV: se añaden las líneas de comisión de las complementarias registradas
+//   con mes_cobro = este mes (arriendos morosos ya cobrados), a la factura de su propietario (aunque el propietario no
+//   tuviera facturar=SI). Tras generar se marcan estado='facturada' para no repetirlas. El tipo (33/39) del propietario que
+//   entra solo por complementaria se toma de propietarios.tipo_factura. Hereda v3.
 // VERSION: v3 · 2026-08-10 · NO FACTURAR lo EN ESPERA. Antes de armar los CSV se quitan de `lineas` los idadmon retenidos
 //   (liquidacion_retenidos: retenido=true y liberado_at null) — arrendatario moroso, marcado en CARTAS. Así su comisión
 //   NO se factura este mes (se hará en la complementaria al cobrar). Aplica a mes congelado y en vivo. Hereda v2.
@@ -93,8 +97,18 @@ export async function POST(req) {
     .eq('mes', mes).eq('facturar', 'SI')
   if (eCab) return Response.json({ error: 'cabeceras: ' + eCab.message }, { status: 500 })
   const idpropsSI = (cabs || []).filter(c => c.idprop !== PAOLA && !c.cerrado).map(c => c.idprop)
-  if (idpropsSI.length === 0) return Response.json({ ok: true, facturas_csv: '', boletas_csv: '', resumen: { aviso: 'No hay propietarios con facturar=SI.' } })
   const tipoDe = {}; for (const c of cabs || []) tipoDe[c.idprop] = (c.tipo_factura || '').trim()
+
+  // Complementarias a facturar en ESTE mes de cobro (arriendos morosos ya cobrados y registrados).
+  // Se añaden como líneas extra a la factura de su propietario. No se re-facturan (estado 'facturada').
+  const { data: complRows } = await sb.from('liquidacion_complementaria')
+    .select('id, idadmon, idprop, mes_espera, comision, estado').eq('mes_cobro', mes)
+  const compl = (complRows || []).filter(c => c.idprop !== PAOLA && numOf(c.comision) > 0 && c.estado !== 'facturada' && c.estado !== 'anulada')
+  const complProps = [...new Set(compl.map(c => c.idprop))]
+
+  if (idpropsSI.length === 0 && compl.length === 0) {
+    return Response.json({ ok: true, facturas_csv: '', boletas_csv: '', resumen: { aviso: 'No hay propietarios con facturar=SI ni complementarias.' } })
+  }
 
   // 2) Lineas (inmuebles) de esos propietarios, sin estado P.
   //    Si el mes está PREPARADO (liquidacion_idadmon con filas), se leen de ahí (la foto).
@@ -140,14 +154,24 @@ export async function POST(req) {
     nEnEspera = antes - lineas.length
   }
 
-  // 3) Datos de propietarios (cliente)
+  // 3) Datos de propietarios (cliente) — SI + los que tienen complementaria
+  const idpropsAll = [...new Set([...idpropsSI, ...complProps])]
   const { data: props } = await sb.from('propietarios')
-    .select('idprop, propietario, rut, mail1, email_2, direccion, comuna, telefono').in('idprop', idpropsSI)
+    .select('idprop, propietario, rut, mail1, email_2, direccion, comuna, telefono, tipo_factura').in('idprop', idpropsAll)
   const propDe = {}; for (const p of props || []) propDe[p.idprop] = p
 
   // 4) Agrupar lineas por propietario
   const porProp = {}
   for (const l of lineas) (porProp[l.idprop] = porProp[l.idprop] || []).push(l)
+  // Añadir las líneas de complementaria (una por complementaria) al grupo de su propietario.
+  const complIncluidas = []
+  for (const c of compl) {
+    (porProp[c.idprop] = porProp[c.idprop] || []).push({
+      idadmon: c.idadmon, idprop: c.idprop, propietario: (propDe[c.idprop]?.propietario || ''),
+      inmueble: `COMPLEMENTARIA arriendo ${c.mes_espera}`, comision: c.comision, _complId: c.id,
+    })
+    complIncluidas.push(c.id)
+  }
 
   const fecha = fechaHoy()
   const filasFactura = []   // TipoDte 33
@@ -156,13 +180,13 @@ export async function POST(req) {
   const resumen = { facturas: { propietarios: 0, docs: 0, lineas: 0 }, boletas: { propietarios: 0, docs: 0, lineas: 0 }, partidos: [] }
   const idpropsFacturados = []
 
-  // orden por nombre para salida estable
-  const idpropsOrden = idpropsSI.filter(ip => porProp[ip]?.length)
+  // orden por nombre para salida estable (SI + complementarias)
+  const idpropsOrden = idpropsAll.filter(ip => porProp[ip]?.length)
     .sort((a, b) => (propDe[a]?.propietario || '').localeCompare(propDe[b]?.propietario || '', 'es'))
 
   for (const idprop of idpropsOrden) {
     const p = propDe[idprop] || {}
-    const tipo = tipoDe[idprop] || '39'
+    const tipo = tipoDe[idprop] || (propDe[idprop]?.tipo_factura || '').trim() || '39'
     const esFactura = tipo === '33'
     const inmuebles = porProp[idprop]
 
@@ -219,15 +243,26 @@ export async function POST(req) {
   const facturas_csv = filasFactura.length ? [cab, ...filasFactura].join('\r\n') : ''
   const boletas_csv = filasBoleta.length ? [cab, ...filasBoleta].join('\r\n') : ''
 
-  // 5) Marcar HECHO + fecha_emision a los propietarios incluidos
+  // 5) Marcar HECHO + fecha_emision SOLO a los propietarios con facturar=SI (no a los que entran solo por complementaria).
   const nowIso = new Date().toISOString()
+  const setSIfinal = new Set(idpropsSI)
   for (const idprop of idpropsFacturados) {
+    if (!setSIfinal.has(idprop)) continue
     await sb.from('liquidacion_idprop').update({ facturar: 'HECHO', fecha_emision: nowIso, updated_at: nowIso })
       .eq('mes', mes).eq('idprop', idprop)
   }
+  // Marcar las complementarias incluidas como facturadas (no se vuelven a facturar).
+  if (complIncluidas.length) {
+    await sb.from('liquidacion_complementaria')
+      .update({ estado: 'facturada', actualizado_at: nowIso }).in('id', complIncluidas)
+  }
 
   resumen.enEspera = nEnEspera
-  if (nEnEspera > 0) resumen.aviso = `${nEnEspera} línea(s) en espera (arrendatario moroso) se excluyeron de la facturación; se facturarán en la complementaria al cobrar.`
+  resumen.complementarias = complIncluidas.length
+  const avisos = []
+  if (nEnEspera > 0) avisos.push(`${nEnEspera} línea(s) en espera se excluyeron (se facturan en la complementaria al cobrar)`)
+  if (complIncluidas.length > 0) avisos.push(`${complIncluidas.length} complementaria(s) incluida(s) y marcada(s) como facturadas`)
+  if (avisos.length) resumen.aviso = avisos.join('. ') + '.'
 
   return Response.json({ ok: true, mes, facturas_csv, boletas_csv, resumen })
 }

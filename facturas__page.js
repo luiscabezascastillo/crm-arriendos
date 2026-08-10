@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v14 · 2026-08-10 · COMPLEMENTARIAS a facturar: FACTURAS consulta /api/liquidaciones/complementaria?mes_cobro=AAMM
+//   y lista las complementarias registradas (arriendos morosos ya cobrados) cuya comisión toca facturar este mes, con su
+//   Admon+IVA. El route generar-csv (v4) las añade al CSV y las marca 'facturada'. Aquí es informativo. Hereda v13.
 // VERSION: v13 · 2026-08-10 · NO FACTURAR lo que está EN ESPERA. Los idadmon retenidos (arrendatario moroso, marcados en
 //   CARTAS) se EXCLUYEN de las líneas facturables: ni su Admon ni su IVA entran en la tabla, las tarjetas ni el CSV. Se
 //   facturarán en la complementaria cuando se cobre. Si se excluye alguno, se avisa con el nº de líneas apartadas. La
@@ -100,6 +103,7 @@ export default function FacturasPage() {
   const [resumenGen, setResumenGen] = useState(null)
   const [csvGen, setCsvGen] = useState({ facturas: '', boletas: '' })  // CSV generados, para redescargar
   const [enEsperaExcl, setEnEsperaExcl] = useState(0)   // nº de líneas apartadas por estar EN ESPERA (no se facturan)
+  const [complL, setComplL] = useState([])   // complementarias a facturar en este mes de cobro (arriendos morosos ya cobrados)
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
 
@@ -259,7 +263,24 @@ export default function FacturasPage() {
     } catch (err) {
       setError(String(err?.message || err))
     }
+    cargarComplementarias(m)
     setCargando(false)
+  }
+
+  // Complementarias a facturar en ESTE mes de cobro: comisión de arriendos morosos ya cobrados. Se incluyen
+  // en el CSV (el route las añade y marca facturada). Aquí solo se listan para que el operador las vea.
+  async function cargarComplementarias(m) {
+    try {
+      const r = await fetch('/api/liquidaciones/complementaria?mes_cobro=' + encodeURIComponent(m))
+      const d = await r.json()
+      const out = []
+      for (const c of (d.candidatos || [])) {
+        const est = c.complementaria?.estado
+        if (!c.complementaria || est === 'anulada' || est === 'facturada') continue
+        out.push({ idadmon: c.idadmon, idprop: c.idprop, propietario: c.propietario, inmueble: c.inmueble, mes_espera: c.mes_espera, comision: c.comision, iva: c.iva })
+      }
+      setComplL(out)
+    } catch { setComplL([]) }
   }
 
   // Guardar facturar (aplica a TODO el propietario) o comentario
@@ -313,6 +334,8 @@ export default function FacturasPage() {
   // Totales
   const totComision = visibles.reduce((s, f) => s + (Number(f.comision) || 0), 0)
   const totIva = visibles.reduce((s, f) => s + (Number(f.iva) || 0), 0)
+  const totComplComision = complL.reduce((s, c) => s + (Number(c.comision) || 0), 0)
+  const totComplIva = complL.reduce((s, c) => s + (Number(c.iva) || 0), 0)
   const idpropsVis = [...new Set(visibles.map(f => f.idprop))]
   const nFactura = idpropsVis.filter(ip => propMap[ip]?.tipo_factura === '33').length
   const nBoleta = idpropsVis.filter(ip => ['39', '41'].includes(propMap[ip]?.tipo_factura)).length
@@ -382,6 +405,17 @@ export default function FacturasPage() {
       {enEsperaExcl > 0 && (
         <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
           ⏸ <b>{enEsperaExcl}</b> línea(s) en espera (arrendatario moroso) apartada(s) de la facturación: su Admon e IVA <b>no se facturan</b> este mes. Se facturarán en la complementaria cuando se cobre.
+        </div>
+      )}
+
+      {complL.length > 0 && (
+        <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#5B21B6', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+          🧩 <b>{complL.length} complementaria(s) a facturar este mes</b> (arriendos morosos ya cobrados) · Admon <b>${fmtPesos(totComplComision)}</b> + IVA ${fmtPesos(totComplIva)}. Se incluyen en el CSV al pulsar “Generar CSV”.
+          <div style={{ marginTop: 6, fontSize: 12, color: '#6D28D9' }}>
+            {complL.map(c => (
+              <div key={c.idadmon}>· {c.idprop} {c.propietario} — {c.idadmon} {c.inmueble} (arriendo {aammToTxt(c.mes_espera)}) → Admon ${fmtPesos(c.comision)} + IVA ${fmtPesos(c.iva)}</div>
+            ))}
+          </div>
         </div>
       )}
 
