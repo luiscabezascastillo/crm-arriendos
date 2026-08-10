@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v15 · 2026-08-10 · EMAILS se ve COMO SALDRÁ la carta: la línea en espera muestra su "A transferir" ATENUADO
+//   con una subfila "en espera"; la fila TOTALES, el cierre y el MODAL DE ENVÍO muestran "A transferir ahora" (sin lo
+//   retenido) y el importe "En espera de cobro". Antes el modal enseñaba el bruto. Hereda v14.
 // VERSION: v14 · 2026-08-10 · EN ESPERA en el total de la carta: el bloque de cada propietario ahora lleva en `totales`
 //   dos campos nuevos — `enEspera` (suma de los "A transferir" de líneas retenidas por morosidad) y `aTransferirAhora`
 //   (total − enEspera). El PDF (lib/liquidacionPdf v6) los usa para que la columna "A transferir" muestre el importe REAL
@@ -660,7 +663,7 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.admon)}</div>
                       <div style={{ ...td, ...rt, ...bgP }}>{x.esP ? vP : fmt(x.iva)}</div>
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
-                      <div style={{ ...td, ...rt, ...bgP, fontWeight: 600 }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
+                      <div style={{ ...td, ...rt, ...bgP, fontWeight: 600, ...(x.notaEspera ? { color: '#B6BCC6' } : {}) }}>{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}</div>
                       <div style={{ ...td, ...rt, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? '' : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.ggcc)}</div>
                       <div style={{ ...td, ...rt }}>{x.esP ? '' : fmt(x.luz)}</div>
@@ -700,6 +703,14 @@ export default function CartasPage() {
                         <span style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic' }}>{x.nota}</span>
                       </div>
                     )
+                    // En espera (arrendatario no ha pagado): su "A transferir" no se suma; se paga al cobrar.
+                    if (x.notaEspera) subfilas.push(
+                      <div key={x.idadmon + i + 're'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2', background: '#EFF6FF' }}>
+                        <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                        <span style={{ fontFamily: MONO, color: '#1D4ED8', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(x.aTransferir)}</span>
+                        <span style={{ fontSize: 12, color: '#1D4ED8' }}>⏸ En espera — se transferirá al conseguir el cobro (no incluido en "A transferir")</span>
+                      </div>
+                    )
                     return [filaInmueble, ...subfilas]
                   })}
                   {/* TOTALES */}
@@ -707,16 +718,29 @@ export default function CartasPage() {
                     <div>TOTALES</div><div /><div /><div /><div />
                     <div style={rt}>{fmt(b.totales.aCobrar)}</div><div style={rt}>{fmt(b.totales.recibido)}</div><div />
                     <div style={rt}>{fmt(b.totales.admon)}</div><div style={rt}>{fmt(b.totales.iva)}</div><div style={rt}>{fmt(b.totales.descuentos)}</div>
-                    <div style={rt}>{fmt(b.totales.aTransferir)}</div>
+                    <div style={rt} title={n0(b.totales.enEspera) > 0 ? `A transferir ahora (sin lo que está en espera). Total bruto: ${Math.round(n0(b.totales.aTransferir)).toLocaleString('es-CL')}` : ''}>{n0(b.totales.enEspera) > 0 ? fmt(b.totales.aTransferirAhora) : fmt(b.totales.aTransferir)}</div>
                     <div style={rt}>{(() => { const s = (b.inmuebles || []).reduce((a, x) => a + n0(x.ajuste), 0); return s ? fmt(s) : '' })()}</div><div /><div /><div /><div /><div />
                   </div>
+                  {n0(b.totales.enEspera) > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px 5px 40px', background: '#EFF6FF', borderTop: '1px solid #DBEAFE' }}>
+                      <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                      <span style={{ fontFamily: MONO, color: '#1D4ED8', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(b.totales.enEspera)}</span>
+                      <span style={{ fontSize: 12, color: '#1D4ED8' }}>⏸ En espera de cobro — se transferirá al conseguir el cobro (no incluido en "A transferir")</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Fila de cierre: estado + transferido + diferencia */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #E5E7EB', background: '#FAFAFA' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 20, background: ec.bg, color: ec.c }}>{b.estado}</span>
-                <span style={{ fontSize: 12, color: '#555' }}>A transferir: <b>{fmt(b.totales.aTransferir)}</b></span>
+                {n0(b.totales.enEspera) > 0
+                  ? <>
+                      <span style={{ fontSize: 12, color: '#166534' }}>A transferir ahora: <b>{fmt(b.totales.aTransferirAhora)}</b></span>
+                      <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 6, background: '#DBEAFE', color: '#1D4ED8' }}>⏸ En espera de cobro: {fmt(b.totales.enEspera)}</span>
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>(total {fmt(b.totales.aTransferir)})</span>
+                    </>
+                  : <span style={{ fontSize: 12, color: '#555' }}>A transferir: <b>{fmt(b.totales.aTransferir)}</b></span>}
                 <span style={{ fontSize: 12, color: '#555' }}>Transferido al propietario: <b>{fmt(b.transferido)}</b></span>
                 <span style={{ fontSize: 12, color: '#555' }}>Diferencia:
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>
@@ -778,7 +802,10 @@ export default function CartasPage() {
                       <div style={{ fontFamily: MONO, fontWeight: 600 }}>{b.idprop}</div>
                       <div title={b.propietario}>{b.propietario}</div>
                       <div style={{ color: em ? '#1e3a8a' : '#B91C1C' }} title={em || 'SIN EMAIL'}>{em || '⚠ sin email'}</div>
-                      <div style={{ textAlign: 'right', fontFamily: MONO }}>{fmt(b.totales.aTransferir)}</div>
+                      <div style={{ textAlign: 'right', fontFamily: MONO }} title={n0(b.totales.enEspera) > 0 ? `A transferir ahora. En espera de cobro: ${Math.round(n0(b.totales.enEspera)).toLocaleString('es-CL')} · Total bruto: ${Math.round(n0(b.totales.aTransferir)).toLocaleString('es-CL')}` : ''}>
+                        {n0(b.totales.enEspera) > 0 ? fmt(b.totales.aTransferirAhora) : fmt(b.totales.aTransferir)}
+                        {n0(b.totales.enEspera) > 0 && <div style={{ fontSize: 10, color: '#1D4ED8', fontWeight: 700 }}>⏸ +{fmt(b.totales.enEspera)} en espera</div>}
+                      </div>
                     </div>
                   )
                 })}
