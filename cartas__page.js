@@ -1,3 +1,7 @@
+// VERSION: v14 · 2026-08-10 · COMPLEMENTARIAS (paso 1 UI): CARTAS consulta /api/liquidaciones/complementaria y, en la línea
+//   en espera de un moroso, si el endpoint detecta que YA entró el pago (abono en bi imputado a un mes posterior) muestra
+//   "💰 Pago recibido · 🧩 Generar complementaria" (Dirección); al pulsar registra en liquidacion_complementaria. Si ya
+//   está registrada, muestra "🧩 Complementaria registrada · estado". No cambia la lógica de espera/liberar. Hereda v13.
 // VERSION: v13 · 2026-08-10 · EN ESPERA = FUERA de esta liquidación. Las líneas retenidas (arrendatario moroso) se
 //   EXCLUYEN de los TOTALES (ni A cobrar, ni Admon, ni IVA, ni A transferir): se liquidarán en una COMPLEMENTARIA al cobrar.
 //   La fila SIGUE visible en esta pantalla de gestión (con sus botones Liberar/Justificar y el importe retenido como info),
@@ -139,6 +143,8 @@ export default function CartasPage() {
   const [saldoBusy, setSaldoBusy] = useState(null)
   const [retenidos, setRetenidos] = useState({})   // idadmon -> true (línea en espera este mes)
   const [retBusy, setRetBusy] = useState(null)
+  const [compl, setCompl] = useState({})           // idadmon -> candidato de complementaria (del endpoint)
+  const [complBusy, setComplBusy] = useState(null)
   const [editCap, setEditCap] = useState(null)     // idadmon cuyo texto de captación (P) se está editando
   const [editCapTxt, setEditCapTxt] = useState('')
   const [capBusy, setCapBusy] = useState(null)
@@ -184,7 +190,7 @@ export default function CartasPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) { cargar(mes); cargarSaldos(); cargarRetenidos(mes) } }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargar(mes); cargarSaldos(); cargarRetenidos(mes); cargarComplementarias() } }, [accesoOk])
 
   // Líneas "en espera" (retenidas) del mes: set de idadmon que NO se transfieren esta oleada.
   async function cargarRetenidos(m) {
@@ -195,6 +201,32 @@ export default function CartasPage() {
       for (const s of (d.retenidos || [])) if (s.idadmon) map[s.idadmon] = true
       setRetenidos(map)
     } catch { /* silencioso */ }
+  }
+
+  // Complementarias: detecta (endpoint) qué morosos ya tienen el pago (abono en bi imputado a un mes
+  // posterior) y cuáles ya se registraron. map idadmon -> { cobrado, mes_cobro, estado, complementaria }.
+  async function cargarComplementarias() {
+    try {
+      const r = await fetch('/api/liquidaciones/complementaria')
+      const d = await r.json()
+      const map = {}
+      for (const c of (d.candidatos || [])) if (c.idadmon) map[c.idadmon] = c
+      setCompl(map)
+    } catch { /* silencioso */ }
+  }
+  // Registrar la complementaria de un idadmon cobrado (confirmación humana del disparo por abono).
+  async function generarComplementaria(c) {
+    if (!esDireccion) return
+    setComplBusy(c.idadmon)
+    try {
+      const r = await fetch('/api/liquidaciones/complementaria', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: c.idadmon, mes_espera: c.mes_espera, accion: 'generar', mes_cobro: c.mes_cobro || undefined }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) { alert(d.error || 'No se pudo generar la complementaria.'); return }
+      await cargarComplementarias()
+    } catch (e) { alert(String(e?.message || e)) } finally { setComplBusy(null) }
   }
   async function accionRetener(idadmon, accion) {
     if (!esDireccion) return
@@ -209,6 +241,7 @@ export default function CartasPage() {
       const d = await r.json()
       if (!r.ok || d.error) { alert(d.error || 'No se pudo completar la acción.'); return }
       await cargarRetenidos(mes)
+      await cargarComplementarias()
       await cargar(mes)   // recalcula los totales excluyendo/incluyendo la línea según su nuevo estado de espera
     } catch (e) { alert(String(e?.message || e)) } finally { setRetBusy(null) }
   }
@@ -654,7 +687,7 @@ export default function CartasPage() {
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <label style={{ fontSize: 13, color: '#666' }}>Mes:</label>
-          <select value={mes} onChange={e => { setMes(e.target.value); cargar(e.target.value); cargarRetenidos(e.target.value) }}
+          <select value={mes} onChange={e => { setMes(e.target.value); cargar(e.target.value); cargarRetenidos(e.target.value); cargarComplementarias() }}
             style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 13 }}>
             {generarMeses().map(mm => <option key={mm} value={mm}>{aammToTxt(mm)}</option>)}
           </select>
@@ -834,6 +867,19 @@ export default function CartasPage() {
                               : <span style={{ fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>⏸ Transferencia aplazada · arrendatario no ha pagado{falta ? ` (falta ${falta.toLocaleString('es-CL')})` : ''} — se transferirá al conseguir el cobro
                                   {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'liberar')} disabled={retBusy === x.idadmon} title="Quita la espera: su neto vuelve a A transferir" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', color: '#1D4ED8', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : 'Quitar espera'}</button>}
                                   {esDireccion && <button onClick={() => accionRetener(x.idadmon, 'justificar')} disabled={retBusy === x.idadmon} title="El arrendatario NO va a pagar (incobrable): cierra la espera con un motivo, para que quede justificado y no afecte a futuro ni al DJ 1835" style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: retBusy === x.idadmon ? 'default' : 'pointer' }}>{retBusy === x.idadmon ? '…' : '✖ Justificar (incobrable)'}</button>}
+                                </span>}
+                          </div>
+                        )
+                        // COMPLEMENTARIA: el endpoint detecta si ya entró el pago (abono en bi imputado a un mes
+                        // posterior) o si ya se registró la complementaria. Aparece como alerta bajo la línea en espera.
+                        const cc = compl[x.idadmon]
+                        if (cc && (cc.cobrado || cc.complementaria)) subfilas.push(
+                          <div key={x.idadmon + i + 'compl'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px 4px 40px', borderTop: '1px solid #F7F6F2', background: cc.complementaria ? '#EEF2FF' : '#ECFDF5' }}>
+                            <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                            {cc.complementaria
+                              ? <span style={{ fontSize: 12, color: '#3730A3', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>🧩 <b>Complementaria registrada</b> · estado {cc.complementaria.estado}{cc.complementaria.mes_cobro ? ` · se liquida en ${aammToTxt(cc.complementaria.mes_cobro)}` : ''}</span>
+                              : <span style={{ fontSize: 12, color: '#065F46', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>💰 <b>Pago recibido</b>{cc.mes_cobro ? ` (imputado a ${aammToTxt(cc.mes_cobro)})` : ''} — listo para complementaria
+                                  {esDireccion && <button onClick={() => generarComplementaria(cc)} disabled={complBusy === x.idadmon} title="Registra la liquidación complementaria de esta propiedad para el mes de cobro (transfer + carta + factura la reflejarán)" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid #6366F1', background: '#E0E7FF', color: '#3730A3', cursor: complBusy === x.idadmon ? 'default' : 'pointer' }}>{complBusy === x.idadmon ? '…' : '🧩 Generar complementaria'}</button>}
                                 </span>}
                           </div>
                         )
