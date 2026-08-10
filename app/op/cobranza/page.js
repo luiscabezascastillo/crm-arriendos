@@ -1,8 +1,15 @@
 'use client'
-// VERSION: v4 · 2026-08-10 · Cobranza + CONSTANCIA. Cada moroso gana "Gestionar": panel para registrar
-//   la gestion (arrendatario/aval/propietario) con plantilla + acuse, guardada en cobranza_gestiones
-//   (append-only). Avisos obligatorios: aval y propietario pendientes. Pestaña Bitacora = registro global.
-//   Reusa /api/cobranza (deteccion de mora) y /api/cobranza/gestion (constancia). Hereda v3.
+// VERSION: v8 · 2026-08-10 · Botón "Expediente (PDF)" en el panel y en Casos: abre /api/cobranza/expediente
+//   (HTML imprimible con toda la secuencia de gestiones) para entregar al aval/abogado o respaldar al dueño. Hereda v7.
+// VERSION: v7 · 2026-08-10 · Pestaña "Casos" con semáforo del propietario (🟢/🟡/🔴 según avisos al propietario
+//   y aval) + botón "Abrir casos de términos con déficit" (sync desde vw_termino_resultado). Hereda v6.
+// VERSION: v6 · 2026-08-10 · Escalera automática + worklist: la lista muestra "Próxima acción" por moroso
+//   (cruza días de mora con lo ya gestionado) y una barra "Acciones pendientes hoy" con el recuento por paso
+//   (recordatorio, 1ª reclamación, avisar propietario, reclamar aval, pre-DICOM, sin gestión). Hereda v5.
+// VERSION: v5 · 2026-08-10 · Cobranza: el panel ahora ENVÍA por email desde el CRM (canal email) y guarda
+//   el acuse real; si no, registra la constancia manual. Email destino editable (arrendatario/aval/propietario).
+//   Hereda v4. v4: "Gestionar" con plantilla + constancia (cobranza_gestiones append-only), avisos obligatorios
+//   (aval/propietario), pestaña Bitácora. Reusa /api/cobranza (mora) y /api/cobranza/gestion.
 // VERSION: v3 · 2026-07-21 · Cartolas operativa y por defecto (endpoint unificado /api/cobranza?tipo=).
 //   Cabecera "Cobranza de {tipo} · situación al {fecha, hora}". Columna "Último abono". Toggles vigente/término,
 //   sin_cobrador resaltado. Inicios sigue disponible como sub-vista. Servicios enlaza a /op/deudas.
@@ -31,8 +38,34 @@ function mesActualTxt() { const d = new Date(); return MESES_TXT[d.getMonth()] +
 const CANALES = ['email', 'whatsapp', 'llamada', 'carta_certificada', 'notarial', 'presencial']
 const DEST_LBL = { arrendatario: 'Arrendatario', aval: 'Aval', propietario: 'Propietario' }
 
+// ── Escalera de cobranza (días de mora → paso esperado). Plazos BORRADOR, a validar por Legal. ──
+const LADDER = [
+  { dia: 1, etapa: 'recordatorio', dest: 'arrendatario', label: 'Recordatorio' },
+  { dia: 5, etapa: 'reclamacion_1', dest: 'arrendatario', label: '1ª reclamación' },
+  { dia: 5, etapa: 'aviso_propietario', dest: 'propietario', label: 'Avisar propietario' },
+  { dia: 10, etapa: 'reclamacion_aval', dest: 'aval', label: 'Reclamar al aval' },
+  { dia: 15, etapa: 'aviso_dicom', dest: 'arrendatario', label: 'Aviso pre-DICOM' },
+]
+function diasDesdeFecha(ddmmyyyy) {
+  const m = String(ddmmyyyy || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (!m) return null
+  const f = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+  return Math.floor((new Date() - f) / (1000 * 60 * 60 * 24))
+}
+function pasoHecho(step, r) {
+  if (!r) return false
+  if (r.etapas && r.etapas.includes(step.etapa)) return true
+  if ((step.dest === 'aval' || step.dest === 'propietario') && r.destinatarios && r.destinatarios.includes(step.dest)) return true
+  return false
+}
+function pendientesDe(dias, r) {
+  const d = dias == null ? 999 : dias   // sin fecha de abono → tratar como mora antigua
+  return LADDER.filter(s => d >= s.dia && !pasoHecho(s, r))
+}
+
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
+  { k: 'casos', label: 'Casos' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
   { k: 'inicios', label: 'Inicios' },
   { k: 'bitacora', label: 'Bitácora' },
@@ -64,6 +97,7 @@ export default function Cobranza() {
       </div>
 
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
+      {tab === 'casos' && <CasosView />}
       {tab === 'bitacora' && <Bitacora />}
     </div>
   )
@@ -76,6 +110,7 @@ function VistaCobranza({ tipo }) {
   const [verVigente, setVerVigente] = useState(true)
   const [verTermino, setVerTermino] = useState(true)
   const [gestionar, setGestionar] = useState(null)   // fila seleccionada para el panel
+  const [resumenMap, setResumenMap] = useState({})   // idadmon -> gestiones ya hechas
 
   useEffect(() => {
     let vivo = true
@@ -84,6 +119,10 @@ function VistaCobranza({ tipo }) {
       .then(r => r.json())
       .then(j => { if (!vivo) return; if (j.error) setError(j.error); else setData(j); setLoading(false) })
       .catch(e => { if (!vivo) return; setError(String(e)); setLoading(false) })
+    fetch('/api/cobranza/gestion?resumen=1')
+      .then(r => r.json())
+      .then(j => { if (!vivo) return; const m = {}; for (const x of (j.resumen || [])) m[x.idadmon] = x; setResumenMap(m) })
+      .catch(() => {})
     return () => { vivo = false }
   }, [tipo])
 
@@ -104,8 +143,31 @@ function VistaCobranza({ tipo }) {
         const grupos = []
         if (verVigente) grupos.push({ g: 'vigente', titulo: 'Vigentes (S / SQ)', r: rv })
         if (verTermino) grupos.push({ g: 'termino', titulo: 'En término (Q)', r: rt })
+
+        // Escalera: pendientes por moroso + worklist
+        const pendMap = {}
+        for (const f of filas) {
+          const dias = diasDesdeFecha(f.ultimo_abono)
+          pendMap[f.idadmon] = { dias, pend: f.clase === 'moroso' ? pendientesDe(dias, resumenMap[f.idadmon]) : [] }
+        }
+        const moros = filas.filter(f => f.clase === 'moroso')
+        const wl = LADDER.map(s => ({ ...s, n: moros.filter(f => pendMap[f.idadmon].pend.some(p => p.etapa === s.etapa && p.dest === s.dest)).length }))
+        const sinGestion = moros.filter(f => { const r = resumenMap[f.idadmon]; return !r || r.n === 0 }).length
+
         return (
           <>
+            {moros.length > 0 && (
+              <div style={{ border: '1px solid ' + C.line, borderRadius: 10, padding: '12px 16px', marginBottom: 16, background: '#fff' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.txt, marginBottom: 8 }}>
+                  Acciones pendientes hoy <span style={{ color: C.sub, fontWeight: 400 }}>· escalera de cobranza (plazos borrador, a validar por Legal)</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <WlChip label="Sin gestión" n={sinGestion} rojo />
+                  {wl.map(s => <WlChip key={s.etapa + s.dest} label={s.label + ' (≥' + s.dia + 'd)'} n={s.n} />)}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: 13 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <input type="checkbox" checked={verVigente} onChange={e => setVerVigente(e.target.checked)} />
@@ -125,7 +187,7 @@ function VistaCobranza({ tipo }) {
                     {r.con_deuda || 0} con deuda · {r.al_dia || 0} al día · {r.sobrepago || 0} a revisar · deuda total {money(r.total_deuda)}
                   </span>
                 </div>
-                <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} onGestionar={setGestionar} />
+                <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} onGestionar={setGestionar} pendMap={pendMap} />
               </div>
             ))}
 
@@ -142,7 +204,7 @@ function VistaCobranza({ tipo }) {
   )
 }
 
-function Tabla({ filas, tipo, onGestionar }) {
+function Tabla({ filas, tipo, onGestionar, pendMap }) {
   if (!filas.length) return <div style={{ padding: 16, color: C.sub, fontSize: 13 }}>Sin registros en este grupo.</div>
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
@@ -151,7 +213,7 @@ function Tabla({ filas, tipo, onGestionar }) {
 
   return (
     <div style={{ overflowX: 'auto', border: '0.5px solid ' + C.line, borderRadius: 8 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={th}>IDADMON</th>
@@ -162,6 +224,7 @@ function Tabla({ filas, tipo, onGestionar }) {
             {esInicios && <th style={{ ...th, textAlign: 'right' }}>Últ. inicio</th>}
             <th style={{ ...th, textAlign: 'right' }}>Deuda</th>
             <th style={th}>Situación</th>
+            <th style={th}>Próxima acción</th>
             <th style={{ ...th, textAlign: 'center' }}>Gestión</th>
           </tr>
         </thead>
@@ -192,6 +255,16 @@ function Tabla({ filas, tipo, onGestionar }) {
                   {esSobre && <span style={{ color: C.ambar, fontWeight: 700 }}>Revisar · posible mala asignación</span>}
                   {aviso && <div style={{ color: C.ambar, fontSize: 11, fontWeight: 600, marginTop: 2 }}>⚠ Falta «quién cobra» en el LOG</div>}
                 </td>
+                <td style={td}>{(() => {
+                  const pm = pendMap && pendMap[f.idadmon]
+                  if (!pm || f.clase !== 'moroso') return <span style={{ color: C.sub }}>—</span>
+                  if (!pm.pend.length) return <span style={{ color: C.verde, fontSize: 11 }}>✓ al día en gestiones</span>
+                  const next = pm.pend[0]
+                  return <span style={{ fontSize: 11, fontWeight: 700, color: C.rojo }}>
+                    {next.label}{pm.pend.length > 1 ? ' +' + (pm.pend.length - 1) : ''}
+                    {pm.dias != null ? <span style={{ color: C.sub, fontWeight: 400 }}> · {pm.dias}d</span> : null}
+                  </span>
+                })()}</td>
                 <td style={{ ...td, textAlign: 'center' }}>
                   <button onClick={() => onGestionar(f)} style={{
                     fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid ' + C.acento,
@@ -218,6 +291,8 @@ function CobranzaDrawer({ fila, onClose }) {
   const [contenido, setContenido] = useState('')
   const [acuse, setAcuse] = useState('')
   const [resultado, setResultado] = useState('enviado')
+  const [emailDestino, setEmailDestino] = useState('')
+  const [enviarEmail, setEnviarEmail] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -232,6 +307,12 @@ function CobranzaDrawer({ fila, onClose }) {
       .catch(e => { setMsg('Error: ' + e); setLoading(false) })
   }
   useEffect(() => { cargar() }, [fila.idadmon])
+
+  // email destino por defecto según destinatario (propietario: sin mail en el contrato → se completa a mano)
+  useEffect(() => {
+    const c = info?.contrato || {}
+    setEmailDestino(dest === 'aval' ? (c.mail_avalista || '') : dest === 'propietario' ? '' : (c.mail_arrendatario || ''))
+  }, [dest, info])
 
   const contrato = info?.contrato || {}
   const gestiones = info?.gestiones || []
@@ -269,8 +350,11 @@ function CobranzaDrawer({ fila, onClose }) {
 
   const plantillasDest = plantillas.filter(p => p.destinatario === dest)
 
+  const vaAEnviar = enviarEmail && canal === 'email'
+
   async function guardar() {
     if (!contenido.trim()) { setMsg('Escribe o elige el contenido de la gestión.'); return }
+    if (vaAEnviar && !emailDestino.trim()) { setMsg('Falta el email de destino para enviar.'); return }
     setGuardando(true); setMsg(null)
     const destNombre = dest === 'aval' ? contrato.avalista : dest === 'propietario' ? contrato.propietario : contrato.arrendatario
     const destRut = dest === 'aval' ? contrato.rut_avalista : dest === 'propietario' ? null : contrato.rut
@@ -283,13 +367,14 @@ function CobranzaDrawer({ fila, onClose }) {
         plantilla_id: plantillaId || null,
         destinatario_nombre: destNombre || null, destinatario_rut: destRut || null,
         monto_adeudado: deuda, dias_mora: fila.dias_mora ?? null,
+        enviar: vaAEnviar, email_destino: emailDestino,
         contrato: { propietario: contrato.propietario || fila.propietario, inmueble: contrato.inmueble || fila.inmueble,
           arrendatario: contrato.arrendatario || fila.arrendatario, rut: contrato.rut, avalista: contrato.avalista, rut_avalista: contrato.rut_avalista },
       }),
     }).then(r => r.json()).catch(e => ({ error: String(e) }))
     setGuardando(false)
     if (res.error) { setMsg('Error: ' + res.error); return }
-    setMsg('✓ Gestión registrada'); setContenido(''); setAsunto(''); setPlantillaId('')
+    setMsg(res.enviado ? '✓ Enviado y registrado' : '✓ Gestión registrada'); setContenido(''); setAsunto(''); setPlantillaId('')
     cargar()
   }
 
@@ -314,7 +399,12 @@ function CobranzaDrawer({ fila, onClose }) {
             <div style={{ fontSize: 13, color: '#555', marginTop: 3 }}>{fila.arrendatario || '—'}</div>
             <div style={{ fontSize: 11, color: '#999' }}>{fila.propietario || '—'} · {fila.inmueble || '—'}</div>
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: '#bbb' }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => window.open('/api/cobranza/expediente?idadmon=' + encodeURIComponent(fila.idadmon), '_blank')} style={{
+              fontSize: 11, padding: '5px 10px', borderRadius: 5, border: '1px solid ' + C.line, background: '#fff', color: C.txt, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+            }}>Expediente (PDF)</button>
+            <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: '#bbb' }}>×</button>
+          </div>
         </div>
 
         {/* Avisos obligatorios */}
@@ -370,6 +460,18 @@ function CobranzaDrawer({ fila, onClose }) {
             <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Contenido (queda como constancia exacta)</div>
             <textarea style={{ ...s.inp, height: 120, resize: 'vertical' }} value={contenido} onChange={e => setContenido(e.target.value)} placeholder="Texto de la gestión…" />
           </div>
+          {canal === 'email' && (
+            <div style={{ marginBottom: 10, background: '#F6FBF9', border: '1px solid #D7EDE4', borderRadius: 8, padding: '10px 12px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: enviarEmail ? 8 : 0 }}>
+                <input type="checkbox" checked={enviarEmail} onChange={e => setEnviarEmail(e.target.checked)} />
+                Enviar por email ahora (desde el CRM, con copia a info@)
+              </label>
+              {enviarEmail && (
+                <input style={s.inp} value={emailDestino} onChange={e => setEmailDestino(e.target.value)}
+                  placeholder={dest === 'propietario' ? 'Email del propietario (completar)' : 'Email de destino'} />
+              )}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Resultado</div>
@@ -386,7 +488,7 @@ function CobranzaDrawer({ fila, onClose }) {
           <button onClick={guardar} disabled={guardando} style={{
             width: '100%', padding: '11px 0', borderRadius: 8, border: 'none',
             background: guardando ? '#ccc' : C.acento, color: '#fff', fontSize: 14, fontWeight: 700, cursor: guardando ? 'default' : 'pointer',
-          }}>{guardando ? 'Guardando…' : 'Registrar gestión (constancia)'}</button>
+          }}>{guardando ? (vaAEnviar ? 'Enviando…' : 'Guardando…') : (vaAEnviar ? 'Enviar y registrar' : 'Registrar gestión (constancia)')}</button>
         </div>
 
         {/* Historial */}
@@ -413,6 +515,136 @@ function AvisoRow({ ok, pend, txtPend, txtOk }) {
   if (ok) return <div style={{ fontSize: 12, color: C.verde, fontWeight: 600 }}>{txtOk}</div>
   if (pend) return <div style={{ fontSize: 12, color: C.rojo, fontWeight: 700 }}>{txtPend}</div>
   return <div style={{ fontSize: 12, color: C.sub }}>—</div>
+}
+
+function WlChip({ label, n, rojo }) {
+  const on = n > 0
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20,
+      background: on ? (rojo ? C.rojoBg : '#EEF4FF') : '#F3F2EE',
+      border: '1px solid ' + (on ? (rojo ? '#F0CFCB' : '#CFE0FF') : C.line),
+    }}>
+      <span style={{ fontSize: 12, fontWeight: on ? 700 : 500, color: on ? (rojo ? C.rojo : '#1D4ED8') : C.sub }}>{n}</span>
+      <span style={{ fontSize: 11, color: on ? C.txt : C.sub }}>{label}</span>
+    </div>
+  )
+}
+
+// ─── Casos (semáforo del propietario) ───────────────────────────────────────
+function semaforoCaso(r) {
+  const prop = !!(r && r.destinatarios && r.destinatarios.includes('propietario'))
+  const aval = !!(r && r.destinatarios && r.destinatarios.includes('aval'))
+  if (prop && aval) return { ic: '🟢', color: C.verde, txt: 'En regla' }
+  if (prop || aval) return { ic: '🟡', color: C.ambar, txt: 'En curso' }
+  return { ic: '🔴', color: C.rojo, txt: 'Sin avisar' }
+}
+function filaDeCaso(c) {
+  return {
+    idadmon: c.idadmon, deuda: c.monto_adeudado, dias_mora: c.dias_mora,
+    grupo: c.tipo === 'termino' ? 'termino' : 'vigente',
+    propietario: c.propietario, inmueble: c.propiedad, arrendatario: c.arrendatario, ultimo_abono: null,
+  }
+}
+
+function CasosView() {
+  const [casos, setCasos] = useState(null)
+  const [resumen, setResumen] = useState({})
+  const [error, setError] = useState(null)
+  const [gestionar, setGestionar] = useState(null)
+  const [sync, setSync] = useState(null)
+  const [sincronizando, setSincronizando] = useState(false)
+
+  function cargar() {
+    fetch('/api/cobranza/gestion?casos=1').then(r => r.json())
+      .then(j => { if (j.error) setError(j.error); else setCasos(j.casos || []) }).catch(e => setError(String(e)))
+    fetch('/api/cobranza/gestion?resumen=1').then(r => r.json())
+      .then(j => { const m = {}; for (const x of (j.resumen || [])) m[x.idadmon] = x; setResumen(m) }).catch(() => {})
+  }
+  useEffect(() => { cargar() }, [])
+
+  async function sincronizar() {
+    setSincronizando(true); setSync(null)
+    const r = await fetch('/api/cobranza/gestion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'sync_terminos' }),
+    }).then(r => r.json()).catch(e => ({ error: String(e) }))
+    setSincronizando(false)
+    setSync(r.error ? ('Error: ' + r.error) : ('✓ ' + r.creados + ' caso(s) nuevo(s) · ' + r.total_deficit + ' términos con déficit'))
+    cargar()
+  }
+
+  const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
+  const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>Casos de cobranza</span>
+        <button onClick={sincronizar} disabled={sincronizando} style={{
+          fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid ' + C.acento,
+          background: '#fff', color: C.acento, cursor: sincronizando ? 'default' : 'pointer', fontWeight: 600,
+        }}>{sincronizando ? 'Sincronizando…' : 'Abrir casos de términos con déficit'}</button>
+        {sync && <span style={{ fontSize: 12, color: sync.startsWith('Error') ? C.rojo : C.verde }}>{sync}</span>}
+        <button onClick={cargar} style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 12px', border: '1px solid ' + C.line, borderRadius: 6, background: '#fff', cursor: 'pointer' }}>↺ Actualizar</button>
+      </div>
+
+      {error && <div style={{ padding: 20, color: C.rojo, fontSize: 13 }}>Error: {error}</div>}
+      {!casos && !error && <div style={{ padding: 40, textAlign: 'center', color: C.sub }}>Cargando casos…</div>}
+      {casos && casos.length === 0 && <div style={{ padding: 24, color: C.sub, fontSize: 13 }}>No hay casos abiertos. Usa "Abrir casos de términos con déficit" o gestiona un moroso desde Cartolas.</div>}
+
+      {casos && casos.length > 0 && (
+        <div style={{ overflowX: 'auto', border: '0.5px solid ' + C.line, borderRadius: 8 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1000 }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: 'center' }}>Semáforo</th>
+              <th style={th}>IDADMON</th>
+              <th style={th}>Tipo</th>
+              <th style={th}>Propietario / Inmueble</th>
+              <th style={th}>Arrendatario</th>
+              <th style={th}>Aval</th>
+              <th style={{ ...th, textAlign: 'right' }}>Monto</th>
+              <th style={th}>Pendiente</th>
+              <th style={{ ...th, textAlign: 'center' }}>Gestión</th>
+            </tr></thead>
+            <tbody>
+              {casos.map(c => {
+                const r = resumen[c.idadmon]
+                const sem = semaforoCaso(r)
+                const faltaProp = !(r && r.destinatarios && r.destinatarios.includes('propietario'))
+                const faltaAval = !(r && r.destinatarios && r.destinatarios.includes('aval'))
+                const falta = [faltaProp && 'Avisar propietario', faltaAval && 'Reclamar aval'].filter(Boolean).join(' · ')
+                return (
+                  <tr key={c.id}>
+                    <td style={{ ...td, textAlign: 'center' }} title={sem.txt}>{sem.ic}</td>
+                    <td style={{ ...td, fontWeight: 600 }}>{c.idadmon}</td>
+                    <td style={td}>{c.tipo === 'termino' ? 'Término' : 'Vigente'}</td>
+                    <td style={td}><div style={{ fontWeight: 600 }}>{c.propietario || '—'}</div><div style={{ color: C.sub, fontSize: 11 }}>{c.propiedad || ''}</div></td>
+                    <td style={{ ...td, color: C.sub }}>{c.arrendatario || '—'}</td>
+                    <td style={{ ...td, color: C.sub }}>{c.aval || '—'}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: C.rojo, fontVariantNumeric: 'tabular-nums' }}>{money(c.monto_adeudado)}</td>
+                    <td style={{ ...td, fontWeight: falta ? 700 : 400, color: falta ? C.rojo : C.verde }}>{falta || '✓ en regla'}</td>
+                    <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => setGestionar(c)} style={{
+                        fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid ' + C.acento,
+                        background: '#fff', color: C.acento, cursor: 'pointer', fontWeight: 600,
+                      }}>Gestionar</button>
+                      <button onClick={() => window.open('/api/cobranza/expediente?idadmon=' + encodeURIComponent(c.idadmon), '_blank')} style={{
+                        fontSize: 11, padding: '4px 8px', borderRadius: 5, border: '1px solid ' + C.line,
+                        background: '#fff', color: C.sub, cursor: 'pointer', marginLeft: 6,
+                      }}>PDF</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {gestionar && <CobranzaDrawer fila={filaDeCaso(gestionar)} onClose={() => { setGestionar(null); cargar() }} />}
+    </div>
+  )
 }
 
 // ─── Bitácora global ────────────────────────────────────────────────────────
