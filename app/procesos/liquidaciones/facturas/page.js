@@ -1,5 +1,8 @@
 'use client'
-// VERSION: v10 · 2026-07-18 · Transferido/Diferencia leen de la RPC transferido_propietario (misma fuente que CARTAS), no de la columna liquidacion_idprop.transferido que está vacía
+// VERSION: v11 · 2026-08-10 · FACTURAR SIN CONGELAR: si el mes no está congelado (liquidacion_idadmon vacío), la página
+//   lee EN VIVO —Admon+IVA de calcular_liquidacion (como TRANSFER/CARTAS/EMAILS) y el tipo 33/39 de propietarios.tipo_factura—
+//   en vez de exigir "Preparar mes". El camino congelado (meses cerrados) queda intacto. Además, al Generar CSV, si hay
+//   propietarios ya en HECHO (emitidos) pide confirmación antes de re-generar. Chip 🔒 congelado / 🟢 en vivo. Hereda v10.
 // VERSION: v9 · 2026-07-08 · nombre "Pxxx — Nombre" + bloque resumen por propietario (validado/enviada/transferir/dif/observaciones)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
@@ -80,6 +83,7 @@ export default function FacturasPage() {
   const [lineas, setLineas] = useState([])       // filas por inmueble (liquidacion_idadmon)
   const [propMap, setPropMap] = useState({})     // idprop -> {facturar, fecha_emision, comentario, cerrado, ...}
   const [actualizado, setActualizado] = useState(null)
+  const [congelado, setCongelado] = useState(true)   // ¿el mes está congelado? (si no, se lee en vivo)
   const [buscar, setBuscar] = useState('')
   const [guardando, setGuardando] = useState('')  // idprop en curso de guardado
   const [editCom, setEditCom] = useState(null)    // idprop cuyo comentario se edita
@@ -103,6 +107,11 @@ export default function FacturasPage() {
 
   async function generarCSV() {
     if (generando) return
+    // Candado: si hay propietarios ya EMITIDOS (HECHO), pedir confirmación antes de re-generar.
+    const yaHechas = Object.values(propMap).filter(p => String(p.facturar || '') === 'HECHO')
+    if (yaHechas.length && !window.confirm(
+      `Hay ${yaHechas.length} propietario(s) ya marcados como HECHO (factura ya emitida).\n\n` +
+      `Si continúas podrían volver a generarse. ¿Generar de todas formas?`)) return
     setGenerando(true); setError(null); setResumenGen(null)
     try {
       const res = await fetch('/api/liquidaciones/generar-csv', {
@@ -139,42 +148,92 @@ export default function FacturasPage() {
   async function cargar(m) {
     setCargando(true); setError(null); setLineas([]); setPropMap({})
     try {
-      // Lee de las tablas CONGELADAS (no en vivo). Requiere haber "Preparado mes" antes.
-      // El "Transferido" NO se lee de liquidacion_idprop.transferido (esa columna no se
-      // puebla y queda null): se toma de la MISMA RPC que usa CARTAS (transferido_propietario),
-      // para que ambas vistas muestren el mismo dato y la decisión de facturar sea correcta.
-      const [rLin, rProp, rTransf] = await Promise.all([
-        supabase.from('liquidacion_idadmon')
-          .select('idadmon, idprop, propietario, inmueble, a_cobrar, comision, iva, estado, observaciones')
-          .eq('mes', m),
-        supabase.from('liquidacion_idprop')
-          .select('idprop, nombre, tipo_factura, facturar, fecha_emision, comentario, cerrado, total_comision, total_a_transferir, transferido, transfer_validado, enviada_at')
-          .eq('mes', m),
-        supabase.rpc('transferido_propietario', { p_mes: m }),
-      ])
-      if (rLin.error) { setError('lineas: ' + rLin.error.message); setCargando(false); return }
-      if (rProp.error) { setError('propietarios: ' + rProp.error.message); setCargando(false); return }
+      // ¿El mes está CONGELADO? Si liquidacion_idadmon tiene filas del mes, se usa esa foto
+      // (meses cerrados). Si NO, se factura EN VIVO desde calcular_liquidacion (Admon+IVA) y el
+      // tipo (33/39) se toma del campo permanente propietarios.tipo_factura. Así se puede facturar
+      // antes de congelar. El "Transferido" siempre sale de la RPC transferido_propietario (como CARTAS).
+      const { data: linFroz, error: eFroz } = await supabase.from('liquidacion_idadmon')
+        .select('idadmon, idprop, propietario, inmueble, a_cobrar, comision, iva, estado, observaciones')
+        .eq('mes', m)
+      if (eFroz) { setError('lineas: ' + eFroz.message); setCargando(false); return }
 
-      // Mapa idprop -> transferido real (RPC). Mismo cálculo que CARTAS.
+      let rawLineas = []      // filas por inmueble {idadmon, idprop, propietario, inmueble, comision, iva, estado, observaciones}
+      let propRows = []       // filas por propietario (reales de liquidacion_idprop, o sintéticas en vivo)
+      const esCongelado = (linFroz || []).length > 0
+      setCongelado(esCongelado)
+
+      if (esCongelado) {
+        // ── Camino CONGELADO (mes cerrado): la foto de liquidacion_idprop ──
+        const { data: rProp, error: eProp } = await supabase.from('liquidacion_idprop')
+          .select('idprop, nombre, tipo_factura, facturar, fecha_emision, comentario, cerrado, total_comision, total_a_transferir, transferido, transfer_validado, enviada_at')
+          .eq('mes', m)
+        if (eProp) { setError('propietarios: ' + eProp.message); setCargando(false); return }
+        rawLineas = linFroz
+        propRows = rProp || []
+      } else {
+        // ── Camino VIVO (mes NO congelado): calcular_liquidacion + propietarios.tipo_factura ──
+        const { data: liq, error: eLiq } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
+        if (eLiq) { setError(eLiq.message); setCargando(false); return }
+        const rows = liq || []
+        if (rows.length === 0) {
+          setLineas([]); setPropMap({}); setActualizado(new Date())
+          setError(`No hay arriendos para ${aammToTxt(m)}.`); setCargando(false); return
+        }
+        const ids = [...new Set(rows.map(r => r.idadmon))]
+        const idprops = [...new Set(rows.map(r => r.idprop))]
+        const [rArr, rPropDef, rIdprop, rObs] = await Promise.all([
+          supabase.from('datos_arriendos').select('idadmon, estado').in('idadmon', ids),
+          supabase.from('propietarios').select('idprop, nombre, tipo_factura').in('idprop', idprops),
+          supabase.from('liquidacion_idprop').select('idprop, facturar, fecha_emision, comentario, cerrado, tipo_factura').eq('mes', m),
+          supabase.from('liquidacion_observaciones').select('idprop, texto').eq('mes', m),
+        ])
+        const estadoDe = {}; for (const d of (rArr.data || [])) estadoDe[d.idadmon] = String(d.estado || '').toUpperCase()
+        const tipoDe = {}, nombreDe = {}
+        for (const p of (rPropDef.data || [])) { tipoDe[p.idprop] = p.tipo_factura || ''; nombreDe[p.idprop] = p.nombre || '' }
+        const saved = {}; for (const p of (rIdprop.data || [])) saved[p.idprop] = p
+        const obsDe = {}; for (const o of (rObs.data || [])) obsDe[o.idprop] = o.texto || ''
+        // Líneas por inmueble (Admon = comision, IVA = iva_comision), como en TRANSFER/CARTAS/EMAILS
+        rawLineas = rows.map(r => ({
+          idadmon: r.idadmon, idprop: r.idprop, propietario: r.propietario, inmueble: r.inmueble,
+          a_cobrar: r.base, comision: r.comision, iva: r.iva_comision,
+          estado: estadoDe[r.idadmon] || '', observaciones: obsDe[r.idprop] || '',
+        }))
+        // A transferir por propietario (vivo) = suma de neto_transferir
+        const aTransfDe = {}
+        for (const r of rows) aTransfDe[r.idprop] = (aTransfDe[r.idprop] || 0) + (Number(r.neto_transferir) || 0)
+        // Fila por propietario: lo guardado (facturar/comentario/tipo) o, si no hay, el tipo permanente
+        propRows = idprops.map(ip => {
+          const s = saved[ip] || {}
+          return {
+            idprop: ip, nombre: nombreDe[ip] || '',
+            tipo_factura: s.tipo_factura || tipoDe[ip] || '',
+            facturar: s.facturar || null, fecha_emision: s.fecha_emision || null,
+            comentario: s.comentario || null, cerrado: !!s.cerrado,
+            total_comision: null, total_a_transferir: aTransfDe[ip] || 0,
+            transferido: null, transfer_validado: null, enviada_at: null,
+          }
+        })
+      }
+
+      // Transferido real (RPC) — igual en ambos caminos, misma fuente que CARTAS.
+      const { data: rTransf } = await supabase.rpc('transferido_propietario', { p_mes: m })
       const transfMap = {}
-      for (const t of rTransf.data || []) transfMap[t.idprop] = Number(t.transferido) || 0
+      for (const t of (rTransf || [])) transfMap[t.idprop] = Number(t.transferido) || 0
 
       const pm = {}
-      for (const p of rProp.data || []) pm[p.idprop] = { ...p, _transf: transfMap[p.idprop] || 0 }
+      for (const p of propRows) pm[p.idprop] = { ...p, _transf: transfMap[p.idprop] || 0 }
 
-      // Observaciones de Alberto: vienen por línea en liquidacion_idadmon.
-      // Se recopilan por propietario (la primera no vacía de cada idprop).
-      for (const l of rLin.data || []) {
+      // Observaciones de Alberto: primera no vacía por idprop.
+      for (const l of rawLineas) {
         if (l.observaciones && pm[l.idprop] && !pm[l.idprop]._obs) {
           pm[l.idprop] = { ...pm[l.idprop], _obs: l.observaciones }
         }
       }
 
       // Filtrar: fuera Paola (P001) y fuera estado P (desocupados no se facturan)
-      const lin = (rLin.data || [])
+      const lin = (rawLineas || [])
         .filter(l => l.idprop !== PAOLA)
         .filter(l => (l.estado || '').toUpperCase() !== 'P')
-        // orden Propietario -> Inmueble
         .sort((a, b) => {
           const pa = (a.propietario || '').localeCompare(b.propietario || '', 'es', { sensitivity: 'base' })
           return pa !== 0 ? pa : (a.inmueble || '').localeCompare(b.inmueble || '', 'es', { sensitivity: 'base' })
@@ -183,7 +242,7 @@ export default function FacturasPage() {
       setLineas(lin)
       setPropMap(pm)
       setActualizado(new Date())
-      if (lin.length === 0) setError(`No hay datos congelados para ${aammToTxt(m)}. Usa "Preparar mes" en TRANSFER primero.`)
+      if (lin.length === 0) setError(`No hay líneas facturables para ${aammToTxt(m)}.`)
     } catch (err) {
       setError(String(err?.message || err))
     }
@@ -246,7 +305,12 @@ export default function FacturasPage() {
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>🧾 FACTURAS · preparación SimpleFactura</h1>
       </div>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 14 }}>
-        Facturación de <b>{aammToTxt(mes)}</b> por inmueble. El estado <b>SI/NO/DESPUÉS/HECHO</b> y el comentario son por propietario (se aplican a todos sus inmuebles).
+        Facturación de <b>{aammToTxt(mes)}</b> por inmueble.{' '}
+        <span title={congelado ? 'Mes congelado: se lee la foto de la liquidación' : 'Mes sin congelar: se lee en vivo (Admon+IVA de calcular_liquidacion, tipo de propietarios)'}
+          style={{ fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 10, background: congelado ? '#E0E7FF' : '#FEF9C3', color: congelado ? '#3730A3' : '#854D0E' }}>
+          {congelado ? '🔒 congelado' : '🟢 en vivo (sin congelar)'}
+        </span>{' '}
+        El estado <b>SI/NO/DESPUÉS/HECHO</b> y el comentario son por propietario (se aplican a todos sus inmuebles).
         {actualizado && <> Actualizado el <b>{actualizado.toLocaleString('es-CL')}</b>.</>}
       </div>
 
@@ -406,7 +470,7 @@ export default function FacturasPage() {
       </div>
 
       <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 12 }}>
-        Lee de los datos congelados (liquidacion_idadmon / liquidacion_idprop). El "Facturar" y el comentario se guardan por propietario. La generación del archivo SimpleFactura y la fecha de emisión se añadirán en la siguiente fase.
+        Si el mes está <b>congelado</b> lee la foto (liquidacion_idadmon / liquidacion_idprop); si <b>no</b>, factura <b>en vivo</b> (Admon+IVA de calcular_liquidacion, tipo de propietarios.tipo_factura). El "Facturar" y el comentario se guardan por propietario.
       </div>
     </div>
   )
