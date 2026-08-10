@@ -1,6 +1,3 @@
-// VERSION: v22 · 2026-08-10 · Las compras "No es de FCR" (rechazadas) se OCULTAN del listado por defecto (antes se
-//   mostraban en rojo). Siguen en los datos: totales de cabecera, "Total según SII" y export las incluyen (trazabilidad
-//   y cuadre intactos). Enlace "Verlas / Ocultarlas" en la nota de abajo para mostrarlas puntualmente. Hereda v21.
 // VERSION: v21 · 2026-08-04 · memoriaRut (sugerencia de Cuenta gasto) solo aprende de cuentas 41xx/42xx, nunca 2105-05. Casilla Proveedores fija.
 //   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
 //     encima del velo (queda con su color original) y lleva un realce verde a la izquierda.
@@ -362,7 +359,6 @@ export default function ComprasPage() {
   const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
   const [planApi, setPlanApi] = useState([])
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
-  const [verNoFcr, setVerNoFcr] = useState(false)   // por defecto las "No es de FCR" NO se muestran (se conservan en datos)
   // Lo mas reciente ABAJO y scroll al fondo: se ve lo ultimo y se sube para lo antiguo.
   const [orden, setOrden] = useState({ key: 'fecha', dir: 'asc' })
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
@@ -392,13 +388,9 @@ const wantScroll = useRef(false)
   const comprasFiltradas = useMemo(() => compras.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [compras, filters])
 
   const comprasVista = useMemo(() => {
-    // Las "No es de FCR" (rechazadas) se conservan en los datos pero NO se muestran en el listado,
-    // salvo que se pulse "Verlas". Los totales de cabecera se calculan sobre `compras` (todas), así
-    // que el "Total según SII" y el cuadre siguen correctos aunque no se pinten estas filas.
-    const base = verNoFcr ? comprasFiltradas : comprasFiltradas.filter(v => !esRechazada(v))
     const c = COLDEFS.find(x => x.key === orden.key)
-    if (!c) return base
-    const arr = base.slice()
+    if (!c) return comprasFiltradas
+    const arr = comprasFiltradas.slice()
     arr.sort((a, b) => {
       const va = valOrden(c, a), vb = valOrden(c, b)
       let r = va < vb ? -1 : va > vb ? 1 : 0
@@ -406,7 +398,7 @@ const wantScroll = useRef(false)
       return orden.dir === 'desc' ? -r : r
     })
     return arr
-  }, [comprasFiltradas, orden, verNoFcr]) // eslint-disable-line
+  }, [comprasFiltradas, orden]) // eslint-disable-line
 
   // Plan de cuentas: lo que devuelva el endpoint y, si no lo devuelve, las cuentas que
   // ya se usan en el historico. Asi el buscador sirve desde el primer dia.
@@ -616,11 +608,11 @@ const wantScroll = useRef(false)
         </div>
         {resumen.rech > 0 && (
           <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, padding: '9px 12px', borderRadius: 8, background: '#FBE9E7', border: '0.5px solid #F0C9C2', color: '#8C4A44' }}>
-            <strong style={{ color: '#B23A3A' }}>Hay {resumen.rech} compra(s) que no son de FCR</strong> (total {clp(resumen.totalRech)}) y <strong>no entran en la contabilidad</strong>:
-            ni en el gasto, ni en el IVA, ni en CONTAB. {verNoFcr ? 'Se muestran abajo en rojo.' : 'Están ocultas del listado.'}{' '}
-            Se conservan en los datos porque el SII sí las tiene en el Registro de Compras (si desaparecieran, el cuadre mensual
-            contra el SII no daría nunca): por eso el <strong>Total según SII</strong> las incluye.
-            {' '}<a onClick={() => setVerNoFcr(x => !x)} style={{ cursor: 'pointer', color: '#B23A3A', fontWeight: 700, textDecoration: 'underline' }}>{verNoFcr ? 'Ocultarlas' : 'Verlas'}</a>
+            <strong style={{ color: '#B23A3A' }}>Las {resumen.rech} filas en rojo no son de FCR</strong> y <strong>no entran en la contabilidad</strong>:
+            ni en el gasto, ni en el IVA, ni en CONTAB. Se conservan a propósito porque el SII sí las tiene
+            en el Registro de Compras; si desaparecieran, el cuadre mensual contra el SII no daría nunca.
+            Por eso arriba se ven dos cifras: el <strong>Total</strong> es el de FCR y el
+            <strong> Total según SII</strong> incluye estas {clp(resumen.totalRech)}.
           </div>
         )}
         <div style={{ fontSize: 11, color: '#B4B2A9', marginTop: 8 }}>{modo === 'mensual' && mesSel ? `${mesLabel(mesSel)}  ·  ` : (modo === 'continua' ? 'Todas las compras  ·  ' : '')}{comprasVista.length} de {compras.length} compras. Pincha una para revisar/editar.</div>
