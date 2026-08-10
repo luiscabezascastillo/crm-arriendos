@@ -1,4 +1,12 @@
 // lib/liquidacionPdf.js
+// VERSION: v12 · 2026-08-10 · CARTA COMPLEMENTARIA. Si bloque.esComplementaria: título "LIQUIDACION COMPLEMENTARIA...",
+//   asunto e intro adaptados. Las propiedades marcadas x.yaLiquidado se listan en GRIS (referencia) con subfila
+//   "✓ YA LIQUIDADO en <mes>" y NO suman en el total (el total lo trae bloque.totales, ya solo con lo cobrado ahora).
+//   Reutiliza el mismo render que la carta normal. Hereda v11.
+// VERSION: v11 · 2026-08-10 · Texto de la línea en espera: "PENDIENTE DE COBRO - se liquida posteriormente, en liquidacion
+//   complementaria cuando el arrendatario pague." Sin cambios de lógica. Hereda v10.
+// VERSION: v10 · 2026-08-10 · Texto de la línea en espera suavizado: "PENDIENTE DE COBRO - se liquidara posteriormente,
+//   cuando el arrendatario pague." (antes decía "no se liquida este mes..."). Sin cambios de lógica. Hereda v9.
 // VERSION: v9 · 2026-08-10 · EN ESPERA = pendiente de cobro, visible pero fuera de los totales. La carta referencia TODAS
 //   las propiedades: la del moroso (x.enEspera) sigue en la tabla pero con TODOS sus importes en gris (PEND) y TACHADOS
 //   (línea de A Cobrar a A transferir), más una subfila ámbar "PENDIENTE DE COBRO - se liquidará en la complementaria".
@@ -114,21 +122,35 @@ export async function generarPdfLiquidacion({ bloque, mesTxt, fecha, despedida, 
   } else {
     text('FONDO CAPITAL RENT SpA', M, y - 14 * esc, bold, 15 * esc, DARK); y -= 22 * esc
   }
-  // Título centrado
-  const tW = bold.widthOfTextAtSize(TITULO, 13 * esc)
-  text(TITULO, M + (contentW - tW) / 2, y - 14 * esc, bold, 13 * esc, DARK); y -= 30 * esc
+  // Título centrado (COMPLEMENTARIA si el bloque lo indica)
+  const esCompl = !!bloque.esComplementaria
+  const titulo = esCompl ? 'LIQUIDACION COMPLEMENTARIA MENSUAL DE ARRIENDO' : TITULO
+  const tW = bold.widthOfTextAtSize(titulo, 13 * esc)
+  text(titulo, M + (contentW - tW) / 2, y - 14 * esc, bold, 13 * esc, DARK); y -= 30 * esc
 
   // Meta (Fecha / Para / De / Asunto)
   const meta = [
     ['Fecha:', fecha || ''],
     ['Para:', `${bloque.propietario || ''}  (${bloque.idprop || ''})`],
     ['De:', DE],
-    ['Asunto:', `Liquidacion de arriendo · ${mesTxt}`],
+    ['Asunto:', `${esCompl ? 'Liquidacion complementaria' : 'Liquidacion'} de arriendo · ${mesTxt}`],
   ]
   for (const [k, v] of meta) { text(k, M, y - 11 * esc, bold, 9.5 * esc); text(v, M + 55 * esc, y - 11 * esc, font, 9.5 * esc); y -= 15 * esc }
   y -= 6 * esc
   text(`Estimado(a) ${bloque.propietario || ''}:`, M, y - 11 * esc, font, 10 * esc); y -= 15 * esc
-  text(`Le adjuntamos el detalle de su liquidacion correspondiente a ${mesTxt}.`, M, y - 11 * esc, font, 10 * esc); y -= 22 * esc
+  const intro = esCompl
+    ? `Le adjuntamos una liquidacion COMPLEMENTARIA de ${mesTxt}: corresponde a arriendo(s) que estaban pendientes de cobro y que ya se han cobrado. Las demas propiedades se listan como referencia (ya liquidadas en su mes).`
+    : `Le adjuntamos el detalle de su liquidacion correspondiente a ${mesTxt}.`
+  { // envuelve el texto de introduccion al ancho disponible
+    const iw = wa(intro).split(/\s+/); let ln = ''
+    for (const w of iw) {
+      const test = ln ? ln + ' ' + w : w
+      if (font.widthOfTextAtSize(test, 10 * esc) > contentW) { text(ln, M, y - 11 * esc, font, 10 * esc); y -= 13 * esc; ln = w }
+      else ln = test
+    }
+    if (ln) { text(ln, M, y - 11 * esc, font, 10 * esc); y -= 13 * esc }
+  }
+  y -= 9 * esc
 
   // ── Definición de columnas ──
   const hayDesc = Math.abs(Number(bloque.totales?.descuentos || 0)) > 0
@@ -188,15 +210,17 @@ export async function generarPdfLiquidacion({ bloque, mesTxt, fecha, despedida, 
     pageBreak(ROWH + 1)
     // EN ESPERA (moroso): la propiedad SIGUE en la carta (se referencian todas) pero sus importes van
     // atenuados y tachados; no suma en los totales. Se liquidará en la complementaria al cobrar.
+    // YA LIQUIDADO (en carta complementaria): la propiedad se lista como referencia, en gris; ya se liquidó en su mes.
     const esp = !x.esP && x.enEspera
+    const yl = !!x.yaLiquidado
     for (const c of cols) {
       const raw = val(x, c.key)
       const isMoney = c.align === 'r'
       let color = DARK
-      if (esp) color = PEND
+      if (esp || yl) color = PEND
       else if (c.key === 'descuentos' && x.descuentos) color = GREEN
       if (isMoney) rightText(raw, c.x + c.w - 5, y - OFF, font, FS, color)
-      else text(fit(raw, font, FS, c.w - 6), c.x + 4, y - OFF, font, FS, esp ? PEND : color)
+      else text(fit(raw, font, FS, c.w - 6), c.x + 4, y - OFF, font, FS, (esp || yl) ? PEND : color)
     }
     // Tacha los importes de la línea en espera (desde "A Cobrar" hasta "A transferir").
     if (esp) {
@@ -215,8 +239,10 @@ export async function generarPdfLiquidacion({ bloque, mesTxt, fecha, despedida, 
     }
     // La nota (comentarios_liquidacion) se muestra también en líneas P (deptos vacíos)
     if (x.nota) subs.push({ color: GREY, monto: '', txt: `Nota: ${x.nota}` })
-    // Pendiente de cobro: aviso claro de que esa propiedad no se liquida este mes.
-    if (esp) subs.push({ color: AMBER, monto: '', txt: 'PENDIENTE DE COBRO - no se liquida este mes; se liquidara en la complementaria cuando el arrendatario pague.' })
+    // Pendiente de cobro: aviso claro de que esa propiedad se liquidará más adelante.
+    if (esp) subs.push({ color: AMBER, monto: '', txt: 'PENDIENTE DE COBRO - se liquida posteriormente, en liquidacion complementaria cuando el arrendatario pague.' })
+    // Ya liquidado (referencia en carta complementaria): no entra en el total de esta complementaria.
+    if (yl) subs.push({ color: GREY, monto: '', txt: '✓ YA LIQUIDADO' + (x.yaLiquidadoMes ? ' en ' + x.yaLiquidadoMes : '') + ' - se muestra solo como referencia.' })
     const SUBFS = 8 * esc, SUBH = 13 * esc, SUBOFF = 10 * esc
     for (const s of subs) {
       pageBreak(SUBH)

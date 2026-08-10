@@ -1,4 +1,12 @@
 'use client'
+// VERSION: v22 · 2026-08-10 · CARTA COMPLEMENTARIA (paso 5). Panel "🧩 Complementarias de <mes>": para cada propietario con
+//   complementaria registrada (mes de cobro = mes visto), un botón "Ver borrador complementaria" que arma un bloque con
+//   todas sus propiedades como referencia (yaLiquidado, en gris) + la línea cobrada con importes, y lo abre como borrador
+//   (lib/liquidacionPdf v12, esComplementaria). Primera versión solo borrador; el envío oficial se añadirá luego. Hereda v21.
+// VERSION: v21 · 2026-08-10 · Texto de la subfila en espera: "PENDIENTE DE COBRO — se liquida posteriormente, en liquidación
+//   complementaria cuando el arrendatario pague." Sin cambios de lógica. Hereda v20.
+// VERSION: v20 · 2026-08-10 · Texto de la subfila en espera suavizado: "PENDIENTE DE COBRO — se liquidará posteriormente,
+//   cuando el arrendatario pague." (antes "no se liquida este mes..."). Sin cambios de lógica. Hereda v19.
 // VERSION: v19 · 2026-08-10 · EN ESPERA = pendiente de cobro, FUERA de los totales pero SIEMPRE visible. La liquidación
 //   referencia todas las propiedades: la del moroso sigue en la tabla pero con los importes TACHADOS y en gris, fondo
 //   ámbar y una subfila "⏸ PENDIENTE DE COBRO — se liquidará en la complementaria". NO suma en totales ni se transfiere ni
@@ -120,6 +128,8 @@ export default function CartasPage() {
   const [borradorToOpen, setBorradorToOpen] = useState({}) // idprop -> mostrar campo "enviar borrador a"
   const [borradorTo, setBorradorTo] = useState({})         // idprop -> correo destino del borrador
   const [borradorSendBusy, setBorradorSendBusy] = useState(null)
+  const [complCands, setComplCands] = useState([])       // complementarias registradas del mes de cobro (para el panel)
+  const [complBorradorBusy, setComplBorradorBusy] = useState(null)
   const [soloNoEnviadas, setSoloNoEnviadas] = useState(false)   // filtro: ocultar propietarios ya enviados
   const [filtroEstadoEnvio, setFiltroEstadoEnvio] = useState('todas')   // 'todas' | 'ok' | 'okdesc'
   const [filtroTexto, setFiltroTexto] = useState('')            // filtra por IDPROP o nombre (oculta el resto)
@@ -298,6 +308,7 @@ export default function CartasPage() {
       }).sort((a, b) => String(a.propietario || '').localeCompare(String(b.propietario || ''), 'es', { sensitivity: 'base' }))
 
       setBloques(lista); setActualizado(new Date())
+      cargarComplEmails(m)
     } catch (err) { setError(err.message) }
     setCargando(false)
   }
@@ -406,6 +417,49 @@ export default function CartasPage() {
       else { flash('📤 Borrador enviado a ' + dest); setBorradorToOpen(m => ({ ...m, [b.idprop]: false })); setBorradorTo(m => ({ ...m, [b.idprop]: '' })) }
     } catch (e) { alert('Error: ' + e.message) }
     finally { setBorradorSendBusy(null) }
+  }
+
+  // ── COMPLEMENTARIAS ──────────────────────────────────────────────────────
+  // Carga las complementarias registradas cuyo mes de cobro es el mes visualizado.
+  async function cargarComplEmails(m) {
+    try {
+      const r = await fetch('/api/liquidaciones/complementaria?mes_cobro=' + encodeURIComponent(m))
+      const d = await r.json()
+      setComplCands((d.candidatos || []).filter(c => c.complementaria && c.complementaria.estado !== 'anulada'))
+    } catch { setComplCands([]) }
+  }
+  // Construye el bloque de la carta COMPLEMENTARIA de un propietario: todas sus propiedades del mes como
+  // referencia (yaLiquidado, en gris, no suman) + la(s) línea(s) cobrada(s) con importes reales (del mes de espera).
+  function buildComplBloque(idprop, cands) {
+    const b = (bloques || []).find(x => x.idprop === idprop)
+    const ref = ((b && b.inmuebles) || []).filter(x => !x.enEspera).map(x => ({ ...x, yaLiquidado: true, yaLiquidadoMes: aammToTxt(mes) }))
+    const compl = cands.map(c => ({
+      idadmon: c.idadmon, esP: false, esProp: false,
+      propiedad: c.inmueble || c.idadmon, comienzo: '',
+      arrendatario: `(cobrado - arriendo ${aammToTxt(c.mes_espera)})`, rut: '',
+      aCobrar: n0(c.renta), recibido: 0, admon: n0(c.comision), iva: n0(c.iva),
+      descuentos: 0, aTransferir: n0(c.neto), ggcc: 0, luz: 0, agua: 0, nota: '', des: [], ajuste: 0,
+    }))
+    const inmuebles = [...ref, ...compl]
+    const T = compl.reduce((a, x) => ({
+      aCobrar: a.aCobrar + x.aCobrar, recibido: 0, admon: a.admon + x.admon,
+      iva: a.iva + x.iva, descuentos: 0, aTransferir: a.aTransferir + x.aTransferir,
+    }), { aCobrar: 0, recibido: 0, admon: 0, iva: 0, descuentos: 0, aTransferir: 0 })
+    const propietario = (b && b.propietario) || (cands[0] && cands[0].propietario) || ''
+    return { idprop, propietario, inmuebles, totales: T, esComplementaria: true, enEsperaCount: 0 }
+  }
+  // Abre el borrador (marca de agua) de la carta complementaria de un propietario.
+  async function verBorradorComplementaria(idprop, cands) {
+    const bloque = buildComplBloque(idprop, cands)
+    setComplBorradorBusy(idprop)
+    try {
+      const res = await fetch('/api/liquidaciones/borrador-carta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bloque, mesTxt: aammToTxt(mes), despedida }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert('No se pudo generar: ' + (d.error || res.status)) }
+      else { const blob = await res.blob(); const url = URL.createObjectURL(blob); window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60000) }
+    } catch (e) { alert('Error: ' + e.message) } finally { setComplBorradorBusy(null) }
   }
 
   // Re-lee los candados (liquidacion_envios) desde la BD y actualiza el estado, para reflejar al momento
@@ -615,6 +669,34 @@ export default function CartasPage() {
         )}
         </div>{/* fin zona sticky */}
 
+        {/* Panel de COMPLEMENTARIAS del mes de cobro: cartas de arriendos morosos ya cobrados. */}
+        {!cargando && complCands.length > 0 && puedeEnviar && (() => {
+          const porProp = {}
+          for (const c of complCands) (porProp[c.idprop] = porProp[c.idprop] || []).push(c)
+          const grupos = Object.entries(porProp)
+          return (
+            <div style={{ border: '1px solid #DDD6FE', background: '#F5F3FF', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#5B21B6', marginBottom: 6 }}>🧩 Complementarias de {aammToTxt(mes)} · {grupos.length} propietario(s)</div>
+              <div style={{ fontSize: 12, color: '#6D28D9', marginBottom: 10 }}>Arriendos morosos ya cobrados que se liquidan este mes. La carta lista todas las propiedades del propietario (las ya liquidadas en gris) y solo la cobrada con importes.</div>
+              {grupos.map(([idprop, cands]) => {
+                const neto = cands.reduce((a, c) => a + n0(c.neto), 0)
+                const nombre = (cands[0] && cands[0].propietario) || idprop
+                return (
+                  <div key={idprop} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid #EDE9FE' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#3730A3' }}>{idprop} — {nombre}</span>
+                    <span style={{ fontSize: 12, color: '#6B7280' }}>{cands.map(c => `${c.idadmon} (arriendo ${aammToTxt(c.mes_espera)})`).join(' · ')}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#5B21B6' }}>A transferir: {fmt(neto)}</span>
+                    <button onClick={() => verBorradorComplementaria(idprop, cands)} disabled={complBorradorBusy === idprop}
+                      style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: '1px solid #C7B5FE', background: '#fff', color: '#5B21B6', cursor: complBorradorBusy === idprop ? 'wait' : 'pointer' }}>
+                      {complBorradorBusy === idprop ? 'Generando…' : '📄 Ver borrador complementaria'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+
         {!cargando && visibles.map(b => {
           const ec = estadoColor[b.estado] || { bg: '#eee', c: '#333' }
           const abierta = !!obsAbierta[b.idprop]
@@ -797,7 +879,7 @@ export default function CartasPage() {
                     if (enEsp) subfilas.push(
                       <div key={x.idadmon + i + 'esp'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 12px 3px 40px', borderTop: '1px solid #F7F6F2', background: '#FFF7ED' }}>
                         <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#9A3412' }}>⏸ PENDIENTE DE COBRO — no se liquida este mes; se liquidará en la complementaria cuando el arrendatario pague.</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#9A3412' }}>⏸ PENDIENTE DE COBRO — se liquida posteriormente, en liquidación complementaria cuando el arrendatario pague.</span>
                       </div>
                     )
                     return [filaInmueble, ...subfilas]
