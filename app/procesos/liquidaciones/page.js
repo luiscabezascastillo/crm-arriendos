@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v11 · 2026-08-10 · TRANSFER prep COMPLEMENTARIAS (paso 4, aditivo/sin tocar el cálculo): lee las complementarias
+//   REGISTRADAS del mes de cobro (/api/liquidaciones/complementaria?mes_cobro=AAMM) y las muestra como KPI "🧩 Complementarias"
+//   y como chip en la fila del propietario ("🧩 +$neto · arriendo de <mes>"), para saber que a ese propietario hay que
+//   transferirle también esa cantidad. NO altera a_transferir/validado/transferido (eso se fundirá al probar con un pago
+//   real). Fuente adicional: liquidacion_complementaria. Hereda v10.
 // VERSION: v10 · 2026-08-10 · TRANSFER: el selector de meses ahora va desde ENERO 2025 (2501) hasta 1 mes por delante del actual, IGUAL que CARTAS (antes usaba una ventana móvil de 6 meses atrás → empezaba en feb-2026, dejando fuera 2501–2601). Solo cambia generarMeses(); el mes por defecto (mesEnCurso, regla día 23) no cambia. Hereda v9.
 // VERSION: v9 · 2026-08-07 · TRANSFER: refleja las líneas "en espera" (retenidas en CARTAS por arrendatario moroso).
 //   "A transferir" pasa a ser "a transferir AHORA" = total − retenido; se añade KPI "En espera" y chip por propietario;
@@ -136,6 +141,7 @@ export default function LiquidacionesPage() {
   const [cobraDueno, setCobraDueno] = useState(new Set())   // idprops cuyos contratos cobra el dueño
   const [retMap, setRetMap] = useState({})     // idprop -> neto retenido (líneas "en espera" este mes)
   const [retList, setRetList] = useState([])   // filas retenidas enriquecidas (para el aviso de congelar)
+  const [complMap, setComplMap] = useState({}) // idprop -> { neto, items:[{idadmon, mes_espera, neto, estado}] } complementarias del mes de cobro
   const [validaciones, setValidaciones] = useState({})      // idprop -> {validado, validado_por, validado_at}
   const [valSaving, setValSaving] = useState(null)          // idprop guardándose
   const puedeValidar = rol === 'direccion' || rol === 'administracion' || rol === 'admin' || DIRECCION_EMAILS.includes(email)
@@ -155,7 +161,7 @@ export default function LiquidacionesPage() {
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('liquidac'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
-  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes); cargarRetenidos(mes) } }, [accesoOk])
+  useEffect(() => { if (accesoOk === true) { cargarMes(mes); consultarCongelado(mes); cargarRetenidos(mes); cargarComplementarias(mes) } }, [accesoOk])
 
   // Líneas "en espera" del mes (retenidas en CARTAS): neto retenido por propietario + lista para el aviso de congelar.
   async function cargarRetenidos(m) {
@@ -167,6 +173,23 @@ export default function LiquidacionesPage() {
       for (const s of list) { const k = s.idprop; if (k) map[k] = n0(map[k]) + n0(s.neto) }
       setRetMap(map); setRetList(list)
     } catch { setRetMap({}); setRetList([]) }
+  }
+
+  // Complementarias REGISTRADAS cuyo mes de cobro es el mes visualizado: neto por propietario (a transferir aparte).
+  async function cargarComplementarias(m) {
+    try {
+      const r = await fetch('/api/liquidaciones/complementaria?mes_cobro=' + encodeURIComponent(m))
+      const d = await r.json()
+      const map = {}
+      for (const c of (d.candidatos || [])) {
+        if (!c.complementaria || c.complementaria.estado === 'anulada') continue   // solo las registradas y vigentes
+        const k = c.idprop; if (!k) continue
+        const g = map[k] || (map[k] = { neto: 0, items: [] })
+        g.neto += n0(c.neto)
+        g.items.push({ idadmon: c.idadmon, mes_espera: c.mes_espera, neto: n0(c.neto), estado: c.complementaria.estado })
+      }
+      setComplMap(map)
+    } catch { setComplMap({}) }
   }
 
   async function cargarMes(m) {
@@ -290,7 +313,7 @@ export default function LiquidacionesPage() {
     setDetalles(prev => ({ ...prev, [idprop]: { inmuebles: delProp, pie, sumaDesc, pagosPorInm, inicios } }))
   }
 
-  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m); cargarRetenidos(m) }
+  function cambiarMes(m) { setMes(m); cargarMes(m); consultarCongelado(m); cargarRetenidos(m); cargarComplementarias(m) }
 
   // Consulta si el mes está congelado (para el indicador de candado)
   async function consultarCongelado(m) {
@@ -426,6 +449,11 @@ export default function LiquidacionesPage() {
   // En espera (morosos): neto retenido total del mes + nº de líneas aún sin cobrar (para el aviso de congelar).
   const totEspera = listaBusca.reduce((a, p) => cobraDueno.has(p.idprop) ? a : a + retDe(p), 0)
   const retenidosPend = (retList || []).filter(r => !r.cobrado)
+  // Complementarias registradas del mes de cobro: neto a transferir aparte (informativo, no entra aún en los totales).
+  const complList = Object.values(complMap)
+  const totCompl = complList.reduce((a, m) => a + n0(m.neto), 0)
+  const nCompl = complList.reduce((a, m) => a + (m.items ? m.items.length : 0), 0)
+  const complDe = (p) => n0(complMap[p.idprop] && complMap[p.idprop].neto)
   // Tanda en curso: lo VALIDADO que aún NO se ha transferido (suma en vivo al ir validando)
   const validadoTanda = listaBusca.reduce((s, p) => (!cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)) ? s + aTransAhora(p) : s, 0)
   const nValidadoTanda = listaBusca.filter(p => !cobraDueno.has(p.idprop) && estaValidado(p) && !esTransferido(p)).length
@@ -594,6 +622,7 @@ export default function LiquidacionesPage() {
           <div style={metric}><div style={metricLbl}>Transferido</div><div style={{ ...metricVal, color: '#0C447C' }}>{fmtPesos(totMes.transferido)}</div></div>
           <div style={metric}><div style={metricLbl}>Falta transferir</div><div style={{ ...metricVal, color: faltaTransferir > 0 ? '#b45309' : '#166534' }}>{fmtPesos(faltaTransferir)}</div></div>
           {totEspera > 0 && <div style={{ ...metric, background: '#EFF6FF', border: '1px solid #93C5FD' }} title="Neto retenido en espera (arrendatarios morosos) — se transfiere cuando llegue el dinero, antes de congelar"><div style={metricLbl}>En espera (morosos)</div><div style={{ ...metricVal, color: '#1D4ED8' }}>{fmtPesos(totEspera)}{retenidosPend.length > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#3B82F6' }}> · {retenidosPend.length} sin cobrar</span>}</div></div>}
+          {totCompl > 0 && <div style={{ ...metric, background: '#EEF2FF', border: '1px solid #C7B5FE' }} title="Complementarias registradas cuyo cobro se imputa a este mes — se transfiere al propietario aparte de su liquidación normal"><div style={metricLbl}>🧩 Complementarias</div><div style={{ ...metricVal, color: '#5B21B6' }}>{fmtPesos(totCompl)}<span style={{ fontSize: 13, fontWeight: 600, color: '#7C3AED' }}> · {nCompl}</span></div></div>}
           <div style={metric}><div style={metricLbl}>Comisión + IVA</div><div style={metricVal}>{fmtPesos(totMes.comision)}</div></div>
           <div style={metric}><div style={metricLbl}>Por cobrar (falta)</div><div style={{ ...metricVal, color: '#dc2626' }}>{fmtPesos(totMes.falta)}</div></div>
           <div style={metric}><div style={metricLbl}>Propietarios</div><div style={metricVal}>{listaBusca.length - nCobraDueno}{nCobraDueno > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: '#9CA3AF' }}> (+{nCobraDueno} cobra dueño)</span>}</div></div>
@@ -647,6 +676,7 @@ export default function LiquidacionesPage() {
                       <span>{p.idprop ? `${p.idprop} — ${p.propietario}` : p.propietario}</span>
                       <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 12 }}>· {p.n_propiedades} prop{p.n_propiedades > 1 ? 's' : ''}</span>
                       {cd && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280', whiteSpace: 'nowrap' }}>cobra dueño</span>}
+                      {complMap[p.idprop] && <span onClick={(e) => e.stopPropagation()} title={'Transferir aparte (complementaria): ' + complMap[p.idprop].items.map(it => it.idadmon + ' arriendo ' + aammToTxt(it.mes_espera) + ' $' + Math.round(it.neto).toLocaleString('es-CL')).join(' · ')} style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#EDE9FE', color: '#5B21B6', whiteSpace: 'nowrap' }}>🧩 +${Math.round(complMap[p.idprop].neto).toLocaleString('es-CL')} compl.</span>}
                       {pagadoOk && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DCFCE7', color: '#166534', whiteSpace: 'nowrap' }}>✓ transferido</span>}
                       {enEspera > 0 && <span title="Tiene un inmueble en espera (arrendatario moroso): su neto no se transfiere hasta que llegue el dinero" style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#DBEAFE', color: '#1D4ED8', whiteSpace: 'nowrap' }}>⏸ en espera {fmtPesos(enEspera)}</span>}
                     </div>
