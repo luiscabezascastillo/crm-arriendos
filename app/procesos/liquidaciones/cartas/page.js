@@ -1,3 +1,6 @@
+// VERSION: v10 · 2026-08-10 · CARTAS se ve COMO SALDRÁ la carta: la línea en espera muestra su "A transferir" ATENUADO
+//   (no se suma) y la fila TOTALES muestra en "A transferir" el importe REAL de la oleada (A transferir ahora), con una
+//   subfila "En espera de cobro" por el importe aplazado. Idéntico al PDF (lib/liquidacionPdf v6) y a EMAILS v14. Hereda v9.
 // VERSION: v9 · 2026-08-07 · CARTAS: los DESCUENTOS asociados a un IDADMON en estado P (depto en captación/desocupado)
 //   ahora también salen como subfila (↳ verde con su texto), igual que en S/SQ. Antes se ocultaban por el gate !esP.
 //   Ajuste/override siguen solo para contratos activos. Hereda v8.
@@ -682,7 +685,7 @@ export default function CartasPage() {
                       <div style={{ ...td, ...rt, ...bgP, color: x.descuentos ? '#16A34A' : '#2C2C2A', fontWeight: x.descuentos ? 700 : 400 }}>{x.descuentos ? fmt(x.descuentos) : vP}</div>
                       <div onClick={(e) => { if (puedeOverride && !x.esProp && !x.esP) { e.stopPropagation(); abrirOverride(x) } }}
                         title={x.override ? `Ajuste manual: $${Math.round(n0(x.override.monto_x)).toLocaleString('es-CL')} — ${x.override.motivo || ''}` : ((puedeOverride && !x.esProp && !x.esP) ? 'Ajustar transferencia (override)' : '')}
-                        style={{ ...td, ...rt, ...bgP, fontWeight: 600, cursor: (puedeOverride && !x.esProp && !x.esP) ? 'pointer' : 'default', ...(x.override ? { background: '#FEF3C7', borderRadius: 4 } : {}) }}>
+                        style={{ ...td, ...rt, ...bgP, fontWeight: 600, cursor: (puedeOverride && !x.esProp && !x.esP) ? 'pointer' : 'default', ...(x.override ? { background: '#FEF3C7', borderRadius: 4 } : {}), ...((!x.esP && retenidos[x.idadmon]) ? { color: '#94A3B8' } : {}) }}>
                         {x.override ? '⚠ ' : ''}{x.esP ? (x.descuentos ? fmt(x.aTransferir) : vP) : fmt(x.aTransferir)}
                       </div>
                       <div style={{ ...td, ...rt, color: x.ajuste ? '#B45309' : '#2C2C2A', fontWeight: x.ajuste ? 700 : 400 }}>{x.esP ? '' : (x.ajuste ? fmt(x.ajuste) : '—')}</div>
@@ -789,9 +792,16 @@ export default function CartasPage() {
                     <div>TOTALES</div><div /><div /><div /><div /><div />
                     <div style={rt}>{fmt(b.totales.aCobrar)}</div><div style={rt}>{fmt(b.totales.recibido)}</div><div />
                     <div style={rt}>{fmt(b.totales.admon)}</div><div style={rt}>{fmt(b.totales.iva)}</div><div style={rt}>{fmt(b.totales.descuentos)}</div>
-                    <div style={rt}>{fmt(b.totales.aTransferir)}</div>
+                    <div style={rt} title={retTot > 0 ? `A transferir ahora (sin lo que está en espera). Total bruto: ${Math.round(n0(b.totales.aTransferir)).toLocaleString('es-CL')}` : ''}>{retTot > 0 ? fmt(aTransferirAhora) : fmt(b.totales.aTransferir)}</div>
                     <div style={rt}>{(() => { const s = (b.inmuebles || []).reduce((a, x) => a + n0(x.ajuste), 0); return s ? fmt(s) : '' })()}</div><div /><div /><div /><div /><div />
                   </div>
+                  {retTot > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px 5px 40px', background: '#EFF6FF', borderTop: '1px solid #DBEAFE' }}>
+                      <span style={{ color: '#9CA3AF', fontSize: 12 }}>↳</span>
+                      <span style={{ fontFamily: MONO, color: '#1D4ED8', fontWeight: 700, fontSize: 12, minWidth: 92, textAlign: 'right' }}>{fmt(retTot)}</span>
+                      <span style={{ fontSize: 12, color: '#1D4ED8' }}>⏸ En espera de cobro — se transferirá al conseguir el cobro (no incluido en "A transferir")</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

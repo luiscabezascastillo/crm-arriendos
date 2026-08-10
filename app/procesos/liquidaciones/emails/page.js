@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v14 · 2026-08-10 · EN ESPERA en el total de la carta: el bloque de cada propietario ahora lleva en `totales`
+//   dos campos nuevos — `enEspera` (suma de los "A transferir" de líneas retenidas por morosidad) y `aTransferirAhora`
+//   (total − enEspera). El PDF (lib/liquidacionPdf v6) los usa para que la columna "A transferir" muestre el importe REAL
+//   de la oleada y añada la línea "En espera de cobro". Las líneas retenidas ya viajaban marcadas con notaEspera. Hereda v13.
 // VERSION: v13 · 2026-08-07 · FILTRO por estado ampliado: además de OK / OK DESC ahora se puede filtrar por TO SEE y
 //   por CHECK (para revisarlas o desbloquearlas). "Todos los estados" muestra todo; OK/OK DESC siguen ocultando las ya
 //   enviadas ("por enviar"). La selección de envío se hace a mano sobre lo filtrado. Hereda v12.
@@ -252,6 +256,10 @@ export default function CartasPage() {
           aCobrar: a.aCobrar + x.aCobrar, recibido: a.recibido + x.recibido, admon: a.admon + x.admon,
           iva: a.iva + x.iva, descuentos: a.descuentos + x.descuentos, aTransferir: a.aTransferir + x.aTransferir,
         }), { aCobrar: 0, recibido: 0, admon: 0, iva: 0, descuentos: 0, aTransferir: 0 })
+        // "En espera" = suma de los "A transferir" de las líneas retenidas (arrendatario no ha pagado).
+        // El PDF muestra "A transferir ahora" (= total − enEspera) y una línea aparte con lo que queda en espera.
+        T.enEspera = g.inmuebles.reduce((a, x) => a + (x.notaEspera ? n0(x.aTransferir) : 0), 0)
+        T.aTransferirAhora = T.aTransferir - T.enEspera
         const transferido = transf[g.idprop] || 0
         const diff = Math.round(T.aTransferir - transferido)
         const hayDesc = T.descuentos > 0
