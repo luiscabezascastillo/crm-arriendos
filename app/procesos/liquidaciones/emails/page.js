@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v18 · 2026-08-10 · "Enviar borrador a…": junto a "Ver borrador", quien emite puede mandar el PDF borrador
+//   (marca de agua) por email a una persona concreta (revisión interna). No es el envío oficial: no toca el candado ni
+//   liquidacion_envios. Usa /api/liquidaciones/borrador-carta con `enviarA`. Hereda v17.
 // VERSION: v17 · 2026-08-10 · El texto de un depto en captación (P) se edita EN LÍNEA sobre la celda Arrendatario (clic →
 //   "RESERVADO" o lo que sea) por quien emite (Alberto/Luis/Karina). Se guarda por idadmon en `captacion_etiqueta` y sale
 //   igual en el PDF; vacío = vuelve a "EN CAPTACION ARRENDATARIO". Hereda v16.
@@ -109,6 +112,9 @@ export default function CartasPage() {
   const [resultadoEnvio, setResultadoEnvio] = useState(null)   // {enviadas, fallidas, results} | {error}
   const [borradorLoading, setBorradorLoading] = useState(null) // idprop generando borrador
   const [reducir1p, setReducir1p] = useState({})   // idprop -> true = forzar 1 página (borrador + envío)
+  const [borradorToOpen, setBorradorToOpen] = useState({}) // idprop -> mostrar campo "enviar borrador a"
+  const [borradorTo, setBorradorTo] = useState({})         // idprop -> correo destino del borrador
+  const [borradorSendBusy, setBorradorSendBusy] = useState(null)
   const [soloNoEnviadas, setSoloNoEnviadas] = useState(false)   // filtro: ocultar propietarios ya enviados
   const [filtroEstadoEnvio, setFiltroEstadoEnvio] = useState('todas')   // 'todas' | 'ok' | 'okdesc'
   const [filtroTexto, setFiltroTexto] = useState('')            // filtra por IDPROP o nombre (oculta el resto)
@@ -375,6 +381,25 @@ export default function CartasPage() {
       alert('Error: ' + e.message)
     }
     setBorradorLoading(null)
+  }
+
+  // Enviar el PDF BORRADOR (marca de agua) por email a una persona concreta (revisión interna).
+  // No es el envío oficial: no toca el candado ni liquidacion_envios.
+  async function enviarBorradorA(b) {
+    const dest = (borradorTo[b.idprop] || '').trim()
+    if (!dest) { alert('Escribe el correo de destino.'); return }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest)) { alert('Ese correo no parece válido.'); return }
+    setBorradorSendBusy(b.idprop)
+    try {
+      const res = await fetch('/api/liquidaciones/borrador-carta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bloque: b, mesTxt: aammToTxt(mes), despedida, reducir: !!reducir1p[b.idprop], enviarA: dest }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert('No se pudo enviar el borrador: ' + (d.error || res.status)) }
+      else { flash('📤 Borrador enviado a ' + dest); setBorradorToOpen(m => ({ ...m, [b.idprop]: false })); setBorradorTo(m => ({ ...m, [b.idprop]: '' })) }
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setBorradorSendBusy(null) }
   }
 
   // Re-lee los candados (liquidacion_envios) desde la BD y actualiza el estado, para reflejar al momento
@@ -645,6 +670,25 @@ export default function CartasPage() {
                       cursor: borradorLoading === b.idprop ? 'wait' : 'pointer' }}>
                     {borradorLoading === b.idprop ? 'Generando…' : '📄 Ver borrador'}
                   </button>
+                  {puedeEnviar && (
+                    borradorToOpen[b.idprop] ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <input autoFocus type="email" value={borradorTo[b.idprop] || ''} placeholder="correo destino…"
+                          onChange={(e) => setBorradorTo(m => ({ ...m, [b.idprop]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') enviarBorradorA(b); if (e.key === 'Escape') setBorradorToOpen(m => ({ ...m, [b.idprop]: false })) }}
+                          style={{ fontSize: 11, padding: '3px 6px', borderRadius: 6, border: '1px solid #C7D2FE', width: 180 }} />
+                        <button onClick={() => enviarBorradorA(b)} disabled={borradorSendBusy === b.idprop}
+                          style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 7, border: 'none', background: '#4F46E5', color: '#fff', cursor: borradorSendBusy === b.idprop ? 'wait' : 'pointer' }}>
+                          {borradorSendBusy === b.idprop ? 'Enviando…' : 'Enviar'}</button>
+                        <button onClick={() => setBorradorToOpen(m => ({ ...m, [b.idprop]: false }))} title="Cancelar"
+                          style={{ fontSize: 11, padding: '4px 6px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#6B7280', cursor: 'pointer' }}>✕</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setBorradorToOpen(m => ({ ...m, [b.idprop]: true }))}
+                        title="Enviar este borrador por email a una persona (revisión interna; NO es el envío oficial al propietario)"
+                        style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: '1px solid #C7B5FE', background: '#F5F3FF', color: '#5B21B6', cursor: 'pointer' }}>✉ Enviar borrador a…</button>
+                    )
+                  )}
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
                 </div>
                 <div style={{ flex: 1 }} />
