@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v25 · 2026-08-11 · DEEP-LINK: /procesos/descuentos?num=NNN abre y centra ese descuento al cargar
+//   (para enlazarlo desde la hoja del término). Reutiliza la lógica de "buscar por Núm". Aditivo. Hereda v24.
 // VERSION: v24 · 2026-08-11 · FILTROS ESTILO CC1: se sustituye el menú de columna propio por el motor compartido
 //   lib/filtroExcel (HeaderFilter/filtroActivo/aplicarFiltros) — el mismo del LOG/CC1: operadores por tipo
 //   (texto/número/fecha), dos condiciones Y/O, árbol de fechas, buscador que marca solo resultados y orden ↑/↓ por
@@ -370,6 +372,7 @@ export default function DescuentosPage() {
   // -------------------- FICHA (drawer) --------------------
   const [descSel, setDescSel] = useState(null);   // fila abierta en el drawer
   const [hoverId, setHoverId] = useState(null);   // fila resaltada bajo el ratón
+  const deepNumRef = useRef(null);                // deep-link ?num= (abre ese descuento al cargar)
 
   // Centrar en la lista la fila buscada por Núm (una vez renderizada).
   useEffect(() => {
@@ -382,6 +385,23 @@ export default function DescuentosPage() {
       centrarPendiente.current = null;
     }
   }, [descSel, visibles]);
+
+  // Deep-link: /procesos/descuentos?num=NNN abre y centra ese descuento al cargar.
+  useEffect(() => {
+    try { deepNumRef.current = new URLSearchParams(window.location.search).get('num'); } catch { deepNumRef.current = null; }
+  }, []);
+  useEffect(() => {
+    const n = (deepNumRef.current || '').replace(/\D/g, '');
+    if (!n || !rows || rows.length === 0) return;
+    const row = rows.find((r) => String(r.num) === n);
+    if (row) {
+      setDescSel(row);
+      centrarPendiente.current = row.id;
+      const enVis = (verTodos || hayFiltroActivo) || filtradas.slice(-TOPE_DEFECTO).some((v) => v.id === row.id);
+      if (!enVis) setVerTodos(true);
+      deepNumRef.current = null;
+    }
+  }, [rows]);
 
   // -------------------- ANULAR / CAMBIAR por Núm (Dirección + Karina) --------------------
   async function anularNum() {

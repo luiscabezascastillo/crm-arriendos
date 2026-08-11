@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v43 · 2026-08-11 · ENLACES: los NUM de descuento (tabla del término, sucesor y garantía) enlazan a
+//   /procesos/descuentos?num=, y el código de presupuesto (Cxxx) enlaza a /procesos/presupuestos?codigo=, para
+//   abrir ese descuento/presupuesto directo. Rutas en constantes RUTA_DESCUENTOS / RUTA_PRESUPUESTOS. Hereda v42.
 // VERSION: v42 · 2026-08-11 · PERMISOS: Dirección (Luis/Alberto) entra también por rol 'direccion' (no solo por
 //   email ni por el 'admin' muerto), para tener SIEMPRE todo. Los botones ✉ Email y PDF (arrendatario/propietario/
 //   presupuesto) y ver PDF ya estaban abiertos a Karina + Dirección + Adalis/Fabiola (puedeTerminoDocs). Hereda v41.
@@ -88,6 +91,9 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
 // Administración (Adalis y Fabiola): pueden generar el PDF del término y enviar los correos de liquidación.
 const ADMIN_EMAILS = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+// Rutas de los módulos enlazados desde la hoja (ajústalas si en tu repo cuelgan de otra ruta).
+const RUTA_DESCUENTOS = '/procesos/descuentos'
+const RUTA_PRESUPUESTOS = '/procesos/presupuestos'
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
@@ -1268,7 +1274,7 @@ export default function TerminosPage() {
                     {descGarantia.length > 0 && (
                       <div style={{ ...card, padding: 10 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', marginBottom: 6 }}>Movimientos de garantía (informativo, no suma)</div>
-                        {descGarantia.map(d => <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}><span style={{ color: '#555' }}>{d.texto_explicativo_para_carta_a_propietario || d.tipo} <span style={{ color: '#bbb' }}>Dto. {d.num}</span></span><span style={{ fontWeight: 600 }}>{fmtPesos(d.monto_a_imputar)}</span></div>)}
+                        {descGarantia.map(d => <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}><span style={{ color: '#555' }}>{d.texto_explicativo_para_carta_a_propietario || d.tipo} <a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#93a0b5', textDecoration: 'none' }}>Dto. {d.num} ↗</a></span><span style={{ fontWeight: 600 }}>{fmtPesos(d.monto_a_imputar)}</span></div>)}
                       </div>
                     )}
                     <div style={card}>
@@ -1294,7 +1300,7 @@ export default function TerminosPage() {
                           <tbody>
                             {descDelTermino.map((d, i) => (
                               <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                <td style={{ ...tdL, color: '#185FA5', fontWeight: 700 }}>{d.num}</td>
+                                <td style={{ ...tdL, fontWeight: 700 }}><a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#185FA5', textDecoration: 'none' }}>{d.num} ↗</a></td>
                                 <td style={{ ...tdL, color: '#888', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
                                 <td style={{ ...tdL, color: '#666' }}>{d.repercutir_a || '—'}</td>
                                 <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
@@ -1323,7 +1329,7 @@ export default function TerminosPage() {
                               <tbody>
                                 {descDelSucesor.map((d, i) => (
                                   <tr key={i} style={{ borderBottom: '1px solid #EDE7D9' }}>
-                                    <td style={{ ...tdL, color: '#8a6d3b', fontWeight: 700 }}>{d.num}</td>
+                                    <td style={{ ...tdL, fontWeight: 700 }}><a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#8a6d3b', textDecoration: 'none' }}>{d.num} ↗</a></td>
                                     <td style={{ ...tdL, color: '#a08a5b', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
                                     <td style={{ ...tdL, color: '#8a6d3b' }}>{d.repercutir_a || '—'}</td>
                                     <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
@@ -1359,7 +1365,7 @@ export default function TerminosPage() {
                           const totTotalMk = conMk.reduce((a, x) => a + x.m.total, 0)
                           return (
                             <div key={p.id} style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', marginBottom: 4 }}>{p.numero} · {p.descripcion || 'presupuesto'}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', marginBottom: 4 }}><a href={`${RUTA_PRESUPUESTOS}?codigo=${p.numero}`} title="Ver este presupuesto" style={{ color: '#185FA5', textDecoration: 'none' }}>{p.numero} ↗</a> · {p.descripcion || 'presupuesto'}</div>
                               {/* Presupuesto CON markup (precio al cliente) — el comunicable */}
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead><tr style={{ background: '#FAFAF8' }}><th style={th}>Descripción</th><th style={{ ...th, textAlign: 'right' }}>Cant</th><th style={{ ...th, textAlign: 'right' }}>Base</th><th style={{ ...th, textAlign: 'right' }}>IVA</th><th style={{ ...th, textAlign: 'right' }}>Total</th></tr></thead>

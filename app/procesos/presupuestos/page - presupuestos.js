@@ -1,6 +1,4 @@
 'use client'
-// VERSION: v9 · 2026-08-11 · DEEP-LINK: /procesos/presupuestos?codigo=Cxxx (o ?num=) abre ese presupuesto al
-//   cargar la lista (para enlazarlo desde la hoja del término). Aditivo, no cambia el resto. Hereda v8.
 // VERSION: v8 · 2026-08-07 · PDF + Email del presupuesto CON markup, desde la hoja (como en Términos). Botón "PDF con
 //   markup + email" disponible para cualquiera con acceso al proceso presupuestos (Adalis, Fabiola, Christian, Karina,
 //   Dirección). Llama a /api/presupuestos/pdf (markup por línea, Interno=0), abre el PDF en pestaña nueva y un borrador
@@ -25,7 +23,7 @@
 //   bloquear: es un recordatorio.
 // VERSION: v3 · 2026-07-20 · Al teclear el IDADMON (S/SQ/P/Q) autocompleta Ubicación+Propietario desde datos_arriendos (solo si vacíos), como ya hacía Q
 // VERSION: v2 · 2026-07-20 · Presupuestos para cualquier estado activo (S/SQ/P/Q, no solo Q): guarda estado_idadmon (foto de datos_arriendos al crear) + Nº de incidencia (incidencia_id) cuando el motivo es Incidencia; badge de estado del IDADMON.
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -126,21 +124,6 @@ export default function PresupuestosPage() {
 
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
   useEffect(() => { if (accesoOk === true) cargar() }, [accesoOk])
-
-  // Deep-link: /procesos/presupuestos?codigo=Cxxx (o ?num=) abre ese presupuesto al cargar la lista.
-  const deepCodeRef = useRef(null)
-  useEffect(() => {
-    try {
-      const sp = new URLSearchParams(window.location.search)
-      deepCodeRef.current = sp.get('codigo') || sp.get('num')
-    } catch { deepCodeRef.current = null }
-  }, [])
-  useEffect(() => {
-    const code = (deepCodeRef.current || '').trim().toUpperCase()
-    if (!code || !lista || lista.length === 0) return
-    const row = lista.find(r => String(r.numero || '').trim().toUpperCase() === code)
-    if (row) { editar(row); deepCodeRef.current = null }
-  }, [lista])
 
   async function cargar() {
     setLoading(true)
