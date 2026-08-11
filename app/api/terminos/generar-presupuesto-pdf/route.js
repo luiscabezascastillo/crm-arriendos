@@ -24,6 +24,8 @@ const KARINA_DIRECCION = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
   'karina.morales@fondocapital.com',
+  'adalis@fondocapital.com',
+  'fabiola.guerra@fondocapital.com',
 ]
 const BUCKET = 'presupuestos'
 const IVA = 0.19
@@ -35,7 +37,7 @@ export async function POST(req) {
   const email = session?.user?.email
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
   if (!KARINA_DIRECCION.includes(email)) {
-    return Response.json({ error: 'Solo Karina y Dirección pueden generar/enviar presupuestos.' }, { status: 403 })
+    return Response.json({ error: 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos.' }, { status: 403 })
   }
 
   let body

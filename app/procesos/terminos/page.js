@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v37 · 2026-08-11 · "Enviar Presupuesto" disponible también para Adalis y Fabiola (antes solo Karina +
+//   Dirección). El PDF del presupuesto muestra precio final (nunca el markup). Se acompaña del rediseño profesional
+//   del PDF de presupuesto (lib/pdfPresupuesto v2) y del gate ampliado en generar-presupuesto-pdf. Hereda v36.
 // VERSION: v36 · 2026-08-11 · Panel de RECLAMACIÓN mejorado: colores profesionales (slate, no rojo agresivo), sin el
 //   hueco vacío de la derecha (tarjeta acotada), campo CCO (copia oculta) además de CC, botón de PRUEBA a tu correo
 //   sin enviar a nadie, y DOBLE confirmación antes del envío real. Requiere enviar-reclamacion v2 + cc1Email v5 (bcc).
@@ -530,7 +533,7 @@ export default function TerminosPage() {
   // Enviar Presupuesto: genera el PDF (descargable) y abre los borradores de email con el enlace añadido.
   // Gate real en el endpoint (solo Karina + Dirección); aquí se refuerza con puedeVerMarkup.
   async function generarYEnviarPresupuesto() {
-    if (!puedeVerMarkup) return
+    if (!puedeTerminoDocs) return
     setPresuGen(true); setMsg(null)
     try {
       const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
@@ -972,9 +975,9 @@ export default function TerminosPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
-            <button onClick={puedeVerMarkup ? generarYEnviarPresupuesto : undefined} disabled={!puedeVerMarkup || presuGen}
-              title={puedeVerMarkup ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Karina y Dirección pueden generar/enviar presupuestos'}
-              style={btn('#7c3aed', !puedeVerMarkup || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
+            <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen}
+              title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
+              style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
             <button onClick={puedeTerminoDocs ? generarPdfTerminoBtn : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
               title={puedeTerminoDocs ? 'Genera el PDF profesional del término para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF del término'}
               style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? 'Generando…' : '🧾 Ver PDF del término'}</button>
