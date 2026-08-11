@@ -1,3 +1,5 @@
+// VERSION: v5 · 2026-08-11 · Botón "🧾 Ver hoja del término →" (enlaza a /procesos/terminos?id=IDADMON, la hoja
+//   real con garantía/servicios/reparaciones/markup/resultado). El resto igual. Hereda v4.
 // VERSION: v4 · 2026-07-12 · app/procesos/terminos/[idadmon]/page.js
 //   Se ELIMINA el "Grafo de dependencias" antiguo (GrafoTermino) — lo sustituyen las bandas.
 //   Vista del término por las 7 ETAPAS (0-6) del modelo desplegado en B2.2:
@@ -155,8 +157,16 @@ export default async function TerminoPage({ params }) {
 
   return (
     <main style={{ padding: 24, fontFamily: '"DM Sans", system-ui, sans-serif' }}>
-      <h1 style={{ marginBottom: 2 }}>Workflow de término</h1>
-      <h2 style={{ marginTop: 0, color: "#495057" }}>IDADMON: {idadmon}</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <h1 style={{ marginBottom: 2 }}>Workflow de término</h1>
+          <h2 style={{ marginTop: 0, color: "#495057" }}>IDADMON: {idadmon}</h2>
+        </div>
+        <a href={`/procesos/terminos?id=${idadmon}`}
+          style={{ background: "#0C447C", color: "#fff", textDecoration: "none", padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+          🧾 Ver hoja del término →
+        </a>
+      </div>
 
       {/* Reloj de 45 días */}
       <section style={{ background: "#fff", border: "1px solid #dee2e6", borderRadius: 12, padding: 16, margin: "12px 0" }}>

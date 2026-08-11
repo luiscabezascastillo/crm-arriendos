@@ -1,6 +1,4 @@
 'use client'
-// VERSION: v41 · 2026-08-11 · DEEP-LINK: si la URL trae ?id=IDADMON, abre esa hoja directamente al cargar
-//   (para enlazar la "Hoja de término" desde Alertas y desde el Reloj). Aditivo, no cambia la lista. Hereda v40.
 // VERSION: v40 · 2026-08-11 · REDISEÑO de los botones y del correo. Se sustituyen TODOS los botones de envío por TRES
 //   acciones, cada una con UN panel único de correo (sin abrir PDFs en pestañas que rompían la navegación):
 //   "✉ Email y PDF arrendatario" (PDF adjunto; si hay saldo, texto de pago + DATOS DE BANCO INTERNACIONAL y abre la
@@ -275,15 +273,6 @@ export default function TerminosPage() {
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
   useEffect(() => { if (accesoOk === true) { cargarLista(); cargarNodos() } }, [accesoOk])
-  // Deep-link: /procesos/terminos?id=IDADMON abre esa hoja directamente (enlace desde Alertas / Reloj).
-  useEffect(() => {
-    if (accesoOk !== true) return
-    try {
-      const id = new URLSearchParams(window.location.search).get('id')
-      if (id) abrir(id)
-    } catch { /* noop */ }
-    // eslint-disable-next-line
-  }, [accesoOk])
 
   async function completarPaso(nodo) {
     if (!nodo) return
