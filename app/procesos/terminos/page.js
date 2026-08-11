@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v38 · 2026-08-11 · FASE 2 — EXCLUSIÓN AL PROPIETARIO: cada línea (garantía/servicios/reparaciones) tiene un
+//   tick "🚫 Excl. prop." que la marca para NO incluirla en la liquidación del propietario (p.ej. la deuda de arriendo,
+//   que no se le abonó). Se guarda en termino_lineas.excluir_propietario. El botón del PDF se desdobla en "🧾 PDF
+//   arrendatario" (todo) y "🧾 PDF propietario" (excluye las marcadas y RECALCULA su resultado, sin nota). Requiere el
+//   SQL: alter table termino_lineas add column excluir_propietario. Hereda v37.
 // VERSION: v37 · 2026-08-11 · "Enviar Presupuesto" disponible también para Adalis y Fabiola (antes solo Karina +
 //   Dirección). El PDF del presupuesto muestra precio final (nunca el markup). Se acompaña del rediseño profesional
 //   del PDF de presupuesto (lib/pdfPresupuesto v2) y del gate ampliado en generar-presupuesto-pdf. Hereda v36.
@@ -404,13 +409,13 @@ export default function TerminosPage() {
           // guardó un valor propio (override), se usa ese; si no, arranca con el del presupuesto.
           // No se toca el presupuesto: solo el importe de esta línea de la liquidación.
           const montoInit = (sv && sv.monto != null && sv.monto !== '') ? sv.monto : repPresu
-          out.push({ concepto, monto: montoInit, comentario: sv?.comentario || '', ref: sv?.ref || arreglosRef, es_fijo: true, auto: false })
+          out.push({ concepto, monto: montoInit, comentario: sv?.comentario || '', ref: sv?.ref || arreglosRef, es_fijo: true, auto: false, excluir_prop: !!sv?.excluir_propietario })
           return
         }
         const sv = saved.find(s => s.bloque === bk && s.concepto === concepto && s.es_fijo)
-        out.push({ concepto, monto: sv ? sv.monto : '', comentario: sv?.comentario || '', ref: sv?.ref || '', es_fijo: true, auto: false })
+        out.push({ concepto, monto: sv ? sv.monto : '', comentario: sv?.comentario || '', ref: sv?.ref || '', es_fijo: true, auto: false, excluir_prop: !!sv?.excluir_propietario })
       })
-      saved.filter(s => s.bloque === bk && !s.es_fijo).forEach(s => out.push({ concepto: s.concepto || '', monto: s.monto ?? '', comentario: s.comentario || '', ref: s.ref || '', es_fijo: false, auto: false }))
+      saved.filter(s => s.bloque === bk && !s.es_fijo).forEach(s => out.push({ concepto: s.concepto || '', monto: s.monto ?? '', comentario: s.comentario || '', ref: s.ref || '', es_fijo: false, auto: false, excluir_prop: !!s.excluir_propietario }))
       return out
     }
     const L = { garantia: buildBloque('garantia'), servicios: buildBloque('servicios'), reparaciones: buildBloque('reparaciones') }
@@ -495,7 +500,7 @@ export default function TerminosPage() {
         const keep = l.auto || monto !== 0 || (l.comentario && l.comentario.trim()) || (l.ref && l.ref.trim()) || !l.es_fijo
         if (!keep) return
         if (!l.es_fijo && !(l.concepto && l.concepto.trim()) && monto === 0) return // linea añadida vacia
-        rows.push({ idadmon: idadmonSel, bloque: bk, concepto: l.concepto || '(sin concepto)', monto, comentario: l.comentario || null, ref, orden: idx, es_fijo: l.es_fijo })
+        rows.push({ idadmon: idadmonSel, bloque: bk, concepto: l.concepto || '(sin concepto)', monto, comentario: l.comentario || null, ref, orden: idx, es_fijo: l.es_fijo, excluir_propietario: !!l.excluir_prop })
       })
     })
 
@@ -856,11 +861,20 @@ export default function TerminosPage() {
   // ── PDF profesional del término ──────────────────────────────────────────
   // Arma el documento con los MISMOS datos que se ven en pantalla (líneas, resultado, descuentos ya filtrados
   // a "cercanos al cierre") y lo abre para revisarlo. Solo Karina + Dirección (muestra presupuesto a precio cliente).
-  async function generarPdfTerminoBtn() {
+  async function generarPdfTerminoBtn(variante = 'arrendatario') {
     if (!puedeTerminoDocs || !panel) return
     setPdfTermGen(true); setMsg(null)
     try {
+      const esProp = variante === 'propietario'
       const mkDef = (() => { const v = n0(form?.markup_fcr); return v > 0 ? v : 20 })()
+      // Versión del PROPIETARIO: se EXCLUYEN las líneas marcadas (🚫 excluir_prop) y se recalcula su resultado.
+      const inc = l => !(esProp && l.excluir_prop)
+      const lg = (lineas.garantia || []).filter(inc)
+      const ls = (lineas.servicios || []).filter(inc)
+      const lr = (lineas.reparaciones || []).filter(inc)
+      const Rv = calcResult({ garantia: lg, servicios: ls, reparaciones: lr }, 0, garantiaVal, repPresu, quienGar)
+      // La AUTO ("Arreglos presupuesto") representa el presupuesto: si el propietario la excluye, no se muestra su detalle.
+      const autoIncluida = lr.some(l => l.concepto === AUTO_CONCEPTO)
       const datos = {
         idadmon: idadmonSel,
         inmueble: A?.inmueble || '',
@@ -868,41 +882,26 @@ export default function TerminosPage() {
         propietario: A?.propietario || '',
         fechaEntrega: form?.fecha_entrega ? fmtFecha(form.fecha_entrega) : '',
         garantia: { monto: garantiaVal, quien: quienGar },
-        resultado: { tipo: R?.tipo || '', valor: R?.resultado || 0, label: (R?.resultado ?? 0) >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
-        datosEconomicos: (lineas.garantia || []).map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-        servicios: (lineas.servicios || []).map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        resultado: { tipo: Rv?.tipo || '', valor: Rv?.resultado || 0, label: (Rv?.resultado ?? 0) >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
+        datosEconomicos: lg.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        servicios: ls.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
         reparaciones: {
-          total: R?.sr || 0,
-          // Se excluye la línea AUTO del bloque ("Arreglos presupuesto"): la representa el presupuesto en el PDF,
-          // así no se repite el importe. Aquí quedan solo las OTRAS reparaciones (extras) con importe.
-          lineas: (lineas.reparaciones || []).filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-          presupuesto: { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) },
+          total: Rv?.sr || 0,
+          lineas: lr.filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+          presupuesto: autoIncluida ? { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) } : { total: 0, detalle: [] },
         },
         // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
         descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
       }
       const res = await fetch('/api/terminos/generar-termino-pdf', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, datos }),
+        body: JSON.stringify({ idadmon: idadmonSel, datos, variante }),
       })
       const data = await res.json()
       if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
       const url = data.pdf_url || null
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
-      setMsg({ tipo: 'ok', txt: url ? 'PDF del término generado (abierto en otra pestaña para revisarlo). Si está bien, pulsa "Enviar Email" para mandarlo con el enlace; si no, corrige, guarda y regenera.' : 'PDF generado.' })
-      // Enganchar el enlace del PDF a los borradores de email (como en Presupuesto).
-      if (url) {
-        await abrirBorradores()
-        setEmailPanel(p => {
-          if (!p || !p.drafts) return p
-          const nd = {}
-          for (const k of Object.keys(p.drafts)) {
-            const dd = p.drafts[k]; const cuerpo = dd.cuerpo || ''
-            nd[k] = { ...dd, cuerpo: cuerpo.includes(url) ? cuerpo : (cuerpo + `\n\nLiquidacion del termino (PDF): ${url}`) }
-          }
-          return { ...p, drafts: nd }
-        })
-      }
+      setMsg({ tipo: 'ok', txt: url ? `PDF ${esProp ? 'del PROPIETARIO (sin las líneas marcadas)' : 'del arrendatario'} generado — abierto en otra pestaña para revisarlo.` : 'PDF generado.' })
     } catch (e) {
       setMsg({ tipo: 'error', txt: String(e?.message || e) })
     } finally {
@@ -935,7 +934,7 @@ export default function TerminosPage() {
         {subtitulo && <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 8 }}>{subtitulo}</div>}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>
-            <th style={th}>Concepto</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentarios</th><th style={th}>Ref</th>{editando && <th style={{ width: 18 }}></th>}
+            <th style={th}>Concepto</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={th}>Comentarios</th><th style={th}>Ref</th><th style={{ ...th, width: 58, textAlign: 'center' }} title="Excluir esta línea de la liquidación del PROPIETARIO">Excl. prop.</th>{editando && <th style={{ width: 18 }}></th>}
           </tr></thead>
           <tbody>
             {rows.filter(l => editando || !l.es_fijo || l.auto || n0(l.monto) !== 0 || (l.comentario && l.comentario.trim()) || (l.ref && String(l.ref).trim())).map((l, idx0) => {
@@ -946,6 +945,11 @@ export default function TerminosPage() {
                 <td style={tdR}>{l.auto ? fmtPesos(repPresu) : (editando ? <input style={inNum} type="number" value={l.monto} onChange={e => setLinea(bk, idx, 'monto', e.target.value)} /> : fmtPesos(n0(l.monto)))}</td>
                 <td style={tdL}>{editando ? <input style={{ ...inEd, fontSize: 11 }} value={l.comentario} onChange={e => setLinea(bk, idx, 'comentario', e.target.value)} /> : (l.comentario || '')}</td>
                 <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? ('Pres. ' + arreglosRef) : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : (l.ref || ''))}</td>
+                <td style={{ textAlign: 'center', width: 58 }}>
+                  {editando
+                    ? <input type="checkbox" checked={!!l.excluir_prop} onChange={e => setLinea(bk, idx, 'excluir_prop', e.target.checked)} title="No incluir esta línea en el PDF/correo del propietario" />
+                    : (l.excluir_prop ? <span title="Excluida de la liquidación del propietario" style={{ color: '#b45309', fontSize: 12 }}>🚫</span> : '')}
+                </td>
                 {editando && <td style={{ textAlign: 'center' }}>{!l.es_fijo ? <button onClick={() => removeLinea(bk, idx)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button> : null}</td>}
               </tr>
               )
@@ -978,9 +982,12 @@ export default function TerminosPage() {
             <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen}
               title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
               style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
-            <button onClick={puedeTerminoDocs ? generarPdfTerminoBtn : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
-              title={puedeTerminoDocs ? 'Genera el PDF profesional del término para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF del término'}
-              style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? 'Generando…' : '🧾 Ver PDF del término'}</button>
+            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('arrendatario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
+              title={puedeTerminoDocs ? 'PDF de la liquidación para el ARRENDATARIO (todas las líneas)' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
+              style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF arrendatario'}</button>
+            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('propietario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
+              title={puedeTerminoDocs ? 'PDF para el PROPIETARIO — excluye las líneas marcadas con 🚫 y recalcula su resultado' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
+              style={btn('#0e7490', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF propietario'}</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
             <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>

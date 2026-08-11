@@ -44,7 +44,8 @@ export async function POST(req) {
     return Response.json({ error: 'No se pudo generar el PDF: ' + e.message }, { status: 500 })
   }
 
-  const path = `termino-${String(idadmon).replace(/[^\w-]/g, '')}-${randomUUID()}.pdf`
+  const vTag = String(body?.variante || '').toLowerCase() === 'propietario' ? 'prop' : 'arr'
+  const path = `termino-${vTag}-${String(idadmon).replace(/[^\w-]/g, '')}-${randomUUID()}.pdf`
   const up = await supabaseAdmin.storage.from(BUCKET).upload(path, Buffer.from(bytes), { upsert: true, contentType: 'application/pdf' })
   if (up.error) return Response.json({ error: 'No se pudo subir el PDF: ' + up.error.message }, { status: 500 })
   const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
