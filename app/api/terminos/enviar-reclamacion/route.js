@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-11 · ADJUNTOS: admite `adjuntos` = [{ url, nombre }] para adjuntar el PDF definitivo de la
+//   liquidación del arrendatario a la reclamación. Se validan contra nuestro bucket público de Supabase (nodemailer
+//   descarga el `path` en el servidor). Funciona también en modo PRUEBA. Hereda v2.
 // VERSION: v2 · 2026-08-11 · MODO PRUEBA (test:true): manda la reclamación SOLO a `toTest` (o al que envía), con
 //   "[PRUEBA]" en el asunto, sin abrir solicitud, sin histórico y sin comprobaciones — para verla sin enviar a nadie.
 //   Además admite `bcc` (copia oculta/CCO) en el envío real. Hereda v1 (cc aval + administración@, solicitud, histórico).
@@ -18,6 +21,23 @@ import { enviarNotificacion } from '../../../../lib/cc1Email'
 const DIRECCION = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const ADMIN_CC = 'administracion@fondocapital.com'
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
+
+// Solo adjuntos alojados en NUESTRO bucket público de Supabase (los PDF que genera el propio CRM).
+const STORAGE_PREFIX = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/+$/, '') + '/storage/v1/object/public/'
+function construirAdjuntos(adjuntos) {
+  if (!Array.isArray(adjuntos) || !adjuntos.length) return { list: null, error: null }
+  const list = []
+  for (const a of adjuntos) {
+    const url = String(a?.url || a?.path || '').trim()
+    if (!url) continue
+    if (!/^https:\/\//i.test(url) || (STORAGE_PREFIX.length > 30 && !url.startsWith(STORAGE_PREFIX))) {
+      return { list: null, error: 'Adjunto no permitido (debe ser un PDF generado por el CRM): ' + url }
+    }
+    const nombre = String(a?.nombre || a?.filename || 'documento.pdf').replace(/[^\w.\- ]/g, '').trim() || 'documento.pdf'
+    list.push({ filename: /\.pdf$/i.test(nombre) ? nombre : nombre + '.pdf', path: url })
+  }
+  return { list: list.length ? list : null, error: null }
+}
 const fmtFecha = s => {
   if (!s) return '—'
   const m = String(s).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/)
@@ -46,16 +66,18 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { idadmon, to, cc, bcc, subject, cuerpo, forzar, test, toTest } = body || {}
+  const { idadmon, to, cc, bcc, subject, cuerpo, forzar, test, toTest, adjuntos } = body || {}
   if (!idadmon || !subject || !cuerpo) {
     return Response.json({ error: 'Faltan datos (idadmon, subject, cuerpo)' }, { status: 400 })
   }
+  const { list: attachments, error: advErr } = construirAdjuntos(adjuntos)
+  if (advErr) return Response.json({ error: advErr }, { status: 400 })
 
   // MODO PRUEBA: solo a la dirección de prueba (o al que envía). No abre solicitud, no deja histórico, sin duplicados.
   if (test) {
     const toFinal = (toTest && /@/.test(String(toTest))) ? String(toTest).trim() : email
     if (!/@/.test(String(toFinal))) return Response.json({ error: 'Correo de prueba no válido: ' + toFinal }, { status: 400 })
-    const rp = await enviarNotificacion({ subject: '[PRUEBA] ' + subject, to: toFinal, cuerpo, autor: email })
+    const rp = await enviarNotificacion({ subject: '[PRUEBA] ' + subject, to: toFinal, cuerpo, autor: email, attachments })
     if (!rp.ok) return Response.json({ error: 'No se pudo enviar la prueba: ' + (rp.error || 'error') }, { status: 500 })
     return Response.json({ ok: true, enviadoA: toFinal, test: true })
   }
@@ -91,7 +113,7 @@ export async function POST(req) {
   const ccList = [String(cc || '').trim(), ADMIN_CC].filter(Boolean).join(', ')
   const bccList = String(bcc || '').trim() || undefined
 
-  const r = await enviarNotificacion({ subject, to, cc: ccList, bcc: bccList, cuerpo, autor: email })
+  const r = await enviarNotificacion({ subject, to, cc: ccList, bcc: bccList, cuerpo, autor: email, attachments })
   if (!r.ok) return Response.json({ error: 'No se pudo enviar: ' + (r.error || 'error desconocido') }, { status: 500 })
 
   const esReenvio = !!yaAbierta
@@ -114,7 +136,7 @@ export async function POST(req) {
     estado_anterior: null, estado_nuevo: null,
     fecha: new Date().toISOString().slice(0, 10),
     usuario: email, email_subject: subject,
-    detalle: `Reclamación a ${to}${cc ? ' (cc ' + cc + ')' : ''} · saldo $${saldo.toLocaleString('es-CL')}`,
+    detalle: `Reclamación a ${to}${cc ? ' (cc ' + cc + ')' : ''} · saldo $${saldo.toLocaleString('es-CL')}` + (attachments ? ' · ' + attachments.length + ' adjunto(s): ' + attachments.map(a => a.filename).join(', ') : ''),
   }])
 
   return Response.json({ ok: true, enviadoA: to, saldo, reenvio: esReenvio })

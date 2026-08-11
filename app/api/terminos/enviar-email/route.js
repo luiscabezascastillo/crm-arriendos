@@ -1,12 +1,11 @@
-// VERSION: v2 · 2026-08-11 · app/api/terminos/enviar-email/route.js
-//   Envía el email de liquidación de término. NOVEDADES v2:
-//   · MODO PRUEBA (test:true): va SOLO a la dirección `toTest` que elija quien envía (o a su propio correo),
-//     con "[PRUEBA]" en el asunto, SIN copia y SIN dejar constancia en histórico. Sirve para ver ambas visiones
-//     (arrendatario/propietario) sin tocar al destinatario real.
-//   · COPIA AL AVAL: en el correo real del ARRENDATARIO se añade en copia el email del aval (si lo hay).
-//   · Pueden enviar: Dirección + Karina + Adalis + Fabiola (Administración, nodos N16/N17), o quien participe
-//     activamente en el proceso de término.
-//   El "quién" (autor/replyTo) sale SIEMPRE de la sesión del servidor. Hereda v1 (cc administración@, histórico).
+// VERSION: v3 · 2026-08-11 · app/api/terminos/enviar-email/route.js
+//   NOVEDAD v3: ADJUNTOS. Admite `adjuntos` = [{ url, nombre }] para adjuntar al correo los PDF definitivos
+//   ya generados (liquidación del arrendatario / del propietario, presupuesto). Se validan CONTRA nuestro
+//   bucket público de Supabase (evita que se cuele una URL externa: nodemailer descarga el `path` en el
+//   servidor). Funciona igual en modo PRUEBA (para ver el adjunto antes de enviarlo de verdad). Hereda v2.
+//   v2: MODO PRUEBA (test:true) a `toTest`, "[PRUEBA]" en asunto, sin copia ni histórico; COPIA AL AVAL en el
+//   correo real del ARRENDATARIO; pueden enviar Dirección + Karina + Adalis + Fabiola o quien participe en el
+//   proceso. El "quién" (autor/replyTo) sale SIEMPRE de la sesión. Hereda v1 (cc administración@, histórico).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
@@ -16,6 +15,24 @@ const DIRECCION = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapita
 const ADMIN_CC = 'administracion@fondocapital.com'
 // Administración (nodos N16/N17) y Finanzas: pueden enviar los correos de liquidación de término.
 const ENVIADORES_EXTRA = ['karina.morales@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+
+// Solo se admiten adjuntos alojados en NUESTRO bucket público de Supabase (los PDF que genera el propio CRM).
+// nodemailer descarga el `path` en el servidor, así que restringimos el origen para no exponerlo a URLs externas.
+const STORAGE_PREFIX = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/+$/, '') + '/storage/v1/object/public/'
+function construirAdjuntos(adjuntos) {
+  if (!Array.isArray(adjuntos) || !adjuntos.length) return { list: null, error: null }
+  const list = []
+  for (const a of adjuntos) {
+    const url = String(a?.url || a?.path || '').trim()
+    if (!url) continue
+    if (!/^https:\/\//i.test(url) || (STORAGE_PREFIX.length > 30 && !url.startsWith(STORAGE_PREFIX))) {
+      return { list: null, error: 'Adjunto no permitido (debe ser un PDF generado por el CRM): ' + url }
+    }
+    const nombre = String(a?.nombre || a?.filename || 'documento.pdf').replace(/[^\w.\- ]/g, '').trim() || 'documento.pdf'
+    list.push({ filename: /\.pdf$/i.test(nombre) ? nombre : nombre + '.pdf', path: url })
+  }
+  return { list: list.length ? list : null, error: null }
+}
 
 async function puedeEnviar(email) {
   if (DIRECCION.includes(email) || ENVIADORES_EXTRA.includes(email)) return true
@@ -36,7 +53,7 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { idadmon, destinatario, to, subject, cuerpo, test, toTest } = body || {}
+  const { idadmon, destinatario, to, subject, cuerpo, test, toTest, adjuntos } = body || {}
   if (!idadmon || !subject || !cuerpo) {
     return Response.json({ error: 'Faltan datos (idadmon, subject, cuerpo)' }, { status: 400 })
   }
@@ -44,6 +61,8 @@ export async function POST(req) {
     return Response.json({ error: 'destinatario no válido' }, { status: 400 })
   }
   const esPrueba = !!test
+  const { list: attachments, error: advErr } = construirAdjuntos(adjuntos)
+  if (advErr) return Response.json({ error: advErr }, { status: 400 })
 
   // Destinatario final + copias
   let toFinal, ccFinal = null, subjectFinal = subject
@@ -64,7 +83,7 @@ export async function POST(req) {
   }
   if (!/@/.test(String(toFinal))) return Response.json({ error: 'Email de envío no válido: ' + toFinal }, { status: 400 })
 
-  const r = await enviarNotificacion({ subject: subjectFinal, to: toFinal, cc: ccFinal, cuerpo, autor: email })
+  const r = await enviarNotificacion({ subject: subjectFinal, to: toFinal, cc: ccFinal, cuerpo, autor: email, attachments })
   if (!r.ok) return Response.json({ error: 'No se pudo enviar: ' + (r.error || 'error desconocido') }, { status: 500 })
 
   // Constancia SOLO en envío real (las pruebas no dejan rastro).
@@ -76,7 +95,7 @@ export async function POST(req) {
       estado_anterior: null, estado_nuevo: null,
       fecha: new Date().toISOString().slice(0, 10),
       usuario: email, email_subject: subject,
-      detalle: 'Enviado a ' + toFinal + (ccTxt ? ' (cc ' + ccTxt + ')' : ''),
+      detalle: 'Enviado a ' + toFinal + (ccTxt ? ' (cc ' + ccTxt + ')' : '') + (attachments ? ' · ' + attachments.length + ' adjunto(s): ' + attachments.map(a => a.filename).join(', ') : ''),
     }])
   }
 
