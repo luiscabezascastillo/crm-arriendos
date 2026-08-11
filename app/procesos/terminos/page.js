@@ -1,4 +1,12 @@
 'use client'
+// VERSION: v40 · 2026-08-11 · REDISEÑO de los botones y del correo. Se sustituyen TODOS los botones de envío por TRES
+//   acciones, cada una con UN panel único de correo (sin abrir PDFs en pestañas que rompían la navegación):
+//   "✉ Email y PDF arrendatario" (PDF adjunto; si hay saldo, texto de pago + DATOS DE BANCO INTERNACIONAL y abre la
+//   reclamación en Cobros; si sale a favor, texto de DEVOLUCIÓN + aviso de registrarla en Descuentos), "✉ Email y PDF
+//   propietario" (informativo, excluye líneas 🚫) y "✉ Email presupuesto" (destinatario a elegir). Todos con Para/CC/CCO,
+//   prueba y APROBACIÓN visual antes del envío. "Cambiar estado" se OCULTA a Adalis y Fabiola. "Editar" deja constancia
+//   de quién editó (historico_idadmon). Textos estándar nuevos (borrador-email v2). Endpoints: borrador-email v2,
+//   enviar-email v4 (CC/CCO del cliente), enviar-reclamacion v3. Hereda v39.
 // VERSION: v39 · 2026-08-11 · ENVÍO DE LOS PDF DEFINITIVOS: los botones "✉ Enviar Email" y "Hacer Reclamación" ahora
 //   permiten ADJUNTAR el PDF definitivo (sin marca de borrador) al correo, con doble confirmación y prueba previa.
 //   · Enviar Email: cada borrador (ex-arrendatario / propietario) puede adjuntar su liquidación (la del propietario
@@ -252,12 +260,10 @@ export default function TerminosPage() {
   const [form, setForm] = useState(FORM_T)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
-  const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
-  const [pdfTermGen, setPdfTermGen] = useState(false)   // generando el PDF profesional del término
   const [testTo, setTestTo] = useState('')              // dirección para envíos de PRUEBA (por defecto, la del usuario)
   const [completandoWf, setCompletandoWf] = useState(false)
-  const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
-  const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
+  // Panel ÚNICO de correo (sustituye a emailPanel/reclamPanel/presupuesto). modo: 'arrendatario'|'propietario'|'presupuesto'.
+  const [mailPanel, setMailPanel] = useState(null)
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -538,181 +544,94 @@ export default function TerminosPage() {
         .update({ termino_actual: form.fecha_entrega }).eq('idadmon', idadmonSel)
       if (upDA.error) { setMsg({ tipo: 'error', txt: 'Guardado el término, pero no se pudo actualizar la fecha en LOG: ' + upDA.error.message }); setGuardando(false); return }
     }
+    // Constancia de quién editó el término (auditoría). No rompe el guardado si falla.
+    try {
+      await supabase.from('historico_idadmon').insert([{
+        idadmon: idadmonSel, evento: 'termino_editado',
+        estado_anterior: null, estado_nuevo: null,
+        fecha: new Date().toISOString().slice(0, 10),
+        usuario: email, email_subject: null,
+        detalle: 'Editó la liquidación del término (resultado ' + fmtPesos(R.resultado) + ')',
+      }])
+    } catch (_) { /* la auditoría no debe bloquear el guardado */ }
     setEditando(false); setGuardando(false); setMsg({ tipo: 'ok', txt: 'Guardado.' })
   }
 
-  // ── Borradores de email (notificación de liquidación, N16/N17) ──
-  // Enviar Presupuesto: genera el PDF (descargable) y abre los borradores de email con el enlace añadido.
-  // Gate real en el endpoint (solo Karina + Dirección); aquí se refuerza con puedeVerMarkup.
-  async function generarYEnviarPresupuesto() {
+  // ── Panel ÚNICO de correo del término ──────────────────────────────────────────────────────────
+  // Un solo flujo para las tres acciones: 'arrendatario' (con PDF; si hay saldo, invita a pagar y abre la
+  // solicitud en Cobros; si sale a favor, texto de devolución), 'propietario' (con PDF, informativo) y
+  // 'presupuesto' (con PDF del presupuesto; destinatario a elegir). Todo con CC/CCO, prueba y doble
+  // confirmación. El PDF se adjunta SOLO (definitivo, sin borrador); "Ver PDF" lo abre sin cerrar el panel.
+  async function abrirMail(modo) {
     if (!puedeTerminoDocs) return
-    setPresuGen(true); setMsg(null)
+    setTestTo(prev => prev || session?.user?.email || '')
+    setMailPanel({ modo, loading: true, error: null, adjunto: null, adjuntando: true })
+    // 1. Texto + destinatarios (borrador-email v2)
+    let base
     try {
-      const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
+      const res = await fetch('/api/terminos/borrador-email', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel }),
+        body: JSON.stringify({ idadmon: idadmonSel, destinatario: modo }),
       })
-      const data = await res.json()
-      if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
-      const url = data.pdf_url || null
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')   // PDF descargable en pestaña nueva
-      setMsg({ tipo: 'ok', txt: url ? 'PDF del presupuesto generado (abierto en otra pestaña para revisarlo). Abajo tienes el email con el PDF YA ADJUNTO, listo para enviar.' : 'Presupuesto generado.' })
-      // Abrir los borradores de email y ADJUNTAR el PDF del presupuesto a cada uno (adjunto real, no un enlace).
-      await abrirBorradores()
-      if (url) {
-        setEmailPanel(p => {
-          if (!p || !p.drafts) return p
-          const nd = {}
-          for (const k of Object.keys(p.drafts)) {
-            const d = p.drafts[k]; const prev = (d.adjuntos || []).filter(a => a.tipo !== 'presupuesto')
-            nd[k] = { ...d, adjuntos: [...prev, { url, nombre: `Presupuesto-${idadmonSel}.pdf`, tipo: 'presupuesto' }] }
-          }
-          return { ...p, drafts: nd }
-        })
-      }
-    } catch (e) {
-      setMsg({ tipo: 'error', txt: String(e?.message || e) })
-    } finally {
-      setPresuGen(false)
-    }
+      base = await res.json()
+      if (!res.ok || base.error) { setMailPanel({ modo, loading: false, error: base.error || ('Error ' + res.status) }); return }
+    } catch (e) { setMailPanel({ modo, loading: false, error: String(e?.message || e) }); return }
+    const aFavor = !!base.aFavor
+    const esCobro = modo === 'arrendatario' && !aFavor   // saldo en contra del arrendatario → va por Cobros
+    setMailPanel({
+      modo, loading: false, error: null,
+      to: base.to || '', cc: base.cc || '', bcc: '',
+      subject: base.subject || '', cuerpo: base.cuerpo || '',
+      saldo: n0(base.saldo), aFavor, esCobro, sinEmail: !!base.sinEmail,
+      contactos: base.contactos || {},
+      adjunto: null, adjuntando: true, adjuntoError: null,
+      pruebaMsg: null, enviando: false, enviado: false, confirmando: false, reenvio: false, yaAbierta: false,
+    })
+    // 2. Generar y ADJUNTAR el PDF definitivo que corresponde (arrendatario/propietario → término; presupuesto → presupuesto)
+    const r = modo === 'presupuesto' ? await pedirPdfPresupuesto() : await pedirPdfTermino(modo)
+    setMailPanel(p => (p && p.modo === modo)
+      ? ({ ...p, adjuntando: false, adjunto: r.ok ? { url: r.url, nombre: r.nombre } : null, adjuntoError: r.ok ? null : r.error })
+      : p)
   }
+  const setMail = (field, v) => setMailPanel(p => p ? ({ ...p, [field]: v }) : p)
 
-  async function abrirBorradores() {
-    setEmailPanel({ loading: true, drafts: {} })
-    setTestTo(prev => prev || session?.user?.email || '')   // por defecto, las pruebas van a mi propio correo
-    const dests = ['arrendatario', 'propietario']
-    const drafts = {}
-    for (const d of dests) {
-      try {
-        const res = await fetch('/api/terminos/borrador-email', {
+  // Envío. { test:true } manda una PRUEBA a `testTo` (no toca a nadie real, no deja rastro, no abre Cobros).
+  // El envío REAL solo se dispara desde "✓ Confirmar y enviar". Ruta real: cobro al arrendatario → enviar-reclamacion
+  // (abre la solicitud en Cobros); el resto → enviar-email.
+  async function enviarMail({ test = false, forzar = false } = {}) {
+    const p = mailPanel
+    if (!p) return
+    const destino = test ? String(testTo || '').trim() : String(p.to || '').trim()
+    if (!destino || !/@/.test(destino)) { setMail('error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
+    if (!p.subject || !p.cuerpo) { setMail('error', 'Falta asunto o cuerpo.'); return }
+    setMailPanel(s => s ? ({ ...s, enviando: true, error: null, pruebaMsg: null }) : s)
+    const adjuntos = p.adjunto ? [{ url: p.adjunto.url, nombre: p.adjunto.nombre }] : []
+    const usarReclamacion = !test && p.esCobro
+    try {
+      let res
+      if (usarReclamacion) {
+        res = await fetch('/api/terminos/enviar-reclamacion', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idadmon: idadmonSel, destinatario: d }),
+          body: JSON.stringify({ idadmon: idadmonSel, to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject, cuerpo: p.cuerpo, forzar, adjuntos }),
         })
-        const data = await res.json()
-        drafts[d] = (res.ok && !data.error)
-          ? { to: data.to || '', subject: data.subject || '', cuerpo: data.cuerpo || '', sinEmail: !!data.sinEmail, error: null, enviando: false, enviado: false, adjuntos: [], adjuntando: false }
-          : { to: '', subject: '', cuerpo: '', sinEmail: true, error: data.error || ('Error ' + res.status), enviando: false, enviado: false, adjuntos: [], adjuntando: false }
-      } catch (e) {
-        drafts[d] = { to: '', subject: '', cuerpo: '', sinEmail: true, error: e.message, enviando: false, enviado: false, adjuntos: [], adjuntando: false }
-      }
-    }
-    setEmailPanel({ loading: false, drafts })
-  }
-  const setDraft = (dest, field, v) => setEmailPanel(p => p ? ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], [field]: v } } }) : p)
-  // Adjunta al borrador el PDF definitivo (liquidación de su variante, o presupuesto). No se sustituye el mismo tipo dos veces.
-  async function adjuntarAlBorrador(dest, tipo) {
-    if (!puedeTerminoDocs) return
-    setDraft(dest, 'adjuntando', true); setDraft(dest, 'error', null)
-    try {
-      const r = tipo === 'presupuesto'
-        ? await pedirPdfPresupuesto()
-        : await pedirPdfTermino(dest === 'propietario' ? 'propietario' : 'arrendatario')
-      if (!r.ok) { setDraft(dest, 'error', r.error); return }
-      setEmailPanel(p => {
-        if (!p || !p.drafts) return p
-        const d = p.drafts[dest]; const prev = (d.adjuntos || []).filter(a => a.tipo !== tipo)
-        return { ...p, drafts: { ...p.drafts, [dest]: { ...d, adjuntos: [...prev, { url: r.url, nombre: r.nombre, tipo }] } } }
-      })
-      if (r.url) window.open(r.url, '_blank', 'noopener,noreferrer')
-    } finally { setDraft(dest, 'adjuntando', false) }
-  }
-  const quitarAdjunto = (dest, i) => setEmailPanel(p => {
-    if (!p || !p.drafts) return p
-    const d = p.drafts[dest]
-    return { ...p, drafts: { ...p.drafts, [dest]: { ...d, adjuntos: (d.adjuntos || []).filter((_, k) => k !== i) } } }
-  })
-  // Envío del borrador. Con { test:true } manda una PRUEBA a `testTo` (no toca al destinatario real ni deja rastro).
-  // El envío REAL solo se dispara desde el botón "✓ Confirmar y enviar" (doble validación en la UI).
-  async function enviarBorrador(dest, { test = false } = {}) {
-    const dr = emailPanel?.drafts?.[dest]
-    if (!dr) return
-    const destino = test ? String(testTo || '').trim() : String(dr.to || '').trim()
-    if (!destino || !/@/.test(destino)) { setDraft(dest, 'error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
-    if (!dr.subject || !dr.cuerpo) { setDraft(dest, 'error', 'Falta asunto o cuerpo.'); return }
-    setDraft(dest, 'enviando', true); setDraft(dest, 'error', null); setDraft(dest, 'pruebaMsg', null)
-    try {
-      const res = await fetch('/api/terminos/enviar-email', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, destinatario: dest, to: dr.to, subject: dr.subject, cuerpo: dr.cuerpo, test, toTest: test ? destino : undefined, adjuntos: (dr.adjuntos || []).map(a => ({ url: a.url, nombre: a.nombre })) }),
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) { setDraft(dest, 'enviando', false); setDraft(dest, 'error', data.error || ('Error ' + res.status)); return }
-      if (test) {
-        setEmailPanel(p => ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) } } }))
       } else {
-        setEmailPanel(p => ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], enviando: false, enviado: true, confirmando: false, error: null } } }))
+        res = await fetch('/api/terminos/enviar-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: idadmonSel, destinatario: p.modo, to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject, cuerpo: p.cuerpo, test, toTest: test ? destino : undefined, adjuntos }),
+        })
       }
-    } catch (e) {
-      setDraft(dest, 'enviando', false); setDraft(dest, 'error', e.message)
-    }
-  }
-
-  // ── Reclamación de saldo pendiente (N18/N21) ──
-  // Un solo correo al ex-arrendatario, cc CONDICIONAL al aval. No cambia el estado.
-  async function abrirReclamacion() {
-    setReclamPanel({ loading: true, draft: null, aviso: null })
-    try {
-      const res = await fetch('/api/terminos/borrador-reclamacion', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel }),
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) { setReclamPanel({ loading: false, draft: null, aviso: data.error || ('Error ' + res.status) }); return }
-      setReclamPanel({ loading: false, aviso: null, draft: {
-        to: data.to || '', cc: data.cc || '', bcc: '', subject: data.subject || '', cuerpo: data.cuerpo || '',
-        saldo: n0(data.saldo), hayAval: !!data.hayAval, sinEmail: !!data.sinEmail,
-        error: null, yaAbierta: false, enviando: false, enviado: false, reenvio: false, pruebaMsg: null, confirmando: false,
-        adjuntos: [], adjuntando: false,
-      } })
-      setTestTo(prev => prev || session?.user?.email || '')
-    } catch (e) {
-      setReclamPanel({ loading: false, draft: null, aviso: e.message })
-    }
-  }
-  const setReclam = (field, v) => setReclamPanel(p => (p && p.draft) ? ({ ...p, draft: { ...p.draft, [field]: v } }) : p)
-  // Adjunta a la reclamación el PDF definitivo (liquidación del arrendatario o presupuesto).
-  async function adjuntarAReclamacion(tipo) {
-    if (!puedeTerminoDocs) return
-    setReclam('adjuntando', true); setReclam('error', null)
-    try {
-      const r = tipo === 'presupuesto' ? await pedirPdfPresupuesto() : await pedirPdfTermino('arrendatario')
-      if (!r.ok) { setReclam('error', r.error); return }
-      setReclamPanel(p => {
-        if (!p || !p.draft) return p
-        const prev = (p.draft.adjuntos || []).filter(a => a.tipo !== tipo)
-        return { ...p, draft: { ...p.draft, adjuntos: [...prev, { url: r.url, nombre: r.nombre, tipo }] } }
-      })
-      if (r.url) window.open(r.url, '_blank', 'noopener,noreferrer')
-    } finally { setReclam('adjuntando', false) }
-  }
-  const quitarAdjuntoReclam = (i) => setReclamPanel(p => (p && p.draft)
-    ? ({ ...p, draft: { ...p.draft, adjuntos: (p.draft.adjuntos || []).filter((_, k) => k !== i) } }) : p)
-  // Con { test:true } manda una PRUEBA a `testTo` (no abre solicitud ni deja rastro). El envío real solo se dispara
-  // desde "✓ Confirmar y enviar" (doble validación).
-  async function enviarReclamacion(forzar, { test = false } = {}) {
-    const dr = reclamPanel?.draft
-    if (!dr) return
-    const destino = test ? String(testTo || '').trim() : String(dr.to || '').trim()
-    if (!destino || !/@/.test(destino)) { setReclam('error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
-    if (!dr.subject || !dr.cuerpo) { setReclam('error', 'Falta asunto o cuerpo.'); return }
-    setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: true, error: null, pruebaMsg: null } }) : p)
-    try {
-      const res = await fetch('/api/terminos/enviar-reclamacion', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, to: dr.to, cc: dr.cc, bcc: dr.bcc, subject: dr.subject, cuerpo: dr.cuerpo, forzar: !!forzar, test, toTest: test ? destino : undefined, adjuntos: (dr.adjuntos || []).map(a => ({ url: a.url, nombre: a.nombre })) }),
-      })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta } }) : p)
+        setMailPanel(s => s ? ({ ...s, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta }) : s)
         return
       }
       if (test) {
-        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) } }) : p)
+        setMailPanel(s => s ? ({ ...s, enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) }) : s)
       } else {
-        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, enviado: true, error: null, confirmando: false, reenvio: !!data.reenvio } }) : p)
+        setMailPanel(s => s ? ({ ...s, enviando: false, enviado: true, confirmando: false, error: null, reenvio: !!data.reenvio }) : s)
       }
     } catch (e) {
-      setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: e.message } }) : p)
+      setMailPanel(s => s ? ({ ...s, enviando: false, error: String(e?.message || e) }) : s)
     }
   }
 
@@ -967,19 +886,6 @@ export default function TerminosPage() {
     } catch (e) { return { ok: false, error: String(e?.message || e) } }
   }
 
-  async function generarPdfTerminoBtn(variante = 'arrendatario') {
-    if (!puedeTerminoDocs || !panel) return
-    const esProp = variante === 'propietario'
-    setPdfTermGen(true); setMsg(null)
-    try {
-      const r = await pedirPdfTermino(variante)
-      if (!r.ok) { setMsg({ tipo: 'error', txt: r.error }); return }
-      if (r.url) window.open(r.url, '_blank', 'noopener,noreferrer')
-      setMsg({ tipo: 'ok', txt: r.url ? `PDF ${esProp ? 'del PROPIETARIO (sin las líneas marcadas)' : 'del arrendatario'} generado — abierto en otra pestaña para revisarlo.` : 'PDF generado.' })
-    } finally {
-      setPdfTermGen(false)
-    }
-  }
   // Etiqueta y color del tipo de nodo (AUTO / TAREA / VERIFICACION / DECISION)
   const tipoInfo = (tp) => {
     switch (String(tp || '').toUpperCase()) {
@@ -1050,18 +956,16 @@ export default function TerminosPage() {
             <span style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
-            <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen}
-              title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
-              style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
-            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('arrendatario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
-              title={puedeTerminoDocs ? 'PDF de la liquidación para el ARRENDATARIO (todas las líneas)' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
-              style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF arrendatario'}</button>
-            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('propietario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
-              title={puedeTerminoDocs ? 'PDF para el PROPIETARIO — excluye las líneas marcadas con 🚫 y recalcula su resultado' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
-              style={btn('#0e7490', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF propietario'}</button>
-            <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
-            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
+            <button onClick={puedeTerminoDocs ? () => abrirMail('arrendatario') : undefined} disabled={!puedeTerminoDocs}
+              title={puedeTerminoDocs ? 'Correo al ex-arrendatario (y aval en copia) con el PDF de la liquidación adjunto' : 'Solo Dirección, Karina, Adalis y Fabiola'}
+              style={btn('#0891b2', !puedeTerminoDocs)}>✉ Email y PDF arrendatario</button>
+            <button onClick={puedeTerminoDocs ? () => abrirMail('propietario') : undefined} disabled={!puedeTerminoDocs}
+              title={puedeTerminoDocs ? 'Correo al propietario con el PDF de la liquidación (excluye las líneas 🚫)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
+              style={btn('#0e7490', !puedeTerminoDocs)}>✉ Email y PDF propietario</button>
+            <button onClick={puedeTerminoDocs ? () => abrirMail('presupuesto') : undefined} disabled={!puedeTerminoDocs}
+              title={puedeTerminoDocs ? 'Correo con el PDF del presupuesto (eliges el destinatario)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
+              style={btn('#7c3aed', !puedeTerminoDocs)}>✉ Email presupuesto</button>
+            {!ADMIN_EMAILS.includes(email) && <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>}
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             {!editando && <button onClick={() => abrir(idadmonSel)} disabled={loadingPanel}
@@ -1072,184 +976,95 @@ export default function TerminosPage() {
         </div>
         {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
 
-        {emailPanel && (
-          <div style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>✉ Notificación de liquidación — borradores editables</div>
-              <button onClick={() => setEmailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
-            </div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Revisa y edita cada correo antes de enviarlo. Sale desde info@fondocapital.com con copia a administración@; si alguien responde, le llega a ti (reply-to). Nada se envía sin tu clic.</div>
-            {emailPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borradores…</div> : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {['arrendatario', 'propietario'].map(dest => {
-                  const dr = emailPanel.drafts?.[dest]
-                  const titulo = dest === 'arrendatario' ? 'Ex-arrendatario' : 'Propietario'
-                  if (!dr) return <div key={dest} style={{ ...card, marginBottom: 0 }}>Sin datos.</div>
-                  return (
-                    <div key={dest} style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 10, padding: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', marginBottom: 8 }}>{titulo}</div>
-                      {dr.enviado ? (
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Enviado a {dr.to}</div>
-                      ) : (
-                        <>
-                          {dr.error && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>{dr.error}</div>}
-                          {dr.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{dr.pruebaMsg}</div>}
-                          {dr.sinEmail && !dr.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ No hay email en la ficha. Escríbelo a mano abajo.</div>}
-                          <div style={lbl}>Para</div>
-                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.to} onChange={e => setDraft(dest, 'to', e.target.value)} placeholder="correo@…" />
-                          <div style={lbl}>Asunto</div>
-                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.subject} onChange={e => setDraft(dest, 'subject', e.target.value)} />
-                          <div style={lbl}>Cuerpo</div>
-                          <textarea style={{ ...inEd, minHeight: 220, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={dr.cuerpo} onChange={e => setDraft(dest, 'cuerpo', e.target.value)} />
-
-                          {/* ADJUNTOS: PDF definitivos (sin borrador). La liquidación del propietario excluye las líneas 🚫. */}
-                          {puedeTerminoDocs && (
-                            <div style={{ marginTop: 10, borderTop: '1px dashed #E8E6E0', paddingTop: 8 }}>
-                              <div style={{ ...lbl, marginBottom: 6 }}>Adjuntar PDF definitivo</div>
-                              {(dr.adjuntos || []).length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                                  {dr.adjuntos.map((a, i) => (
-                                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 999, padding: '2px 8px', fontSize: 11, color: '#3730A3', fontWeight: 700 }}>
-                                      📎 {a.nombre}
-                                      <button onClick={() => quitarAdjunto(dest, i)} title="Quitar adjunto" style={{ border: 'none', background: 'none', color: '#4338ca', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                <button onClick={() => adjuntarAlBorrador(dest, 'liquidacion')} disabled={dr.adjuntando}
-                                  title={dest === 'propietario' ? 'Adjunta la liquidación del PROPIETARIO (sin las líneas marcadas 🚫)' : 'Adjunta la liquidación del ARRENDATARIO (todas las líneas)'}
-                                  style={{ ...btn('#0891b2', dr.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>{dr.adjuntando ? '…' : '📎 Liquidación'}</button>
-                                <button onClick={() => adjuntarAlBorrador(dest, 'presupuesto')} disabled={dr.adjuntando}
-                                  title="Adjunta el PDF del presupuesto de reparaciones" style={{ ...btn('#7c3aed', dr.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>{dr.adjuntando ? '…' : '📎 Presupuesto'}</button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* PRUEBA: manda este borrador a la dirección que elijas (por defecto la tuya). No toca al destinatario real. */}
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
-                            <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
-                            <button onClick={() => enviarBorrador(dest, { test: true })} disabled={dr.enviando}
-                              title="Envía este borrador a la dirección de prueba (no al destinatario real)"
-                              style={{ ...btn('#6b7280', dr.enviando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
-                          </div>
-
-                          {/* ENVÍO REAL con DOBLE confirmación: ver → confirmar/volver. Nada sale sin este segundo clic. */}
-                          {!dr.confirmando ? (
-                            <button onClick={() => { setDraft(dest, 'error', null); setDraft(dest, 'confirmando', true) }} disabled={dr.enviando}
-                              style={{ ...btn('#2563eb', dr.enviando), marginTop: 8, width: '100%' }}>✉ Enviar a {titulo}</button>
-                          ) : (
-                            <div style={{ marginTop: 8, border: '1px solid #f59e0b', background: '#fffbeb', borderRadius: 8, padding: 10 }}>
-                              <div style={{ fontSize: 12, color: '#92400e', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar este correo DE VERDAD a:</div>
-                              <div style={{ fontSize: 13, color: '#1a1a2e', marginBottom: 2, fontWeight: 700 }}>{dr.to || '(sin destinatario)'}</div>
-                              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>En copia: administración@{dest === 'arrendatario' ? ' y al aval (si tiene email en ficha)' : ''}. Revisa el correo de arriba antes de confirmar.</div>
-                              {(dr.adjuntos || []).length > 0 && <div style={{ fontSize: 11, color: '#3730A3', marginBottom: 8, fontWeight: 700 }}>📎 Adjunta: {dr.adjuntos.map(a => a.nombre).join(', ')}</div>}
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <button onClick={() => enviarBorrador(dest, { test: false })} disabled={dr.enviando} style={{ ...btn('#16a34a', dr.enviando), flex: 1 }}>{dr.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
-                                <button onClick={() => setDraft(dest, 'confirmando', false)} disabled={dr.enviando} style={{ ...btn('#6b7280', dr.enviando), flex: 1 }}>← Volver</button>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )
-                })}
+        {mailPanel && (() => {
+          const p = mailPanel
+          const titulo = p.modo === 'arrendatario' ? 'Email y PDF · Ex-arrendatario'
+            : p.modo === 'propietario' ? 'Email y PDF · Propietario'
+              : 'Email · Presupuesto'
+          const accent = p.modo === 'presupuesto' ? '#7c3aed' : (p.modo === 'propietario' ? '#0e7490' : '#0891b2')
+          return (
+            <div style={{ ...card, maxWidth: 800, border: '2px solid ' + accent, background: '#FBFCFE' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>{titulo}</div>
+                <button onClick={() => setMailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
               </div>
-            )}
-          </div>
-        )}
+              {p.loading ? <div style={{ color: '#888', fontSize: 13 }}>Preparando correo…</div>
+                : (p.error && !p.to && !p.subject) ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{p.error}</div>
+                  : p.enviado ? (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ {p.esCobro ? ('Reclamación ' + (p.reenvio ? 'reenviada' : 'enviada') + ' y registrada en Cobros') : 'Correo enviado'} a {p.to}{p.cc ? ' (cc ' + p.cc + ')' : ''}</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Sale desde info@fondocapital.com con copia a administración@; si responden, te llega a ti (reply-to).{p.esCobro ? ' Al enviar de verdad se abre además la reclamación en Cobros.' : ''} Nada se envía sin tu doble confirmación.</div>
 
-        {reclamPanel && (
-          <div style={{ ...card, maxWidth: 780, borderColor: '#cbd5e1', background: '#F8FAFC' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>⚖ Reclamación de saldo pendiente</div>
-              <button onClick={() => setReclamPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
-            </div>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>Un solo correo al ex-arrendatario, con copia al aval (si existe) y a administración@. No cambia el estado del contrato; abre una reclamación que cierra Cobranzas al pagar. Nada se envía sin tu doble confirmación.</div>
-            {reclamPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borrador…</div>
-              : reclamPanel.aviso ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{reclamPanel.aviso}</div>
-              : reclamPanel.draft ? (
-                reclamPanel.draft.enviado ? (
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Reclamación {reclamPanel.draft.reenvio ? 'reenviada' : 'enviada'} a {reclamPanel.draft.to}{reclamPanel.draft.cc ? ' (cc ' + reclamPanel.draft.cc + ')' : ''}</div>
-                ) : (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', marginBottom: 10 }}>Saldo a reclamar: <span style={{ color: '#9B1C1C' }}>{fmtPesos(reclamPanel.draft.saldo)}</span></div>
-                    {reclamPanel.draft.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{reclamPanel.draft.pruebaMsg}</div>}
-                    {reclamPanel.draft.error && (
-                      <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>
-                        {reclamPanel.draft.error}
-                        {reclamPanel.draft.yaAbierta && <button onClick={() => enviarReclamacion(true)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}
-                      </div>
-                    )}
-                    {reclamPanel.draft.sinEmail && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ El arrendatario no tiene email en la ficha. Escríbelo a mano abajo.</div>}
-                    {!reclamPanel.draft.hayAval && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Sin avalista registrado: se envía solo al arrendatario (puedes añadir copias a mano).</div>}
-                    <div style={lbl}>Para (arrendatario)</div>
-                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.to} onChange={e => setReclam('to', e.target.value)} placeholder="correo@…" />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={lbl}>Cc — copias visibles (aval, etc.)</div>
-                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.cc} onChange={e => setReclam('cc', e.target.value)} placeholder="correo1, correo2…" />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={lbl}>Cco — copias ocultas</div>
-                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.bcc} onChange={e => setReclam('bcc', e.target.value)} placeholder="no visibles para los demás…" />
-                      </div>
-                    </div>
-                    <div style={lbl}>Asunto</div>
-                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.subject} onChange={e => setReclam('subject', e.target.value)} />
-                    <div style={lbl}>Cuerpo</div>
-                    <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={reclamPanel.draft.cuerpo} onChange={e => setReclam('cuerpo', e.target.value)} />
+                      {p.modo === 'arrendatario' && p.esCobro && <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', marginBottom: 8 }}>Saldo a cobrar: <span style={{ color: '#9B1C1C' }}>{fmtPesos(p.saldo)}</span></div>}
+                      {p.modo === 'arrendatario' && p.aFavor && <div style={{ fontSize: 12, color: '#075E54', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: 8, borderRadius: 6, marginBottom: 8 }}>Resultado a FAVOR del arrendatario: <b>{fmtPesos(p.saldo)}</b> a devolver. Recuerda registrar la devolución en el módulo <b>Descuentos</b> (este correo no la crea).</div>}
+                      {p.error && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>{p.error}{p.yaAbierta && <button onClick={() => enviarMail({ forzar: true })} disabled={p.enviando} style={{ ...btn('#334155', p.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}</div>}
+                      {p.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{p.pruebaMsg}</div>}
+                      {p.sinEmail && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ No hay email en la ficha. Escríbelo a mano abajo.</div>}
 
-                    {/* ADJUNTOS: PDF definitivos (liquidación del arrendatario / presupuesto). */}
-                    {puedeTerminoDocs && (
-                      <div style={{ marginTop: 10, borderTop: '1px dashed #E2E8F0', paddingTop: 8 }}>
-                        <div style={{ ...lbl, marginBottom: 6 }}>Adjuntar PDF definitivo</div>
-                        {(reclamPanel.draft.adjuntos || []).length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                            {reclamPanel.draft.adjuntos.map((a, i) => (
-                              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 999, padding: '2px 8px', fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                                📎 {a.nombre}
-                                <button onClick={() => quitarAdjuntoReclam(i)} title="Quitar adjunto" style={{ border: 'none', background: 'none', color: '#475569', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
-                              </span>
+                      {p.modo === 'presupuesto' && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={lbl}>Destinatario — elige uno o escribe abajo</div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                            {[['Propietario', p.contactos?.propietario], ['Arrendatario', p.contactos?.arrendatario], ['Aval', p.contactos?.aval]].map(([et, mail]) => (
+                              <button key={et} onClick={() => mail && setMail('to', mail)} disabled={!mail} title={mail || 'sin email en la ficha'}
+                                style={{ ...btn(mail ? '#475569' : '#cbd5e1', !mail), width: 'auto', whiteSpace: 'nowrap' }}>{et}{mail ? '' : ' —'}</button>
                             ))}
                           </div>
-                        )}
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          <button onClick={() => adjuntarAReclamacion('liquidacion')} disabled={reclamPanel.draft.adjuntando}
-                            title="Adjunta la liquidación del ARRENDATARIO (todas las líneas)" style={{ ...btn('#0891b2', reclamPanel.draft.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>{reclamPanel.draft.adjuntando ? '…' : '📎 Liquidación'}</button>
-                          <button onClick={() => adjuntarAReclamacion('presupuesto')} disabled={reclamPanel.draft.adjuntando}
-                            title="Adjunta el PDF del presupuesto de reparaciones" style={{ ...btn('#7c3aed', reclamPanel.draft.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>{reclamPanel.draft.adjuntando ? '…' : '📎 Presupuesto'}</button>
                         </div>
+                      )}
+
+                      <div style={lbl}>Para</div>
+                      <input style={{ ...inEd, marginBottom: 8 }} value={p.to} onChange={e => setMail('to', e.target.value)} placeholder="correo@…" />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ flex: 1 }}><div style={lbl}>Cc — copias visibles</div><input style={{ ...inEd, marginBottom: 8 }} value={p.cc} onChange={e => setMail('cc', e.target.value)} placeholder="correo1, correo2…" /></div>
+                        <div style={{ flex: 1 }}><div style={lbl}>Cco — copias ocultas</div><input style={{ ...inEd, marginBottom: 8 }} value={p.bcc} onChange={e => setMail('bcc', e.target.value)} placeholder="no visibles para los demás…" /></div>
                       </div>
-                    )}
+                      <div style={lbl}>Asunto</div>
+                      <input style={{ ...inEd, marginBottom: 8 }} value={p.subject} onChange={e => setMail('subject', e.target.value)} />
+                      <div style={lbl}>Cuerpo</div>
+                      <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={p.cuerpo} onChange={e => setMail('cuerpo', e.target.value)} />
 
-                    {/* PRUEBA interna: manda una copia a tu correo (o al que pongas), sin enviar al arrendatario ni al aval. */}
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
-                      <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
-                      <button onClick={() => enviarReclamacion(false, { test: true })} disabled={reclamPanel.draft.enviando} title="Envía una copia de prueba (no al arrendatario ni al aval)" style={{ ...btn('#6b7280', reclamPanel.draft.enviando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
-                    </div>
+                      {/* Adjunto automático (PDF definitivo). "Ver PDF" abre en pestaña nueva sin cerrar el panel. */}
+                      <div style={{ marginTop: 10, borderTop: '1px dashed #E8E6E0', paddingTop: 8 }}>
+                        <div style={{ ...lbl, marginBottom: 6 }}>Documento adjunto</div>
+                        {p.adjuntando ? <div style={{ fontSize: 12, color: '#6b7280' }}>Generando el PDF…</div>
+                          : p.adjunto ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 999, padding: '3px 10px', fontSize: 12, color: '#3730A3', fontWeight: 700 }}>
+                              📎 {p.adjunto.nombre}
+                              <a href={p.adjunto.url} target="_blank" rel="noopener noreferrer" style={{ color: '#4338ca', textDecoration: 'underline' }}>Ver PDF ↗</a>
+                            </span>
+                          ) : <div style={{ fontSize: 12, color: '#9B1C1C' }}>{p.adjuntoError || 'No se pudo adjuntar el PDF.'} <button onClick={() => abrirMail(p.modo)} style={{ ...btn('#6b7280'), width: 'auto', padding: '2px 8px', marginLeft: 6 }}>↻ Reintentar</button></div>}
+                      </div>
 
-                    {/* ENVÍO REAL con DOBLE confirmación */}
-                    {!reclamPanel.draft.confirmando ? (
-                      <button onClick={() => { setReclam('error', null); setReclam('confirmando', true) }} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginTop: 8, width: '100%' }}>⚖ Enviar reclamación</button>
-                    ) : (
-                      <div style={{ marginTop: 8, border: '1px solid #94a3b8', background: '#F1F5F9', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, color: '#334155', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar esta reclamación DE VERDAD a:</div>
-                        <div style={{ fontSize: 13, color: '#1e293b', marginBottom: 2, fontWeight: 700 }}>{reclamPanel.draft.to || '(sin destinatario)'}</div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Cc: {reclamPanel.draft.cc || '(ninguna)'} + administración@{reclamPanel.draft.bcc ? ' · Cco: ' + reclamPanel.draft.bcc : ''}. Revisa el correo antes de confirmar.</div>
-                        {(reclamPanel.draft.adjuntos || []).length > 0 && <div style={{ fontSize: 11, color: '#334155', marginBottom: 8, fontWeight: 700 }}>📎 Adjunta: {reclamPanel.draft.adjuntos.map(a => a.nombre).join(', ')}</div>}
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => enviarReclamacion(false, { test: false })} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), flex: 1 }}>{reclamPanel.draft.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
-                          <button onClick={() => setReclam('confirmando', false)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#6b7280', reclamPanel.draft.enviando), flex: 1 }}>← Volver</button>
+                      {/* PRUEBA: manda este correo (con el adjunto) a la dirección de prueba. No toca al destinatario real. */}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
+                        <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
+                        <button onClick={() => enviarMail({ test: true })} disabled={p.enviando || p.adjuntando} title="Envía este correo (con el adjunto) a la dirección de prueba" style={{ ...btn('#6b7280', p.enviando || p.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
+                      </div>
+
+                      {/* ENVÍO REAL con DOBLE confirmación (aprobación visual). */}
+                      {!p.confirmando ? (
+                        <button onClick={() => { setMail('error', null); setMail('confirmando', true) }} disabled={p.enviando || p.adjuntando}
+                          style={{ ...btn(accent, p.enviando || p.adjuntando), marginTop: 8, width: '100%' }}>✉ Revisar y enviar</button>
+                      ) : (
+                        <div style={{ marginTop: 8, border: '1px solid #f59e0b', background: '#fffbeb', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontSize: 12, color: '#92400e', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar este correo DE VERDAD a:</div>
+                          <div style={{ fontSize: 13, color: '#1a1a2e', marginBottom: 2, fontWeight: 700 }}>{p.to || '(sin destinatario)'}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 6 }}>Cc: {p.cc || '(ninguna)'} + administración@{p.bcc ? ' · Cco: ' + p.bcc : ''}.{p.esCobro ? ' Se abrirá la reclamación en Cobros.' : ''} Revisa el correo antes de confirmar.</div>
+                          {p.adjunto ? <div style={{ fontSize: 11, color: '#3730A3', marginBottom: 8, fontWeight: 700 }}>📎 Adjunta: {p.adjunto.nombre}</div>
+                            : <div style={{ fontSize: 11, color: '#9B1C1C', marginBottom: 8, fontWeight: 700 }}>⚠ Se enviará SIN PDF adjunto.</div>}
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => enviarMail({ test: false })} disabled={p.enviando} style={{ ...btn('#16a34a', p.enviando), flex: 1 }}>{p.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
+                            <button onClick={() => setMail('confirmando', false)} disabled={p.enviando} style={{ ...btn('#6b7280', p.enviando), flex: 1 }}>← Volver</button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              ) : null}
-          </div>
-        )}
+                      )}
+                    </>
+                  )}
+            </div>
+          )
+        })()}
 
         {loadingPanel || !panel ? <div style={{ ...card, color: '#888' }}>Cargando término…</div>
           : !A ? <div style={{ ...card, color: '#b91c1c' }}>No se encontró {idadmonSel} en datos_arriendos.</div>
