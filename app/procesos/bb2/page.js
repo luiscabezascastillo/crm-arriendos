@@ -1,7 +1,9 @@
 'use client'
+// VERSION: v2 · 2026-08-11 · ACCESO restringido: solo Anthony (legal) y Dirección (Alberto, Luis). El resto ve "sin acceso".
+//   Resto igual que v1. Hereda v1.
 // VERSION: v1 · 2026-08-11 · BB2 · Operaciones comerciales (arriendos de corretaje SIN administración). Primer paso:
 //   LISTADO leyendo la tabla `log` (id_lcc R%) vía /api/bb2/lista. Buscador + filtro HECHO/pendiente. La ficha de captura
-//   y el flujo Terminar→facturación llegan en las siguientes versiones. Solo Dirección/Comercial/Ventas/Legal.
+//   y el flujo Terminar→facturación llegan en las siguientes versiones.
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -9,10 +11,12 @@ import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
 
 const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace"
+const ACCESO = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'anthony.mendoza@fondocapital.com']
 
 export default function BB2Page() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const permitido = (session?.user?.role === 'direccion') || ACCESO.includes((session?.user?.email || '').toLowerCase())
 
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
@@ -35,9 +39,10 @@ export default function BB2Page() {
     } catch (e) { setError(String(e?.message || e)) }
     setCargando(false)
   }
-  useEffect(() => { if (status === 'authenticated') cargar() }, [status])   // eslint-disable-line
+  useEffect(() => { if (status === 'authenticated' && permitido) cargar() }, [status])   // eslint-disable-line
 
   if (status === 'loading') return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
+  if (status === 'authenticated' && !permitido) return (<><TopNav /><div style={{ padding: 40, color: '#991B1B' }}>Sin acceso. Operaciones comerciales (BB2) es solo para Dirección y Legal.</div></>)
 
   const th = { fontSize: 11, color: '#e5e7eb', fontWeight: 700, textAlign: 'left', padding: '9px 10px', whiteSpace: 'nowrap' }
   const td = { fontSize: 12.5, padding: '8px 10px', borderTop: '1px solid #F0EEE8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }

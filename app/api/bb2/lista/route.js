@@ -1,16 +1,17 @@
 // app/api/bb2/lista/route.js
+// VERSION: v2 · 2026-08-11 · ACCESO restringido: solo Anthony (legal) y Dirección (Alberto, Luis). Karina y comerciales
+//   quedan fuera (Karina solo recibe el aviso de facturación). Resto igual que v1. Hereda v1.
 // VERSION: v1 · 2026-08-11 · BB2 (arriendos de corretaje) — LISTADO. Lee la tabla `log` (histórico del LOG del Excel,
 //   ahora gestionado desde el CRM) filtrando los arriendos (id_lcc que empieza por 'R'). Devuelve una lista SLIM
 //   (sin volcar el raw_data entero al cliente) con los campos para el listado + la bandera HECHO (raw_data->'HECHO/PENDIENTE2').
 //   Service role (como BI) porque `log` puede tener RLS. GET ?q= (busca en id/inmueble/dueño/arrendatario) & ?estado=.
-//   Solo Dirección, Comercial, Ventas y Legal.
 
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
 
-const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
-const ROLES_OK = ['direccion', 'comercial', 'ventas', 'legal', 'administracion', 'admin']
+// Solo Dirección (Alberto, Luis) y Legal (Anthony). Nadie más lee BB2.
+const ACCESO_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'anthony.mendoza@fondocapital.com']
 
 function svc() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -27,8 +28,8 @@ export async function GET(req) {
   const email = (session?.user?.email || '').toLowerCase()
   const rol = session?.user?.role
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!(ROLES_OK.includes(rol) || DIRECCION_EMAILS.includes(email))) {
-    return Response.json({ error: 'Sin acceso a Operaciones comerciales.' }, { status: 403 })
+  if (!(rol === 'direccion' || ACCESO_EMAILS.includes(email))) {
+    return Response.json({ error: 'Sin acceso a Operaciones comerciales (solo Dirección y Legal).' }, { status: 403 })
   }
 
   try {
