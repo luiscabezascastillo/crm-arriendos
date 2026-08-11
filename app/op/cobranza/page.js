@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v10 · 2026-08-10 · Escalera alineada a la regla FCR: 1er aviso SOLO arrendatario; desde el 2º,
+//   arrendatario + aval juntos (día 5). La worklist lo refleja. Hereda v9.
 // VERSION: v9 · 2026-08-10 · Multa/interés automático en la reclamación: días de mora × % diario × deuda
 //   (prefijado desde multa_diaria del contrato, editable). Muestra total y lo inyecta en la plantilla
 //   ({{multa}}/{{total}}) y en monto_reclamado. Hereda v8.
@@ -42,11 +44,12 @@ const CANALES = ['email', 'whatsapp', 'llamada', 'carta_certificada', 'notarial'
 const DEST_LBL = { arrendatario: 'Arrendatario', aval: 'Aval', propietario: 'Propietario' }
 
 // ── Escalera de cobranza (días de mora → paso esperado). Plazos BORRADOR, a validar por Legal. ──
+// Regla FCR: 1er aviso SOLO al arrendatario; desde el 2º, arrendatario Y aval juntos.
 const LADDER = [
-  { dia: 1, etapa: 'recordatorio', dest: 'arrendatario', label: 'Recordatorio' },
-  { dia: 5, etapa: 'reclamacion_1', dest: 'arrendatario', label: '1ª reclamación' },
+  { dia: 1, etapa: 'recordatorio', dest: 'arrendatario', label: '1er aviso (solo arrendatario)' },
+  { dia: 5, etapa: 'reclamacion_1', dest: 'arrendatario', label: '2ª: reclamación arrendatario' },
+  { dia: 5, etapa: 'reclamacion_aval', dest: 'aval', label: '2ª: reclamación aval' },
   { dia: 5, etapa: 'aviso_propietario', dest: 'propietario', label: 'Avisar propietario' },
-  { dia: 10, etapa: 'reclamacion_aval', dest: 'aval', label: 'Reclamar al aval' },
   { dia: 15, etapa: 'aviso_dicom', dest: 'arrendatario', label: 'Aviso pre-DICOM' },
 ]
 function diasDesdeFecha(ddmmyyyy) {
