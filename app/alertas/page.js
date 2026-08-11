@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-11 · (1) Tarjeta "Términos del día" (3 sin tratar: antiguo/medio/reciente) que se
+//   mantiene hasta marcarlos tratados. (2) Acceso ampliado por ROL (dirección, administración, finanzas,
+//   legal, comercial, ventas). (3) Indicador en ROJO parpadeante cuando hay pendientes. Hereda v2.
 // VERSION: v2 · 2026-08-03 · Alertas de "Facturar inicio de contrato" (origen=factura_inicio): botón
 //   "Facturar corretaje" que abre un panel de confirmación (preview) para crear el descuento de corretaje
 //   al propietario, chequear/crear el cargo del arrendatario en cartola y generar el CSV SimpleFactura,
@@ -16,6 +19,8 @@ const ALERTAS_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
 ]
+// Acceso a la vista de Alertas por rol (Anthony=legal, Adalis/Fabiola=administración, Cristhian=comercial/ventas…)
+const ALERTAS_ROLES = ['direccion', 'administracion', 'finanzas', 'legal', 'comercial', 'ventas']
 
 const fmtFecha = (d) => {
   if (!d) return ''
@@ -30,9 +35,11 @@ export default function AlertasPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email || ''
-  const puede = ALERTAS_EMAILS.includes(email)
+  const rol = session?.user?.role || ''
+  const puede = ALERTAS_EMAILS.includes(email) || ALERTAS_ROLES.includes(rol)
 
   const [alertas, setAlertas] = useState([])
+  const [terDia, setTerDia] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [verResueltas, setVerResueltas] = useState(false)
   const [posponiendo, setPosponiendo] = useState(null)
@@ -54,6 +61,7 @@ export default function AlertasPage() {
     if (!session) { router.replace('/panel'); return }
     if (!puede) { router.replace('/procesos/mi-portal'); return }
     cargar()
+    cargarTerDia()
     // eslint-disable-next-line
   }, [status, session])
 
@@ -65,6 +73,21 @@ export default function AlertasPage() {
       .order('fecha', { ascending: true })
     setAlertas(data || [])
     setCargando(false)
+  }
+
+  const cargarTerDia = async () => {
+    try {
+      const r = await fetch('/api/alertas/terminos-del-dia', { cache: 'no-store' })
+      const j = await r.json()
+      setTerDia(j && j.ok ? j : { terminos: [], total_pendientes: 0 })
+    } catch { setTerDia({ terminos: [], total_pendientes: 0 }) }
+  }
+  const marcarTratado = async (idadmon) => {
+    await fetch('/api/alertas/terminos-del-dia', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idadmon }),
+    })
+    cargarTerDia()
   }
 
   const abrirPosponer = (a) => {
@@ -165,13 +188,43 @@ export default function AlertasPage() {
       <TopNav />
       <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
 
+        <style>{`@keyframes fcrBlink { 0%,49%{opacity:1} 50%,100%{opacity:0.15} }`}</style>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <span style={{ width: 14, height: 14, borderRadius: '50%', background: color, display: 'inline-block' }} />
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#2C2C2A' }}>Alertas</h1>
+          <span style={{ width: 16, height: 16, borderRadius: '50%', background: color, display: 'inline-block',
+            animation: nPend > 0 ? 'fcrBlink 0.9s steps(1,end) infinite' : 'none',
+            boxShadow: nPend > 0 ? '0 0 0 4px rgba(220,38,38,0.15)' : 'none' }} />
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: nPend > 0 ? '#DC2626' : '#2C2C2A' }}>Alertas</h1>
         </div>
-        <div style={{ fontSize: 13, color: '#999', marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: nPend > 0 ? '#DC2626' : '#999', fontWeight: nPend > 0 ? 600 : 400, marginBottom: 20 }}>
           {nPend} sin gestionar · {nPosp} pospuesta(s). Tareas urgentes generadas por el sistema y fechas clave a atender.
         </div>
+
+        {terDia && terDia.terminos && terDia.terminos.length > 0 && (
+          <div style={{ border: '1px solid #F0C0A8', background: '#FEF6F2', borderRadius: 12, padding: 16, marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, color: '#9B1C1C', marginBottom: 2 }}>Términos del día — a analizar</div>
+            <div style={{ fontSize: 12, color: '#9B1C1C', opacity: 0.8, marginBottom: 10 }}>
+              {terDia.total_pendientes} términos pendientes de revisión en total. Karina analiza estos 3 (se mantienen hasta marcarlos tratados).
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {terDia.terminos.map(t => (
+                <div key={t.idadmon} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13, background: '#fff', border: '1px solid #F0DCD2', borderRadius: 8, padding: '8px 10px' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#FBEDEC', border: '1px solid #E5C0B0', color: '#9B1C1C', whiteSpace: 'nowrap' }}>{t.tramo}</span>
+                  <b>{t.idadmon}</b>
+                  <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
+                  <span style={{ color: '#999' }}>{fmtFecha(t.termino_actual)}</span>
+                  {t.resultado != null && Number(t.resultado) < 0 && (
+                    <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}</span>
+                  )}
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                    <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
+                    <button onClick={() => marcarTratado(t.idadmon)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Marcar tratado</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
           <button onClick={() => setVerResueltas(v => !v)}
