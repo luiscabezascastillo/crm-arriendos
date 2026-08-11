@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-11 · Universo de términos = SOLO estado Q (se excluyen N, N-DICOM, N-Liquidacion).
+//   Hereda v2.
 // VERSION: v2 · 2026-08-11 · Acceso solo para Karina + Dirección (lista de correos), tanto ver como marcar.
 //   No se abre al resto del equipo. Hereda v1.
 // VERSION: v1 · 2026-08-11 · Términos del día: GET devuelve 3 términos sin tratar (muy antiguo / del medio /
@@ -11,7 +13,7 @@ import { createClient } from '@supabase/supabase-js'
 // Solo Karina + Dirección (mismo público que la vista de Alertas hoy).
 const ALERTAS_EMAILS = ['karina.morales@fondocapital.com', 'alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const MARCAR_OK_EMAILS = ALERTAS_EMAILS
-const ESTADOS_TERMINO = ['Q', 'N', 'N-DICOM', 'N-Liquidacion']
+const ESTADOS_TERMINO = ['Q']
 
 function svc() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
