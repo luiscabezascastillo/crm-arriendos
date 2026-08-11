@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v44 · 2026-08-11 · ENLACES también en la columna REF de Servicios y Reparaciones (helper RefLinks):
+//   "Descto. NNNN" abre el descuento y "Cxxx / Pres. Cxxx" abre el presupuesto. Textos no-ref (p. ej. "Saldo
+//   cartola…") quedan como estaban. Hereda v43.
 // VERSION: v43 · 2026-08-11 · ENLACES: los NUM de descuento (tabla del término, sucesor y garantía) enlazan a
 //   /procesos/descuentos?num=, y el código de presupuesto (Cxxx) enlaza a /procesos/presupuestos?codigo=, para
 //   abrir ese descuento/presupuesto directo. Rutas en constantes RUTA_DESCUENTOS / RUTA_PRESUPUESTOS. Hereda v42.
@@ -94,6 +97,26 @@ const ADMIN_EMAILS = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.co
 // Rutas de los módulos enlazados desde la hoja (ajústalas si en tu repo cuelgan de otra ruta).
 const RUTA_DESCUENTOS = '/procesos/descuentos'
 const RUTA_PRESUPUESTOS = '/procesos/presupuestos'
+
+// Convierte una cadena de REF ("Descto. 4658", "Pres. C169, C176", "Saldo cartola (28 mov.)") en enlaces:
+// "Descto. NNNN" -> ficha del descuento; "Cxxx"/"Pres. Cxxx" -> ficha del presupuesto. El resto, texto plano.
+function RefLinks({ texto }) {
+  const s = String(texto || '').trim()
+  if (!s) return null
+  const partes = s.split(',').map(x => x.trim()).filter(Boolean)
+  return partes.map((p, i) => {
+    const low = p.toLowerCase()
+    const mC = p.match(/C\d+/i)
+    const mN = p.match(/\d{2,}/)
+    let href = null
+    if (mC && (low.includes('pres') || /^c\d+$/i.test(p))) href = `${RUTA_PRESUPUESTOS}?codigo=${mC[0].toUpperCase()}`
+    else if (low.includes('descto') && mN) href = `${RUTA_DESCUENTOS}?num=${mN[0]}`
+    const sep = i < partes.length - 1 ? ', ' : ''
+    return href
+      ? <span key={i}><a href={href} title="Abrir" style={{ color: '#6b7fb0', textDecoration: 'none' }}>{p} ↗</a>{sep}</span>
+      : <span key={i}>{p}{sep}</span>
+  })
+}
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
@@ -942,7 +965,7 @@ export default function TerminosPage() {
                 <td style={tdL}>{(!l.es_fijo && editando) ? <input style={{ ...inEd, fontSize: 11, minWidth: 110 }} value={l.concepto} placeholder="(concepto)" onChange={e => setLinea(bk, idx, 'concepto', e.target.value)} /> : (l.concepto || '—')}</td>
                 <td style={tdR}>{l.auto ? fmtPesos(repPresu) : (editando ? <input style={inNum} type="number" value={l.monto} onChange={e => setLinea(bk, idx, 'monto', e.target.value)} /> : fmtPesos(n0(l.monto)))}</td>
                 <td style={tdL}>{editando ? <input style={{ ...inEd, fontSize: 11 }} value={l.comentario} onChange={e => setLinea(bk, idx, 'comentario', e.target.value)} /> : (l.comentario || '')}</td>
-                <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? ('Pres. ' + arreglosRef) : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : (l.ref || ''))}</td>
+                <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? <RefLinks texto={'Pres. ' + arreglosRef} /> : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : <RefLinks texto={l.ref} />)}</td>
                 <td style={{ textAlign: 'center', width: 58 }}>
                   {editando
                     ? <input type="checkbox" checked={!!l.excluir_prop} onChange={e => setLinea(bk, idx, 'excluir_prop', e.target.checked)} title="No incluir esta línea en el PDF/correo del propietario" />
