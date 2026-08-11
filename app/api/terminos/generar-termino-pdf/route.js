@@ -1,19 +1,22 @@
-// VERSION: v1 · 2026-08-11 · app/api/terminos/generar-termino-pdf/route.js
+// VERSION: v2 · 2026-08-11 · app/api/terminos/generar-termino-pdf/route.js
 //   Genera el PDF PROFESIONAL de la liquidación de un término a partir de los datos que la propia vista de
 //   Términos ya tiene calculados (los mismos que ve el usuario en pantalla) y lo sube al bucket público
 //   'presupuestos' (se reutiliza; nombre con token aleatorio → URL no adivinable). Devuelve { pdf_url }.
-//   Gate ESTRICTO: solo Karina + Dirección (el PDF muestra el presupuesto a precio de cliente). El "quién"
-//   sale de la sesión del servidor. Por defecto lleva marca de agua BORRADOR (borrador !== false).
+//   Gate: Dirección + Karina + Adalis + Fabiola (Administración). El PDF muestra el presupuesto a PRECIO DE
+//   CLIENTE (nunca el markup), por eso Adalis/Fabiola pueden generarlo. El "quién" sale de la sesión del
+//   servidor. Por defecto lleva marca de agua BORRADOR (borrador !== false). Hereda v1.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
 import { generarPdfTermino } from '../../../../lib/terminoPdf.js'
 import { randomUUID } from 'crypto'
 
-const KARINA_DIRECCION = [
+const AUTORIZADOS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
   'karina.morales@fondocapital.com',
+  'adalis@fondocapital.com',
+  'fabiola.guerra@fondocapital.com',
 ]
 const BUCKET = 'presupuestos'
 const dosDig = n => String(n).padStart(2, '0')
@@ -22,8 +25,8 @@ export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!KARINA_DIRECCION.includes(email)) {
-    return Response.json({ error: 'Solo Karina y Dirección pueden generar el PDF del término.' }, { status: 403 })
+  if (!AUTORIZADOS.includes(email)) {
+    return Response.json({ error: 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF del término.' }, { status: 403 })
   }
 
   let body
