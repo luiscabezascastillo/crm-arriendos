@@ -1,3 +1,7 @@
+// VERSION: v5 · 2026-08-11 · Alertas por ROL. Se abre la pantalla a Administración (Adalis/Fabiola) y Legal
+//   (Anthony), cada uno ve SU tarjeta: Administración -> "Reclamaciones del día" (top 5 más graves por
+//   monto+tiempo+servicios, estado COMPARTIDO por idadmon); Legal -> "Valoración legal" (escribe y guarda
+//   en el CRM). "Términos del día" sigue SOLO para Karina + Dirección (por email). Hereda v4.
 // VERSION: v4 · 2026-08-11 · Términos del día SOLO para Karina + Dirección (mismo público de siempre); NO se
 //   abre al resto del equipo (tendrán sus propias alertas más adelante). Hereda v3.
 // VERSION: v3 · 2026-08-11 · Tarjeta "Términos del día" (3 sin tratar: antiguo/medio/reciente) que se
@@ -15,11 +19,15 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
 
+// Términos del día: SOLO estos (Karina + Dirección), como pidió Dirección.
 const ALERTAS_EMAILS = [
   'karina.morales@fondocapital.com',
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
 ]
+// Reclamaciones (Administración) y Valoración legal (Legal): por ROL de la sesión.
+const ROLES_ADMIN = ['administracion', 'direccion']
+const ROLES_LEGAL = ['legal', 'direccion']
 
 const fmtFecha = (d) => {
   if (!d) return ''
@@ -34,10 +42,18 @@ export default function AlertasPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email || ''
-  const puede = ALERTAS_EMAILS.includes(email)
+  const role = String(session?.user?.role || '').toLowerCase()
+  const esKarinaDir = ALERTAS_EMAILS.includes(email)
+  const esAdmin = ROLES_ADMIN.includes(role)
+  const esLegal = ROLES_LEGAL.includes(role)
+  const puede = esKarinaDir || esAdmin || esLegal
 
   const [alertas, setAlertas] = useState([])
   const [terDia, setTerDia] = useState(null)
+  const [recDia, setRecDia] = useState(null)      // Reclamaciones del día (Admin)
+  const [valList, setValList] = useState(null)    // Términos sin valoración (Legal)
+  const [valTxt, setValTxt] = useState({})        // { idadmon: texto } borradores de Anthony
+  const [valBusy, setValBusy] = useState('')
   const [cargando, setCargando] = useState(true)
   const [verResueltas, setVerResueltas] = useState(false)
   const [posponiendo, setPosponiendo] = useState(null)
@@ -59,7 +75,9 @@ export default function AlertasPage() {
     if (!session) { router.replace('/panel'); return }
     if (!puede) { router.replace('/procesos/mi-portal'); return }
     cargar()
-    cargarTerDia()
+    if (esKarinaDir) cargarTerDia()
+    if (esAdmin) cargarRecDia()
+    if (esLegal) cargarValList()
     // eslint-disable-next-line
   }, [status, session])
 
@@ -86,6 +104,46 @@ export default function AlertasPage() {
       body: JSON.stringify({ idadmon }),
     })
     cargarTerDia()
+  }
+
+  // --- Reclamaciones del día (Administración) ---
+  const cargarRecDia = async () => {
+    try {
+      const r = await fetch('/api/alertas/reclamaciones', { cache: 'no-store' })
+      const j = await r.json()
+      setRecDia(j && j.ok ? j : { reclamaciones: [], total: 0 })
+    } catch { setRecDia({ reclamaciones: [], total: 0 }) }
+  }
+  const marcarReclamacionTratada = async (idadmon) => {
+    await fetch('/api/alertas/reclamaciones', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idadmon }),
+    })
+    cargarRecDia()
+  }
+
+  // --- Valoración legal (Legal / Anthony) ---
+  const cargarValList = async () => {
+    try {
+      const r = await fetch('/api/alertas/valoracion-legal', { cache: 'no-store' })
+      const j = await r.json()
+      setValList(j && j.ok ? j : { terminos: [], total: 0 })
+    } catch { setValList({ terminos: [], total: 0 }) }
+  }
+  const guardarValoracion = async (idadmon) => {
+    const valoracion = (valTxt[idadmon] || '').trim()
+    if (!valoracion || valBusy) return
+    setValBusy(idadmon)
+    try {
+      const r = await fetch('/api/alertas/valoracion-legal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon, valoracion }),
+      })
+      const j = await r.json()
+      if (j.ok) { setValTxt(s => ({ ...s, [idadmon]: '' })); cargarValList() }
+      else alert(j.error || 'No se pudo guardar')
+    } catch (e) { alert(String(e)) }
+    setValBusy('')
   }
 
   const abrirPosponer = (a) => {
@@ -218,6 +276,82 @@ export default function AlertasPage() {
                     <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
                     <button onClick={() => marcarTratado(t.idadmon)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Marcar tratado</button>
                   </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* RECLAMACIONES DEL DÍA — Administración (Adalis y Fabiola) */}
+        {esAdmin && recDia && recDia.reclamaciones && recDia.reclamaciones.length > 0 && (
+          <div style={{ border: '1px solid #E5B9A0', background: '#FDF4EF', borderRadius: 12, padding: 16, marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, color: '#9A3412', marginBottom: 2 }}>Reclamaciones del día — las {recDia.reclamaciones.length} más graves</div>
+            <div style={{ fontSize: 12, color: '#9A3412', opacity: 0.85, marginBottom: 10 }}>
+              {recDia.total} casos con deuda en total. Estas son las prioritarias por importe y tiempo (incluye deudas sostenidas de GGCC/luz/agua/gas). Al tratarlas aquí, quedan tratadas también para tu compañera.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recDia.reclamaciones.map(r => (
+                <div key={r.idadmon} style={{ background: '#fff', border: '1px solid #EAD3C6', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#FBEDE6', border: '1px solid #E0B9A5', color: '#9A3412', whiteSpace: 'nowrap' }}>{r.motivo}</span>
+                    <b>{r.idadmon}</b>
+                    <span style={{ color: '#666' }}>{r.propietario || '—'}{r.propiedad ? ' · ' + r.propiedad : ''}</span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <a href="/op/cobranza" style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Gestionar en Cobranza →</a>
+                      <button onClick={() => marcarReclamacionTratada(r.idadmon)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Marcar tratado</button>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6, color: '#444' }}>
+                    <span>Arrendatario: <b>{r.arrendatario || '—'}</b>{r.arrendatario_rut ? ' · ' + r.arrendatario_rut : ''}</span>
+                    <span>Aval: <b>{r.aval || '—'}</b>{r.aval_rut ? ' · ' + r.aval_rut : ''}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
+                    {r.monto_arriendo > 0 && <span style={{ color: '#9B1C1C', fontWeight: 600 }}>Arriendo {fmtPesos(r.monto_arriendo)} · {r.dias_mora} d mora</span>}
+                    {r.deuda_servicios > 0 && (
+                      <span style={{ color: '#92400E' }}>Servicios {fmtPesos(r.deuda_servicios)} ({r.meses_servicio} mes(es)){r.servicios_detalle ? ` · GGCC ${fmtPesos(r.servicios_detalle.ggcc)} · Luz ${fmtPesos(r.servicios_detalle.luz)} · Agua ${fmtPesos(r.servicios_detalle.agua)} · Gas ${fmtPesos(r.servicios_detalle.gas)}` : ''}</span>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#0a5c3b', background: '#EAF7F0', borderRadius: 6, padding: '5px 8px' }}>
+                    Siguiente paso: <b>{r.siguiente}</b>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* VALORACIÓN LEGAL — Legal (Anthony) */}
+        {esLegal && valList && valList.terminos && valList.terminos.length > 0 && (
+          <div style={{ border: '1px solid #B9C7E5', background: '#F1F5FD', borderRadius: 12, padding: 16, marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, color: '#1E3A8A', marginBottom: 2 }}>Valoración legal — términos sin valorar</div>
+            <div style={{ fontSize: 12, color: '#1E3A8A', opacity: 0.85, marginBottom: 10 }}>
+              {valList.total} términos pendientes de tu valoración. Escribe la valoración de cada uno (lo que estimes: solidaridad del aval, vía DICOM/judicial, plazos, riesgos) y guarda: queda registrada en el CRM y el término sale de esta lista.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {valList.terminos.slice(0, 8).map(t => (
+                <div key={t.idadmon} style={{ background: '#fff', border: '1px solid #D2DCF0', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <b>{t.idadmon}</b>
+                    <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
+                    <span style={{ color: '#999' }}>{fmtFecha(t.termino_actual)}</span>
+                    {t.resultado != null && Number(t.resultado) < 0 && (
+                      <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}{t.quien ? ' · ' + t.quien : ''}</span>
+                    )}
+                    <a href={'/procesos/terminos/' + t.idadmon} style={{ marginLeft: 'auto', fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4, color: '#444' }}>
+                    <span>Arrendatario: <b>{t.arrendatario || '—'}</b>{t.arrendatario_rut ? ' · ' + t.arrendatario_rut : ''}</span>
+                    <span>Aval: <b>{t.avalista || '—'}</b></span>
+                  </div>
+                  <textarea value={valTxt[t.idadmon] || ''} onChange={e => setValTxt(s => ({ ...s, [t.idadmon]: e.target.value }))}
+                    rows={2} placeholder="Valoración legal de este término…"
+                    style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 8, resize: 'vertical' }} />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                    <button onClick={() => guardarValoracion(t.idadmon)} disabled={valBusy === t.idadmon || !(valTxt[t.idadmon] || '').trim()}
+                      style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', background: (valTxt[t.idadmon] || '').trim() ? '#1E3A8A' : '#C9C7BF', color: '#fff', fontWeight: 600, cursor: (valTxt[t.idadmon] || '').trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                      {valBusy === t.idadmon ? 'Guardando…' : 'Guardar valoración'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
