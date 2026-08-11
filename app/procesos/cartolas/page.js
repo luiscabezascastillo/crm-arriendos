@@ -1,4 +1,10 @@
 'use client'
+// VERSION: v9 · 2026-08-11 · Cartola por IDADMON: botón "➕ Añadir movimiento" (solo Dirección + Karina) para
+//   registrar manualmente un CARGO o un ABONO, y en cada fila MANUAL botones "editar" y "anular" (anular es
+//   reversible). Todo escribe en `cuentas` vía /api/cartolas/movimiento y deja rastro en `cuentas_bitacora`
+//   (motivo obligatorio, quién/cuándo). Las filas manuales llevan chip MANUAL; las anuladas, chip ANULADO, no
+//   suman al saldo y su saldo corrido sale como "—". Hereda v8. Requiere el SQL de `cuentas_bitacora` + columnas
+//   manual/anulado en `cuentas`.
 // VERSION: v8 · 2026-08-03 · Tooltip (title) al pasar el ratón en Concepto, Comentarios, Justificantes,
 //   Propietario, Inmueble y updated_at, para ver el contenido completo cuando la celda lo trunca.
 // VERSION: v7 · 2026-07-28 · Cartola por IDADMON: editar el CARGO de los 5 movimientos
@@ -674,10 +680,23 @@ function CartolaIdadmonVista() {
   const [editMotivo, setEditMotivo] = useState('')
   const [savingCargo, setSavingCargo] = useState(false)
   const [cargoErr, setCargoErr] = useState(null)
+  // Movimientos manuales (alta / edición / anulación) — solo Dirección + Karina.
+  const [showAlta, setShowAlta] = useState(false)
+  const [altaForm, setAltaForm] = useState({ fecha: '', concepto: '', tipo: 'cargo', monto: '', calif: '', comentarios: '', motivo: '' })
+  const [manualEdit, setManualEdit] = useState(null)   // fila MANUAL en edición
+  const [manualForm, setManualForm] = useState({ fecha: '', concepto: '', tipo: 'cargo', monto: '', comentarios: '', motivo: '' })
+  const [anulRow, setAnulRow] = useState(null)         // fila MANUAL a anular/reactivar
+  const [anulMotivo, setAnulMotivo] = useState('')
+  const [savingMov, setSavingMov] = useState(false)
+  const [movErr, setMovErr] = useState(null)
   const rol = session?.user?.role
   const email = session?.user?.email
   const puedeEditarCargo = rol === 'direccion' || EDITORES.includes(email)
   const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+  // Fecha: la cartola guarda dd/mm/aaaa (texto); los <input type=date> usan ISO. Conversores:
+  const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+  const isoADMY = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '' }
+  const dmyAISO = (s) => { const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
   const normMes = (v) => String(v ?? '').replace(/\D/g, '').slice(-4)
   const mesDeFila = (f) => { const m = String(f ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? m[3].slice(2) + m[2].padStart(2, '0') : null }
   const cargoEfectivo = (m) => (m.cargo_manual != null && m.cargo_manual !== '') ? num(m.cargo_manual) : num(m.cargo)
@@ -723,7 +742,7 @@ function CartolaIdadmonVista() {
     // 2) movimientos en cuentas
     const { data: cu, error: e2 } = await supabase
       .from('cuentas')
-      .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes, cargo_manual, cargo_editado_por, cargo_editado_motivo, cargo_editado_en')
+      .select('id, fecha, concepto, cargo, abono, comentarios, calif, justificantes, cargo_manual, cargo_editado_por, cargo_editado_motivo, cargo_editado_en, manual, anulado')
       .eq('idadmon', id)
       .limit(2000)
     if (e2) { setError('Error leyendo movimientos: ' + e2.message); setBuscando(false); return }
@@ -741,9 +760,10 @@ function CartolaIdadmonVista() {
       if (fa !== fb) return fa - fb
       return (a.id || 0) - (b.id || 0)
     })
-    // saldo corrido desde 0: saldo = saldo_anterior + cargo - abono
+    // saldo corrido desde 0: saldo = saldo_anterior + cargo - abono. Las filas ANULADAS no cuentan (saldo = null).
     let saldo = 0
     const conSaldo = ordenados.map(m => {
+      if (m.anulado) return { ...m, _saldo: null }
       saldo = saldo + cargoEfectivo(m) - num(m.abono)
       return { ...m, _saldo: saldo }
     })
@@ -759,7 +779,7 @@ function CartolaIdadmonVista() {
 
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
-  const saldoTotal = movs.length ? movs[movs.length - 1]._saldo : 0
+  const saldoTotal = movs.filter(m => !m.anulado).reduce((a, m) => a + cargoEfectivo(m) - num(m.abono), 0)
   const idsEditables = new Set(movs.slice(-5).map(m => m.id))
   const estadoLiq = (m) => {
     if (m.cargo_editado_en == null) return null
@@ -788,6 +808,60 @@ function CartolaIdadmonVista() {
     } catch { setCargoErr('Error de conexión'); setSavingCargo(false) }
   }
 
+  // ── Movimientos manuales ──────────────────────────────────────────────
+  const refrescar = async () => { await buscar() }   // relee la cuenta tras alta/edición/anulación
+
+  const abrirAlta = () => { setAltaForm({ fecha: hoyISO(), concepto: '', tipo: 'cargo', monto: '', calif: '', comentarios: '', motivo: '' }); setMovErr(null); setShowAlta(true) }
+  const guardarAlta = async () => {
+    const f = altaForm
+    if (!f.fecha) { setMovErr('Falta la fecha.'); return }
+    if ((f.concepto || '').trim().length < 2) { setMovErr('El concepto es obligatorio.'); return }
+    if (!(num(f.monto) > 0)) { setMovErr('El monto debe ser mayor que 0.'); return }
+    if ((f.motivo || '').trim().length < 3) { setMovErr('El motivo es obligatorio (mínimo 3 caracteres).'); return }
+    setSavingMov(true); setMovErr(null)
+    try {
+      const res = await fetch('/api/cartolas/movimiento', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'alta', idadmon: ficha.idadmon, fecha: isoADMY(f.fecha), concepto: f.concepto.trim(), tipo: f.tipo, monto: num(f.monto), calif: f.calif.trim(), comentarios: f.comentarios.trim(), motivo: f.motivo.trim() }) })
+      const d = await res.json()
+      if (!res.ok) { setMovErr(d.error || 'No se pudo guardar.'); setSavingMov(false); return }
+      setShowAlta(false); setSavingMov(false); await refrescar()
+    } catch { setMovErr('Error de conexión'); setSavingMov(false) }
+  }
+
+  const abrirManualEdit = (m) => {
+    const esAbono = num(m.abono) > 0 && !(cargoEfectivo(m) > 0)
+    setManualForm({ fecha: dmyAISO(m.fecha) || hoyISO(), concepto: m.concepto || '', tipo: esAbono ? 'abono' : 'cargo', monto: String(esAbono ? num(m.abono) : cargoEfectivo(m)), comentarios: m.comentarios || '', motivo: '' })
+    setManualEdit(m); setMovErr(null)
+  }
+  const guardarManualEdit = async () => {
+    const f = manualForm
+    if (!f.fecha) { setMovErr('Falta la fecha.'); return }
+    if ((f.concepto || '').trim().length < 2) { setMovErr('El concepto es obligatorio.'); return }
+    if (!(num(f.monto) > 0)) { setMovErr('El monto debe ser mayor que 0.'); return }
+    if ((f.motivo || '').trim().length < 3) { setMovErr('El motivo es obligatorio (mínimo 3 caracteres).'); return }
+    setSavingMov(true); setMovErr(null)
+    try {
+      const res = await fetch('/api/cartolas/movimiento', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'edicion', id: manualEdit.id, fecha: isoADMY(f.fecha), concepto: f.concepto.trim(), tipo: f.tipo, monto: num(f.monto), comentarios: f.comentarios.trim(), motivo: f.motivo.trim() }) })
+      const d = await res.json()
+      if (!res.ok) { setMovErr(d.error || 'No se pudo guardar.'); setSavingMov(false); return }
+      setManualEdit(null); setSavingMov(false); await refrescar()
+    } catch { setMovErr('Error de conexión'); setSavingMov(false) }
+  }
+
+  const confirmarAnular = async () => {
+    if (!anulRow) return
+    if ((anulMotivo || '').trim().length < 3) { setMovErr('El motivo es obligatorio (mínimo 3 caracteres).'); return }
+    setSavingMov(true); setMovErr(null)
+    try {
+      const res = await fetch('/api/cartolas/movimiento', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'anulacion', id: anulRow.id, motivo: anulMotivo.trim() }) })
+      const d = await res.json()
+      if (!res.ok) { setMovErr(d.error || 'No se pudo procesar.'); setSavingMov(false); return }
+      setAnulRow(null); setAnulMotivo(''); setSavingMov(false); await refrescar()
+    } catch { setMovErr('Error de conexión'); setSavingMov(false) }
+  }
+
   // Proporcional del primer mes.
   //  - propCalc: recálculo estándar de calendario (cuota × UF × días) → SOLO informativo.
   //  - propLog: datos_arriendos.proporcional → es el dato REAL con el que cc1Inicios carga el
@@ -810,7 +884,28 @@ function CartolaIdadmonVista() {
   )
 
   const cellMov = (r, c) => {
-    if (c.key === '_saldo') return <span style={{ fontWeight: 600, fontFamily: MONO, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span>
+    if (c.key === '_saldo') { if (r._saldo == null) return <span style={{ color: '#B4B2A9' }}>—</span>; return <span style={{ fontWeight: 600, fontFamily: MONO, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span> }
+    if (c.key === 'concepto') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ textDecoration: r.anulado ? 'line-through' : 'none', color: r.anulado ? '#B4B2A9' : 'inherit' }}>{r.concepto ?? '—'}</span>
+          {r.manual && <span title="Movimiento manual" style={{ fontSize: 9, fontWeight: 700, color: '#0C447C', background: '#E6F1FB', borderRadius: 4, padding: '0 5px' }}>MANUAL</span>}
+          {r.anulado && <span style={{ fontSize: 9, fontWeight: 700, color: '#9B1C1C', background: '#FDECEC', borderRadius: 4, padding: '0 5px' }}>ANULADO</span>}
+          {r.manual && puedeEditarCargo && !r.anulado && (
+            <>
+              <button onClick={() => abrirManualEdit(r)} title="Editar este movimiento manual (queda registrado)"
+                style={{ border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#0C447C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>editar</button>
+              <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Anular este movimiento manual (reversible, queda registrado)"
+                style={{ border: '0.5px solid #E7B4B4', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#9B1C1C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>anular</button>
+            </>
+          )}
+          {r.manual && puedeEditarCargo && r.anulado && (
+            <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Reactivar este movimiento (queda registrado)"
+              style={{ border: '0.5px solid #B4D8CB', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#085041', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>reactivar</button>
+          )}
+        </span>
+      )
+    }
     if (c.key === 'cargo') {
       const val = cargoEfectivo(r); const s = val ? val.toLocaleString('es-CL') : ''
       const editable = puedeEditarCargo && idsEditables.has(r.id)
@@ -852,6 +947,12 @@ function CartolaIdadmonVista() {
           style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
           {buscando ? 'Buscando…' : 'Ver cuenta'}
         </button>
+        {ficha && puedeEditarCargo && (
+          <button onClick={abrirAlta} title="Añadir un movimiento manual (cargo o abono) a esta cuenta — queda registrado"
+            style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1D9E75', background: '#EAF7F1', color: '#0F6D4E', cursor: 'pointer' }}>
+            ➕ Añadir movimiento
+          </button>
+        )}
       </div>
 
       {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
@@ -1009,6 +1110,137 @@ function CartolaIdadmonVista() {
               style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>Cancelar</button>
             <button onClick={guardarCargo} disabled={savingCargo || editMotivo.trim().length < 3}
               style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: (savingCargo || editMotivo.trim().length < 3) ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: (savingCargo || editMotivo.trim().length < 3) ? 'default' : 'pointer' }}>{savingCargo ? 'Guardando…' : 'Guardar cambio'}</button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Modal: AÑADIR movimiento manual ── */}
+    {showAlta && (
+      <>
+        <div onClick={() => !savingMov && setShowAlta(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000 }} />
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(480px, 94vw)', maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 9001, padding: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>Añadir movimiento manual</div>
+          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{ficha?.idadmon} · queda registrado quién, cuándo y el motivo</div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <label style={{ flex: 1, fontSize: 12, color: '#888780' }}>Fecha
+              <input type="date" value={altaForm.fecha} onChange={e => setAltaForm(f => ({ ...f, fecha: e.target.value }))}
+                style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+            </label>
+            <div style={{ flex: 1, fontSize: 12, color: '#888780' }}>Tipo
+              <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
+                {['cargo', 'abono'].map(t => (
+                  <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                    <input type="radio" checked={altaForm.tipo === t} onChange={() => setAltaForm(f => ({ ...f, tipo: t }))} />
+                    <span style={{ color: t === 'cargo' ? '#9B1C1C' : '#085041', fontWeight: 600, textTransform: 'capitalize' }}>{t}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Monto
+            <input value={altaForm.monto} onChange={e => setAltaForm(f => ({ ...f, monto: e.target.value }))} inputMode="numeric" autoFocus placeholder="0"
+              style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', fontFamily: MONO }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Concepto
+            <input value={altaForm.concepto} onChange={e => setAltaForm(f => ({ ...f, concepto: e.target.value }))} placeholder="Descripción del movimiento"
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+          </label>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <label style={{ flex: 1, fontSize: 12, color: '#888780' }}>Calif (opcional)
+              <input value={altaForm.calif} onChange={e => setAltaForm(f => ({ ...f, calif: e.target.value }))}
+                style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+            </label>
+            <label style={{ flex: 1, fontSize: 12, color: '#888780' }}>Comentarios (opcional)
+              <input value={altaForm.comentarios} onChange={e => setAltaForm(f => ({ ...f, comentarios: e.target.value }))}
+                style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+            </label>
+          </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 8 }}>Motivo (obligatorio)
+            <textarea value={altaForm.motivo} onChange={e => setAltaForm(f => ({ ...f, motivo: e.target.value }))} rows={2} placeholder="Por qué se añade este movimiento…"
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+          </label>
+          {movErr && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8 }}>{movErr}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button onClick={() => setShowAlta(false)} disabled={savingMov}
+              style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={guardarAlta} disabled={savingMov}
+              style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: savingMov ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: savingMov ? 'default' : 'pointer' }}>{savingMov ? 'Guardando…' : 'Añadir'}</button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Modal: EDITAR movimiento manual ── */}
+    {manualEdit && (
+      <>
+        <div onClick={() => !savingMov && setManualEdit(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000 }} />
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(480px, 94vw)', maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 9001, padding: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>Editar movimiento manual</div>
+          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{ficha?.idadmon} · cada cambio queda registrado</div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <label style={{ flex: 1, fontSize: 12, color: '#888780' }}>Fecha
+              <input type="date" value={manualForm.fecha} onChange={e => setManualForm(f => ({ ...f, fecha: e.target.value }))}
+                style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+            </label>
+            <div style={{ flex: 1, fontSize: 12, color: '#888780' }}>Tipo
+              <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
+                {['cargo', 'abono'].map(t => (
+                  <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                    <input type="radio" checked={manualForm.tipo === t} onChange={() => setManualForm(f => ({ ...f, tipo: t }))} />
+                    <span style={{ color: t === 'cargo' ? '#9B1C1C' : '#085041', fontWeight: 600, textTransform: 'capitalize' }}>{t}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Monto
+            <input value={manualForm.monto} onChange={e => setManualForm(f => ({ ...f, monto: e.target.value }))} inputMode="numeric"
+              style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', fontFamily: MONO }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Concepto
+            <input value={manualForm.concepto} onChange={e => setManualForm(f => ({ ...f, concepto: e.target.value }))}
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Comentarios (opcional)
+            <input value={manualForm.comentarios} onChange={e => setManualForm(f => ({ ...f, comentarios: e.target.value }))}
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 8 }}>Motivo del cambio (obligatorio)
+            <textarea value={manualForm.motivo} onChange={e => setManualForm(f => ({ ...f, motivo: e.target.value }))} rows={2} placeholder="Por qué se cambia…"
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+          </label>
+          {movErr && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8 }}>{movErr}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button onClick={() => setManualEdit(null)} disabled={savingMov}
+              style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={guardarManualEdit} disabled={savingMov}
+              style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: savingMov ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: savingMov ? 'default' : 'pointer' }}>{savingMov ? 'Guardando…' : 'Guardar cambio'}</button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Modal: ANULAR / REACTIVAR movimiento manual ── */}
+    {anulRow && (
+      <>
+        <div onClick={() => !savingMov && setAnulRow(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000 }} />
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 94vw)', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 9001, padding: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>{anulRow.anulado ? 'Reactivar movimiento' : 'Anular movimiento'}</div>
+          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{anulRow.fecha} · {anulRow.concepto}</div>
+          <div style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 12, background: '#F7F5EF', padding: '8px 10px', borderRadius: 8 }}>
+            {anulRow.anulado ? 'Volverá a contar en el saldo.' : 'Dejará de contar en el saldo. No se borra: queda como ANULADO y es reversible.'}
+          </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 8 }}>Motivo (obligatorio)
+            <textarea value={anulMotivo} onChange={e => setAnulMotivo(e.target.value)} rows={2} placeholder={anulRow.anulado ? 'Por qué se reactiva…' : 'Por qué se anula…'}
+              style={{ width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+          </label>
+          {movErr && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8 }}>{movErr}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button onClick={() => setAnulRow(null)} disabled={savingMov}
+              style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={confirmarAnular} disabled={savingMov || anulMotivo.trim().length < 3}
+              style={{ fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 8, border: 'none', background: (savingMov || anulMotivo.trim().length < 3) ? '#D8B4B4' : (anulRow.anulado ? '#1D9E75' : '#C0392B'), color: '#fff', cursor: (savingMov || anulMotivo.trim().length < 3) ? 'default' : 'pointer' }}>{savingMov ? '…' : (anulRow.anulado ? 'Reactivar' : 'Anular')}</button>
           </div>
         </div>
       </>
