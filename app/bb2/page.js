@@ -1,10 +1,13 @@
 'use client'
+// VERSION: v2 · 2026-08-11 · app/bb2/page.js — Filas CLICABLES → ficha (/bb2/ficha?id=) y botón "+ Nueva operación".
+//   La comisión propietario/arrendatario ya sale bien (bb2Log v2 corrige COBRADO/COBRADO-D). Hereda v1.
 // VERSION: v1 · 2026-08-11 · app/bb2/page.js — PASO 1 de BB2 (arriendo sin administración): LISTADO de solo lectura
 //   sobre el LOG (id_lcc 'R%'), leído desde raw_data (las columnas promovidas están desalineadas). Buscador +
 //   filtro por ejecutivo + filtro por estado (HECHO/pendiente) + recuento. Acceso: Dirección + Anthony (Legal).
 //   Los siguientes pasos (ficha guardar/recuperar, Terminar → comisiones_por_facturar + email a Karina) irán aparte.
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import TopNav from '../components/ui/TopNav'
 
 const AUTORIZADOS = [
@@ -20,6 +23,7 @@ const dash = v => (v && String(v).trim()) ? v : '—'
 
 export default function BB2Page() {
   const { data: session, status } = useSession()
+  const router = useRouter()
   const email = session?.user?.email
   const autorizado = !!email && AUTORIZADOS.includes(email)
 
@@ -75,6 +79,7 @@ export default function BB2Page() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5 }}>BB2 · Operaciones comerciales</span>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Arriendos sin administración</h1>
+          <button onClick={() => router.push('/bb2/ficha?id=nuevo')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#0C447C', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto' }}>+ Nueva operación</button>
         </div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Solo corretaje (comisión). Lectura del LOG (id R00xxx). Datos tomados de raw_data; se depurarán en la estabilización.</div>
 
@@ -119,8 +124,9 @@ export default function BB2Page() {
                     </thead>
                     <tbody>
                       {filtradas.map((r, i) => (
-                        <tr key={r.id || i} style={{ borderBottom: '1px solid #F1F1EE', background: i % 2 ? '#FCFCFB' : '#fff' }}>
-                          <td style={{ ...tdc, fontWeight: 700, whiteSpace: 'nowrap' }}>{r.id}</td>
+                        <tr key={r.id || i} onClick={() => r.id && router.push('/bb2/ficha?id=' + r.id)} title="Abrir ficha"
+                          style={{ borderBottom: '1px solid #F1F1EE', background: i % 2 ? '#FCFCFB' : '#fff', cursor: 'pointer' }}>
+                          <td style={{ ...tdc, fontWeight: 700, whiteSpace: 'nowrap', color: '#0C447C', textDecoration: 'underline' }}>{r.id}</td>
                           <td style={{ ...tdc, minWidth: 240 }}>
                             <div>{dash(r.inmueble)}</div>
                             {r.comuna && <div style={{ fontSize: 10, color: '#9ca3af' }}>{r.comuna}</div>}
