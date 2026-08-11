@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v33 · 2026-08-11 · Proceso del término: en cada paso HECHO se muestra "✓ quién · fecha" (quién lo completó,
+//   de workflow_task_logs.usuario, y la fecha de cierre). Además la tarjeta "Acciones realizadas" ya lista de verdad
+//   quién completó cada paso, cuándo y con qué comentario (antes decía "próximamente"). Hereda v32.
 // VERSION: v32 · 2026-08-11 · Botón "🧾 Ver PDF del término": genera un PDF PROFESIONAL de la liquidación (datos
 //   económicos, servicios, reparaciones + presupuesto con detalle, descuentos aplicados cercanos al cierre y
 //   resultado), lo abre en pestaña para revisarlo (marca de agua BORRADOR) y engancha el enlace a los borradores
@@ -54,6 +57,8 @@ const numC = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[
 const cargoEfectivo = m => (m.cargo_manual != null && m.cargo_manual !== '') ? numC(m.cargo_manual) : numC(m.cargo)
 const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + v.toLocaleString('es-CL') }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
+// Nombre legible a partir del email (karina.morales@… -> "Karina Morales").
+const nombreUsuario = u => { const p = String(u || '').split('@')[0]; return p ? p.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—' }
 
 // Clasificación canónica de "quién tiene la garantía" (traspaso 2026-07-12):
 //   'FCR' EXACTO  = la tiene la empresa.
@@ -341,10 +346,15 @@ export default function TerminosPage() {
       detalle = det || []
     }
     let wfTasks = []
+    let wfLogs = []
     const inst = (instRes.data && instRes.data[0]) || null
     if (inst) {
       const { data: tk } = await supabase.from('workflow_tasks').select('node_codigo, estado, responsable, fecha_inicio, fecha_limite, fecha_cierre').eq('workflow_instance_id', inst.id)
       wfTasks = tk || []
+      // Quién completó cada paso: vive en workflow_task_logs (usuario, comentario, accion). select('*') para no
+      // romper si cambia el esquema; en render se toma el último COMPLETADO por nodo.
+      const { data: lg } = await supabase.from('workflow_task_logs').select('*').eq('workflow_instance_id', inst.id)
+      wfLogs = lg || []
     }
     const t = (termRes.data && termRes.data[0]) || null
     const saved = linRes.data || []
@@ -439,7 +449,7 @@ export default function TerminosPage() {
       .select('num, fecha_contable, idadmon, inmueble, propietario, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
       .in('idadmon', idsResumen).order('num')
 
-    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc, cargosProp })
+    setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, wfLogs, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc, cargosProp })
     setLoadingPanel(false)
   }
 
@@ -737,6 +747,19 @@ export default function TerminosPage() {
   const detalle = panel?.detalle || []
   const descuentos = panel?.descuentos || []
   const wfTasks = panel?.wfTasks || []
+  const wfLogs = panel?.wfLogs || []
+  // Último COMPLETADO por nodo -> quién (usuario) y comentario. La fecha se toma de fecha_cierre de la tarea.
+  const logPorNodo = {}
+  for (const lg of wfLogs) {
+    if (String(lg.accion || '').toUpperCase() !== 'COMPLETADO') continue
+    const k = lg.node_codigo
+    const prev = logPorNodo[k]
+    if (!prev) { logPorNodo[k] = lg; continue }
+    const a = lg.created_at ? new Date(lg.created_at).getTime() : 0
+    const b = prev.created_at ? new Date(prev.created_at).getTime() : 0
+    if (a >= b) logPorNodo[k] = lg
+  }
+  const nodoNombre = {}; nodos.forEach(nn => { nodoNombre[nn.codigo] = nn.nombre })
   const repPresu = panel?.repPresu || 0
   const arreglosRef = panel?.arreglosRef || '0'
   const asociado = panel?.asociado || null
@@ -1155,11 +1178,19 @@ export default function TerminosPage() {
                                         const t = tareasPorNodo[nd.codigo]; const st = estadoTarea(t)
                                         const dot = st === 'hecho' ? '#16a34a' : st === 'curso' ? '#2563eb' : '#d1d5db'
                                         const ti = tipoInfo(nd.tipo)
+                                        const quienNodo = logPorNodo[nd.codigo]
                                         return (
-                                          <div key={nd.codigo} style={{ display: 'flex', gap: 6, padding: '2px 0', alignItems: 'center' }}>
-                                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-                                            <span style={{ flex: 1, fontSize: 11, color: st === 'pendiente' ? '#9ca3af' : '#444' }}>{nd.nombre}{nd.bloquea_cierre ? <span style={{ color: '#dc2626', marginLeft: 3 }}>●</span> : null}</span>
-                                            {ti.txt && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: ti.bg, color: ti.col }}>{ti.txt}</span>}
+                                          <div key={nd.codigo} style={{ padding: '2px 0' }}>
+                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                              <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                                              <span style={{ flex: 1, fontSize: 11, color: st === 'pendiente' ? '#9ca3af' : '#444' }}>{nd.nombre}{nd.bloquea_cierre ? <span style={{ color: '#dc2626', marginLeft: 3 }}>●</span> : null}</span>
+                                              {ti.txt && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: ti.bg, color: ti.col }}>{ti.txt}</span>}
+                                            </div>
+                                            {st === 'hecho' && (quienNodo || t?.fecha_cierre) && (
+                                              <div style={{ fontSize: 9.5, color: '#16a34a', marginLeft: 16, marginTop: 1 }} title={quienNodo?.comentario || ''}>
+                                                ✓ {quienNodo?.usuario ? nombreUsuario(quienNodo.usuario) : '—'}{t?.fecha_cierre ? ' · ' + fmtFecha(t.fecha_cierre) : ''}
+                                              </div>
+                                            )}
                                           </div>
                                         )
                                       })}
@@ -1170,7 +1201,20 @@ export default function TerminosPage() {
                             )
                           })()}
                     </div>
-                    <div style={{ ...card, color: '#9ca3af', fontSize: 12 }}>Acciones realizadas — <i>próximamente</i>.</div>
+                    <div style={card}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>Acciones realizadas</div>
+                      {wfLogs.length === 0 ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Aún no hay acciones registradas.</div> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {[...wfLogs].sort((a, b) => (b.created_at ? new Date(b.created_at).getTime() : 0) - (a.created_at ? new Date(a.created_at).getTime() : 0)).map((lg, i) => (
+                            <div key={i} style={{ fontSize: 11, color: '#444', borderBottom: '1px solid #F3F4F6', paddingBottom: 3 }}>
+                              <span style={{ color: '#16a34a', fontWeight: 700 }}>{nombreUsuario(lg.usuario)}</span> {String(lg.accion || '').toLowerCase()} <b>{nodoNombre[lg.node_codigo] || lg.node_codigo}</b>
+                              {lg.created_at ? <span style={{ color: '#9ca3af' }}> · {fmtFecha(lg.created_at)}</span> : null}
+                              {lg.comentario ? <div style={{ color: '#6b7280', fontStyle: 'italic' }}>{lg.comentario}</div> : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     {descGarantia.length > 0 && (
                       <div style={{ ...card, padding: 10 }}>
@@ -1192,7 +1236,7 @@ export default function TerminosPage() {
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Descuentos de este término</span>
                         <span style={{ fontSize: 11, color: '#888' }}>{idadmonSel} · {descDelTermino.length} · {fmtPesos(totDelTermino)}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Descuentos imputados a este IDADMON cercanos al cierre (desde 2 meses antes de la entrega). Los iniciales, de años atrás, no se muestran. Solo lectura.</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Descuentos imputados a este IDADMON. Solo lectura.</div>
                       {descDelTermino.length === 0 ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Sin descuentos.</div> : (
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead><tr style={{ background: '#FAFAF8' }}>
