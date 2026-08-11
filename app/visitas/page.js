@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v3 · 2026-08-11 · Botón "Generar PDF" cuando una orden existe pero NO tiene pdf_url (p.ej. la N°43, cuya
+//   generación falló por un carácter invisible en el teléfono). Antes no había forma de reintentar desde la lista:
+//   "Generar" solo aparecía si NO existía orden, así que la orden quedaba sin PDF y sin salida. Reusa /api/ordenes/generar
+//   (idempotente). La raíz se corrige en lib/pdfOrden.js v3 (saneado del texto). Hereda v2.
 // VERSION: v2 · 2026-07-21 · Los comerciales (roles comercial/ventas) entran y trabajan aquí, viendo
 //   SOLO sus propias visitas. Dirección/admin ven todas. Antes solo entraba Dirección (el resto acababa en el login).
 import { useState, useEffect, useMemo } from 'react'
@@ -195,7 +199,9 @@ export default function VisitasPage() {
                           <>
                             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: orden.estado === 'firmada' ? '#16a34a' : '#b45309', background: '#fff', border: '1px solid ' + (orden.estado === 'firmada' ? '#bbf7d0' : '#fde68a') }}>N° {orden.id} · {orden.estado === 'firmada' ? 'firmada ✓' : orden.estado}</span>
                             <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                              {orden.pdf_url && <a href={orden.pdf_url} target="_blank" rel="noreferrer" style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>PDF</a>}
+                              {orden.pdf_url
+                                ? <a href={orden.pdf_url} target="_blank" rel="noreferrer" style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>PDF</a>
+                                : <button onClick={() => generarOrden(v)} title="Esta orden se creó sin PDF (falló al generarse). Vuelve a generarlo." style={{ ...mini, borderColor: '#0C447C', background: '#E6F1FB', color: '#0C447C' }}>Generar PDF</button>}
                               <button onClick={() => enviarCorreo(orden)} style={{ ...mini, borderColor: '#0F6E56', background: '#E1F5EE', color: '#0F6E56' }}>Correo</button>
                               {orden.estado !== 'firmada' && <button onClick={() => copiarLink(orden)} style={{ ...mini, borderColor: '#E5E7EB', background: '#fff', color: '#374151' }}>Link</button>}
                               {orden.estado !== 'firmada' && <a href={`/firmar/${orden.token}`} target="_blank" rel="noreferrer" style={{ ...mini, borderColor: '#7c3aed', background: '#f5f3ff', color: '#7c3aed' }}>Firmar</a>}
