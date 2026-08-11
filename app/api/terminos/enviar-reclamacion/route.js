@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-11 · MODO PRUEBA (test:true): manda la reclamación SOLO a `toTest` (o al que envía), con
+//   "[PRUEBA]" en el asunto, sin abrir solicitud, sin histórico y sin comprobaciones — para verla sin enviar a nadie.
+//   Además admite `bcc` (copia oculta/CCO) en el envío real. Hereda v1 (cc aval + administración@, solicitud, histórico).
 // VERSION: v1 · 2026-07-12 · app/api/terminos/enviar-reclamacion/route.js
 //   Envía la RECLAMACIÓN de saldo (ya editada por el usuario) al ex-arrendatario, cc al aval
 //   (si existe) + administración@. Abre una fila en `solicitudes` (tipo='reclamacion', PENDIENTE)
@@ -43,11 +46,21 @@ export async function POST(req) {
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
-  const { idadmon, to, cc, subject, cuerpo, forzar } = body || {}
-  if (!idadmon || !to || !subject || !cuerpo) {
-    return Response.json({ error: 'Faltan datos (idadmon, to, subject, cuerpo)' }, { status: 400 })
+  const { idadmon, to, cc, bcc, subject, cuerpo, forzar, test, toTest } = body || {}
+  if (!idadmon || !subject || !cuerpo) {
+    return Response.json({ error: 'Faltan datos (idadmon, subject, cuerpo)' }, { status: 400 })
   }
-  if (!/@/.test(String(to))) return Response.json({ error: 'Email destinatario no válido: ' + to }, { status: 400 })
+
+  // MODO PRUEBA: solo a la dirección de prueba (o al que envía). No abre solicitud, no deja histórico, sin duplicados.
+  if (test) {
+    const toFinal = (toTest && /@/.test(String(toTest))) ? String(toTest).trim() : email
+    if (!/@/.test(String(toFinal))) return Response.json({ error: 'Correo de prueba no válido: ' + toFinal }, { status: 400 })
+    const rp = await enviarNotificacion({ subject: '[PRUEBA] ' + subject, to: toFinal, cuerpo, autor: email })
+    if (!rp.ok) return Response.json({ error: 'No se pudo enviar la prueba: ' + (rp.error || 'error') }, { status: 500 })
+    return Response.json({ ok: true, enviadoA: toFinal, test: true })
+  }
+
+  if (!to || !/@/.test(String(to))) return Response.json({ error: 'Email destinatario no válido: ' + (to || '') }, { status: 400 })
 
   // Recalcular el saldo desde la liquidación GUARDADA (autoridad; no confiar en el body).
   const { data: term } = await supabaseAdmin
@@ -74,10 +87,11 @@ export async function POST(req) {
     }, { status: 409 })
   }
 
-  // cc = aval (del borrador, si lo hay) + administración@ (constancia interna), igual que enviar-email.
+  // cc = aval + copias visibles (del borrador) + administración@ (constancia interna). bcc = copias ocultas (CCO).
   const ccList = [String(cc || '').trim(), ADMIN_CC].filter(Boolean).join(', ')
+  const bccList = String(bcc || '').trim() || undefined
 
-  const r = await enviarNotificacion({ subject, to, cc: ccList, cuerpo, autor: email })
+  const r = await enviarNotificacion({ subject, to, cc: ccList, bcc: bccList, cuerpo, autor: email })
   if (!r.ok) return Response.json({ error: 'No se pudo enviar: ' + (r.error || 'error desconocido') }, { status: 500 })
 
   const esReenvio = !!yaAbierta

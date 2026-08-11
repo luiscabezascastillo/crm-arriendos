@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v36 · 2026-08-11 · Panel de RECLAMACIÓN mejorado: colores profesionales (slate, no rojo agresivo), sin el
+//   hueco vacío de la derecha (tarjeta acotada), campo CCO (copia oculta) además de CC, botón de PRUEBA a tu correo
+//   sin enviar a nadie, y DOBLE confirmación antes del envío real. Requiere enviar-reclamacion v2 + cc1Email v5 (bcc).
+//   Hereda v35.
 // VERSION: v35 · 2026-08-11 · Envío seguro de la liquidación: (1) DOBLE confirmación antes de enviar de verdad
 //   (ver → "¿enviar a X?" → confirmar/volver) en ambos correos. (2) Botón de PRUEBA que manda el borrador a la
 //   dirección que elijas (por defecto la tuya), para ver ambas visiones sin tocar al destinatario real. (3) Copia
@@ -618,31 +622,40 @@ export default function TerminosPage() {
       const data = await res.json()
       if (!res.ok || data.error) { setReclamPanel({ loading: false, draft: null, aviso: data.error || ('Error ' + res.status) }); return }
       setReclamPanel({ loading: false, aviso: null, draft: {
-        to: data.to || '', cc: data.cc || '', subject: data.subject || '', cuerpo: data.cuerpo || '',
+        to: data.to || '', cc: data.cc || '', bcc: '', subject: data.subject || '', cuerpo: data.cuerpo || '',
         saldo: n0(data.saldo), hayAval: !!data.hayAval, sinEmail: !!data.sinEmail,
-        error: null, yaAbierta: false, enviando: false, enviado: false, reenvio: false,
+        error: null, yaAbierta: false, enviando: false, enviado: false, reenvio: false, pruebaMsg: null, confirmando: false,
       } })
+      setTestTo(prev => prev || session?.user?.email || '')
     } catch (e) {
       setReclamPanel({ loading: false, draft: null, aviso: e.message })
     }
   }
   const setReclam = (field, v) => setReclamPanel(p => (p && p.draft) ? ({ ...p, draft: { ...p.draft, [field]: v } }) : p)
-  async function enviarReclamacion(forzar) {
+  // Con { test:true } manda una PRUEBA a `testTo` (no abre solicitud ni deja rastro). El envío real solo se dispara
+  // desde "✓ Confirmar y enviar" (doble validación).
+  async function enviarReclamacion(forzar, { test = false } = {}) {
     const dr = reclamPanel?.draft
     if (!dr) return
-    if (!dr.to || !dr.subject || !dr.cuerpo) { setReclam('error', 'Falta destinatario, asunto o cuerpo.'); return }
-    setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: true, error: null } }) : p)
+    const destino = test ? String(testTo || '').trim() : String(dr.to || '').trim()
+    if (!destino || !/@/.test(destino)) { setReclam('error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
+    if (!dr.subject || !dr.cuerpo) { setReclam('error', 'Falta asunto o cuerpo.'); return }
+    setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: true, error: null, pruebaMsg: null } }) : p)
     try {
       const res = await fetch('/api/terminos/enviar-reclamacion', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, to: dr.to, cc: dr.cc, subject: dr.subject, cuerpo: dr.cuerpo, forzar: !!forzar }),
+        body: JSON.stringify({ idadmon: idadmonSel, to: dr.to, cc: dr.cc, bcc: dr.bcc, subject: dr.subject, cuerpo: dr.cuerpo, forzar: !!forzar, test, toTest: test ? destino : undefined }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
         setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta } }) : p)
         return
       }
-      setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, enviado: true, error: null, reenvio: !!data.reenvio } }) : p)
+      if (test) {
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) } }) : p)
+      } else {
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, enviado: true, error: null, confirmando: false, reenvio: !!data.reenvio } }) : p)
+      }
     } catch (e) {
       setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: e.message } }) : p)
     }
@@ -1041,39 +1054,66 @@ export default function TerminosPage() {
         )}
 
         {reclamPanel && (
-          <div style={{ ...card, border: '2px solid #dc2626', background: '#FFF7F7' }}>
+          <div style={{ ...card, maxWidth: 780, borderColor: '#cbd5e1', background: '#F8FAFC' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>⚖ Reclamación de saldo pendiente</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>⚖ Reclamación de saldo pendiente</div>
               <button onClick={() => setReclamPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
             </div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Un solo correo al ex-arrendatario, con copia al aval (si existe) y a administración@. No cambia el estado del contrato; abre una reclamación que cierra Cobranzas al pagar. Nada se envía sin tu clic.</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>Un solo correo al ex-arrendatario, con copia al aval (si existe) y a administración@. No cambia el estado del contrato; abre una reclamación que cierra Cobranzas al pagar. Nada se envía sin tu doble confirmación.</div>
             {reclamPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borrador…</div>
               : reclamPanel.aviso ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{reclamPanel.aviso}</div>
               : reclamPanel.draft ? (
                 reclamPanel.draft.enviado ? (
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Reclamación {reclamPanel.draft.reenvio ? 'reenviada' : 'enviada'} a {reclamPanel.draft.to}{reclamPanel.draft.cc ? ' (cc ' + reclamPanel.draft.cc + ')' : ''}</div>
                 ) : (
-                  <div style={{ maxWidth: 640 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626', marginBottom: 10 }}>Saldo a reclamar: {fmtPesos(reclamPanel.draft.saldo)}</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', marginBottom: 10 }}>Saldo a reclamar: <span style={{ color: '#9B1C1C' }}>{fmtPesos(reclamPanel.draft.saldo)}</span></div>
+                    {reclamPanel.draft.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{reclamPanel.draft.pruebaMsg}</div>}
                     {reclamPanel.draft.error && (
-                      <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>
+                      <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>
                         {reclamPanel.draft.error}
-                        {reclamPanel.draft.yaAbierta && <button onClick={() => enviarReclamacion(true)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#dc2626', reclamPanel.draft.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}
+                        {reclamPanel.draft.yaAbierta && <button onClick={() => enviarReclamacion(true)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}
                       </div>
                     )}
                     {reclamPanel.draft.sinEmail && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ El arrendatario no tiene email en la ficha. Escríbelo a mano abajo.</div>}
-                    {!reclamPanel.draft.hayAval && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Sin avalista registrado: se envía solo al arrendatario (puedes añadir un cc a mano).</div>}
+                    {!reclamPanel.draft.hayAval && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Sin avalista registrado: se envía solo al arrendatario (puedes añadir copias a mano).</div>}
                     <div style={lbl}>Para (arrendatario)</div>
                     <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.to} onChange={e => setReclam('to', e.target.value)} placeholder="correo@…" />
-                    <div style={lbl}>Cc (aval)</div>
-                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.cc} onChange={e => setReclam('cc', e.target.value)} placeholder="(sin aval)" />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={lbl}>Cc — copias visibles (aval, etc.)</div>
+                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.cc} onChange={e => setReclam('cc', e.target.value)} placeholder="correo1, correo2…" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={lbl}>Cco — copias ocultas</div>
+                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.bcc} onChange={e => setReclam('bcc', e.target.value)} placeholder="no visibles para los demás…" />
+                      </div>
+                    </div>
                     <div style={lbl}>Asunto</div>
                     <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.subject} onChange={e => setReclam('subject', e.target.value)} />
                     <div style={lbl}>Cuerpo</div>
                     <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={reclamPanel.draft.cuerpo} onChange={e => setReclam('cuerpo', e.target.value)} />
-                    <button onClick={() => enviarReclamacion(false)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#dc2626', reclamPanel.draft.enviando), marginTop: 10, width: '100%' }}>
-                      {reclamPanel.draft.enviando ? 'Enviando…' : '⚖ Enviar reclamación'}
-                    </button>
+
+                    {/* PRUEBA interna: manda una copia a tu correo (o al que pongas), sin enviar al arrendatario ni al aval. */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+                      <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
+                      <button onClick={() => enviarReclamacion(false, { test: true })} disabled={reclamPanel.draft.enviando} title="Envía una copia de prueba (no al arrendatario ni al aval)" style={{ ...btn('#6b7280', reclamPanel.draft.enviando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
+                    </div>
+
+                    {/* ENVÍO REAL con DOBLE confirmación */}
+                    {!reclamPanel.draft.confirmando ? (
+                      <button onClick={() => { setReclam('error', null); setReclam('confirmando', true) }} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginTop: 8, width: '100%' }}>⚖ Enviar reclamación</button>
+                    ) : (
+                      <div style={{ marginTop: 8, border: '1px solid #94a3b8', background: '#F1F5F9', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, color: '#334155', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar esta reclamación DE VERDAD a:</div>
+                        <div style={{ fontSize: 13, color: '#1e293b', marginBottom: 2, fontWeight: 700 }}>{reclamPanel.draft.to || '(sin destinatario)'}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Cc: {reclamPanel.draft.cc || '(ninguna)'} + administración@{reclamPanel.draft.bcc ? ' · Cco: ' + reclamPanel.draft.bcc : ''}. Revisa el correo antes de confirmar.</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => enviarReclamacion(false, { test: false })} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), flex: 1 }}>{reclamPanel.draft.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
+                          <button onClick={() => setReclam('confirmando', false)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#6b7280', reclamPanel.draft.enviando), flex: 1 }}>← Volver</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               ) : null}
