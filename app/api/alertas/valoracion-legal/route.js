@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-11 · FIX guardado: se reemplaza upsert(onConflict:'idadmon') por buscar->update/insert
+//   (terminos puede no tener índice único en idadmon, lo que rompía el guardado). Hereda v2.
 // VERSION: v2 · 2026-08-11 · Valoración legal en DOS vertientes (Legal: Anthony):
 //   (1) NOTIFICACIÓN del término (sobre estado Q, ANTES de auditar): cuándo/cómo se notificó, si cumple
 //       el contrato -> veredicto CUMPLE/NO CUMPLE (terminos.notif_cumple + notif_valoracion).
@@ -105,7 +107,16 @@ export async function POST(req) {
   }
 
   const sb = svc()
-  const { error } = await sb.from('terminos').upsert(fila, { onConflict: 'idadmon' })
+  // No usamos upsert(onConflict:'idadmon') porque `terminos` puede no tener índice único en idadmon.
+  // Buscamos la fila y hacemos UPDATE o INSERT según exista.
+  const { data: exist, error: eSel } = await sb.from('terminos').select('idadmon').eq('idadmon', idadmon).limit(1)
+  if (eSel) return Response.json({ error: 'Al buscar el término: ' + eSel.message }, { status: 500 })
+  let error
+  if (exist && exist.length > 0) {
+    ({ error } = await sb.from('terminos').update(fila).eq('idadmon', idadmon))
+  } else {
+    ({ error } = await sb.from('terminos').insert(fila))
+  }
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ ok: true })
 }
