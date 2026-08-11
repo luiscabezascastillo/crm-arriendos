@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v32 · 2026-08-11 · Botón "🧾 Ver PDF del término": genera un PDF PROFESIONAL de la liquidación (datos
+//   económicos, servicios, reparaciones + presupuesto con detalle, descuentos aplicados cercanos al cierre y
+//   resultado), lo abre en pestaña para revisarlo (marca de agua BORRADOR) y engancha el enlace a los borradores
+//   de email para poder enviarlo. Gate: Karina + Dirección (puedeVerMarkup). Endpoint /api/terminos/generar-termino-pdf.
+//   Hereda v31.
 // VERSION: v31 · 2026-08-11 · Descuentos del término: se OCULTAN los descuentos iniciales (de años atrás). El panel
 //   "Descuentos de este término" (y el del inmueble sucesor) muestra SOLO los cercanos al cierre: con F.Cont desde
 //   2 meses ANTES de la fecha de entrega en adelante. Los descuentos sin fecha (garantía, estructurales) se mantienen.
@@ -213,6 +218,7 @@ export default function TerminosPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
+  const [pdfTermGen, setPdfTermGen] = useState(false)   // generando el PDF profesional del término
   const [completandoWf, setCompletandoWf] = useState(false)
   const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
   const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
@@ -783,6 +789,60 @@ export default function TerminosPage() {
     const area = String(nd.area_responsable || '').toLowerCase()
     return areaDelUsuario && area.includes(areaDelUsuario)
   }
+
+  // ── PDF profesional del término ──────────────────────────────────────────
+  // Arma el documento con los MISMOS datos que se ven en pantalla (líneas, resultado, descuentos ya filtrados
+  // a "cercanos al cierre") y lo abre para revisarlo. Solo Karina + Dirección (muestra presupuesto a precio cliente).
+  async function generarPdfTerminoBtn() {
+    if (!puedeVerMarkup || !panel) return
+    setPdfTermGen(true); setMsg(null)
+    try {
+      const mkDef = (() => { const v = n0(form?.markup_fcr); return v > 0 ? v : 20 })()
+      const datos = {
+        idadmon: idadmonSel,
+        inmueble: A?.inmueble || '',
+        arrendatario: A?.arrendatario || '',
+        propietario: A?.propietario || '',
+        fechaEntrega: form?.fecha_entrega ? fmtFecha(form.fecha_entrega) : '',
+        garantia: { monto: garantiaVal, quien: quienGar },
+        resultado: { tipo: R?.tipo || '', valor: R?.resultado || 0, label: (R?.resultado ?? 0) >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
+        datosEconomicos: (lineas.garantia || []).map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        servicios: (lineas.servicios || []).map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        reparaciones: {
+          total: R?.sr || 0,
+          lineas: (lineas.reparaciones || []).filter(l => !l.auto).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+          presupuesto: { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) },
+        },
+        descuentos: (descDelTermino || []).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
+      }
+      const res = await fetch('/api/terminos/generar-termino-pdf', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, datos }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
+      const url = data.pdf_url || null
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      setMsg({ tipo: 'ok', txt: url ? 'PDF del término generado (abierto en otra pestaña para revisarlo). Si está bien, pulsa "Enviar Email" para mandarlo con el enlace; si no, corrige, guarda y regenera.' : 'PDF generado.' })
+      // Enganchar el enlace del PDF a los borradores de email (como en Presupuesto).
+      if (url) {
+        await abrirBorradores()
+        setEmailPanel(p => {
+          if (!p || !p.drafts) return p
+          const nd = {}
+          for (const k of Object.keys(p.drafts)) {
+            const dd = p.drafts[k]; const cuerpo = dd.cuerpo || ''
+            nd[k] = { ...dd, cuerpo: cuerpo.includes(url) ? cuerpo : (cuerpo + `\n\nLiquidacion del termino (PDF): ${url}`) }
+          }
+          return { ...p, drafts: nd }
+        })
+      }
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: String(e?.message || e) })
+    } finally {
+      setPdfTermGen(false)
+    }
+  }
   // Etiqueta y color del tipo de nodo (AUTO / TAREA / VERIFICACION / DECISION)
   const tipoInfo = (tp) => {
     switch (String(tp || '').toUpperCase()) {
@@ -852,6 +912,9 @@ export default function TerminosPage() {
             <button onClick={puedeVerMarkup ? generarYEnviarPresupuesto : undefined} disabled={!puedeVerMarkup || presuGen}
               title={puedeVerMarkup ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Karina y Dirección pueden generar/enviar presupuestos'}
               style={btn('#7c3aed', !puedeVerMarkup || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
+            <button onClick={puedeVerMarkup ? generarPdfTerminoBtn : undefined} disabled={!puedeVerMarkup || pdfTermGen}
+              title={puedeVerMarkup ? 'Genera el PDF profesional del término para revisarlo antes de enviar' : 'Solo Karina y Dirección pueden generar el PDF del término'}
+              style={btn('#0891b2', !puedeVerMarkup || pdfTermGen)}>{pdfTermGen ? 'Generando…' : '🧾 Ver PDF del término'}</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
             <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
