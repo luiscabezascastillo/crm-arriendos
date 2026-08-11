@@ -1,6 +1,7 @@
-// VERSION: v3 · 2026-08-11 · (1) Tarjeta "Términos del día" (3 sin tratar: antiguo/medio/reciente) que se
-//   mantiene hasta marcarlos tratados. (2) Acceso ampliado por ROL (dirección, administración, finanzas,
-//   legal, comercial, ventas). (3) Indicador en ROJO parpadeante cuando hay pendientes. Hereda v2.
+// VERSION: v4 · 2026-08-11 · Términos del día SOLO para Karina + Dirección (mismo público de siempre); NO se
+//   abre al resto del equipo (tendrán sus propias alertas más adelante). Hereda v3.
+// VERSION: v3 · 2026-08-11 · Tarjeta "Términos del día" (3 sin tratar: antiguo/medio/reciente) que se
+//   mantiene hasta marcarlos tratados. Indicador en ROJO parpadeante cuando hay pendientes. Hereda v2.
 // VERSION: v2 · 2026-08-03 · Alertas de "Facturar inicio de contrato" (origen=factura_inicio): botón
 //   "Facturar corretaje" que abre un panel de confirmación (preview) para crear el descuento de corretaje
 //   al propietario, chequear/crear el cargo del arrendatario en cartola y generar el CSV SimpleFactura,
@@ -19,8 +20,6 @@ const ALERTAS_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
 ]
-// Acceso a la vista de Alertas por rol (Anthony=legal, Adalis/Fabiola=administración, Cristhian=comercial/ventas…)
-const ALERTAS_ROLES = ['direccion', 'administracion', 'finanzas', 'legal', 'comercial', 'ventas']
 
 const fmtFecha = (d) => {
   if (!d) return ''
@@ -35,8 +34,7 @@ export default function AlertasPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email || ''
-  const rol = session?.user?.role || ''
-  const puede = ALERTAS_EMAILS.includes(email) || ALERTAS_ROLES.includes(rol)
+  const puede = ALERTAS_EMAILS.includes(email)
 
   const [alertas, setAlertas] = useState([])
   const [terDia, setTerDia] = useState(null)

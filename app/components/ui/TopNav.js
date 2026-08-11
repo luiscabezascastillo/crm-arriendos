@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v6 · 2026-08-11 · El badge "Alertas" (Karina + Dirección) ahora PARPADEA en rojo cuando hay
+//   pendientes: alertas propias o Términos del día sin tratar. Mismo público que v5. Hereda v5.
 // VERSION: v5 · 2026-07-28 · Botón "Alertas" (Karina, Alberto, Luis) entre Ayuda y Mis tareas, con
 //   SEMÁFORO según las alertas propias (para_email): rojo si hay alguna pendiente sin gestionar,
 //   ámbar si todas las abiertas están pospuestas (gestionadas), verde si no queda ninguna abierta.
@@ -23,7 +25,7 @@ const DIRECCION_EMAILS = [
   // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Dirección.
 ];
 
-// Quién ve el botón de Alertas.
+// Quién ve el botón de Alertas (solo Karina + Dirección; el resto tendrá sus propias alertas más adelante).
 const ALERTAS_EMAILS = [
   'karina.morales@fondocapital.com',
   'alberto.cabezas@fondocapital.com',
@@ -110,15 +112,21 @@ export default function TopNav() {
   useEffect(() => {
     if (!puedeAlertas || !session?.user?.email) return;
     let vivo = true;
-    const calc = () => {
-      supabase.from('alertas').select('estado').eq('para_email', session.user.email)
-        .then(({ data }) => {
-          if (!vivo || !data) return;
-          const pend = data.filter(a => a.estado === 'pendiente').length;
-          const posp = data.filter(a => a.estado === 'pospuesta').length;
-          const color = pend > 0 ? '#DC2626' : posp > 0 ? '#D97706' : '#16A34A';
-          setAlertaSem({ color, n: pend + posp });
-        });
+    const calc = async () => {
+      const { data } = await supabase.from('alertas').select('estado').eq('para_email', session.user.email);
+      const pend = (data || []).filter(a => a.estado === 'pendiente').length;
+      const posp = (data || []).filter(a => a.estado === 'pospuesta').length;
+      let terDia = 0;
+      try {
+        const r = await fetch('/api/alertas/terminos-del-dia', { cache: 'no-store' });
+        const j = await r.json();
+        if (j && j.ok) terDia = j.total_pendientes || 0;
+      } catch { /* noop */ }
+      if (!vivo) return;
+      const rojo = pend > 0 || terDia > 0;
+      const color = rojo ? '#DC2626' : posp > 0 ? '#D97706' : '#16A34A';
+      const nPersonal = pend + posp;
+      setAlertaSem({ color, n: nPersonal > 0 ? nPersonal : terDia });
     };
     calc();
     const t = setInterval(calc, 60000);   // refresca cada minuto
@@ -241,6 +249,7 @@ export default function TopNav() {
 
   return (
     <nav style={s.nav}>
+      <style>{`@keyframes fcrNavBlink{0%,49%{opacity:1}50%,100%{opacity:0.2}}`}</style>
 
       {/* FCR — selector de workspace/portal */}
       <div ref={fcrRef} style={{ position: 'relative', marginRight: 8 }}>
@@ -477,6 +486,7 @@ export default function TopNav() {
             width: 9, height: 9, borderRadius: '50%',
             background: alertaSem.color || '#C9C7BF',
             boxShadow: alertaSem.color === '#DC2626' ? '0 0 0 3px rgba(220,38,38,0.18)' : 'none',
+            animation: alertaSem.color === '#DC2626' ? 'fcrNavBlink 0.9s steps(1,end) infinite' : 'none',
             display: 'inline-block', flexShrink: 0,
           }} />
           Alertas

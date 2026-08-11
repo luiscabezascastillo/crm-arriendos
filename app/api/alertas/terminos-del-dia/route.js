@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-08-11 · Acceso solo para Karina + Dirección (lista de correos), tanto ver como marcar.
+//   No se abre al resto del equipo. Hereda v1.
 // VERSION: v1 · 2026-08-11 · Términos del día: GET devuelve 3 términos sin tratar (muy antiguo / del medio /
 //   reciente) del backlog; POST {idadmon, decision} los marca tratados (tabla terminos_revision).
 //   Universo: datos_arriendos en estados de término (Q/N/N-DICOM/N-Liquidacion) con termino_actual.
@@ -6,8 +8,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
 
-const VER_OK = ['direccion', 'administracion', 'finanzas', 'legal', 'comercial', 'ventas']
-const MARCAR_OK_EMAILS = ['karina.morales@fondocapital.com', 'alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+// Solo Karina + Dirección (mismo público que la vista de Alertas hoy).
+const ALERTAS_EMAILS = ['karina.morales@fondocapital.com', 'alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const MARCAR_OK_EMAILS = ALERTAS_EMAILS
 const ESTADOS_TERMINO = ['Q', 'N', 'N-DICOM', 'N-Liquidacion']
 
 function svc() {
@@ -17,9 +20,8 @@ function svc() {
 export async function GET() {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
-  const rol = session?.user?.role
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!VER_OK.includes(rol) && !MARCAR_OK_EMAILS.includes(email)) return Response.json({ error: 'No autorizado' }, { status: 403 })
+  if (!ALERTAS_EMAILS.includes(email)) return Response.json({ error: 'No autorizado' }, { status: 403 })
 
   const sb = svc()
   const { data: pool, error } = await sb.from('datos_arriendos')
@@ -55,11 +57,8 @@ export async function GET() {
 export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
-  const rol = session?.user?.role
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!MARCAR_OK_EMAILS.includes(email) && rol !== 'finanzas' && rol !== 'direccion') {
-    return Response.json({ error: 'Solo Dirección/Finanzas marca tratado' }, { status: 403 })
-  }
+  if (!MARCAR_OK_EMAILS.includes(email)) return Response.json({ error: 'No autorizado' }, { status: 403 })
   let b
   try { b = await req.json() } catch { return Response.json({ error: 'JSON invalido' }, { status: 400 }) }
   const idadmon = String(b?.idadmon || '').trim()
