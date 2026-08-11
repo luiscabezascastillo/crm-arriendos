@@ -1,4 +1,10 @@
 'use client';
+// VERSION: v24 · 2026-08-11 · FILTROS ESTILO CC1: se sustituye el menú de columna propio por el motor compartido
+//   lib/filtroExcel (HeaderFilter/filtroActivo/aplicarFiltros) — el mismo del LOG/CC1: operadores por tipo
+//   (texto/número/fecha), dos condiciones Y/O, árbol de fechas, buscador que marca solo resultados y orden ↑/↓ por
+//   columna. El desplegable se pinta con el prop `flotante` (position:fixed) para que el scroll de la tabla no lo
+//   recorte. Tipos: Núm/M.imputar/M.transf. = número; Fecha = fecha; resto = texto. Hereda v22 (git). NOTA: la v23 previa
+//   (menú antiguo con position:fixed) NO llegó a git y queda SUPERADA por este refactor.
 // VERSION: v22 · 2026-08-10 · Filtro multi-selección arreglado: "Limpiar" ahora VACÍA la vista (antes, set vacío se
 //   trataba como "sin filtro" y seguía mostrando todo, por eso parecía que no filtraba). Flujo: Limpiar → marca 2-3 (o
 //   usa el buscador) → se muestran solo esas. Pista añadida en el menú. Hereda v21.
@@ -51,7 +57,8 @@
 //   (c) Al imputar a ARRENDATARIO, selector obligatorio CARGO/ABONO que fija el signo del monto
 //   (ABONO→negativo, CARGO→positivo), para que el signo no quede al azar.
 
-import { useEffect, useMemo, useState, useRef, forwardRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
 import TopNav from '@/app/components/ui/TopNav';
 
@@ -76,6 +83,32 @@ const COLS = [
   { key: 'verificado', label: 'Verificado', w: 72 },
 ];
 const TABLE_W = COLS.reduce((a, c) => a + c.w, 0);
+
+// Normaliza una fecha (ISO 'YYYY-MM-DD' o 'dd/mm/aaaa') a ISO, para el árbol de fechas del filtro CC1.
+function toISO(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${p2(m[2])}-${p2(m[1])}`; }
+  return '';
+}
+
+// Columnas para el motor de filtro estilo Excel (lib/filtroExcel, el mismo de CC1/LOG).
+//   tipo: 'num' (Núm + montos) · 'fecha' (Fecha) · 'texto' (el resto, incl. Mes imp., verificado…).
+//   fkey = valor con el que se filtra · flabel = etiqueta que se muestra en la casilla.
+const DFILTRO_NUM = new Set(['num', 'monto_a_imputar', 'monto_a_transferir']);
+const DCOLS = COLS.map((c) => {
+  if (c.key === 'fecha')
+    return { key: 'fecha', label: c.label, tipo: 'fecha', fkey: (r) => toISO(r.fecha), flabel: (k) => (k ? fmtFecha(k) : '(vacío)') };
+  if (c.key === 'verificado')
+    return { key: 'verificado', label: c.label, tipo: 'texto', fkey: (r) => (r.verificado ? 'Sí' : 'No'), flabel: (k) => k };
+  if (DFILTRO_NUM.has(c.key))
+    return { key: c.key, label: c.label, tipo: 'num', fkey: (r) => (r[c.key] == null || r[c.key] === '' ? '' : String(r[c.key])), flabel: (k) => (k === '' ? '(vacío)' : money(k)) };
+  return { key: c.key, label: c.label, tipo: 'texto', fkey: (r) => String(r[c.key] ?? ''), flabel: (k) => (k === '' ? '(vacío)' : k) };
+});
+const DCByKey = Object.fromEntries(DCOLS.map((c) => [c.key, c]));
 
 // ---- Ficha (drawer): etiquetas legibles de cada campo ----
 const LABELS = {
@@ -253,58 +286,23 @@ export default function DescuentosPage() {
   }
   useEffect(() => { cargar(); }, []);
 
-  // -------------------- FILTROS TIPO EXCEL --------------------
-  const [filtros, setFiltros] = useState({});       // { col: Set(valores seleccionados) }
-  const [menuCol, setMenuCol] = useState(null);     // col con menú abierto
-  const [busca, setBusca] = useState('');           // texto del buscador del menú
-  const [verTodos, setVerTodos] = useState(false);  // mostrar todo el histórico o solo lo reciente
-  const menuRef = useRef(null);
+  // -------------------- FILTROS ESTILO EXCEL (motor lib/filtroExcel, el mismo de CC1/LOG) --------------------
+  const [filters, setFilters] = useState({});        // { colKey: { sel?, c1?, conector?, c2? } }
+  const [openFilter, setOpenFilter] = useState(null); // colKey con el desplegable abierto
+  const [orden, setOrden] = useState(null);          // { key, dir } — orden global por columna
+  const [verTodos, setVerTodos] = useState(false);   // mostrar todo el histórico o solo lo reciente
   const scrollRef = useRef(null);   // contenedor scrolleable de la tabla
   const ancladoRef = useRef(false); // para anclar al fondo solo una vez por carga
   const rowRefs = useRef({});          // DOM de cada fila, por id, para centrar
   const centrarPendiente = useRef(null); // id de la fila a centrar tras buscar por Núm
+  // El cierre al hacer clic fuera lo gestiona el propio HeaderFilter (su capa overlay); no hace falta listener global.
 
-  useEffect(() => {
-    function onDoc(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuCol(null);
-    }
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
-
-  function valoresUnicos(col) {
-    const s = new Set();
-    rows.forEach((r) => {
-      let v = r[col];
-      if (col === 'verificado') v = r[col] ? 'Sí' : 'No';
-      s.add((v ?? '') === '' ? '(vacío)' : String(v));
-    });
-    return Array.from(s).sort((a, b) => a.localeCompare(b, 'es'));
-  }
-
-  // Recuento por valor (para mostrarlo al lado de cada casilla, estilo Excel)
-  function conteosDe(col) {
-    const m = {};
-    rows.forEach((r) => { const v = cellFilterValue(r, col); m[v] = (m[v] || 0) + 1; });
-    return m;
-  }
-
-  function cellFilterValue(r, col) {
-    let v = r[col];
-    if (col === 'verificado') v = r[col] ? 'Sí' : 'No';
-    return (v ?? '') === '' ? '(vacío)' : String(v);
-  }
-
-  const filtradas = useMemo(() => {
-    return rows.filter((r) =>
-      Object.entries(filtros).every(([col, set]) => {
-        if (!set) return true;                     // columna sin filtro (clave ausente)
-        return set.has(cellFilterValue(r, col));   // set vacío (tras "Limpiar") => no pasa nada; marca las que quieras
-      })
-    );
-  }, [rows, filtros]);
-
-  const hayFiltroActivo = Object.values(filtros).some((s) => s instanceof Set);
+  // Deriva en memoria: aplica los filtros de columna + orden sobre TODAS las filas cargadas (como CC1/LOG).
+  const filtradas = useMemo(() => aplicarFiltros(rows, DCOLS, filters, orden), [rows, filters, orden]);
+  const hayFiltroActivo = DCOLS.some((c) => filtroActivo(filters[c.key]));
+  const hayAlguno = hayFiltroActivo || !!orden?.key;
+  const setFiltroCol = (key, val) => setFilters((f) => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n; });
+  const limpiarTodo = () => { setFilters({}); setOrden(null); };
 
   // Exportar a Excel EXACTAMENTE lo filtrado (todas las columnas: vista + ficha).
   async function exportarExcel() {
@@ -313,10 +311,10 @@ export default function DescuentosPage() {
     const colsVista = COLS.map(c => c.key);
     const resto = Object.keys(LABELS).filter(k => !colsVista.includes(k)
       && !['id', 'sync_hash'].includes(k));
-    const orden = [...colsVista, ...resto];
+    const ordenCols = [...colsVista, ...resto];
     const filas = filtradas.map((r) => {
       const o = {};
-      for (const k of orden) {
+      for (const k of ordenCols) {
         const lab = LABELS[k] || k;
         let v = r[k];
         // Montos y fechas en formato legible; el resto tal cual.
@@ -335,8 +333,8 @@ export default function DescuentosPage() {
     const ws = XLSX.utils.json_to_sheet(filas);
     XLSX.utils.book_append_sheet(wb, ws, 'Descuentos');
     // Nombre con el mes filtrado si hay uno, o la fecha de hoy.
-    const mesFiltro = filtros.mes_a_imputar && filtros.mes_a_imputar.size === 1
-      ? [...filtros.mes_a_imputar][0].replace(/[^\w]+/g, '_') : null;
+    const mesFiltro = filters.mes_a_imputar?.sel?.length === 1
+      ? filters.mes_a_imputar.sel[0].replace(/[^\w]+/g, '_') : null;
     const hoy = new Date().toISOString().slice(0, 10);
     const nombre = `Descuentos_${mesFiltro || hoy}.xlsx`;
     XLSX.writeFile(wb, nombre);
@@ -345,9 +343,9 @@ export default function DescuentosPage() {
   // rows viene con el NUM más alto/reciente AL FINAL. Por defecto mostramos los
   // 30 del final (los más recientes). Con filtro activo o "ver todos", todas.
   const visibles = useMemo(() => {
-    if (verTodos || hayFiltroActivo) return filtradas;
+    if (verTodos || hayFiltroActivo || orden?.key) return filtradas;
     return filtradas.slice(-TOPE_DEFECTO);
-  }, [filtradas, verTodos, hayFiltroActivo]);
+  }, [filtradas, verTodos, hayFiltroActivo, orden]);
 
   // Al cambiar entre "recientes" y "ver todos", permitir re-anclar al fondo una vez.
   useEffect(() => { ancladoRef.current = false; }, [verTodos]);
@@ -357,37 +355,13 @@ export default function DescuentosPage() {
   // scrolling hacia los antiguos es cómodo. Con filtro activo no se fuerza.
   useEffect(() => {
     if (loading) { ancladoRef.current = false; return; }
-    if (hayFiltroActivo) return;
+    if (hayFiltroActivo || orden?.key) return;
     if (ancladoRef.current) return;
     const el = scrollRef.current;
     if (el) { el.scrollTop = el.scrollHeight; ancladoRef.current = true; }
   }, [loading, verTodos, hayFiltroActivo, visibles]);
 
-  function toggleValor(col, valor) {
-    setFiltros((prev) => {
-      const actual = new Set(prev[col] || valoresUnicos(col)); // si no había filtro, parte de "todos"
-      if (actual.has(valor)) actual.delete(valor); else actual.add(valor);
-      return { ...prev, [col]: actual };
-    });
-  }
-  function soloEste(col, valor) {
-    setFiltros((prev) => ({ ...prev, [col]: new Set([valor]) }));
-    setMenuCol(null);
-  }
-  function limpiarFiltro(col) {
-    setFiltros((prev) => { const n = { ...prev }; delete n[col]; return n; });
-    setMenuCol(null);
-  }
-  // "Marcar todos": quita el filtro (todos marcados), SIN cerrar el menú
-  function marcarTodos(col) {
-    setFiltros((prev) => { const n = { ...prev }; delete n[col]; return n; });
-  }
-  // "Limpiar": deja la selección vacía (todas desmarcadas), SIN cerrar el menú → luego marcas solo las que quieras
-  function limpiarSeleccion(col) {
-    setFiltros((prev) => ({ ...prev, [col]: new Set() }));
-  }
-  const colFiltrada = (col) => filtros[col] instanceof Set
-    && filtros[col].size < valoresUnicos(col).length;
+  // (Las acciones de filtro —marcar, buscar, solo, condiciones, orden— las gestiona HeaderFilter por columna.)
 
   // -------------------- ALTA --------------------
   const [showForm, setShowForm] = useState(false);
@@ -519,33 +493,20 @@ export default function DescuentosPage() {
                   <th key={c.key} style={{ ...th(), textAlign: c.align || 'left', ...(ci === 0 ? { left: 0, zIndex: 12 } : {}) }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'space-between' }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
-                      <button
-                        onClick={() => { setMenuCol(menuCol === c.key ? null : c.key); setBusca(''); }}
-                        title="Filtrar"
-                        style={{
-                          border: 'none', cursor: 'pointer', borderRadius: 3, padding: 0, flexShrink: 0,
-                          width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          background: colFiltrada(c.key) ? C.ambar : 'rgba(255,255,255,.30)',
-                          color: '#fff', fontSize: 9, lineHeight: 1,
-                        }}
-                      >▼</button>
-                    </div>
-                    {menuCol === c.key && (
-                      <FiltroMenu
-                        ref={menuRef}
-                        col={c.key}
-                        lado={ci < COLS.length / 2 ? 'left' : 'right'}
-                        valores={valoresUnicos(c.key)}
-                        seleccion={filtros[c.key]}
-                        conteos={conteosDe(c.key)}
-                        busca={busca} setBusca={setBusca}
-                        onToggle={(v) => toggleValor(c.key, v)}
-                        onSolo={(v) => soloEste(c.key, v)}
-                        onTodos={() => marcarTodos(c.key)}
-                        onLimpiar={() => limpiarSeleccion(c.key)}
-                        onCerrar={() => setMenuCol(null)}
+                      <HeaderFilter
+                        col={DCByKey[c.key]}
+                        movs={rows}
+                        state={filters[c.key]}
+                        setState={(v) => setFiltroCol(c.key, v)}
+                        open={openFilter}
+                        setOpen={setOpenFilter}
+                        orden={orden}
+                        setOrden={setOrden}
+                        limpiarTodo={limpiarTodo}
+                        hayAlguno={hayAlguno}
+                        flotante
                       />
-                    )}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -717,51 +678,6 @@ function CeldaTextoContab({ texto }) {
     </div>
   );
 }
-
-// ---------- menú de filtro estilo Excel ----------
-const FiltroMenu = forwardRef(function FiltroMenu(
-  { valores, seleccion, conteos = {}, busca, setBusca, onToggle, onSolo, onTodos, onLimpiar, onCerrar, lado = 'right' }, ref) {
-  // seleccion: Set. Sin filtro (undefined) = todos marcados. Set vacío = todos DESmarcados (tras "Limpiar").
-  const marcado = (v) => seleccion ? seleccion.has(v) : true;
-  const activo = seleccion && seleccion.size > 0;
-  const visibles = valores.filter((v) => v.toLowerCase().includes(busca.toLowerCase()));
-  // Las columnas de la izquierda abren el menú hacia la derecha (left:0) y las de
-  // la derecha hacia la izquierda (right:0), para que nunca tape su propia columna.
-  const anchoLado = lado === 'left' ? { left: 0 } : { right: 0 };
-  return (
-    <div ref={ref} style={{
-      position: 'absolute', zIndex: 50, top: '100%', ...anchoLado, marginTop: 4,
-      background: '#fff', color: '#222', border: '1px solid #b9c2d0', borderRadius: 6,
-      boxShadow: '0 6px 18px rgba(0,0,0,.18)', width: 250, padding: 8, textAlign: 'left',
-      fontWeight: 400, fontSize: 12,
-    }}>
-      <input autoFocus placeholder="Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', marginBottom: 6, fontSize: 12 }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11 }}>
-        <a onClick={onTodos} style={{ color: '#1f4e79', cursor: 'pointer', fontWeight: 600 }}>Marcar todos</a>
-        <a onClick={onLimpiar} style={{ color: '#6b7280', cursor: 'pointer', fontWeight: 600 }}>Limpiar</a>
-      </div>
-      <div style={{ fontSize: 10, color: '#8a8a80', marginBottom: 6, lineHeight: 1.3 }}>
-        Para ver <b>solo algunos</b>: pulsa <b>Limpiar</b> y marca los que quieras (o usa el buscador).
-      </div>
-      <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4, padding: 4 }}>
-        {visibles.map((v) => (
-          <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0', cursor: 'pointer' }}>
-            <input type="checkbox" checked={marcado(v)} onChange={() => onToggle(v)} />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span>
-            <span style={{ color: '#b4b2a9', fontSize: 10 }}>{conteos[v] ?? ''}</span>
-            <a onClick={(e) => { e.preventDefault(); onSolo(v); }} style={linkMini}>solo</a>
-          </label>
-        ))}
-        {visibles.length === 0 && <div style={{ color: '#999', padding: 4 }}>Sin coincidencias</div>}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-        {activo ? <a onClick={onTodos} style={{ color: '#b45309', cursor: 'pointer', fontSize: 11 }}>Quitar filtro</a> : <span />}
-        <button onClick={onCerrar} style={btnMini('#6b7280')}>Cerrar</button>
-      </div>
-    </div>
-  );
-});
 
 // ---------- bitácora ----------
 function Bitacora({ rows, loading, creado }) {
