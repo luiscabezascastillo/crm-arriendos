@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v34 · 2026-08-11 · PDF del término: (1) Reparaciones = una sola línea "Arreglos segun presupuesto" (sin el
+//   total en negrita ni el bloque duplicado "Otras reparaciones"); se excluye la línea AUTO del bloque para no repetir.
+//   (2) La GARANTÍA ya no se lista en "Descuentos aplicados" (está en la cabecera): se filtran los descuentos de familia
+//   garantía. Se añade `tipo` a la consulta de descuentos del resumen para poder filtrarlos. Hereda v33.
 // VERSION: v33 · 2026-08-11 · Proceso del término: en cada paso HECHO se muestra "✓ quién · fecha" (quién lo completó,
 //   de workflow_task_logs.usuario, y la fecha de cierre). Además la tarjeta "Acciones realizadas" ya lista de verdad
 //   quién completó cada paso, cuándo y con qué comentario (antes decía "próximamente"). Hereda v32.
@@ -446,7 +450,7 @@ export default function TerminosPage() {
     }
     const idsResumen = asociado ? [idadmon, asociado] : [idadmon]
     const { data: descResumen } = await supabase.from('descuentos')
-      .select('num, fecha_contable, idadmon, inmueble, propietario, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario')
+      .select('num, fecha_contable, idadmon, inmueble, propietario, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario, tipo')
       .in('idadmon', idsResumen).order('num')
 
     setPanel({ arriendo, descuentos, presupuestos, detalle, termino: t, wfTasks, wfLogs, instanceId: inst?.id || null, repPresu, arreglosRef, asociado, descResumen: descResumen || [], ggcc, cargosProp })
@@ -833,10 +837,13 @@ export default function TerminosPage() {
         servicios: (lineas.servicios || []).map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
         reparaciones: {
           total: R?.sr || 0,
-          lineas: (lineas.reparaciones || []).filter(l => !l.auto).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+          // Se excluye la línea AUTO del bloque ("Arreglos presupuesto"): la representa el presupuesto en el PDF,
+          // así no se repite el importe. Aquí quedan solo las OTRAS reparaciones (extras) con importe.
+          lineas: (lineas.reparaciones || []).filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
           presupuesto: { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) },
         },
-        descuentos: (descDelTermino || []).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
+        // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
+        descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
       }
       const res = await fetch('/api/terminos/generar-termino-pdf', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
