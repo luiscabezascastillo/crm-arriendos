@@ -11,6 +11,8 @@ import { createClient } from '@supabase/supabase-js'
 // Acceso: Administración + Dirección. Se puede añadir por email en EXTRA_EMAILS si el rol no viaja en la sesión.
 const ROLES_OK = ['administracion', 'direccion']
 const EXTRA_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const ROL_ALIAS = { admin: 'direccion', operaciones: 'administracion', tecnico: 'mantencion' }
+const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '').toLowerCase()
 const TOP_N = 5
 const ACTIVO = true
 
@@ -19,7 +21,7 @@ function svc() {
 }
 function autoriza(session) {
   const email = session?.user?.email || ''
-  const role = String(session?.user?.role || '').toLowerCase()
+  const role = normRol(session?.user?.role)
   if (!email) return { ok: false, code: 401 }
   if (ROLES_OK.includes(role) || EXTRA_EMAILS.includes(email)) return { ok: true, email }
   return { ok: false, code: 403 }

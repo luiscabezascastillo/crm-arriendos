@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v7 · 2026-08-11 · El botón "Alertas" se abre por ROL: Administración (Adalis/Fabiola) y Legal
+//   (Anthony) además de Karina + Dirección. El badge cuenta lo de cada rol: Admin -> reclamaciones del día;
+//   Legal -> términos sin valorar; Karina/Dir -> alertas propias + Términos del día. Hereda v6.
 // VERSION: v6 · 2026-08-11 · El badge "Alertas" (Karina + Dirección) ahora PARPADEA en rojo cuando hay
 //   pendientes: alertas propias o Términos del día sin tratar. Mismo público que v5. Hereda v5.
 // VERSION: v5 · 2026-07-28 · Botón "Alertas" (Karina, Alberto, Luis) entre Ayuda y Mis tareas, con
@@ -108,7 +111,13 @@ export default function TopNav() {
 
   // Semáforo de Alertas: rojo si hay alguna 'pendiente'; si no, ámbar si hay 'pospuesta';
   // si no queda ninguna abierta, verde. Solo para quien ve el botón.
-  const puedeAlertas = ALERTAS_EMAILS.includes(session?.user?.email);
+  // Quién ve el botón de Alertas: Karina + Dirección (por email/rol), Administración y Legal (por rol).
+  const rolNav = normRol(session?.user?.role);
+  const esDireccionNav = rolNav === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
+  const esKarinaDir = ALERTAS_EMAILS.includes(session?.user?.email);
+  const esAdminRol = rolNav === 'administracion';
+  const esLegalRol = rolNav === 'legal';
+  const puedeAlertas = esKarinaDir || esDireccionNav || esAdminRol || esLegalRol;
   useEffect(() => {
     if (!puedeAlertas || !session?.user?.email) return;
     let vivo = true;
@@ -116,17 +125,26 @@ export default function TopNav() {
       const { data } = await supabase.from('alertas').select('estado').eq('para_email', session.user.email);
       const pend = (data || []).filter(a => a.estado === 'pendiente').length;
       const posp = (data || []).filter(a => a.estado === 'pospuesta').length;
-      let terDia = 0;
+      let deRol = 0;   // pendientes de las tarjetas por rol
       try {
-        const r = await fetch('/api/alertas/terminos-del-dia', { cache: 'no-store' });
-        const j = await r.json();
-        if (j && j.ok) terDia = j.total_pendientes || 0;
+        if (esKarinaDir) {
+          const j = await (await fetch('/api/alertas/terminos-del-dia', { cache: 'no-store' })).json();
+          if (j && j.ok) deRol += j.total_pendientes || 0;
+        }
+        if (esAdminRol || esDireccionNav) {
+          const j = await (await fetch('/api/alertas/reclamaciones', { cache: 'no-store' })).json();
+          if (j && j.ok) deRol += (j.reclamaciones || []).length;
+        }
+        if (esLegalRol || esDireccionNav) {
+          const j = await (await fetch('/api/alertas/valoracion-legal', { cache: 'no-store' })).json();
+          if (j && j.ok) deRol += j.total || 0;
+        }
       } catch { /* noop */ }
       if (!vivo) return;
-      const rojo = pend > 0 || terDia > 0;
+      const rojo = pend > 0 || deRol > 0;
       const color = rojo ? '#DC2626' : posp > 0 ? '#D97706' : '#16A34A';
       const nPersonal = pend + posp;
-      setAlertaSem({ color, n: nPersonal > 0 ? nPersonal : terDia });
+      setAlertaSem({ color, n: nPersonal > 0 ? nPersonal : deRol });
     };
     calc();
     const t = setInterval(calc, 60000);   // refresca cada minuto

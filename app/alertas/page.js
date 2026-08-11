@@ -1,3 +1,7 @@
+// VERSION: v7 · 2026-08-11 · Normaliza el rol de la sesión (alias operaciones->administracion, etc.) para el
+//   acceso por rol, igual que TopNav; así Adalis/Fabiola/Anthony entran aunque tengan un rol antiguo. Hereda v6.
+// VERSION: v6 · 2026-08-11 · Legal en DOS vertientes: (1) valoración de la NOTIFICACIÓN del término
+//   (estado Q, veredicto CUMPLE/NO CUMPLE) y (2) valoración del RESULTADO (tras Q-Auditado). Hereda v5.
 // VERSION: v5 · 2026-08-11 · Alertas por ROL. Se abre la pantalla a Administración (Adalis/Fabiola) y Legal
 //   (Anthony), cada uno ve SU tarjeta: Administración -> "Reclamaciones del día" (top 5 más graves por
 //   monto+tiempo+servicios, estado COMPARTIDO por idadmon); Legal -> "Valoración legal" (escribe y guarda
@@ -28,6 +32,9 @@ const ALERTAS_EMAILS = [
 // Reclamaciones (Administración) y Valoración legal (Legal): por ROL de la sesión.
 const ROLES_ADMIN = ['administracion', 'direccion']
 const ROLES_LEGAL = ['legal', 'direccion']
+// Alias de roles antiguos -> nuevos (igual que TopNav), para no depender de cómo esté en la BD.
+const ROL_ALIAS = { admin: 'direccion', operaciones: 'administracion', tecnico: 'mantencion' }
+const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '').toLowerCase()
 
 const fmtFecha = (d) => {
   if (!d) return ''
@@ -42,7 +49,7 @@ export default function AlertasPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email || ''
-  const role = String(session?.user?.role || '').toLowerCase()
+  const role = normRol(session?.user?.role)
   const esKarinaDir = ALERTAS_EMAILS.includes(email)
   const esAdmin = ROLES_ADMIN.includes(role)
   const esLegal = ROLES_LEGAL.includes(role)
@@ -51,8 +58,10 @@ export default function AlertasPage() {
   const [alertas, setAlertas] = useState([])
   const [terDia, setTerDia] = useState(null)
   const [recDia, setRecDia] = useState(null)      // Reclamaciones del día (Admin)
-  const [valList, setValList] = useState(null)    // Términos sin valoración (Legal)
-  const [valTxt, setValTxt] = useState({})        // { idadmon: texto } borradores de Anthony
+  const [valList, setValList] = useState(null)    // Legal: { notificacion:[], resultado:[] }
+  const [notifTxt, setNotifTxt] = useState({})    // vertiente 1: { idadmon: texto }
+  const [notifCumple, setNotifCumple] = useState({}) // vertiente 1: { idadmon: 'CUMPLE'|'NO CUMPLE' }
+  const [valTxt, setValTxt] = useState({})        // vertiente 2: { idadmon: texto }
   const [valBusy, setValBusy] = useState('')
   const [cargando, setCargando] = useState(true)
   const [verResueltas, setVerResueltas] = useState(false)
@@ -130,14 +139,33 @@ export default function AlertasPage() {
       setValList(j && j.ok ? j : { terminos: [], total: 0 })
     } catch { setValList({ terminos: [], total: 0 }) }
   }
-  const guardarValoracion = async (idadmon) => {
-    const valoracion = (valTxt[idadmon] || '').trim()
-    if (!valoracion || valBusy) return
-    setValBusy(idadmon)
+  // Vertiente 1: notificación del término (CUMPLE / NO CUMPLE)
+  const guardarNotificacion = async (idadmon) => {
+    const valoracion = (notifTxt[idadmon] || '').trim()
+    const cumple = notifCumple[idadmon] || ''
+    if (!valoracion || !cumple || valBusy) return
+    setValBusy('n:' + idadmon)
     try {
       const r = await fetch('/api/alertas/valoracion-legal', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon, valoracion }),
+        body: JSON.stringify({ tipo: 'notificacion', idadmon, cumple, valoracion }),
+      })
+      const j = await r.json()
+      if (j.ok) {
+        setNotifTxt(s => ({ ...s, [idadmon]: '' })); setNotifCumple(s => ({ ...s, [idadmon]: '' })); cargarValList()
+      } else alert(j.error || 'No se pudo guardar')
+    } catch (e) { alert(String(e)) }
+    setValBusy('')
+  }
+  // Vertiente 2: valoración del resultado (tras Q-Auditado)
+  const guardarValoracion = async (idadmon) => {
+    const valoracion = (valTxt[idadmon] || '').trim()
+    if (!valoracion || valBusy) return
+    setValBusy('r:' + idadmon)
+    try {
+      const r = await fetch('/api/alertas/valoracion-legal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'resultado', idadmon, valoracion }),
       })
       const j = await r.json()
       if (j.ok) { setValTxt(s => ({ ...s, [idadmon]: '' })); cargarValList() }
@@ -320,41 +348,88 @@ export default function AlertasPage() {
           </div>
         )}
 
-        {/* VALORACIÓN LEGAL — Legal (Anthony) */}
-        {esLegal && valList && valList.terminos && valList.terminos.length > 0 && (
+        {/* VALORACIÓN LEGAL — Legal (Anthony): 2 vertientes */}
+        {esLegal && valList && (valList.total > 0) && (
           <div style={{ border: '1px solid #B9C7E5', background: '#F1F5FD', borderRadius: 12, padding: 16, marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, color: '#1E3A8A', marginBottom: 2 }}>Valoración legal — términos sin valorar</div>
+            <div style={{ fontWeight: 700, color: '#1E3A8A', marginBottom: 8 }}>Valoración legal</div>
+
+            {/* VERTIENTE 1: notificación del término (prioridad) */}
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1E3A8A', marginBottom: 2 }}>1 · Notificación del término {valList.total_notificacion ? `(${valList.total_notificacion})` : ''}</div>
             <div style={{ fontSize: 12, color: '#1E3A8A', opacity: 0.85, marginBottom: 10 }}>
-              {valList.total} términos pendientes de tu valoración. Escribe la valoración de cada uno (lo que estimes: solidaridad del aval, vía DICOM/judicial, plazos, riesgos) y guarda: queda registrada en el CRM y el término sale de esta lista.
+              Valora la notificación de término: cuándo se hizo, cómo se hizo y si cumple el contrato. Cierra con un veredicto CUMPLE / NO CUMPLE (tiene repercusiones legales).
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {valList.terminos.slice(0, 8).map(t => (
-                <div key={t.idadmon} style={{ background: '#fff', border: '1px solid #D2DCF0', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <b>{t.idadmon}</b>
-                    <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
-                    <span style={{ color: '#999' }}>{fmtFecha(t.termino_actual)}</span>
-                    {t.resultado != null && Number(t.resultado) < 0 && (
-                      <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}{t.quien ? ' · ' + t.quien : ''}</span>
-                    )}
-                    <a href={'/procesos/terminos/' + t.idadmon} style={{ marginLeft: 'auto', fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
-                  </div>
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4, color: '#444' }}>
-                    <span>Arrendatario: <b>{t.arrendatario || '—'}</b>{t.arrendatario_rut ? ' · ' + t.arrendatario_rut : ''}</span>
-                    <span>Aval: <b>{t.avalista || '—'}</b></span>
-                  </div>
-                  <textarea value={valTxt[t.idadmon] || ''} onChange={e => setValTxt(s => ({ ...s, [t.idadmon]: e.target.value }))}
-                    rows={2} placeholder="Valoración legal de este término…"
-                    style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 8, resize: 'vertical' }} />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                    <button onClick={() => guardarValoracion(t.idadmon)} disabled={valBusy === t.idadmon || !(valTxt[t.idadmon] || '').trim()}
-                      style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', background: (valTxt[t.idadmon] || '').trim() ? '#1E3A8A' : '#C9C7BF', color: '#fff', fontWeight: 600, cursor: (valTxt[t.idadmon] || '').trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
-                      {valBusy === t.idadmon ? 'Guardando…' : 'Guardar valoración'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+            {(!valList.notificacion || valList.notificacion.length === 0) ? (
+              <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>No hay notificaciones pendientes de valorar.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                {valList.notificacion.slice(0, 8).map(t => {
+                  const cumpleSel = notifCumple[t.idadmon] || ''
+                  const txt = (notifTxt[t.idadmon] || '').trim()
+                  const listo = !!cumpleSel && !!txt
+                  return (
+                    <div key={t.idadmon} style={{ background: '#fff', border: '1px solid #D2DCF0', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <b>{t.idadmon}</b>
+                        <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
+                        <span style={{ color: '#999' }}>Entrega: {fmtFecha(t.termino_actual)}</span>
+                        <a href={'/procesos/terminos/' + t.idadmon} style={{ marginLeft: 'auto', fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
+                      </div>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4, color: '#444' }}>
+                        <span>Arrendatario: <b>{t.arrendatario || '—'}</b>{t.arrendatario_rut ? ' · ' + t.arrendatario_rut : ''}</span>
+                        <span>Aval: <b>{t.avalista || '—'}</b></span>
+                      </div>
+                      <textarea value={notifTxt[t.idadmon] || ''} onChange={e => setNotifTxt(s => ({ ...s, [t.idadmon]: e.target.value }))}
+                        rows={2} placeholder="Cuándo se notificó, cómo (canal/forma), si respeta el plazo y la forma del contrato…"
+                        style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 8, resize: 'vertical' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12, color: '#666' }}>Veredicto:</span>
+                        <button onClick={() => setNotifCumple(s => ({ ...s, [t.idadmon]: 'CUMPLE' }))}
+                          style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, border: '1px solid ' + (cumpleSel === 'CUMPLE' ? '#16a34a' : '#CBD5E1'), background: cumpleSel === 'CUMPLE' ? '#16a34a' : '#fff', color: cumpleSel === 'CUMPLE' ? '#fff' : '#16a34a' }}>CUMPLE</button>
+                        <button onClick={() => setNotifCumple(s => ({ ...s, [t.idadmon]: 'NO CUMPLE' }))}
+                          style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, border: '1px solid ' + (cumpleSel === 'NO CUMPLE' ? '#DC2626' : '#CBD5E1'), background: cumpleSel === 'NO CUMPLE' ? '#DC2626' : '#fff', color: cumpleSel === 'NO CUMPLE' ? '#fff' : '#DC2626' }}>NO CUMPLE</button>
+                        <button onClick={() => guardarNotificacion(t.idadmon)} disabled={!listo || valBusy === ('n:' + t.idadmon)}
+                          style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', background: listo ? '#1E3A8A' : '#C9C7BF', color: '#fff', fontWeight: 600, cursor: listo ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                          {valBusy === ('n:' + t.idadmon) ? 'Guardando…' : 'Guardar valoración'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* VERTIENTE 2: resultado (tras Q-Auditado) */}
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1E3A8A', marginTop: 6, marginBottom: 2 }}>2 · Resultado del término {valList.total_resultado ? `(${valList.total_resultado})` : ''}</div>
+            <div style={{ fontSize: 12, color: '#1E3A8A', opacity: 0.85, marginBottom: 10 }}>
+              Aparece cuando Karina ya auditó el término (estado Q-Auditado). Aquí valoras el resultado: solidaridad del aval y si es reclamable, vía DICOM/judicial, plazos y riesgos.
             </div>
+            {(!valList.resultado || valList.resultado.length === 0) ? (
+              <div style={{ fontSize: 12, color: '#6B7280' }}>Nada pendiente aquí todavía (llega tras la auditoría de Karina).</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {valList.resultado.slice(0, 8).map(t => (
+                  <div key={t.idadmon} style={{ background: '#fff', border: '1px solid #D2DCF0', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <b>{t.idadmon}</b>
+                      <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
+                      {t.resultado != null && Number(t.resultado) < 0 && (
+                        <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}{t.quien ? ' · ' + t.quien : ''}</span>
+                      )}
+                      <a href={'/procesos/terminos/' + t.idadmon} style={{ marginLeft: 'auto', fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver término →</a>
+                    </div>
+                    <textarea value={valTxt[t.idadmon] || ''} onChange={e => setValTxt(s => ({ ...s, [t.idadmon]: e.target.value }))}
+                      rows={2} placeholder="Valoración legal del resultado…"
+                      style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 8, resize: 'vertical' }} />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                      <button onClick={() => guardarValoracion(t.idadmon)} disabled={valBusy === ('r:' + t.idadmon) || !(valTxt[t.idadmon] || '').trim()}
+                        style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', background: (valTxt[t.idadmon] || '').trim() ? '#1E3A8A' : '#C9C7BF', color: '#fff', fontWeight: 600, cursor: (valTxt[t.idadmon] || '').trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                        {valBusy === ('r:' + t.idadmon) ? 'Guardando…' : 'Guardar valoración'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
