@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v30 · 2026-08-11 · FIX del "Balance de pagos del arrendatario": ahora usa EL MISMO cálculo que la Cartola por
+//   IDADMON → cargoEfectivo = cargo_manual (override) si existe, si no cargo; balance = Σ(cargoEfectivo − abono). Antes sumaba
+//   el `cargo` crudo e ignoraba los overrides de `cargo_manual`, por eso daba el total sin descontar los cargos editados
+//   (p.ej. A00717: mostraba $480.893 en vez del último saldo de la cartola $39.425). Se lee `cargo_manual` de cuentas y el
+//   parser numérico replica el de la cartola. Hereda v29 (recálculo SIEMPRE al abrir + botón 🔄 Recargar).
 // VERSION: v29 · 2026-08-11 · FIX "no se actualiza el balance": el "Balance de pagos del arrendatario" (Σcargo−Σabono de
 //   `cuentas`) se recalcula SIEMPRE al abrir el panel, aunque ya haya líneas guardadas (antes solo la 1ª vez → se quedaba
 //   congelado con el valor guardado y no reflejaba movimientos nuevos). Además, botón "🔄 Recargar" en el panel que vuelve a
@@ -32,6 +37,12 @@ const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
 const n0 = v => { const x = Number(v); return isNaN(x) ? 0 : x }
+// Parser numérico IDÉNTICO al de la Cartola por IDADMON (app/procesos/cartolas), para que el
+// "Balance de pagos del arrendatario" cuadre al peso con el último saldo que muestra la cartola.
+const numC = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
+// Cargo EFECTIVO = cargo_manual (override editado en la cartola) si existe; si no, el cargo original.
+// La cartola calcula su saldo corrido con este valor, no con el `cargo` crudo.
+const cargoEfectivo = m => (m.cargo_manual != null && m.cargo_manual !== '') ? numC(m.cargo_manual) : numC(m.cargo)
 const fmtPesos = n => { const v = Number(n); if (isNaN(v) || n === null || n === '') return '—'; return '$' + v.toLocaleString('es-CL') }
 const fmtFecha = s => { if (!s) return '—'; const str = String(s); if (/^\d{4}-\d{2}-\d{2}/.test(str)) { const [y, m, d] = str.slice(0, 10).split('-'); return `${d}/${m}/${y}` } return str }
 
@@ -298,7 +309,7 @@ export default function TerminosPage() {
       supabase.from('termino_lineas').select('*').eq('idadmon', idadmon).order('orden'),
       supabase.from('workflow_instances').select('id').eq('idadmon', idadmon).eq('workflow_codigo', 'TERMINO').limit(1),
       supabase.from('ggcc_agua_luz').select('id, aamm, mes, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua').eq('idadmon', idadmon).order('aamm', { ascending: false }).limit(1),
-      supabase.from('cuentas').select('cargo, abono').eq('idadmon', idadmon),
+      supabase.from('cuentas').select('cargo, abono, cargo_manual').eq('idadmon', idadmon),
       // Cargos al PROPIETARIO derivados de este término (saldo sin saldo, complementos, devolución de garantía…):
       // descuentos con idadmon_relacionado = este término y repercutir_a = PROPIETARIO.
       supabase.from('descuentos').select('num, mes_a_imputar, monto_a_imputar, idadmon, tipo, texto_explicativo_para_carta_a_propietario').eq('idadmon_relacionado', idadmon).eq('repercutir_a', 'PROPIETARIO'),
@@ -308,7 +319,9 @@ export default function TerminosPage() {
       .map(r => ({ num: r.num, monto: n0(r.monto_a_imputar), idadmon: r.idadmon, mes: r.mes_a_imputar, tipo: r.tipo, texto: r.texto_explicativo_para_carta_a_propietario || '' }))
     const ggcc = (ggccRes.data && ggccRes.data[0]) || null
     const cuentasMovs = cuentasRes ? (cuentasRes.data || []) : []
-    const balanceCuentas = cuentasMovs.reduce((a, r) => a + n0(r.cargo) - n0(r.abono), 0)
+    // MISMO cálculo que la Cartola por IDADMON: saldo = Σ(cargoEfectivo − abono), con cargoEfectivo
+    // = cargo_manual (override) si existe. Así el balance cuadra al peso con el último saldo de la cartola.
+    const balanceCuentas = cuentasMovs.reduce((a, r) => a + cargoEfectivo(r) - numC(r.abono), 0)
     const arriendo = (arrRes.data && arrRes.data[0]) || null
     const descuentos = descRes.data || []
     const presupuestos = presRes.data || []
@@ -362,12 +375,13 @@ export default function TerminosPage() {
       return out
     }
     const L = { garantia: buildBloque('garantia'), servicios: buildBloque('servicios'), reparaciones: buildBloque('reparaciones') }
-    // El "Balance de pagos del arrendatario" es un valor DERIVADO (Σcargo − Σabono de `cuentas`).
+    // El "Balance de pagos del arrendatario" = ÚLTIMO SALDO de la Cartola por IDADMON: valor DERIVADO
+    // Σ(cargoEfectivo − abono) de `cuentas`, con cargoEfectivo = cargo_manual (override) si existe.
     // Se recalcula SIEMPRE al abrir el panel —aunque ya haya líneas guardadas— para que refleje los
     // movimientos nuevos. Antes solo se calculaba la 1ª vez y se quedaba congelado con el valor guardado.
     {
       const linBal = L.garantia.find(x => x.concepto === 'Balance de pagos del arrendatario' && x.es_fijo)
-      if (linBal) { linBal.monto = balanceCuentas; linBal.ref = 'Cuentas (' + cuentasMovs.length + ' mov.)' }
+      if (linBal) { linBal.monto = balanceCuentas; linBal.ref = 'Saldo cartola (' + cuentasMovs.length + ' mov.)' }
     }
     // sembrar desde descuentos SOLO la primera vez (sin lineas guardadas)
     if (saved.length === 0) {
