@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v42 · 2026-08-11 · PERMISOS: Dirección (Luis/Alberto) entra también por rol 'direccion' (no solo por
+//   email ni por el 'admin' muerto), para tener SIEMPRE todo. Los botones ✉ Email y PDF (arrendatario/propietario/
+//   presupuesto) y ver PDF ya estaban abiertos a Karina + Dirección + Adalis/Fabiola (puedeTerminoDocs). Hereda v41.
 // VERSION: v41 · 2026-08-11 · DEEP-LINK: si la URL trae ?id=IDADMON, abre esa hoja directamente al cargar
 //   (para enlazar la "Hoja de término" desde Alertas y desde el Reloj). Aditivo, no cambia la lista. Hereda v40.
 // VERSION: v40 · 2026-08-11 · REDISEÑO de los botones y del correo. Se sustituyen TODOS los botones de envío por TRES
@@ -269,7 +272,7 @@ export default function TerminosPage() {
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
-    if (rol === 'admin' || DIRECCION_EMAILS.includes(email)) { setAccesoOk(true); return }
+    if (rol === 'admin' || rol === 'direccion' || DIRECCION_EMAILS.includes(email)) { setAccesoOk(true); return }
     supabase.from('proceso_permisos').select('proceso').eq('email', email).eq('activo', true)
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('termino'))))
   }, [status, email, rol])
@@ -822,7 +825,7 @@ export default function TerminosPage() {
     pasoHumano = nd; break
   }
   // ¿Es el turno de quien mira? Dirección/admin ve todo; si no, compara el área del nodo con su perfil.
-  const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)
+  const esDireccion = rol === 'admin' || rol === 'direccion' || DIRECCION_EMAILS.includes(email)
   const puedeVerMarkup = esDireccion || FINANZAS_EMAILS.includes(email)  // Karina + Dirección ven/editan el markup
   // PDF del término y envío de correos: Dirección + Karina + Adalis + Fabiola (Administración). El PDF muestra precio
   // final (nunca el markup), por eso Adalis/Fabiola pueden generarlo aunque no vean/editen el % de markup.
