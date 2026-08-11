@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v4 · 2026-08-11 · Oculta TEMPORALMENTE en "Tareas de procesos" las tareas de la gestión ANTIGUA
+//   de Términos (nodos T*/ tarea "Notificar") para TODO el personal, hasta estabilizar el módulo de Términos.
+//   Reversible: poner OCULTAR_TAREAS_TERMINOS = false y vuelven a aparecer. Hereda v3.
 // VERSION: v3 · 2026-07-28 · Tarjeta "Alertas" en Mi Portal para Karina, Alberto y Luis: tareas
 //   urgentes generadas por el CRM (p.ej. facturar al pasar P→S) y fechas clave. Cada alerta se
 //   puede POSPONER (nueva fecha + motivo) o RESOLVER. Lee/escribe la tabla `alertas` (individual
@@ -16,6 +19,13 @@ import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const ALERTAS_EMAILS = ['karina.morales@fondocapital.com', 'alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+
+// Términos (gestión antigua): ocultar sus tareas de "Tareas de procesos" a TODO el personal hasta estabilizar
+// el módulo de Términos. Poner en false para reactivarlas de golpe.
+const OCULTAR_TAREAS_TERMINOS = true
+const esTareaTermino = (w) =>
+  /^T\d/i.test(String(w?.node_codigo || '')) ||
+  String(w?.nodo_nombre || '').trim().toLowerCase() === 'notificar'
 
 const PRIORIDAD_COLOR = { ALTA: '#dc2626', MEDIA: '#d97706', BAJA: '#16a34a' }
 const ESTADO_COLOR = {
@@ -274,7 +284,9 @@ export default function MiPortalPage() {
   const th = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.04em' }
 
   const tareas = data?.tareas || []
-  const workflow = data?.workflow || []
+  const workflowRaw = data?.workflow || []
+  // Oculta las tareas de la gestión antigua de Términos (para todos), de forma reversible.
+  const workflow = OCULTAR_TAREAS_TERMINOS ? workflowRaw.filter(w => !esTareaTermino(w)) : workflowRaw
   const periodicas = data?.periodicas || []
   const wfValores = {
     node_codigo: [...new Set(workflow.map(w => w.node_codigo).filter(v => v != null))].sort(),
