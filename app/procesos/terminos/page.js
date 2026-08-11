@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v31 · 2026-08-11 · Descuentos del término: se OCULTAN los descuentos iniciales (de años atrás). El panel
+//   "Descuentos de este término" (y el del inmueble sucesor) muestra SOLO los cercanos al cierre: con F.Cont desde
+//   2 meses ANTES de la fecha de entrega en adelante. Los descuentos sin fecha (garantía, estructurales) se mantienen.
+//   Es solo de VISTA: lo que cuenta en el resultado son los descuentos "T-…" del término, que no cambia. Hereda v30.
 // VERSION: v30 · 2026-08-11 · FIX del "Balance de pagos del arrendatario": ahora usa EL MISMO cálculo que la Cartola por
 //   IDADMON → cargoEfectivo = cargo_manual (override) si existe, si no cargo; balance = Σ(cargoEfectivo − abono). Antes sumaba
 //   el `cargo` crudo e ignoraba los overrides de `cargo_manual`, por eso daba el total sin descontar los cargos editados
@@ -731,8 +735,25 @@ export default function TerminosPage() {
   const arreglosRef = panel?.arreglosRef || '0'
   const asociado = panel?.asociado || null
   const descResumen = panel?.descResumen || []
+  // FILTRO "cerca del cierre": los descuentos INICIALES (de años atrás) no interesan en el término. Se conservan solo
+  // los con F.Cont desde 2 meses ANTES de la fecha de entrega en adelante. Los descuentos SIN fecha (garantía y demás
+  // estructurales) se mantienen siempre. Ancla = fecha de entrega (form.fecha_entrega; si no, termino_actual del contrato).
+  const parseFechaDesc = s => {
+    if (!s) return null
+    let m = String(s).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3])
+    m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return new Date(+m[3], +m[2] - 1, +m[1])
+    return null
+  }
+  const fEntregaStr = form?.fecha_entrega || (panel?.arriendo?.termino_actual ? String(panel.arriendo.termino_actual).slice(0, 10) : '')
+  const fLimiteInf = (() => { const d = parseFechaDesc(fEntregaStr); if (!d) return null; const l = new Date(d); l.setMonth(l.getMonth() - 2); return l })()
+  const cercaDelCierre = d => {
+    if (!fLimiteInf) return true                 // sin fecha de entrega fiable: no filtramos (no romper la vista)
+    const fc = parseFechaDesc(d.fecha_contable)
+    if (!fc) return true                          // descuento sin fecha (garantía…): se mantiene
+    return fc >= fLimiteInf
+  }
   const ordenImputar = r => { const x = up(r.repercutir_a); if (!x) return 0; if (x.startsWith('T-')) return 1; if (x === 'PROPIETARIO') return 2; return 3 }
-  const descResumenOrd = [...descResumen].sort((a, b) => ordenImputar(a) - ordenImputar(b) || (n0(a.num) - n0(b.num)))
+  const descResumenOrd = [...descResumen].filter(cercaDelCierre).sort((a, b) => ordenImputar(a) - ordenImputar(b) || (n0(a.num) - n0(b.num)))
   // Separar: los de ESTE término (idadmonSel) vs los del INMUEBLE SIGUIENTE (sucesor) — para chequeo de gastos compartidos
   const descDelTermino = descResumenOrd.filter(d => d.idadmon === idadmonSel)
   const descDelSucesor = descResumenOrd.filter(d => d.idadmon !== idadmonSel)
@@ -1108,7 +1129,7 @@ export default function TerminosPage() {
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>Descuentos de este término</span>
                         <span style={{ fontSize: 11, color: '#888' }}>{idadmonSel} · {descDelTermino.length} · {fmtPesos(totDelTermino)}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Descuentos imputados a este IDADMON (los que cuentan en esta liquidación). Solo lectura.</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Descuentos imputados a este IDADMON cercanos al cierre (desde 2 meses antes de la entrega). Los iniciales, de años atrás, no se muestran. Solo lectura.</div>
                       {descDelTermino.length === 0 ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Sin descuentos.</div> : (
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead><tr style={{ background: '#FAFAF8' }}>
