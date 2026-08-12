@@ -1,11 +1,11 @@
 // VERSION: v1 · 2026-08-12 · app/api/captaciones/gestion/route.js — Registra una gestión de captación y avanza el
 //   estado + reprograma la próxima gestión (+45 días salvo captado/no_molestar). POST { captacion_id, canal,
-//   plantilla, resultado, nota }. Gate: Dirección + Administración.
+//   plantilla, resultado, nota }. Gate: solo Alberto + Luis (Dirección).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
 
-const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 // resultado → nuevo estado del pipeline
 const ESTADO = {
   contactado: 'contactado', respondio: 'en_conversacion', interesado: 'interesado',

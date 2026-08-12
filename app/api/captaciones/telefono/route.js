@@ -1,12 +1,12 @@
 // VERSION: v1 · 2026-08-12 · app/api/captaciones/telefono/route.js — Pone/corrige el teléfono de una captación.
 //   POST { captacion_id, telefono }. Normaliza a +56…; guarda en captaciones.telefono y, si es MÓVIL, en
-//   contactos.whatsapp del contacto ligado. Devuelve { display, wa }. Gate: Dirección + Administración.
+//   contactos.whatsapp del contacto ligado. Devuelve { display, wa }. Gate: solo Alberto + Luis (Dirección).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
 import { normalizaTelefono } from '../../../../lib/captacionImport.js'
 
-const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 export async function POST(req) {
   const session = await getServerSession(authOptions)

@@ -1,18 +1,18 @@
 // VERSION: v2 · 2026-08-12 · app/api/captaciones/listar/route.js — Lista las captaciones con datos del contacto
 //   (nombre, whatsapp) para la pantalla. `wa` solo se rellena si el teléfono es MÓVIL (los fijos no llevan WhatsApp).
-//   GET. Gate: Dirección + Administración. Solo lectura. Hereda v1.
+//   GET. Gate: solo Alberto + Luis (Dirección). Solo lectura. Hereda v1.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
 import { normalizaTelefono } from '../../../../lib/captacionImport.js'
 
-const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 export async function GET() {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!AUTORIZADOS.includes(email)) return Response.json({ error: 'Solo Dirección y Administración pueden ver captaciones.' }, { status: 403 })
+  if (!AUTORIZADOS.includes(email)) return Response.json({ error: 'Solo Alberto y Luis (Dirección) pueden ver captaciones.' }, { status: 403 })
 
   const { data, error } = await supabaseAdmin
     .from('captaciones')

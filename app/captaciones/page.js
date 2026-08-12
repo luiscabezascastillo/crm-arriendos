@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v4 · 2026-08-12 · app/captaciones/page.js — Acceso restringido a SOLO Alberto + Luis (Dirección); se
+//   quita Administración del módulo. Hereda v3.
 // VERSION: v3 · 2026-08-12 · app/captaciones/page.js — (1) KPIs del embudo arriba (clicables para filtrar).
 //   (2) Plantilla A1 sin el "demanda por {comuna}" (la comuna es la de la publicación, no implica demanda ahí).
 //   Hereda v2.
@@ -12,7 +14,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import TopNav from '../components/ui/TopNav'
 
-const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 const PLANTILLAS = {
   'A1 · Captación (relación)': 'Hola {nombre}, ¿cómo estás? Te escribo yo, Alberto, de Fondo Capital. Ando con harta demanda de arriendo y venta y me acordé de ti. ¿Tienes alguna propiedad disponible, o que estés pensando mover, para arriendo o venta? La veo con gusto. Un abrazo.',

@@ -2,14 +2,14 @@
 //   (a nombre de Alberto) + crea su fila en `captaciones`. POST { dryRun, limite }.
 //   · dryRun:true (por defecto) → NO escribe: devuelve conteos + muestra de lo que entraría.
 //   · dryRun:false → crea/actualiza contactos e inserta captaciones para hasta `limite` dueños NUEVOS (idempotente:
-//     salta los que ya tienen captación, así se puede correr por tandas). Gate: Dirección + Administración.
+//     salta los que ya tienen captación, así se puede correr por tandas). Gate: solo Alberto + Luis (Dirección).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
 import { agrupaLeads, normKey, splitNombre, soloDigitos, esNulo } from '../../../../lib/captacionImport.js'
 
 const ALBERTO = 'alberto.cabezas@fondocapital.com'
-const AUTORIZADOS = [ALBERTO, 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+const AUTORIZADOS = [ALBERTO, 'luis.cabezas@fondocapital.com']   // Captaciones: solo Alberto + Luis (Dirección)
 const HOY = () => new Date().toISOString().slice(0, 10)
 
 async function traerTodo(tabla, cols, filtro) {
@@ -29,7 +29,7 @@ export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!AUTORIZADOS.includes(email)) return Response.json({ error: 'Solo Dirección y Administración pueden importar captaciones.' }, { status: 403 })
+  if (!AUTORIZADOS.includes(email)) return Response.json({ error: 'Solo Alberto y Luis (Dirección) pueden importar captaciones.' }, { status: 403 })
 
   let body = {}
   try { body = await req.json() } catch { /* sin body = dry run */ }

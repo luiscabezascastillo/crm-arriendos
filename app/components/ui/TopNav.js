@@ -1,6 +1,8 @@
 'use client';
-// VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible SOLO para
-//   Dirección (Alberto/Luis) + Administración (Adalis/Fabiola). Hereda v8.
+// VERSION: v10 · 2026-08-12 · El enlace "Captaciones" pasa a verse SOLO por Dirección (Alberto y Luis); se quita
+//   Administración. Hereda v9.
+// VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible para
+//   Dirección + Administración. Hereda v8.
 // VERSION: v8 · 2026-08-12 · Nuevo enlace "BB2" (Operaciones comerciales · arriendo sin admón) en la barra, visible
 //   SOLO para Dirección (Alberto/Luis) + Anthony (Legal). Preparado para añadir "BB1" al lado cuando exista.
 //   Sin cambios en el resto de gates ni del menú. Hereda v7.
@@ -176,7 +178,7 @@ export default function TopNav() {
   // Operaciones BB (arriendo/venta sin/ con admón): en construcción, solo Dirección + Anthony (Legal).
   const esBB = esDireccion || session?.user?.email === 'anthony.mendoza@fondocapital.com';
   // Captaciones (cartera de propietarios): Dirección (incluye Alberto) + Administración (Adalis/Fabiola).
-  const esCaptacion = esDireccion || ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com'].includes(session?.user?.email);
+  const esCaptacion = esDireccion; // solo Alberto + Luis (Dirección)
   // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
   const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
