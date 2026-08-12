@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v8 · 2026-08-12 · Nuevo enlace "BB2" (Operaciones comerciales · arriendo sin admón) en la barra, visible
+//   SOLO para Dirección (Alberto/Luis) + Anthony (Legal). Preparado para añadir "BB1" al lado cuando exista.
+//   Sin cambios en el resto de gates ni del menú. Hereda v7.
 // VERSION: v7 · 2026-08-11 · El botón "Alertas" se abre por ROL: Administración (Adalis/Fabiola) y Legal
 //   (Anthony) además de Karina + Dirección. El badge cuenta lo de cada rol: Admin -> reclamaciones del día;
 //   Legal -> términos sin valorar; Karina/Dir -> alertas propias + Términos del día. Hereda v6.
@@ -168,6 +171,8 @@ export default function TopNav() {
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const rol = normRol(session?.user?.role);
   const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
+  // Operaciones BB (arriendo/venta sin/ con admón): en construcción, solo Dirección + Anthony (Legal).
+  const esBB = esDireccion || session?.user?.email === 'anthony.mendoza@fondocapital.com';
   // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
   const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
@@ -452,6 +457,12 @@ export default function TopNav() {
         )}
       </div>
       )}
+
+      {/* BB2 / BB1 — Operaciones comerciales. En construcción: solo Dirección + Anthony. */}
+      {esBB && (
+        <Link href="/bb2" style={s.link(isActive('/bb2'))}>BB2</Link>
+      )}
+      {/* BB1 (ventas) llegará aquí:  {esBB && <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>} */}
 
       {/* Comercial — Portal externo (pendiente de desarrollo). Solo Dirección por ahora. */}
       {esDireccion && (
