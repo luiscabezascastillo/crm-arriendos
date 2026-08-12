@@ -1,3 +1,6 @@
+// VERSION: v33 · 2026-08-12 · SA usabilidad: panel de clasificación más ESTRECHO (clamp 440–620px, antes 640–1120)
+//   para no tapar los números; la tabla se alinea a la IZQUIERDA (margin 0, menos padding, más ancho) y la fila que
+//   abre el panel se resalta en BLANCO con acento verde a la izquierda. Hereda v32.
 // VERSION: v32 · 2026-08-12 · SA: la columna MONTO cambia su desplegable por un filtro POR RANGO con signo
 //   (Desde/Hasta): cargos negativos / abonos positivos, un lado opcional. Se quitan de ese menú el "ordenar" y las
 //   opciones inactivas (borrar filtro / quitar todos). El resto de columnas conserva su filtro Excel. Hereda v31.
@@ -1139,7 +1142,7 @@ const wantScroll = useRef(false)
         </>}
       />
 
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '12px 8px 40px' : '14px 24px 48px' }}>
+      <div style={{ maxWidth: 1320, margin: 0, padding: isMobile ? '12px 8px 40px' : '14px 12px 48px' }}>
 
         {/* RESUMEN POR CCB + CONCEPTO ÚNICO */}
         <div style={{ marginBottom: 14 }}>
@@ -1227,11 +1230,12 @@ const wantScroll = useRef(false)
                 <div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Sin movimientos para este filtro.</div>
               ) : movsFiltrados.map(m => {
                 const desg = lineasByMov[m.id] || []
+                const seleccionada = sel?.id === m.id   // fila que abrió el panel: fondo blanco + acento
                 return (
                   <div key={m.id}>
-                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', background: m.color_fondo || '#fff' }}
-                      onMouseEnter={e => e.currentTarget.style.background = m.color_fondo ? '#FBD9B4' : '#FAFAF7'}
-                      onMouseLeave={e => e.currentTarget.style.background = m.color_fondo || '#fff'}>
+                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', background: seleccionada ? '#fff' : (m.color_fondo || '#fff'), boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined }}
+                      onMouseEnter={e => e.currentTarget.style.background = seleccionada ? '#fff' : (m.color_fondo ? '#FBD9B4' : '#FAFAF7')}
+                      onMouseLeave={e => e.currentTarget.style.background = seleccionada ? '#fff' : (m.color_fondo || '#fff')}>
                       <div style={{ fontWeight: 600, color: '#0C447C', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <span>{folioVisible(m) ?? '—'}</span>
                         {m.nota_auditoria && (
@@ -1257,7 +1261,7 @@ const wantScroll = useRef(false)
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
                     {desg.map((l, k) => (
-                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: m.color_fondo ? '#FEF1E2' : '#FCFCFA', borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
+                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: seleccionada ? '#fff' : (m.color_fondo ? '#FEF1E2' : '#FCFCFA'), boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined, borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
                         <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(folioVisible(m), l.sub_orden)}</div>
                         <div />
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
@@ -1321,7 +1325,7 @@ const wantScroll = useRef(false)
       {sel && (
         <>
           <div onClick={cerrar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.28)', zIndex: 9000 }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 'clamp(640px, 66vw, 1120px)', maxWidth: '100%', background: '#fff', zIndex: 9001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: isMobile ? '100%' : 'clamp(440px, 40vw, 620px)', maxWidth: '100%', background: '#fff', zIndex: 9001, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #E0DED6', flexShrink: 0, background: '#fff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                 <div>
