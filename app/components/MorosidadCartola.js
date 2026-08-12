@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v3 · 2026-08-12 · Calendario de pagos PLEGABLE (botón "▲ ocultar/▼ ver meses") y con FLEX-WRAP: las
+//   tarjetas saltan de fila SIEMPRE (más filas antes que scroll horizontal). El gráfico sigue plegable/oculto. Hereda v2.
 // VERSION: v2 · 2026-08-12 · "Saldo a fin de mes" PLEGABLE y OCULTO por defecto (botón "▼ ver gráfico"); rejillas
 //   responsivas (auto-fit/auto-fill) y SVG sin overflow visible → el panel nunca fuerza scroll horizontal. Hereda v1.
 // VERSION: v1 · 2026-08-12 · Panel de MOROSIDAD reutilizable a partir de la cartola (`cuentas`) de un idadmon.
@@ -27,6 +29,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const [cargando, setCargando] = useState(!cuentas)
   const [tip, setTip] = useState(null) // {x,y,html}
   const [verSaldo, setVerSaldo] = useState(false) // gráfico "saldo a fin de mes": oculto por defecto
+  const [verMeses, setVerMeses] = useState(true) // calendario de meses: visible por defecto, pero plegable
 
   useEffect(() => {
     if (cuentas) { setRows(cuentas); return }
@@ -95,7 +98,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const showTip = (e, html) => setTip({ x: e.clientX, y: e.clientY, html })
 
   return (
-    <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', maxWidth: '100%', boxSizing: 'border-box' }}>
+    <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 800 }}>Morosidad</span>
         <span style={{ fontSize: 12, color: C.ink2 }}>comportamiento de pago (desde la cartola)</span>
@@ -152,15 +155,20 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
         </div>
       )}
 
-      <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Calendario de pagos</div>
-        <div style={{ fontSize: 12, color: C.ink2, marginBottom: 12 }}>Estado a fin de cada mes: al día, atraso (~1 renta) o mora (2+ rentas).</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+      <div style={{ ...card, overflowX: 'hidden' }}>
+        <button onClick={() => setVerMeses(v => !v)}
+          style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Calendario de pagos</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: C.blue }}>{verMeses ? '▲ ocultar' : '▼ ver meses'}</span>
+        </button>
+        {verMeses && (<>
+        <div style={{ fontSize: 12, color: C.ink2, margin: '6px 0 12px' }}>Estado a fin de cada mes: al día, atraso (~1 renta) o mora (2+ rentas).</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', boxSizing: 'border-box' }}>
           {D.meses.map((m) => {
             const s = ST[m.estado]
             const bg = m.estado === 'good' ? 'rgba(12,163,12,.07)' : m.estado === 'warning' ? 'rgba(250,178,25,.10)' : 'rgba(208,59,59,.10)'
             return (
-              <div key={m.mes} style={{ border: '1px solid ' + C.grid, borderRadius: 10, padding: '9px 10px', background: bg }}
+              <div key={m.mes} style={{ flex: '1 1 120px', minWidth: 118, maxWidth: 220, boxSizing: 'border-box', border: '1px solid ' + C.grid, borderRadius: 10, padding: '9px 10px', background: bg }}
                 onMouseMove={(e) => showTip(e, `<div style="color:${C.ink2}">${mlbl(m.mes)}</div>cargos <b>${P(m.cargos)}</b><br>abonos <b>${P(m.abonos)}</b><br>saldo <b>${P(m.saldo)}</b>${m.dia ? '<br>pagó día <b>' + m.dia + '</b>' : ''}`)}
                 onMouseLeave={() => setTip(null)}>
                 <div style={{ fontSize: 11, color: C.ink2, fontWeight: 600 }}>{mlbl(m.mes)}</div>
@@ -175,6 +183,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: C.warn }} />! atraso</span>
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: C.crit }} />✕ mora</span>
         </div>
+        </>)}
       </div>
 
       {tip && (

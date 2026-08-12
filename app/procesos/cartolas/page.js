@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v11 · 2026-08-12 · overflowX:'clip' en el contenedor de la ficha por IDADMON → la página nunca necesita
+//   scroll horizontal (las tablas siguen con su propio scroll interno). Hereda v10.
 // VERSION: v10 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera de la Cartola
 //   por IDADMON: comportamiento de pago (KPIs + saldo a fin de mes + calendario), para leer al deudor antes
 //   de reclamar. Hereda v9.
@@ -939,7 +941,7 @@ function CartolaIdadmonVista() {
 
   return (
     <>
-    <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
+    <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px', overflowX: 'clip' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 10px', color: '#2C2C2A' }}>Cartola por IDADMON</h1>
 
       {/* BUSCADOR */}
