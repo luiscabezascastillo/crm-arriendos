@@ -1,3 +1,6 @@
+// VERSION: v6 · 2026-08-12 · FECHAS dd/mm → ISO: normaliza la `fecha` de entrada (dd/mm/aaaa) a aaaa-mm-dd
+//   con aISO() ANTES de escribir termino_actual y de armar el correo, para que ni JS ni Postgres (datestyle
+//   MDY) intercambien día y mes. Corrige el swap de la fecha de entrega/aviso de término. Hereda v5.
 // VERSION: v5 · 2026-07-15 · Cierra la puerta trasera P→S: este endpoint RECHAZA estadoNuevo='S'.
 //   La activación (llegar a S) solo se hace por CERRAR Y FACTURAR (valida + escribe inicios +
 //   facturación). Emergencia: forzar-estado (solo Dirección, con registro). Resto idéntico a v4.
@@ -37,6 +40,22 @@ const CAMPOS_HEREDADOS = [
 ]
 
 const ESTADOS_VALIDOS = ['P', 'S', 'SQ', 'Q', 'N', 'N-Liquidacion', 'N-DICOM', 'Inactiva']
+
+// Normaliza CUALQUIER fecha de entrada a ISO aaaa-mm-dd (dd/mm/aaaa y España/Chile), SIN usar new Date()
+// (que asume mm/dd) y sin dejar que Postgres adivine (datestyle MDY convierte "11/04/2026" en 4-nov).
+// Si ya viene ISO, la deja. Si no reconoce el formato, devuelve la cadena original (o null si vacía).
+function aISO(s) {
+  const t = String(s ?? '').trim()
+  if (!t) return null
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10)              // ya ISO
+  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)       // dd/mm/aaaa (o aa)
+  if (m) {
+    const d = m[1].padStart(2, '0'), mo = m[2].padStart(2, '0')
+    const y = m[3].length === 2 ? '20' + m[3] : m[3]
+    if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12) return `${y}-${mo}-${d}`
+  }
+  return t
+}
 
 // Umbral por defecto (CLP) si no existe la fila en `configuracion`. Un cierre que
 // pierde garantía por encima de esto (o que abandona deuda cobrable) es "alto riesgo"
@@ -160,7 +179,9 @@ export async function POST(req) {
     }, { status: 409 })
   }
 
-  const fechaEvento = fecha || new Date().toISOString().slice(0, 10)
+  // Fecha SIEMPRE en ISO antes de tocar la base o el correo (dd/mm/aaaa -> aaaa-mm-dd).
+  const fechaISO = aISO(fecha)
+  const fechaEvento = fechaISO || new Date().toISOString().slice(0, 10)
 
   // 2. Cargar contrato actual
   const { data: contrato, error: e0 } = await supabaseAdmin
@@ -206,7 +227,7 @@ export async function POST(req) {
   //    (la del contrato) NUNCA se toca. Solo si el usuario aportó `fecha`; si no, no se pisa.
   const camposUpdate = { estado: estadoNuevo, updated_at: new Date().toISOString() }
   const esAvisoTermino = estadoAnterior === 'S' && (estadoNuevo === 'SQ' || estadoNuevo === 'Q')
-  if (esAvisoTermino && fecha) camposUpdate.termino_actual = fecha
+  if (esAvisoTermino && fechaISO) camposUpdate.termino_actual = fechaISO
   const { error: e1 } = await supabaseAdmin
     .from('datos_arriendos')
     .update(camposUpdate)
