@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v5 · 2026-08-12 · FIX morosidad falsa: el panel ahora EXCLUYE las líneas ANULADAS y usa el cargo EFECTIVO
+//   (cargo_manual si está editado), igual que la cartola. Antes sumaba cargos anulados → "EN MORA" incorrecto. Hereda v4.
 // VERSION: v4 · 2026-08-12 · Calendario de pagos OCULTO por defecto (se pincha "▼ ver meses"); igual que el gráfico.
 //   Sigue plegable y con flex-wrap (nunca scroll horizontal). Hereda v3.
 // VERSION: v3 · 2026-08-12 · Calendario de pagos PLEGABLE (botón "▲ ocultar/▼ ver meses") y con FLEX-WRAP: las
@@ -38,14 +40,16 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
     if (!idadmon) return
     let vivo = true
     setCargando(true)
-    supabase.from('cuentas').select('fecha, concepto, cargo, abono, calif').eq('idadmon', idadmon)
+    supabase.from('cuentas').select('fecha, concepto, cargo, cargo_manual, abono, calif, anulado').eq('idadmon', idadmon)
       .then(({ data }) => { if (vivo) { setRows(data || []); setCargando(false) } })
     return () => { vivo = false }
   }, [idadmon, cuentas])
 
   const D = useMemo(() => {
-    const movs = (rows || []).map(r => ({ ...r, f: parseFecha(r.fecha), cargo: numc(r.cargo), abono: numc(r.abono) }))
-      .filter(m => m.f)
+    // cargo EFECTIVO = cargo_manual si existe (override editado), si no el cargo original; y se EXCLUYEN las anuladas,
+    // igual que la cartola. Así el saldo del panel coincide con el de la cartola (y no cuenta líneas anuladas).
+    const movs = (rows || []).map(r => ({ ...r, f: parseFecha(r.fecha), cargo: (r.cargo_manual != null && r.cargo_manual !== '') ? numc(r.cargo_manual) : numc(r.cargo), abono: numc(r.abono) }))
+      .filter(m => m.f && !m.anulado)
       .sort((a, b) => (a.f.y - b.f.y) || (a.f.mo - b.f.mo) || (a.f.d - b.f.d))
     let run = 0
     const serie = movs.map(m => { run += m.cargo - m.abono; return { ...m, saldo: run } })
