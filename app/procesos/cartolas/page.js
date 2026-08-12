@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v10 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera de la Cartola
+//   por IDADMON: comportamiento de pago (KPIs + saldo a fin de mes + calendario), para leer al deudor antes
+//   de reclamar. Hereda v9.
 // VERSION: v9 · 2026-08-11 · Cartola por IDADMON: botón "➕ Añadir movimiento" (solo Dirección + Karina) para
 //   registrar manualmente un CARGO o un ABONO, y en cada fila MANUAL botones "editar" y "anular" (anular es
 //   reversible). Todo escribe en `cuentas` vía /api/cartolas/movimiento y deja rastro en `cuentas_bitacora`
@@ -31,6 +34,7 @@ import { useRouter } from 'next/navigation'
 import { Component, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import MorosidadCartola from '@/app/components/MorosidadCartola'
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const fmt = (v) => { const n = num(v); return n ? n.toLocaleString('es-CL') : (String(v ?? '').trim() === '0' ? '0' : '') }
@@ -986,6 +990,11 @@ function CartolaIdadmonVista() {
               <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
               <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} />
             </div>
+          </div>
+
+          {/* MOROSIDAD — comportamiento de pago a partir de la cartola */}
+          <div style={{ marginBottom: 14 }}>
+            <MorosidadCartola idadmon={ficha.idadmon} />
           </div>
 
           {/* PROPORCIONAL PRIMER MES (calculado desde datos_arriendos) · colapsado por defecto */}

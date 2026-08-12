@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v45 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera del término:
+//   comportamiento de pago del arrendatario desde la cartola, para matizar la reclamación. Hereda v44.
 // VERSION: v44 · 2026-08-11 · ENLACES también en la columna REF de Servicios y Reparaciones (helper RefLinks):
 //   "Descto. NNNN" abre el descuento y "Cxxx / Pres. Cxxx" abre el presupuesto. Textos no-ref (p. ej. "Saldo
 //   cartola…") quedan como estaban. Hereda v43.
@@ -89,6 +91,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import MorosidadCartola from '@/app/components/MorosidadCartola'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
@@ -1131,6 +1134,11 @@ export default function TerminosPage() {
                     <div><div style={lbl}>Cont. Agua</div>{editando ? <input style={inEd} value={form.lectura_agua} onChange={e => setF('lectura_agua', e.target.value)} /> : <div style={val}>{form.lectura_agua || '—'}</div>}</div>
                     <div><div style={lbl}>Cont. Luz</div>{editando ? <input style={inEd} value={form.lectura_luz} onChange={e => setF('lectura_luz', e.target.value)} /> : <div style={val}>{form.lectura_luz || '—'}</div>}</div>
                   </div>
+                </div>
+
+                {/* MOROSIDAD — comportamiento de pago del arrendatario (desde la cartola) */}
+                <div style={{ ...card, padding: 14 }}>
+                  <MorosidadCartola idadmon={idadmonSel} />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16, alignItems: 'start' }}>
