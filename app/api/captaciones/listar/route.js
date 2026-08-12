@@ -1,0 +1,38 @@
+// VERSION: v1 · 2026-08-12 · app/api/captaciones/listar/route.js — Lista las captaciones con datos del contacto
+//   (nombre, whatsapp) para la pantalla. GET. Gate: Dirección + Administración. Solo lectura.
+import { getServerSession } from 'next-auth'
+import { authOptions } from '../../auth/[...nextauth]/route'
+import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
+import { soloDigitos } from '../../../../lib/captacionImport.js'
+
+const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+
+export async function GET() {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!AUTORIZADOS.includes(email)) return Response.json({ error: 'Solo Dirección y Administración pueden ver captaciones.' }, { status: 403 })
+
+  const { data, error } = await supabaseAdmin
+    .from('captaciones')
+    .select('id, contacto_id, propietario, telefono, objetivo, comuna, estado, n_publicaciones, administrado, nota_relacion, proxima_gestion, ultima_gestion, contactos(nombre, apellido, whatsapp, telefono, email)')
+    .order('estado', { ascending: true })
+    .order('proxima_gestion', { ascending: true, nullsFirst: false })
+    .limit(2000)
+  if (error) return Response.json({ error: 'Error leyendo captaciones: ' + error.message }, { status: 500 })
+
+  const rows = (data || []).map(c => {
+    const ct = c.contactos || {}
+    const tel = c.telefono || ct.whatsapp || ct.telefono || ''
+    const wa = soloDigitos(tel)
+    const nombre = ct.nombre || String(c.propietario || '').split(',').slice(-1)[0].trim() || c.propietario
+    return {
+      id: c.id, propietario: c.propietario, nombre, apellido: ct.apellido || '',
+      telefono: tel, wa: wa.length >= 8 ? wa : '', email: ct.email || '',
+      objetivo: c.objetivo, comuna: c.comuna, estado: c.estado,
+      n_publicaciones: c.n_publicaciones, administrado: c.administrado,
+      nota_relacion: c.nota_relacion || '', proxima_gestion: c.proxima_gestion, ultima_gestion: c.ultima_gestion,
+    }
+  })
+  return Response.json({ ok: true, total: rows.length, rows })
+}
