@@ -1,5 +1,3 @@
-// VERSION: v2 · 2026-08-12 · FECHAS dd/mm → ISO: normaliza los campos de fecha del `form` (dd/mm/aaaa) a
-//   aaaa-mm-dd antes de insertar, para que ni JS ni Postgres (datestyle MDY) intercambien día y mes. Hereda v1.
 // app/api/cc1/alta/route.js
 //
 // Alta de un contrato nuevo. Recibe { form } (los campos de datos_arriendos).
@@ -22,22 +20,6 @@ function siguienteIdadmon(maxId) {
   const num = parseInt(m[2], 10) + 1
   return prefijo + String(num).padStart(m[2].length, '0')
 }
-
-// dd/mm/aaaa (España/Chile) -> ISO aaaa-mm-dd. No usa new Date() ni deja que Postgres adivine (MDY).
-function aISO(s) {
-  const t = String(s ?? '').trim()
-  if (!t) return t
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10)
-  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
-  if (m) {
-    const d = m[1].padStart(2, '0'), mo = m[2].padStart(2, '0')
-    const y = m[3].length === 2 ? '20' + m[3] : m[3]
-    if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12) return `${y}-${mo}-${d}`
-  }
-  return t
-}
-// Campos de fecha en datos_arriendos que hay que normalizar a ISO al insertar.
-const CAMPOS_FECHA = ['fecha_inicio', 'termino_inicial', 'termino_actual', 'fecha', 'fecha1', 'fecha2', 'fecha3', 'fecha4']
 
 export async function POST(req) {
   const session = await getServerSession(authOptions)
@@ -69,8 +51,6 @@ export async function POST(req) {
   fila.pendiente_aprobacion = pendiente
   fila.creado_por = email
   fila.updated_at = new Date().toISOString()
-  // Fechas SIEMPRE en ISO (dd/mm/aaaa -> aaaa-mm-dd) para que no se intercambien día y mes.
-  for (const k of CAMPOS_FECHA) if (fila[k] != null && fila[k] !== '') fila[k] = aISO(fila[k])
 
   const { error: e1 } = await supabaseAdmin.from('datos_arriendos').insert([fila])
   if (e1) return Response.json({ error: 'Error al insertar: ' + e1.message }, { status: 500 })
