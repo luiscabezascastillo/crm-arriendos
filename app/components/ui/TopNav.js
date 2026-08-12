@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible SOLO para
+//   Dirección (Alberto/Luis) + Administración (Adalis/Fabiola). Hereda v8.
 // VERSION: v8 · 2026-08-12 · Nuevo enlace "BB2" (Operaciones comerciales · arriendo sin admón) en la barra, visible
 //   SOLO para Dirección (Alberto/Luis) + Anthony (Legal). Preparado para añadir "BB1" al lado cuando exista.
 //   Sin cambios en el resto de gates ni del menú. Hereda v7.
@@ -173,6 +175,8 @@ export default function TopNav() {
   const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
   // Operaciones BB (arriendo/venta sin/ con admón): en construcción, solo Dirección + Anthony (Legal).
   const esBB = esDireccion || session?.user?.email === 'anthony.mendoza@fondocapital.com';
+  // Captaciones (cartera de propietarios): Dirección (incluye Alberto) + Administración (Adalis/Fabiola).
+  const esCaptacion = esDireccion || ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com'].includes(session?.user?.email);
   // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
   const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
@@ -463,6 +467,9 @@ export default function TopNav() {
         <Link href="/bb2" style={s.link(isActive('/bb2'))}>BB2</Link>
       )}
       {/* BB1 (ventas) llegará aquí:  {esBB && <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>} */}
+      {esCaptacion && (
+        <Link href="/captaciones" style={s.link(isActive('/captaciones'))}>Captaciones</Link>
+      )}
 
       {/* Comercial — Portal externo (pendiente de desarrollo). Solo Dirección por ahora. */}
       {esDireccion && (
