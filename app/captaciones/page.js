@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v7 · 2026-08-12 · app/captaciones/page.js — El monto del CAPTADO se etiqueta "Comisión estimada" (no el
+//   valor de la propiedad): pipeline y facturado quedan en la misma unidad (comisión posible → comisión real).
+//   Solo cambian textos; la columna valor_estimado y los endpoints no cambian. Hereda v6.
 // VERSION: v6 · 2026-08-12 · app/captaciones/page.js — Dos hitos: CAPTADO (mandato + valor estimado, pipeline) y
 //   FACTURADO (operación cerrada + comisión real + fecha). El tablero separa "pipeline estimado" de "facturación real",
 //   así los mandatos sin cerrar quedan en $0 sin inflar la comisión. Pestañas del módulo: Propietarios (activa) /
@@ -213,7 +216,7 @@ export default function CaptacionesPage() {
         {!cargando && (kpis.mandatos > 0) && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: '#166534', background: '#F0FDF4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px' }}>
-              <b>Mandatos:</b> {kpis.mandatos} captado(s) · pipeline estimado <b>{clp(kpis.pipelineEst)}</b>
+              <b>Mandatos:</b> {kpis.mandatos} captado(s) · comisión estimada <b>{clp(kpis.pipelineEst)}</b>
             </div>
             <div style={{ fontSize: 12, color: '#065f46', background: '#ECFDF5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '8px 12px' }}>
               <b>Facturado:</b> {kpis.facturados} cerrada(s) · {kpis.ventas} venta(s) · {kpis.arriendos} arriendo(s) · comisión <b>{clp(kpis.comision)}</b>
@@ -302,7 +305,7 @@ export default function CaptacionesPage() {
               {esFact ? '💰 Facturado — operación cerrada' : '✅ Captado — mandato conseguido'}
             </div>
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-              {cierre.row.propietario}{esFact ? '' : ' · aún sin comisión (pipeline)'}
+              {cierre.row.propietario}{esFact ? '' : ' · comisión aún estimada (pipeline)'}
             </div>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Tipo de negocio</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -312,9 +315,9 @@ export default function CaptacionesPage() {
               ))}
             </div>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>
-              {esFact ? 'Comisión real (CLP)' : 'Valor estimado — pipeline (CLP)'}
+              {esFact ? 'Comisión real (CLP)' : 'Comisión estimada (CLP)'}
             </div>
-            <input autoFocus value={cierre.monto} onChange={e => setCierre(c => ({ ...c, monto: e.target.value }))} placeholder={esFact ? 'Ej: 850000' : 'Ej: 95000000'}
+            <input autoFocus value={cierre.monto} onChange={e => setCierre(c => ({ ...c, monto: e.target.value }))} placeholder={esFact ? 'Ej: 850000' : 'Ej: 800000'}
               onKeyDown={e => { if (e.key === 'Enter') confirmarHito(); if (e.key === 'Escape') setCierre(null) }}
               style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: esFact ? 12 : 16 }} />
             {esFact && (<>
