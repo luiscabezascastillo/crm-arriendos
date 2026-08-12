@@ -1,9 +1,10 @@
-// VERSION: v1 · 2026-08-12 · app/api/captaciones/listar/route.js — Lista las captaciones con datos del contacto
-//   (nombre, whatsapp) para la pantalla. GET. Gate: Dirección + Administración. Solo lectura.
+// VERSION: v2 · 2026-08-12 · app/api/captaciones/listar/route.js — Lista las captaciones con datos del contacto
+//   (nombre, whatsapp) para la pantalla. `wa` solo se rellena si el teléfono es MÓVIL (los fijos no llevan WhatsApp).
+//   GET. Gate: Dirección + Administración. Solo lectura. Hereda v1.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
-import { soloDigitos } from '../../../../lib/captacionImport.js'
+import { normalizaTelefono } from '../../../../lib/captacionImport.js'
 
 const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
 
@@ -24,11 +25,11 @@ export async function GET() {
   const rows = (data || []).map(c => {
     const ct = c.contactos || {}
     const tel = c.telefono || ct.whatsapp || ct.telefono || ''
-    const wa = soloDigitos(tel)
+    const tn = normalizaTelefono(tel)
     const nombre = ct.nombre || String(c.propietario || '').split(',').slice(-1)[0].trim() || c.propietario
     return {
       id: c.id, propietario: c.propietario, nombre, apellido: ct.apellido || '',
-      telefono: tel, wa: wa.length >= 8 ? wa : '', email: ct.email || '',
+      telefono: tn.valido ? tn.display : (tel || ''), wa: tn.wa || '', email: ct.email || '',
       objetivo: c.objetivo, comuna: c.comuna, estado: c.estado,
       n_publicaciones: c.n_publicaciones, administrado: c.administrado,
       nota_relacion: c.nota_relacion || '', proxima_gestion: c.proxima_gestion, ultima_gestion: c.ultima_gestion,

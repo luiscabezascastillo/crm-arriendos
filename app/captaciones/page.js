@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-08-12 · app/captaciones/page.js — Editor rápido del TELÉFONO por fila (✎): poner/corregir el
+//   número sin salir de la lista (p. ej. reemplazar un fijo por el celular que ya se tiene). Si es móvil, activa el
+//   WhatsApp al instante. Hereda v1.
 // VERSION: v1 · 2026-08-12 · app/captaciones/page.js — MVP del módulo de Captaciones. Importa dueños de publicaciones
 //   (dry-run → confirmar), lista los leads, y por cada uno: botón WhatsApp (click-to-send, mensaje personalizado "como
 //   si fuera Alberto") + registro de resultado que avanza el pipeline y reprograma a +45 días. Acceso: Dirección + Admin.
@@ -38,6 +41,8 @@ export default function CaptacionesPage() {
   const [impLimite, setImpLimite] = useState(20)
   const [impBusy, setImpBusy] = useState(false)
   const [preview, setPreview] = useState(null)
+  const [editTel, setEditTel] = useState(null)   // id de la fila cuyo teléfono se está editando
+  const [telVal, setTelVal] = useState('')
 
   async function cargar() {
     setCargando(true)
@@ -66,6 +71,16 @@ export default function CaptacionesPage() {
       const j = await res.json()
       if (!res.ok || j.error) { setMsg({ t: 'error', x: j.error || ('Error ' + res.status) }); return }
       setRows(rs => rs.map(r => r.id === row.id ? { ...r, estado: j.estado, proxima_gestion: j.proxima_gestion, ultima_gestion: new Date().toISOString().slice(0, 10) } : r))
+    } catch (e) { setMsg({ t: 'error', x: String(e?.message || e) }) }
+  }
+
+  async function guardarTelefono(row) {
+    try {
+      const res = await fetch('/api/captaciones/telefono', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ captacion_id: row.id, telefono: telVal }) })
+      const j = await res.json()
+      if (!res.ok || j.error) { setMsg({ t: 'error', x: j.error || ('Error ' + res.status) }); return }
+      setRows(rs => rs.map(r => r.id === row.id ? { ...r, telefono: j.telefono || '', wa: j.wa || '' } : r))
+      setEditTel(null); setTelVal('')
     } catch (e) { setMsg({ t: 'error', x: String(e?.message || e) }) }
   }
 
@@ -156,7 +171,22 @@ export default function CaptacionesPage() {
                       {filtradas.map((r, i) => (
                         <tr key={r.id} style={{ borderBottom: '1px solid #F1F1EE', background: i % 2 ? '#FCFCFB' : '#fff' }}>
                           <td style={{ ...tdc, fontWeight: 600, minWidth: 180 }}>{r.propietario}{r.administrado ? <span style={{ fontSize: 10, color: '#0e7490' }}> · admin</span> : ''}</td>
-                          <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{r.telefono || <span style={{ color: '#b45309' }}>falta tel</span>}</td>
+                          <td style={{ ...tdc, whiteSpace: 'nowrap' }}>
+                            {editTel === r.id ? (
+                              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                                <input autoFocus value={telVal} onChange={e => setTelVal(e.target.value)} placeholder="+56 9 …"
+                                  onKeyDown={e => { if (e.key === 'Enter') guardarTelefono(r); if (e.key === 'Escape') { setEditTel(null); setTelVal('') } }}
+                                  style={{ ...sel, padding: '4px 6px', width: 140, fontSize: 12 }} />
+                                <button onClick={() => guardarTelefono(r)} style={{ ...mini, borderColor: '#16a34a', color: '#16a34a', padding: '3px 7px' }}>✓</button>
+                                <button onClick={() => { setEditTel(null); setTelVal('') }} style={{ ...mini, borderColor: '#e5e7eb', color: '#6b7280', padding: '3px 7px' }}>✕</button>
+                              </span>
+                            ) : (
+                              <span>{r.telefono || <span style={{ color: '#b45309' }}>falta tel</span>}
+                                <button onClick={() => { setEditTel(r.id); setTelVal(r.telefono || '') }} title="Poner/corregir teléfono"
+                                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af', marginLeft: 6, fontSize: 12 }}>✎</button>
+                              </span>
+                            )}
+                          </td>
                           <td style={tdc}>{r.objetivo}</td>
                           <td style={tdc}>{r.comuna || '—'}</td>
                           <td style={tdc}>{r.n_publicaciones}</td>
