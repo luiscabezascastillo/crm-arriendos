@@ -1,6 +1,6 @@
-// VERSION: v2 · 2026-08-12 · app/api/captaciones/listar/route.js — Lista las captaciones con datos del contacto
-//   (nombre, whatsapp) para la pantalla. `wa` solo se rellena si el teléfono es MÓVIL (los fijos no llevan WhatsApp).
-//   GET. Gate: solo Alberto + Luis (Dirección). Solo lectura. Hereda v1.
+// VERSION: v4 · 2026-08-12 · app/api/captaciones/listar/route.js — Devuelve `valor_estimado` y `fecha_cierre` además
+//   de `negocio_tipo`/`negocio_monto`, para separar pipeline (captado) de facturación (facturado) en el tablero.
+//   Hereda v3/v2 (`wa` solo si móvil; gate solo Alberto + Luis).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin.js'
@@ -16,7 +16,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('captaciones')
-    .select('id, contacto_id, propietario, telefono, objetivo, comuna, estado, n_publicaciones, administrado, nota_relacion, proxima_gestion, ultima_gestion, contactos(nombre, apellido, whatsapp, telefono, email)')
+    .select('id, contacto_id, propietario, telefono, objetivo, comuna, estado, n_publicaciones, administrado, nota_relacion, proxima_gestion, ultima_gestion, negocio_tipo, negocio_monto, valor_estimado, fecha_cierre, contactos(nombre, apellido, whatsapp, telefono, email)')
     .order('estado', { ascending: true })
     .order('proxima_gestion', { ascending: true, nullsFirst: false })
     .limit(2000)
@@ -33,6 +33,8 @@ export async function GET() {
       objetivo: c.objetivo, comuna: c.comuna, estado: c.estado,
       n_publicaciones: c.n_publicaciones, administrado: c.administrado,
       nota_relacion: c.nota_relacion || '', proxima_gestion: c.proxima_gestion, ultima_gestion: c.ultima_gestion,
+      negocio_tipo: c.negocio_tipo || '', negocio_monto: c.negocio_monto ?? null,
+      valor_estimado: c.valor_estimado ?? null, fecha_cierre: c.fecha_cierre ?? null,
     }
   })
   return Response.json({ ok: true, total: rows.length, rows })
