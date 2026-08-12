@@ -1,3 +1,6 @@
+// VERSION: v8 · 2026-08-12 · Nuevo PATCH: guarda el COLOR de fondo (marca) de un movimiento en sa_marcas
+//   (upsert manual por movimiento_id). Sirve para colorear las 4 primeras columnas según un criterio fijo
+//   (MANDATOS / error corregido / DEVOLUCIÓN A FCR / PRÉSTAMOS / ERROR a corregir). Solo editores. Hereda v7.
 // VERSION: v7 · 2026-07-29 · Las lineas guardan un COMENTARIO libre.
 //   Campo `comentario` en sa_lineas: notas de la persona y, cuando se usa la sugerencia
 //   de Compras en Cuenta 2, la referencia de la compra de donde viene (proveedor·folio·fecha).
@@ -194,6 +197,30 @@ export async function PUT(req) {
   }
 
   return Response.json({ ok: true, n: lineas.length })
+}
+
+// PATCH: guarda (o quita) el COLOR de fondo de un movimiento en sa_marcas. Una fila por movimiento.
+export async function PATCH(req) {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!EDITORES.includes(email)) return Response.json({ error: 'No tienes permiso para marcar movimientos.' }, { status: 403 })
+
+  let body
+  try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
+  const movimientoId = body?.movimiento_id
+  if (!movimientoId) return Response.json({ error: 'Falta movimiento_id' }, { status: 400 })
+  const color = (body?.color_fondo == null || body.color_fondo === '') ? null : String(body.color_fondo).trim()
+
+  // Upsert manual (no dependemos de que exista una restricción única en movimiento_id).
+  const { data: ex, error: eSel } = await admin.from('sa_marcas').select('movimiento_id').eq('movimiento_id', movimientoId).limit(1)
+  if (eSel) return Response.json({ error: eSel.message }, { status: 500 })
+  let error
+  if (ex && ex.length) ({ error } = await admin.from('sa_marcas').update({ color_fondo: color }).eq('movimiento_id', movimientoId))
+  else ({ error } = await admin.from('sa_marcas').insert({ movimiento_id: movimientoId, color_fondo: color }))
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  return Response.json({ ok: true, movimiento_id: movimientoId, color_fondo: color })
 }
 
 // POST: cargar un extracto. Reconcilia por el N° MOVIMIENTO del banco.

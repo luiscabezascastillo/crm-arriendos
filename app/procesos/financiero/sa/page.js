@@ -1,3 +1,6 @@
+// VERSION: v34 · 2026-08-12 · SA: COLORear movimientos con paleta fija de 5 (MANDATOS / error corregido / DEVOLUCIÓN
+//   A FCR / PRÉSTAMOS / ERROR a corregir). Botón ▾ tras el Monto abre la paleta; tiñe SOLO el fondo de las 4 primeras
+//   columnas; leyenda encima de la tabla. Guarda en sa_marcas vía PATCH (requiere sa/route v8). Hereda v33.
 // VERSION: v33 · 2026-08-12 · SA usabilidad: panel de clasificación más ESTRECHO (clamp 440–620px, antes 640–1120)
 //   para no tapar los números; la tabla se alinea a la IZQUIERDA (margin 0, menos padding, más ancho) y la fila que
 //   abre el panel se resalta en BLANCO con acento verde a la izquierda. Hereda v32.
@@ -272,6 +275,15 @@ const COLDEFS = [
     fkey: m => m.estado_clasificacion || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO[k]?.label || k)) },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
+
+// Paleta de marcas: SOLO estos colores, con su criterio fijo (para usarlos siempre igual).
+const PALETA_MARCA = [
+  { color: '#FBE2E2', label: 'MANDATOS' },            // rojo claro
+  { color: '#F5EFDD', label: 'error corregido' },     // amarillo pálido / beige
+  { color: '#E4F3E2', label: 'DEVOLUCIÓN A FCR' },    // verde claro
+  { color: '#E2EDF8', label: 'PRÉSTAMOS' },           // azul claro
+  { color: '#FCEB8A', label: 'ERROR a corregir' },    // amarillo fuerte
+]
 // Quita los numeros largos de cuenta para que "0768287120 Transf. SIN INFORMACION" y
 // "0217103770 Transf a CABEZAS JIMENO" no cuenten como patrones distintos.
 const patronDe = (d) => String(d || '').toUpperCase().replace(/[0-9]{6,}/g, '').replace(/\s+/g, ' ').trim()
@@ -652,6 +664,7 @@ export default function SaPage() {
   const [copiado, setCopiado] = useState(false)
 
   const [sel, setSel] = useState(null)
+  const [colorMenu, setColorMenu] = useState(null)   // { id, x, y } popover de color
   const [lineas, setLineas] = useState([])
   const [savedFlag, setSavedFlag] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -998,6 +1011,15 @@ const wantScroll = useRef(false)
   }, [sel?.id, compras]) // eslint-disable-line
 
   const abrir = (m) => { setSel(m); setGlosa(m.glosa || ''); setSavedFlag(false); setConfirmDesc(false); setLineas((lineasByMov[m.id] || []).map(l => ({ ...l }))) }
+  // Guarda el color de fondo (marca) de un movimiento. Optimista; si falla, recarga.
+  const ponerColor = async (id, color) => {
+    setColorMenu(null)
+    setMovs(prev => prev.map(m => m.id === id ? { ...m, color_fondo: color } : m))
+    try {
+      const res = await fetch('/api/financiero/sa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ movimiento_id: id, color_fondo: color }) })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar el color'); cargar() }
+    } catch { cargar() }
+  }
   const cerrar = () => { setSel(null); setLineas([]); setConfirmDesc(false) }
   const setLinea = (i, campo, val) => setLineas(ls => ls.map((l, k) => k === i ? { ...l, [campo]: val } : l))
   const addLinea = () => setLineas(ls => [...ls, { sub_orden: ls.length + 1, monto: '', ccb: '', cuenta_1: '', cuenta_2: '', concepto: '', comentario: '' }])
@@ -1157,6 +1179,17 @@ const wantScroll = useRef(false)
             </button>
           </div>
 
+          {/* Leyenda de colores: criterio fijo para marcar movimientos */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px', marginTop: 10, fontSize: 11.5, color: '#6b6b66' }}>
+            <span style={{ fontWeight: 700, color: '#888780' }}>Colores:</span>
+            {PALETA_MARCA.map(p => (
+              <span key={p.color} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: p.color, border: '0.5px solid #C9C7BF' }} />
+                {p.label}
+              </span>
+            ))}
+          </div>
+
           {verCCB && (
             <div style={{ marginTop: 10, border: '0.5px solid #E0DED6', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
               {resumenCCB.length === 0 ? (
@@ -1231,20 +1264,30 @@ const wantScroll = useRef(false)
               ) : movsFiltrados.map(m => {
                 const desg = lineasByMov[m.id] || []
                 const seleccionada = sel?.id === m.id   // fila que abrió el panel: fondo blanco + acento
+                const cf = m.color_fondo || undefined    // marca: tiñe SOLO las 4 primeras columnas
                 return (
                   <div key={m.id}>
-                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', background: seleccionada ? '#fff' : (m.color_fondo || '#fff'), boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined }}
-                      onMouseEnter={e => e.currentTarget.style.background = seleccionada ? '#fff' : (m.color_fondo ? '#FBD9B4' : '#FAFAF7')}
-                      onMouseLeave={e => e.currentTarget.style.background = seleccionada ? '#fff' : (m.color_fondo || '#fff')}>
-                      <div style={{ fontWeight: 600, color: '#0C447C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '8px 12px', fontSize: 13, color: '#2C2C2A', borderBottom: desg.length ? 'none' : '0.5px solid #F0EFEA', cursor: 'pointer', alignItems: 'center', background: '#fff', boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined }}
+                      onMouseEnter={e => e.currentTarget.style.background = seleccionada ? '#fff' : '#FAFAF7'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      <div style={{ fontWeight: 600, color: '#0C447C', display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'stretch', background: cf }}>
                         <span>{folioVisible(m) ?? '—'}</span>
                         {m.nota_auditoria && (
                           <span title={m.nota_auditoria} style={{ cursor: 'help', color: '#B26B00', fontSize: 12 }}>⚠</span>
                         )}
                       </div>
-                      <div style={{ color: '#888780', fontSize: 12 }}>{fmtFecha(m.fecha)}</div>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</div>
-                      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</div>
+                      <div style={{ color: '#888780', fontSize: 12, display: 'flex', alignItems: 'center', alignSelf: 'stretch', background: cf }}>{fmtFecha(m.fecha)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', alignSelf: 'stretch', minWidth: 0, paddingRight: 8, background: cf }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{m.descripcion || <span style={{ color: '#B4B2A9' }}>—</span>}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, alignSelf: 'stretch', background: cf }}>
+                        <span style={{ fontVariantNumeric: 'tabular-nums', color: m.monto < 0 ? '#B23A3A' : '#085041', fontWeight: 500 }}>{clp(m.monto)}</span>
+                        {canEdit && (
+                          <button onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setColorMenu(cm => cm?.id === m.id ? null : { id: m.id, x: r.left, y: r.bottom }) }}
+                            title="Colorear (fondo de las 4 primeras columnas)"
+                            style={{ flexShrink: 0, width: 17, height: 17, borderRadius: 4, border: '0.5px solid #C9C7BF', background: cf || '#fff', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 10, color: '#888780' }}>▾</button>
+                        )}
+                      </div>
                       <div title={hayFiltro ? 'El saldo es corrido sobre TODOS los movimientos, no sobre el filtro' : undefined}
                         style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: hayFiltro ? '#D3D1C7' : '#888780' }}>{clp(m.saldo_calc)}</div>
                       <div style={{ textAlign: 'center', color: '#888780', fontSize: 12 }}>{m.cargo_abono || '—'}</div>
@@ -1261,7 +1304,7 @@ const wantScroll = useRef(false)
                       <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
                     </div>
                     {desg.map((l, k) => (
-                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: seleccionada ? '#fff' : (m.color_fondo ? '#FEF1E2' : '#FCFCFA'), boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined, borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
+                      <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: seleccionada ? '#fff' : '#FCFCFA', boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined, borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
                         <div style={{ color: '#9a988f', paddingLeft: 8 }}>{subFolio(folioVisible(m), l.sub_orden)}</div>
                         <div />
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
@@ -1320,6 +1363,29 @@ const wantScroll = useRef(false)
           {movsFiltrados.length} de {movs.length} movimientos. Pincha uno para clasificar o editar su desglose.
         </div>
       </div>
+
+      {/* Menú de color (marca) — se abre desde el botón ▾ tras el Monto */}
+      {colorMenu && (
+        <>
+          <div onClick={() => setColorMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 9500 }} />
+          <div style={{ position: 'fixed', left: Math.max(8, Math.min(colorMenu.x - 150, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 220)), top: colorMenu.y + 6, zIndex: 9501, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 212, padding: 6 }}>
+            <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', padding: '2px 6px 6px' }}>Marcar con color</div>
+            {PALETA_MARCA.map(p => (
+              <button key={p.color} onClick={() => ponerColor(colorMenu.id, p.color)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 6px', borderRadius: 6, fontSize: 12, color: '#2C2C2A', textAlign: 'left' }}>
+                <span style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: '0.5px solid #C9C7BF', flexShrink: 0 }} />
+                {p.label}
+              </button>
+            ))}
+            <div style={{ borderTop: '0.5px solid #ECEAE3', margin: '4px 0' }} />
+            <button onClick={() => ponerColor(colorMenu.id, null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 6px', borderRadius: 6, fontSize: 12, color: '#888780', textAlign: 'left' }}>
+              <span style={{ width: 16, height: 16, borderRadius: 4, background: '#fff', border: '0.5px solid #C9C7BF', flexShrink: 0 }} />
+              Sin color
+            </button>
+          </div>
+        </>
+      )}
 
       {/* DRAWER (edición como tabla compacta) */}
       {sel && (
