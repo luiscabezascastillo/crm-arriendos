@@ -1,3 +1,6 @@
+// VERSION: v9 · 2026-08-12 · Los dos botones de cada término se renombran a "Ver Término" (la hoja real,
+//   /procesos/terminos?id=) y "Ver Reloj" (el workflow, /procesos/terminos/ID). Siempre salen los dos, en las
+//   tres tarjetas (Términos del día, Notificación y Resultado). Hereda v8.
 // VERSION: v8 · 2026-08-11 · Cada término ofrece DOS destinos: "Hoja →" (la hoja real, /procesos/terminos?id=)
 //   y "Reloj" (el workflow, /procesos/terminos/ID). Así Karina llega a la hoja para ver el markup. Hereda v7.
 // VERSION: v7 · 2026-08-11 · Normaliza el rol de la sesión (alias operaciones->administracion, etc.) para el
@@ -303,8 +306,8 @@ export default function AlertasPage() {
                     <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}</span>
                   )}
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                    <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Hoja →</a>
-                    <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Reloj</a>
+                    <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver Término</a>
+                    <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Ver Reloj</a>
                     <button onClick={() => marcarTratado(t.idadmon)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Marcar tratado</button>
                   </span>
                 </div>
@@ -376,8 +379,8 @@ export default function AlertasPage() {
                         <span style={{ color: '#666' }}>{t.propietario || '—'}{t.inmueble ? ' · ' + t.inmueble : ''}</span>
                         <span style={{ color: '#999' }}>Entrega: {fmtFecha(t.termino_actual)}</span>
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Hoja →</a>
-                      <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Reloj</a>
+                      <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver Término</a>
+                      <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Ver Reloj</a>
                     </span>
                       </div>
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4, color: '#444' }}>
@@ -422,8 +425,8 @@ export default function AlertasPage() {
                         <span style={{ color: '#9B1C1C', fontWeight: 600 }}>déficit {fmtPesos(Math.abs(t.resultado))}{t.quien ? ' · ' + t.quien : ''}</span>
                       )}
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Hoja →</a>
-                      <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Reloj</a>
+                      <a href={'/procesos/terminos?id=' + t.idadmon} style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '4px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Ver Término</a>
+                      <a href={'/procesos/terminos/' + t.idadmon} style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '4px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Ver Reloj</a>
                     </span>
                     </div>
                     <textarea value={valTxt[t.idadmon] || ''} onChange={e => setValTxt(s => ({ ...s, [t.idadmon]: e.target.value }))}
