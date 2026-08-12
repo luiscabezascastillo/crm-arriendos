@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v3 · 2026-08-12 · app/captaciones/page.js — (1) KPIs del embudo arriba (clicables para filtrar).
+//   (2) Plantilla A1 sin el "demanda por {comuna}" (la comuna es la de la publicación, no implica demanda ahí).
+//   Hereda v2.
 // VERSION: v2 · 2026-08-12 · app/captaciones/page.js — Editor rápido del TELÉFONO por fila (✎): poner/corregir el
 //   número sin salir de la lista (p. ej. reemplazar un fijo por el celular que ya se tiene). Si es móvil, activa el
 //   WhatsApp al instante. Hereda v1.
@@ -12,7 +15,7 @@ import TopNav from '../components/ui/TopNav'
 const AUTORIZADOS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
 
 const PLANTILLAS = {
-  'A1 · Captación (relación)': 'Hola {nombre}, ¿cómo estás? Te escribo yo, Alberto, de Fondo Capital. Ando con harta demanda de arriendo y venta por {comuna} y me acordé de ti. ¿Tienes alguna propiedad disponible, o que estés pensando mover, para arriendo o venta? La veo con gusto. Un abrazo.',
+  'A1 · Captación (relación)': 'Hola {nombre}, ¿cómo estás? Te escribo yo, Alberto, de Fondo Capital. Ando con harta demanda de arriendo y venta y me acordé de ti. ¿Tienes alguna propiedad disponible, o que estés pensando mover, para arriendo o venta? La veo con gusto. Un abrazo.',
   'A2 · Captación (directa)': '¡Hola {nombre}! Alberto, de Fondo Capital 👋 ¿Tienes hoy alguna propiedad para arrendar o vender? Tengo clientes buscando y me encantaría ayudarte a colocarla. Cualquier cosa me avisas.',
   'A3 · Captación (servicio)': 'Hola {nombre}, ¿cómo va todo? Soy Alberto (Fondo Capital). Paso a saludarte y, de paso, preguntarte: ¿te quedó alguna propiedad desocupada o que quieras poner en arriendo/venta? La gestiono yo directo. Quedo atento.',
   'B · Reactivación': 'Hola {nombre}, ¿alcanzaste a ver mi mensaje? Sin apuro — si en algún momento tienes una propiedad para arriendo o venta, cuenta conmigo. Un abrazo, Alberto.',
@@ -23,6 +26,7 @@ const PLANTILLAS = {
 }
 const RESULTADOS = [['', 'registrar…'], ['contactado', 'Contactado'], ['respondio', 'Respondió'], ['interesado', 'Interesado'], ['agendada', 'Valoración agendada'], ['no_ahora', 'No ahora (pausa)'], ['captado', 'Captado ✅'], ['no_molestar', 'No molestar']]
 const COLOR_ESTADO = { por_contactar: '#6b7280', contactado: '#0891b2', en_conversacion: '#7c3aed', interesado: '#0e7490', valoracion_agendada: '#b45309', captado: '#16a34a', en_pausa: '#9ca3af', no_molestar: '#dc2626' }
+const EMBUDO = [['por_contactar', 'Por contactar'], ['contactado', 'Contactado'], ['en_conversacion', 'En conversación'], ['interesado', 'Interesado'], ['valoracion_agendada', 'Valoración agendada'], ['captado', 'Captado'], ['en_pausa', 'En pausa'], ['no_molestar', 'No molestar']]
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const primerNombre = s => String(s || '').trim().split(/\s+/)[0] || ''
 
@@ -90,6 +94,11 @@ export default function CaptacionesPage() {
     window.open(`https://wa.me/${row.wa}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener,noreferrer')
   }
 
+  const kpis = useMemo(() => {
+    const c = {}; for (const r of rows) c[r.estado] = (c[r.estado] || 0) + 1
+    return { total: rows.length, conWa: rows.filter(r => r.wa).length, porEstado: c }
+  }, [rows])
+
   const filtradas = useMemo(() => {
     const q = norm(busca.trim())
     return rows.filter(r => {
@@ -144,6 +153,24 @@ export default function CaptacionesPage() {
             </div>
           )}
         </div>
+
+        {/* KPIs del embudo (clicables para filtrar) */}
+        {!cargando && rows.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button onClick={() => setFEstado('')} style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid ' + (fEstado === '' ? '#0C447C' : '#E8E6E0'), background: fEstado === '' ? '#EEF4FB' : '#fff', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center', minWidth: 78 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#0C447C' }}>{kpis.total}</div>
+              <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>Total</div>
+            </button>
+            {EMBUDO.map(([e, label]) => (
+              <button key={e} onClick={() => setFEstado(e)} title={'Ver ' + label}
+                style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid ' + (fEstado === e ? (COLOR_ESTADO[e] || '#0C447C') : '#E8E6E0'), background: fEstado === e ? '#F8FAFC' : '#fff', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center', minWidth: 78 }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: COLOR_ESTADO[e] || '#374151' }}>{kpis.porEstado[e] || 0}</div>
+                <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, lineHeight: 1.1 }}>{label}</div>
+              </button>
+            ))}
+            <div style={{ alignSelf: 'center', fontSize: 11, color: '#9ca3af', marginLeft: 4 }}>{kpis.conWa} con WhatsApp</div>
+          </div>
+        )}
 
         {/* Filtros + plantilla */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
