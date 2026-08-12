@@ -1,6 +1,3 @@
-// VERSION: v2 · 2026-08-12 · Se ELIMINA el límite de "solo los 5 movimientos más recientes": Dirección + los tres
-//   editores (Alberto, Luis, Karina) pueden editar el cargo de CUALQUIER línea. Sigue siendo override en
-//   cargo_manual (deja `cargo` intacto → sobrevive al re-volcado) con motivo obligatorio y auditoría. Hereda v1.
 // VERSION: v1 · 2026-07-28 · Editar el CARGO de una fila de cartola (override manual + auditoría).
 //   Solo Dirección + Karina. Solo en los 5 movimientos más recientes del IDADMON (incl. Término).
 //   Guarda el nuevo valor en cargo_manual (deja `cargo` intacto → sobrevive al re-volcado del LOG)
@@ -48,8 +45,17 @@ export async function POST(req) {
   if (!fila) return Response.json({ error: 'No existe la fila' }, { status: 404 })
   if (!fila.idadmon) return Response.json({ error: 'La fila no tiene IDADMON' }, { status: 400 })
 
-  // v2: sin restricción de "5 más recientes" — se puede editar el cargo de cualquier línea
-  // (queda registrado quién/cuándo/motivo y el original se conserva en `cargo`).
+  // ¿Está entre los 5 movimientos más recientes de su IDADMON?
+  const { data: todas, error: eT } = await admin
+    .from('cuentas').select('id, fecha').eq('idadmon', fila.idadmon).limit(2000)
+  if (eT) return Response.json({ error: eT.message }, { status: 500 })
+  const ordenadas = (todas || []).slice().sort((a, b) => {
+    const fa = fechaOrden(a.fecha), fb = fechaOrden(b.fecha)
+    return fa !== fb ? fa - fb : (a.id || 0) - (b.id || 0)
+  })
+  const ultimos5 = new Set(ordenadas.slice(-5).map(r => r.id))
+  if (!ultimos5.has(id))
+    return Response.json({ error: 'Solo se puede editar el cargo en los 5 movimientos más recientes.' }, { status: 403 })
 
   const cuando = new Date().toISOString()
   const { error: eU } = await admin.from('cuentas').update({

@@ -1,7 +1,3 @@
-// VERSION: v2 · 2026-08-12 · ANULACIÓN abierta a cualquier LÍNEA DE CARGO (además de las manuales): Dirección +
-//   los tres editores pueden anular/reactivar filas con cargo (soft, reversible, con motivo y bitácora). La EDICIÓN
-//   completa (fecha/concepto/monto) sigue restringida a filas MANUALES; el cargo de filas no manuales se cambia por
-//   /editar-cargo (override en cargo_manual). Hereda v1.
 // VERSION: v1 · 2026-08-11 · Movimientos manuales de cartola (tabla `cuentas`): ALTA / EDICIÓN / ANULACIÓN.
 //   Solo Dirección + Karina (mismos 3 correos que editar-cargo). Deja RASTRO COMPLETO en `cuentas_bitacora`
 //   (acción, campo, antes/después, motivo obligatorio, usuario de la sesión, fecha). La fila manual se marca
@@ -116,10 +112,7 @@ export async function POST(req) {
     const { data: fila, error: eF } = await admin.from('cuentas').select('*').eq('id', id).maybeSingle()
     if (eF) return Response.json({ error: eF.message }, { status: 500 })
     if (!fila) return Response.json({ error: 'No existe la fila' }, { status: 404 })
-    // v2: se permite anular/reactivar filas MANUALES o cualquier LÍNEA DE CARGO (soft, reversible, auditado).
-    const esCargo = Number(fila.cargo) > 0 || (fila.cargo_manual != null && fila.cargo_manual !== '')
-    if (!fila.manual && !esCargo)
-      return Response.json({ error: 'Solo se pueden anular movimientos MANUALES o líneas de CARGO.' }, { status: 403 })
+    if (!fila.manual) return Response.json({ error: 'Solo se pueden anular movimientos MANUALES.' }, { status: 403 })
     const nuevoEstado = !fila.anulado
     const { data, error } = await admin.from('cuentas').update({ anulado: nuevoEstado }).eq('id', id).select('*').single()
     if (error) return Response.json({ error: error.message }, { status: 500 })

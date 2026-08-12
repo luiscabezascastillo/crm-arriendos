@@ -1,4 +1,10 @@
 'use client'
+// VERSION: v14 · 2026-08-12 · CARGOS gestionables por Dirección + Alberto/Luis/Karina: editar el cargo de CUALQUIER
+//   línea (antes solo 5 recientes), y ANULAR/REACTIVAR cualquier línea de cargo (soft, reversible, auditado), además
+//   de añadir/editar manuales. Requiere editar-cargo v2 y movimiento v2. Hereda v13.
+// VERSION: v13 · 2026-08-12 · Movimientos: Comentarios recortado a 15 caracteres + tooltip (title) con el texto
+//   completo; Calif y Justificantes también con tooltip. Así la tabla cabe y las columnas de la derecha se ven
+//   sin scroll horizontal. Hereda v12.
 // VERSION: v12 · 2026-08-12 · BLINDAJE anti-scroll-horizontal: overflow-x:clip en html/body mientras la página está
 //   montada (cubre también el TopNav y cualquier ancestro), además del clip del contenedor. Las tablas conservan su
 //   scroll interno; el vertical y los sticky no se rompen (clip, no hidden). Hereda v11.
@@ -910,16 +916,17 @@ function CartolaIdadmonVista() {
           <span style={{ textDecoration: r.anulado ? 'line-through' : 'none', color: r.anulado ? '#B4B2A9' : 'inherit' }}>{r.concepto ?? '—'}</span>
           {r.manual && <span title="Movimiento manual" style={{ fontSize: 9, fontWeight: 700, color: '#0C447C', background: '#E6F1FB', borderRadius: 4, padding: '0 5px' }}>MANUAL</span>}
           {r.anulado && <span style={{ fontSize: 9, fontWeight: 700, color: '#9B1C1C', background: '#FDECEC', borderRadius: 4, padding: '0 5px' }}>ANULADO</span>}
+          {/* v14: editar (solo MANUAL) / anular (MANUAL o cualquier línea de cargo) / reactivar (cualquier anulada) */}
           {r.manual && puedeEditarCargo && !r.anulado && (
-            <>
-              <button onClick={() => abrirManualEdit(r)} title="Editar este movimiento manual (queda registrado)"
-                style={{ border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#0C447C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>editar</button>
-              <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Anular este movimiento manual (reversible, queda registrado)"
-                style={{ border: '0.5px solid #E7B4B4', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#9B1C1C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>anular</button>
-            </>
+            <button onClick={() => abrirManualEdit(r)} title="Editar este movimiento manual (queda registrado)"
+              style={{ border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#0C447C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>editar</button>
           )}
-          {r.manual && puedeEditarCargo && r.anulado && (
-            <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Reactivar este movimiento (queda registrado)"
+          {puedeEditarCargo && !r.anulado && (r.manual || num(r.cargo) > 0 || (r.cargo_manual != null && r.cargo_manual !== '')) && (
+            <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Anular esta línea (reversible, queda registrado)"
+              style={{ border: '0.5px solid #E7B4B4', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#9B1C1C', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>anular</button>
+          )}
+          {puedeEditarCargo && r.anulado && (
+            <button onClick={() => { setAnulRow(r); setAnulMotivo(''); setMovErr(null) }} title="Reactivar esta línea (queda registrado)"
               style={{ border: '0.5px solid #B4D8CB', background: '#fff', borderRadius: 5, cursor: 'pointer', color: '#085041', fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}>reactivar</button>
           )}
         </span>
@@ -927,7 +934,8 @@ function CartolaIdadmonVista() {
     }
     if (c.key === 'cargo') {
       const val = cargoEfectivo(r); const s = val ? val.toLocaleString('es-CL') : ''
-      const editable = puedeEditarCargo && idsEditables.has(r.id)
+      // v14: editable en CUALQUIER línea de cargo (no solo las 5 recientes), salvo anuladas.
+      const editable = puedeEditarCargo && !r.anulado && (num(r.cargo) > 0 || (r.cargo_manual != null && r.cargo_manual !== ''))
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end', width: '100%' }}>
           {r.cargo_editado_en != null && (
@@ -943,9 +951,13 @@ function CartolaIdadmonVista() {
       )
     }
     if (c.money) { const s = fmt(r[c.key]); return <span style={{ fontFamily: MONO, color: s && c.color ? c.color : '#2C2C2A' }}>{s || '—'}</span> }
-    if (c.key === 'comentarios') return <span style={{ fontWeight: filaEsBI(r) ? 700 : 400 }}>{r[c.key] ?? '—'}</span>
-    if (c.key === 'calif') return <span style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>
-    return <span>{r[c.key] ?? '—'}</span>
+    if (c.key === 'comentarios') {
+      const full = String(r[c.key] ?? '').trim()
+      const corto = full.length > 15 ? full.slice(0, 15) + '…' : (full || '—')
+      return <span title={full || undefined} style={{ fontWeight: filaEsBI(r) ? 700 : 400, cursor: full.length > 15 ? 'help' : 'default' }}>{corto}</span>
+    }
+    if (c.key === 'calif') return <span title={String(r[c.key] ?? '') || undefined} style={{ color: filaEsBI(r) ? '#B8860B' : '#2C2C2A', fontWeight: filaEsBI(r) ? 600 : 400 }}>{r[c.key] ?? '—'}</span>
+    return <span title={String(r[c.key] ?? '') || undefined}>{r[c.key] ?? '—'}</span>
   }
   const bgMov = (r, c) => (esInicio(r) && (c.key === 'concepto' || c.key === 'cargo')) ? '#E9F4E4' : '#fff'
 
@@ -1101,7 +1113,7 @@ function CartolaIdadmonVista() {
           </div>
           {puedeEditarCargo && (
             <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>
-              Puedes editar el <b>cargo</b> de los 5 movimientos más recientes (queda registrado quién y por qué, aunque el contrato esté en Término). Una fila editada se marca en <span style={{ background: '#FDECEC', padding: '0 4px', borderRadius: 3, color: '#9B1C1C' }}>rojo</span> si su cargo no coincide con la liquidación (a_cobrar) de ese mes.
+              Puedes <b>editar el cargo</b> de cualquier línea, <b>anular/reactivar</b> líneas de cargo (no se borran: quedan como ANULADO, es reversible) y <b>añadir</b> movimientos. Todo con motivo obligatorio y registro de quién y cuándo. Una fila editada se marca en <span style={{ background: '#FDECEC', padding: '0 4px', borderRadius: 3, color: '#9B1C1C' }}>rojo</span> si su cargo no coincide con la liquidación (a_cobrar) de ese mes.
             </div>
           )}
         </>
