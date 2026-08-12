@@ -1,5 +1,3 @@
-// VERSION: v22 · 2026-08-12 · Columnas de dinero (Cargo/Abono/Saldo) con filtro por RANGO (Desde/Hasta) en vez de la
-//   lista de valores; y sin "Ordenar" en esas columnas. El resto de columnas mantiene su filtro tipo Excel. Hereda v21.
 // VERSION: v21 · 2026-08-04 · Columna "Descuento" movida a antes de COMENTARIOS (tras UNIQUE CONCEPT). Hereda v20 (Exportar Excel + LIQ. MES2).
 // VERSION: v18 · 2026-07-29 · Botón renombrado a "Copiar FALTA a CUENTAS". El mensaje tras
 //   copiar ahora informa de omitidos (ya estaban) y actualizados (reg existente con IDADMON
@@ -161,12 +159,11 @@ function bgCelda(ci, r) {
 
 // ── Filtro de cabecera estilo LOG: ordenar A→Z/Z→A + casillas Excel + buscador ──
 // Opcional: `chips` renderiza una fila de botones de categoría arriba (para UNIQUE CONCEPT).
-function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat, numeric = false }) {
+function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ left: 0, top: 0 })   // coords del dropdown (fixed)
   const [buscar, setBuscar] = useState('')
   const [pending, setPending] = useState(null)
-  const [rango, setRango] = useState({ min: '', max: '' })   // filtro por cantidad (columnas numéricas)
   const ref = useRef(null)
   const btnRef = useRef(null)
   useEffect(() => {
@@ -174,7 +171,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
-  useEffect(() => { if (open) { setBuscar(''); if (numeric) setRango({ min: value?.min ?? '', max: value?.max ?? '' }); else setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
+  useEffect(() => { if (open) { setBuscar(''); setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
   // Abre el dropdown calculando su posición fija (respecto a la pantalla, no a la tabla con scroll).
   const abrir = () => {
     if (open) { setOpen(false); return }
@@ -188,28 +185,20 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     setOpen(true)
   }
   const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  const rangoActivo = numeric && value && typeof value === 'object' && !Array.isArray(value) && (value.min != null || value.max != null)
-  const activo = (!numeric && value && value.length > 0) || rangoActivo || (!numeric && sortCol === col) || (chips && catFiltro && catFiltro !== 'todos')
+  const activo = (value && value.length > 0) || sortCol === col || (chips && catFiltro && catFiltro !== 'todos')
   const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
   const p = pending || new Set()
   const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
   const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
   const toggleTodas = () => { const n = new Set(p); todasVisiblesMarcadas ? visibles.forEach(o => n.delete(o)) : visibles.forEach(o => n.add(o)); setPending(n) }
-  const toNum = (s) => { const t = String(s ?? '').trim(); if (t === '') return null; const n = Number(t.replace(/[^\d.-]/g, '')); return isNaN(n) ? null : n }
-  const aplicar = () => {
-    if (numeric) { onApply(col, { min: toNum(rango.min), max: toNum(rango.max) }); setOpen(false); return }
-    const arr = [...p]; onApply(col, (arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr); setOpen(false)
-  }
-  const limpiar = () => {
-    if (numeric) { setRango({ min: '', max: '' }); onApply(col, null); setOpen(false); return }
-    setPending(new Set()); onApply(col, []); setOpen(false)
-  }
+  const aplicar = () => { const arr = [...p]; onApply(col, (arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr); setOpen(false) }
+  const limpiar = () => { setPending(new Set()); onApply(col, []); setOpen(false) }
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
       <button ref={btnRef} onClick={abrir} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: activo ? '#1a56db' : '#5F5E5A', letterSpacing: '0.03em' }}>
         {label}
         <span style={{ fontSize: 9, color: activo ? '#1a56db' : '#B4B2A9' }}>
-          {numeric ? (rangoActivo ? ' ⧩' : ' ⯬') : (value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬')}
+          {value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬'}
         </span>
       </button>
       {open && (
@@ -227,54 +216,32 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
               </div>
             </>
           )}
-          {numeric ? (
-            <>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Filtrar por cantidad</div>
-              <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 8 }}>Deja un campo vacío para acotar solo por un lado.</div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Desde
-                  <input inputMode="numeric" value={rango.min} onChange={e => setRango(v => ({ ...v, min: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter') aplicar() }} placeholder="mín"
-                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginTop: 3, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
+              <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer', background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB', borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB', color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151' }}>{lbl}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
+          <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
+          <input placeholder={`Buscar ${String(label).toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
+            <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
+            (Seleccionar todo){buscar ? ' (lo visible)' : ''}
+          </label>
+          <div style={{ flex: 1, minHeight: 40, overflowY: 'auto', margin: '2px 0 8px' }}>
+            {visibles.length === 0
+              ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
+              : visibles.map(o => (
+                <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
+                  <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
                 </label>
-                <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Hasta
-                  <input inputMode="numeric" value={rango.max} onChange={e => setRango(v => ({ ...v, max: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter') aplicar() }} placeholder="máx"
-                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginTop: 3, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
-                </label>
-              </div>
-              <div style={{ height: 8 }} />
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Ordenar</div>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                {[['asc', 'A → Z'], ['desc', 'Z → A']].map(([dir, lbl]) => (
-                  <button key={dir} onClick={() => { onSort(col, dir); setOpen(false) }} style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid', fontSize: 11, cursor: 'pointer', background: sortCol === col && sortDir === dir ? '#EFF6FF' : '#F9FAFB', borderColor: sortCol === col && sortDir === dir ? '#BFDBFE' : '#E5E7EB', color: sortCol === col && sortDir === dir ? '#1D4ED8' : '#374151' }}>{lbl}</button>
-                ))}
-              </div>
-              <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
-              <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
-              <input placeholder={`Buscar ${String(label).toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
-                <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
-                (Seleccionar todo){buscar ? ' (lo visible)' : ''}
-              </label>
-              <div style={{ flex: 1, minHeight: 40, overflowY: 'auto', margin: '2px 0 8px' }}>
-                {visibles.length === 0
-                  ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
-                  : visibles.map(o => (
-                    <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
-                      <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
-                    </label>
-                  ))}
-              </div>
-            </>
-          )}
+              ))}
+          </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             <button onClick={limpiar} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>Limpiar</button>
-            <button onClick={aplicar} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>{numeric ? 'Aplicar' : ([...p].length ? `Aplicar (${[...p].length})` : 'Ver todos')}</button>
+            <button onClick={aplicar} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>{[...p].length ? `Aplicar (${[...p].length})` : 'Ver todos'}</button>
           </div>
         </div>
       )}
@@ -342,20 +309,12 @@ export default function BiVista() {
     return 'otros'
   }
   // ¿La columna tiene un filtro de casillas activo? (array con valores)
-  const colFiltrada = (key) => {
-    const a = filtros[key]
-    if (Array.isArray(a)) return a.length > 0
-    if (a && typeof a === 'object') return a.min != null || a.max != null   // filtro de rango numérico
-    return false
-  }
+  const colFiltrada = (key) => { const a = filtros[key]; return Array.isArray(a) && a.length > 0 }
   const hayFiltroActivo = catFiltro !== 'todos' || COLS.some(c => colFiltrada(c.key)) || !!sortCol
   const onSort = (col, dir) => { setSortCol(col); setSortDir(dir) }
-  const onApply = (col, val) => setFiltros(prev => {
+  const onApply = (col, arr) => setFiltros(prev => {
     const n = { ...prev }
-    const vacio = !val
-      || (Array.isArray(val) && val.length === 0)
-      || (typeof val === 'object' && !Array.isArray(val) && val.min == null && val.max == null)
-    if (vacio) delete n[col]; else n[col] = val
+    if (!arr || arr.length === 0) delete n[col]; else n[col] = arr
     return n
   })
 
@@ -429,15 +388,8 @@ export default function BiVista() {
   const filas = useMemo(() => {
     let out = conCheck
     if (catFiltro !== 'todos') out = out.filter(r => colorFila(r) === catFiltro)
-    const activos = Object.entries(filtros).filter(([, a]) =>
-      (Array.isArray(a) && a.length > 0) || (a && typeof a === 'object' && !Array.isArray(a) && (a.min != null || a.max != null)))
-    if (activos.length) out = out.filter(r => activos.every(([k, a]) => {
-      if (Array.isArray(a)) return a.includes(valorCelda(r, k))   // filtro de casillas (texto)
-      const x = num(r[k])                                          // filtro de rango (numérico)
-      if (a.min != null && x < a.min) return false
-      if (a.max != null && x > a.max) return false
-      return true
-    }))
+    const activos = Object.entries(filtros).filter(([, a]) => Array.isArray(a) && a.length > 0)
+    if (activos.length) out = out.filter(r => activos.every(([k, a]) => a.includes(valorCelda(r, k))))
     if (sortCol) {
       const dir = sortDir === 'asc' ? 1 : -1
       out = [...out].sort((x, y) => valorCelda(x, sortCol).localeCompare(valorCelda(y, sortCol), 'es', { numeric: true }) * dir)
@@ -961,8 +913,7 @@ export default function BiVista() {
                       <ColFilterExcel
                         label={c.h} col={c.key} align={c.align === 'right' ? 'right' : 'left'}
                         sortCol={sortCol} sortDir={sortDir} onSort={onSort}
-                        opciones={valoresUnicos(c.key)} value={filtros[c.key] || (c.money ? { min: null, max: null } : [])} onApply={onApply}
-                        numeric={!!c.money}
+                        opciones={valoresUnicos(c.key)} value={filtros[c.key] || []} onApply={onApply}
                         chips={c.key === 'unique_concept' ? CHIPS_CAT : null}
                         catFiltro={catFiltro} onCat={setCatFiltro}
                       />
