@@ -1,3 +1,7 @@
+// VERSION: v10 · 2026-08-12 · Alertas automáticas de TÉRMINOS y COBRANZAS APAGADAS para Adalis, Fabiola y Karina
+//   (siguen recibiendo lo que se les asigne a mano). Dirección (Alberto/Luis) gana botón "➕ Asignar alerta" que crea
+//   una alerta en `alertas` para la persona elegida (queda registrada). Aviso de "prioridad absoluta" + chip PRIORIDAD
+//   en las alertas manuales. Hereda v9.
 // VERSION: v9 · 2026-08-12 · Los dos botones de cada término se renombran a "Ver Término" (la hoja real,
 //   /procesos/terminos?id=) y "Ver Reloj" (el workflow, /procesos/terminos/ID). Siempre salen los dos, en las
 //   tres tarjetas (Términos del día, Notificación y Resultado). Hereda v8.
@@ -41,6 +45,20 @@ const ROLES_LEGAL = ['legal', 'direccion']
 const ROL_ALIAS = { admin: 'direccion', operaciones: 'administracion', tecnico: 'mantencion' }
 const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '').toLowerCase()
 
+// Dirección puede ASIGNAR alertas a mano (como cometidos de Mis tareas).
+const EMAILS_DIR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+// A estos se les APAGA lo automático de términos y cobranzas (siguen recibiendo las asignadas a mano).
+const INHIBIR_AUTO = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com', 'karina.morales@fondocapital.com']
+// Destinatarios a los que Dirección puede asignar una alerta.
+const PERSONAS = [
+  { email: 'adalis@fondocapital.com', nombre: 'Adalis' },
+  { email: 'fabiola.guerra@fondocapital.com', nombre: 'Fabiola Guerra' },
+  { email: 'karina.morales@fondocapital.com', nombre: 'Karina Morales' },
+  { email: 'anthony.mendoza@fondocapital.com', nombre: 'Anthony Mendoza' },
+  { email: 'alberto.cabezas@fondocapital.com', nombre: 'Alberto Cabezas' },
+  { email: 'luis.cabezas@fondocapital.com', nombre: 'Luis Cabezas' },
+]
+
 const fmtFecha = (d) => {
   if (!d) return ''
   const x = new Date(d)
@@ -58,6 +76,8 @@ export default function AlertasPage() {
   const esKarinaDir = ALERTAS_EMAILS.includes(email)
   const esAdmin = ROLES_ADMIN.includes(role)
   const esLegal = ROLES_LEGAL.includes(role)
+  const esDireccion = role === 'direccion' || EMAILS_DIR.includes(email)
+  const autoInhibido = INHIBIR_AUTO.includes(email)   // términos/cobranzas automáticos apagados
   const puede = esKarinaDir || esAdmin || esLegal
 
   const [alertas, setAlertas] = useState([])
@@ -84,13 +104,18 @@ export default function AlertasPage() {
   const [tipoArr, setTipoArr] = useState('39')
   const [corrResultado, setCorrResultado] = useState(null)
 
+  // --- Asignar alerta (Dirección) ---
+  const [asignar, setAsignar] = useState(false)
+  const [asigForm, setAsigForm] = useState({ para: '', tema: '', cuerpo: '', fecha_resolver: '' })
+  const [asigBusy, setAsigBusy] = useState(false)
+
   useEffect(() => {
     if (status === 'loading') return
     if (!session) { router.replace('/panel'); return }
     if (!puede) { router.replace('/procesos/mi-portal'); return }
     cargar()
-    if (esKarinaDir) cargarTerDia()
-    if (esAdmin) cargarRecDia()
+    if (esKarinaDir && !autoInhibido) cargarTerDia()   // términos automáticos: apagados para los inhibidos
+    if (esAdmin && !autoInhibido) cargarRecDia()        // cobranzas automáticas: apagadas para los inhibidos
     if (esLegal) cargarValList()
     // eslint-disable-next-line
   }, [status, session])
@@ -206,6 +231,26 @@ export default function AlertasPage() {
     if (!error) cargar()
   }
 
+  // Dirección asigna una alerta a una persona (se guarda en `alertas` con su para_email).
+  const abrirAsignar = () => { setAsigForm({ para: '', tema: '', cuerpo: '', fecha_resolver: '' }); setAsignar(true) }
+  const guardarAsignar = async () => {
+    const para = asigForm.para, tema = (asigForm.tema || '').trim()
+    if (!para || !tema || asigBusy) return
+    setAsigBusy(true)
+    const quien = (PERSONAS.find(p => p.email === email)?.nombre) || email
+    const detalle = (asigForm.cuerpo || '').trim()
+    const cuerpo = (detalle ? detalle + ' · ' : '') + 'Asignada por ' + quien + ' el ' + fmtFecha(hoyISO())
+    const { error } = await supabase.from('alertas').insert({
+      para_email: para, tema, cuerpo,
+      fecha: hoyISO(), fecha_resolver: asigForm.fecha_resolver || null,
+      estado: 'pendiente', origen: 'manual',
+    })
+    setAsigBusy(false)
+    if (error) { alert(error.message || 'No se pudo crear la alerta'); return }
+    setAsignar(false)
+    cargar()   // si te la asignas a ti, aparece; si es para otra persona, va a su buzón de Alertas
+  }
+
   // --- Corretaje: abrir panel + cargar preview ---
   const esFacturaInicio = (a) => String(a.origen || '') === 'factura_inicio'
   const abrirCorretaje = async (a) => {
@@ -289,7 +334,13 @@ export default function AlertasPage() {
           {nPend} sin gestionar · {nPosp} pospuesta(s). Tareas urgentes generadas por el sistema y fechas clave a atender.
         </div>
 
-        {terDia && terDia.terminos && terDia.terminos.length > 0 && (
+        {autoInhibido && (
+          <div style={{ border: '1px solid #FBBF77', background: '#FFF7ED', borderRadius: 12, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#7C2D12', lineHeight: 1.5 }}>
+            <b>Alertas automáticas en pausa.</b> Mientras depuramos el sistema, las de términos y cobranzas no salen solas (eran demasiadas y con datos inconsistentes). Las que veas aquí las revisamos Alberto y Luis, o las levanta Karina por su impacto económico: son de <b>PRIORIDAD ABSOLUTA</b>.
+          </div>
+        )}
+
+        {!autoInhibido && terDia && terDia.terminos && terDia.terminos.length > 0 && (
           <div style={{ border: '1px solid #F0C0A8', background: '#FEF6F2', borderRadius: 12, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, color: '#9B1C1C', marginBottom: 2 }}>Términos del día — a analizar</div>
             <div style={{ fontSize: 12, color: '#9B1C1C', opacity: 0.8, marginBottom: 10 }}>
@@ -317,7 +368,7 @@ export default function AlertasPage() {
         )}
 
         {/* RECLAMACIONES DEL DÍA — Administración (Adalis y Fabiola) */}
-        {esAdmin && recDia && recDia.reclamaciones && recDia.reclamaciones.length > 0 && (
+        {esAdmin && !autoInhibido && recDia && recDia.reclamaciones && recDia.reclamaciones.length > 0 && (
           <div style={{ border: '1px solid #E5B9A0', background: '#FDF4EF', borderRadius: 12, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, color: '#9A3412', marginBottom: 2 }}>Reclamaciones del día — las {recDia.reclamaciones.length} más graves</div>
             <div style={{ fontSize: 12, color: '#9A3412', opacity: 0.85, marginBottom: 10 }}>
@@ -445,7 +496,15 @@ export default function AlertasPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div>
+            {esDireccion && (
+              <button onClick={abrirAsignar}
+                style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#0C447C', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ➕ Asignar alerta
+              </button>
+            )}
+          </div>
           <button onClick={() => setVerResueltas(v => !v)}
             style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D3D1C7', background: verResueltas ? '#EEF3F8' : '#fff', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
             {verResueltas ? 'Ocultar resueltas' : 'Ver resueltas'}
@@ -479,7 +538,7 @@ export default function AlertasPage() {
                   return (
                     <tr key={a.id} style={{ opacity: resuelta ? 0.55 : 1 }}>
                       <td style={td}>
-                        <div style={{ fontWeight: 500, color: '#2C2C2A' }}>{a.tema}</div>
+                        <div style={{ fontWeight: 500, color: '#2C2C2A' }}>{a.tema}{a.origen === 'manual' && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 6, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', verticalAlign: 'middle' }}>PRIORIDAD</span>}</div>
                         {a.ref_idadmon && <div style={{ fontSize: 11, color: '#aaa' }}>{a.ref_idadmon}{a.origen ? ' · ' + a.origen : ''}</div>}
                         {a.cuerpo && <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{a.cuerpo}</div>}
                       </td>
@@ -537,6 +596,45 @@ export default function AlertasPage() {
               <button onClick={guardarPosponer} disabled={!posFecha || guardando}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: posFecha ? '#0C447C' : '#C9C7BF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: posFecha ? 'pointer' : 'default', fontFamily: 'inherit' }}>
                 {guardando ? 'Guardando…' : 'Posponer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ASIGNAR alerta (Dirección) */}
+      {asignar && (
+        <div onClick={() => setAsignar(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(520px, 100%)', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 12, color: '#0C447C', fontWeight: 700, marginBottom: 2 }}>ASIGNAR ALERTA</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: '#2C2C2A' }}>Nueva alerta para una persona</div>
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Destinatario</label>
+            <select value={asigForm.para} onChange={e => setAsigForm(f => ({ ...f, para: e.target.value }))}
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 12, background: '#fff' }}>
+              <option value="">— elige a quién —</option>
+              {PERSONAS.map(p => <option key={p.email} value={p.email}>{p.nombre}</option>)}
+            </select>
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Título / tema</label>
+            <input value={asigForm.tema} onChange={e => setAsigForm(f => ({ ...f, tema: e.target.value }))}
+              placeholder="Ej.: Revisar cobro urgente A00xxx"
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 12 }} />
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Detalle (opcional)</label>
+            <textarea value={asigForm.cuerpo} onChange={e => setAsigForm(f => ({ ...f, cuerpo: e.target.value }))} rows={3}
+              placeholder="Qué hay que hacer y por qué es prioritario…"
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 12, resize: 'vertical' }} />
+
+            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Fecha para resolver (opcional)</label>
+            <input type="date" value={asigForm.fecha_resolver} onChange={e => setAsigForm(f => ({ ...f, fecha_resolver: e.target.value }))}
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 18 }} />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setAsignar(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={guardarAsignar} disabled={!asigForm.para || !asigForm.tema.trim() || asigBusy}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (asigForm.para && asigForm.tema.trim()) ? '#0C447C' : '#C9C7BF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: (asigForm.para && asigForm.tema.trim()) ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                {asigBusy ? 'Guardando…' : 'Asignar'}
               </button>
             </div>
           </div>
