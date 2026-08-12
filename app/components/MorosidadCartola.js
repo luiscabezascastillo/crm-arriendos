@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v4 · 2026-08-12 · Calendario de pagos OCULTO por defecto (se pincha "▼ ver meses"); igual que el gráfico.
+//   Sigue plegable y con flex-wrap (nunca scroll horizontal). Hereda v3.
 // VERSION: v3 · 2026-08-12 · Calendario de pagos PLEGABLE (botón "▲ ocultar/▼ ver meses") y con FLEX-WRAP: las
 //   tarjetas saltan de fila SIEMPRE (más filas antes que scroll horizontal). El gráfico sigue plegable/oculto. Hereda v2.
 // VERSION: v2 · 2026-08-12 · "Saldo a fin de mes" PLEGABLE y OCULTO por defecto (botón "▼ ver gráfico"); rejillas
@@ -29,7 +31,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const [cargando, setCargando] = useState(!cuentas)
   const [tip, setTip] = useState(null) // {x,y,html}
   const [verSaldo, setVerSaldo] = useState(false) // gráfico "saldo a fin de mes": oculto por defecto
-  const [verMeses, setVerMeses] = useState(true) // calendario de meses: visible por defecto, pero plegable
+  const [verMeses, setVerMeses] = useState(false) // calendario de meses: OCULTO por defecto (se pincha "▼ ver meses")
 
   useEffect(() => {
     if (cuentas) { setRows(cuentas); return }
