@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-08-12 · "Saldo a fin de mes" PLEGABLE y OCULTO por defecto (botón "▼ ver gráfico"); rejillas
+//   responsivas (auto-fit/auto-fill) y SVG sin overflow visible → el panel nunca fuerza scroll horizontal. Hereda v1.
 // VERSION: v1 · 2026-08-12 · Panel de MOROSIDAD reutilizable a partir de la cartola (`cuentas`) de un idadmon.
 //   KPIs (saldo actual, meses con deuda, día medio de pago, deuda máx. a fin de mes), gráfico de saldo a
 //   FIN DE MES (sin el ruido intra-mes) y calendario de pagos mes a mes (verde/ámbar/rojo, icono+etiqueta).
@@ -24,6 +26,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const [rows, setRows] = useState(cuentas)
   const [cargando, setCargando] = useState(!cuentas)
   const [tip, setTip] = useState(null) // {x,y,html}
+  const [verSaldo, setVerSaldo] = useState(false) // gráfico "saldo a fin de mes": oculto por defecto
 
   useEffect(() => {
     if (cuentas) { setRows(cuentas); return }
@@ -92,7 +95,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const showTip = (e, html) => setTip({ x: e.clientX, y: e.clientY, html })
 
   return (
-    <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b' }}>
+    <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', maxWidth: '100%', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 800 }}>Morosidad</span>
         <span style={{ fontSize: 12, color: C.ink2 }}>comportamiento de pago (desde la cartola)</span>
@@ -101,7 +104,7 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
         {[
           { lab: 'Saldo actual', val: D.kpi.saldoActual <= 0 ? P(Math.abs(D.kpi.saldoActual)) : P(D.kpi.saldoActual), note: D.kpi.saldoActual <= 0 ? 'a favor' : 'a cobrar', col: D.kpi.saldoActual > D.kpi.rentaRef * 0.1 ? C.crit : C.greenTxt },
           { lab: 'Meses con deuda', val: D.kpi.mesesConDeuda, note: 'de ' + D.meses.length + ' meses' },
@@ -118,9 +121,14 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
 
       {!compact && (
         <div style={{ ...card, marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Saldo a fin de mes</div>
-          <div style={{ fontSize: 12, color: C.ink2, marginBottom: 10 }}>Deuda viva al cierre de cada mes. Por encima de 0 = debe; por debajo = a favor.</div>
-          <svg viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', width: '100%', height: 'auto', overflow: 'visible' }}>
+          <button onClick={() => setVerSaldo(v => !v)}
+            style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Saldo a fin de mes</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: C.blue }}>{verSaldo ? '▲ ocultar' : '▼ ver gráfico'}</span>
+          </button>
+          {verSaldo && (<>
+          <div style={{ fontSize: 12, color: C.ink2, margin: '8px 0 10px' }}>Deuda viva al cierre de cada mes. Por encima de 0 = debe; por debajo = a favor.</div>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', width: '100%', height: 'auto', overflow: 'hidden' }}>
             {ticks.map((v, i) => (
               <g key={i}>
                 <line x1={mL} y1={Y(v)} x2={W - mR} y2={Y(v)} stroke={C.grid} strokeWidth="1" />
@@ -140,13 +148,14 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
               </g>
             ))}
           </svg>
+          </>)}
         </div>
       )}
 
       <div style={card}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Calendario de pagos</div>
         <div style={{ fontSize: 12, color: C.ink2, marginBottom: 12 }}>Estado a fin de cada mes: al día, atraso (~1 renta) o mora (2+ rentas).</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
           {D.meses.map((m) => {
             const s = ST[m.estado]
             const bg = m.estado === 'good' ? 'rgba(12,163,12,.07)' : m.estado === 'warning' ? 'rgba(250,178,25,.10)' : 'rgba(208,59,59,.10)'
