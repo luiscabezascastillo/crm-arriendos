@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v46 · 2026-08-12 · Visor de PDF dentro de la app: "Ver PDF" (en Email+PDF) abre una ventana
+//   con iframe y botón "✕ Volver" para regresar a la hoja sin perder el trabajo. Hereda v45.
 // VERSION: v45 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera del término:
 //   comportamiento de pago del arrendatario desde la cartola, para matizar la reclamación. Hereda v44.
 // VERSION: v44 · 2026-08-11 · ENLACES también en la columna REF de Servicios y Reparaciones (helper RefLinks):
@@ -301,6 +303,7 @@ export default function TerminosPage() {
   const [completandoWf, setCompletandoWf] = useState(false)
   // Panel ÚNICO de correo (sustituye a emailPanel/reclamPanel/presupuesto). modo: 'arrendatario'|'propietario'|'presupuesto'.
   const [mailPanel, setMailPanel] = useState(null)
+  const [pdfVer, setPdfVer] = useState(null)   // { url, nombre } — visor de PDF dentro de la app (con "Volver")
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -1078,7 +1081,8 @@ export default function TerminosPage() {
                           : p.adjunto ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 999, padding: '3px 10px', fontSize: 12, color: '#3730A3', fontWeight: 700 }}>
                               📎 {p.adjunto.nombre}
-                              <a href={p.adjunto.url} target="_blank" rel="noopener noreferrer" style={{ color: '#4338ca', textDecoration: 'underline' }}>Ver PDF ↗</a>
+                              <button type="button" onClick={() => setPdfVer({ url: p.adjunto.url, nombre: p.adjunto.nombre })} style={{ border: 'none', background: 'none', padding: 0, color: '#4338ca', textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>Ver PDF</button>
+                              <a href={p.adjunto.url} target="_blank" rel="noopener noreferrer" title="Abrir en pestaña nueva" style={{ color: '#8a90a8', textDecoration: 'none', marginLeft: 6, fontSize: 11 }}>↗ pestaña</a>
                             </span>
                           ) : <div style={{ fontSize: 12, color: '#9B1C1C' }}>{p.adjuntoError || 'No se pudo adjuntar el PDF.'} <button onClick={() => abrirMail(p.modo)} style={{ ...btn('#6b7280'), width: 'auto', padding: '2px 8px', marginLeft: 6 }}>↻ Reintentar</button></div>}
                       </div>
@@ -1498,6 +1502,20 @@ export default function TerminosPage() {
               </>
             )}
       </div>
+
+      {pdfVer && (
+        <div onClick={() => setPdfVer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9500, display: 'flex', flexDirection: 'column', padding: '2vh 2vw', boxSizing: 'border-box' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #E5E7EB', background: '#F8FAFC' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdfVer.nombre || 'PDF'}</span>
+              <a href={pdfVer.url} download style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '5px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Descargar</a>
+              <a href={pdfVer.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '5px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Abrir en pestaña ↗</a>
+              <button onClick={() => setPdfVer(null)} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#334155', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>✕ Volver</button>
+            </div>
+            <iframe src={pdfVer.url} title={pdfVer.nombre || 'PDF'} style={{ flex: 1, width: '100%', border: 'none' }} />
+          </div>
+        </div>
+      )}
     </>
   )
 }

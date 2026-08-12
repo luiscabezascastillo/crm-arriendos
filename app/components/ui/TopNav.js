@@ -1,13 +1,6 @@
 'use client';
-// VERSION: v11 · 2026-08-12 · Nuevo enlace "BB1" (Operaciones comerciales · VENTAS) junto a BB2, mismo público
-//   (Dirección + Anthony). Orden en la barra: BB1, BB2. Hereda v10.
-// VERSION: v10 · 2026-08-12 · El enlace "Captaciones" pasa a verse SOLO por Dirección (Alberto y Luis); se quita
-//   Administración. Hereda v9.
-// VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible para
-//   Dirección + Administración. Hereda v8.
-// VERSION: v8 · 2026-08-12 · Nuevo enlace "BB2" (Operaciones comerciales · arriendo sin admón) en la barra, visible
-//   SOLO para Dirección (Alberto/Luis) + Anthony (Legal). Preparado para añadir "BB1" al lado cuando exista.
-//   Sin cambios en el resto de gates ni del menú. Hereda v7.
+// VERSION: v8 · 2026-08-12 · Alertas en pausa: el badge del nav NO parpadea ni muestra número (queda gris)
+//   mientras ALERTAS_AUTO_OFF = true. Al retomar se pone en false. Hereda v7.
 // VERSION: v7 · 2026-08-11 · El botón "Alertas" se abre por ROL: Administración (Adalis/Fabiola) y Legal
 //   (Anthony) además de Karina + Dirección. El badge cuenta lo de cada rol: Admin -> reclamaciones del día;
 //   Legal -> términos sin valorar; Karina/Dir -> alertas propias + Términos del día. Hereda v6.
@@ -43,6 +36,11 @@ const ALERTAS_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
 ];
+
+// Alertas automáticas en pausa (mismo criterio que /alertas). Mientras esté en true, el badge del nav
+// NO parpadea ni muestra número: se queda en gris neutro. Al retomar se pone en false (y probablemente
+// se rehaga el semáforo con otro criterio). Cambia solo esta constante.
+const ALERTAS_AUTO_OFF = true;
 
 // --- Transición de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
 // Permite que el código nuevo funcione mientras la BD aún tenga roles viejos.
@@ -129,6 +127,7 @@ export default function TopNav() {
   const puedeAlertas = esKarinaDir || esDireccionNav || esAdminRol || esLegalRol;
   useEffect(() => {
     if (!puedeAlertas || !session?.user?.email) return;
+    if (ALERTAS_AUTO_OFF) { setAlertaSem({ color: null, n: 0 }); return; }   // en pausa: gris, sin parpadeo ni número
     let vivo = true;
     const calc = async () => {
       const { data } = await supabase.from('alertas').select('estado').eq('para_email', session.user.email);
@@ -177,10 +176,6 @@ export default function TopNav() {
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const rol = normRol(session?.user?.role);
   const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
-  // Operaciones BB (arriendo/venta sin/ con admón): en construcción, solo Dirección + Anthony (Legal).
-  const esBB = esDireccion || session?.user?.email === 'anthony.mendoza@fondocapital.com';
-  // Captaciones (cartera de propietarios): Dirección (incluye Alberto) + Administración (Adalis/Fabiola).
-  const esCaptacion = esDireccion; // solo Alberto + Luis (Dirección)
   // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
   const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
@@ -464,17 +459,6 @@ export default function TopNav() {
           </div>
         )}
       </div>
-      )}
-
-      {/* BB1 (venta) / BB2 (arriendo sin admón) — Operaciones comerciales. En construcción: solo Dirección + Anthony. */}
-      {esBB && (
-        <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>
-      )}
-      {esBB && (
-        <Link href="/bb2" style={s.link(isActive('/bb2'))}>BB2</Link>
-      )}
-      {esCaptacion && (
-        <Link href="/captaciones" style={s.link(isActive('/captaciones'))}>Captaciones</Link>
       )}
 
       {/* Comercial — Portal externo (pendiente de desarrollo). Solo Dirección por ahora. */}
