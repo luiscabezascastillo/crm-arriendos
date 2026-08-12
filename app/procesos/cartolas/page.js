@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v15 · 2026-08-12 · AÑADIR líneas (cargo o abono) pasa a ser SOLO Dirección, con botón "➕ Añadir línea"
+//   también encima de la tabla de movimientos (donde se trabaja). Editar cargo y anular/reactivar siguen para
+//   Dirección + Alberto/Luis/Karina. Requiere movimiento v3 (alta restringida a Dirección). Hereda v14.
 // VERSION: v14 · 2026-08-12 · CARGOS gestionables por Dirección + Alberto/Luis/Karina: editar el cargo de CUALQUIER
 //   línea (antes solo 5 recientes), y ANULAR/REACTIVAR cualquier línea de cargo (soft, reversible, auditado), además
 //   de añadir/editar manuales. Requiere editar-cargo v2 y movimiento v2. Hereda v13.
@@ -707,6 +710,7 @@ function CartolaIdadmonVista() {
   const rol = session?.user?.role
   const email = session?.user?.email
   const puedeEditarCargo = rol === 'direccion' || EDITORES.includes(email)
+  const esDireccion = rol === 'direccion'   // AÑADIR líneas (cargo/abono) es solo de Dirección
   const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
   // Fecha: la cartola guarda dd/mm/aaaa (texto); los <input type=date> usan ISO. Conversores:
   const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -978,10 +982,10 @@ function CartolaIdadmonVista() {
           style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
           {buscando ? 'Buscando…' : 'Ver cuenta'}
         </button>
-        {ficha && puedeEditarCargo && (
-          <button onClick={abrirAlta} title="Añadir un movimiento manual (cargo o abono) a esta cuenta — queda registrado"
+        {ficha && esDireccion && (
+          <button onClick={abrirAlta} title="Añadir una línea manual (cargo o abono) a esta cuenta — solo Dirección, queda registrado"
             style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1D9E75', background: '#EAF7F1', color: '#0F6D4E', cursor: 'pointer' }}>
-            ➕ Añadir movimiento
+            ➕ Añadir línea
           </button>
         )}
       </div>
@@ -1081,6 +1085,15 @@ function CartolaIdadmonVista() {
           )}
 
           {/* MOVIMIENTOS */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '4px 0 8px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
+            {esDireccion && (
+              <button onClick={abrirAlta} title="Añadir una línea manual (cargo o abono) a esta cuenta — solo Dirección, queda registrado"
+                style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1D9E75', background: '#EAF7F1', color: '#0F6D4E', cursor: 'pointer' }}>
+                ➕ Añadir línea (cargo o abono)
+              </button>
+            )}
+          </div>
           <div style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%', fontVariantNumeric: 'tabular-nums' }}>
               <thead>
@@ -1113,7 +1126,7 @@ function CartolaIdadmonVista() {
           </div>
           {puedeEditarCargo && (
             <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>
-              Puedes <b>editar el cargo</b> de cualquier línea, <b>anular/reactivar</b> líneas de cargo (no se borran: quedan como ANULADO, es reversible) y <b>añadir</b> movimientos. Todo con motivo obligatorio y registro de quién y cuándo. Una fila editada se marca en <span style={{ background: '#FDECEC', padding: '0 4px', borderRadius: 3, color: '#9B1C1C' }}>rojo</span> si su cargo no coincide con la liquidación (a_cobrar) de ese mes.
+              Puedes <b>editar el cargo</b> de cualquier línea y <b>anular/reactivar</b> líneas de cargo (no se borran: quedan como ANULADO, es reversible). <b>Añadir líneas</b> (cargo o abono): solo Dirección. Todo con motivo obligatorio y registro de quién y cuándo. Una fila editada se marca en <span style={{ background: '#FDECEC', padding: '0 4px', borderRadius: 3, color: '#9B1C1C' }}>rojo</span> si su cargo no coincide con la liquidación (a_cobrar) de ese mes.
             </div>
           )}
         </>

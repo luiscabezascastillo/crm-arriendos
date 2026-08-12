@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-12 · ALTA (añadir líneas cargo/abono) restringida a SOLO Dirección. Edición completa sigue
+//   solo en MANUALES; anulación/reactivación sigue abierta a líneas de cargo (Dirección + editores). Hereda v2.
 // VERSION: v2 · 2026-08-12 · ANULACIÓN abierta a cualquier LÍNEA DE CARGO (además de las manuales): Dirección +
 //   los tres editores pueden anular/reactivar filas con cargo (soft, reversible, con motivo y bitácora). La EDICIÓN
 //   completa (fecha/concepto/monto) sigue restringida a filas MANUALES; el cargo de filas no manuales se cambia por
@@ -40,6 +42,8 @@ export async function POST(req) {
 
   // ───────────────────────── ALTA ─────────────────────────
   if (accion === 'alta') {
+    // v3: AÑADIR líneas (cargo o abono) es SOLO de Dirección (editar/anular siguen abiertos a los editores).
+    if (rol !== 'direccion') return Response.json({ error: 'Solo Dirección puede añadir líneas a la cartola.' }, { status: 403 })
     const idadmon = String(body?.idadmon || '').trim().toUpperCase()
     const fecha = String(body?.fecha || '').trim()          // dd/mm/aaaa (el resto de la cartola usa ese formato)
     const concepto = String(body?.concepto || '').trim()
