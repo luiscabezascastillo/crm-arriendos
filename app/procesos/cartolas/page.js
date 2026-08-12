@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v12 · 2026-08-12 · BLINDAJE anti-scroll-horizontal: overflow-x:clip en html/body mientras la página está
+//   montada (cubre también el TopNav y cualquier ancestro), además del clip del contenedor. Las tablas conservan su
+//   scroll interno; el vertical y los sticky no se rompen (clip, no hidden). Hereda v11.
 // VERSION: v11 · 2026-08-12 · overflowX:'clip' en el contenedor de la ficha por IDADMON → la página nunca necesita
 //   scroll horizontal (las tablas siguen con su propio scroll interno). Hereda v10.
 // VERSION: v10 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera de la Cartola
@@ -709,6 +712,16 @@ function CartolaIdadmonVista() {
   const fmtFechaHora = (iso) => { const d = String(iso ?? ''); return d ? (d.slice(0, 10) + ' ' + d.slice(11, 16)) : '' }
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
+
+  // Blindaje anti-scroll-horizontal: mientras esta página esté montada, la página NUNCA scrollea en horizontal.
+  // Se usa overflow-x:clip (no 'hidden') para no romper el scroll vertical ni los headers sticky de las tablas,
+  // que conservan su propio scroll interno. Se restaura al desmontar.
+  useEffect(() => {
+    const de = document.documentElement, b = document.body
+    const pde = de.style.overflowX, pb = b.style.overflowX
+    de.style.overflowX = 'clip'; b.style.overflowX = 'clip'
+    return () => { de.style.overflowX = pde; b.style.overflowX = pb }
+  }, [])
 
   const buscar = async () => {
     const id = idInput.trim().toUpperCase()
