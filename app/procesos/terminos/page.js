@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v47 · 2026-08-12 · PDF del PROPIETARIO: las líneas 🚫 ya NO se ocultan; se muestran en NEGATIVO
+//   (bloque "no repercutido — en reclamación al arrendatario/aval") y el RESULTADO trae tres cifras:
+//   liquidación real · asumido por el propietario · pendiente de recuperar. Necesita lib/terminoPdf v8. Hereda v46.
 // VERSION: v46 · 2026-08-12 · Visor de PDF dentro de la app: "Ver PDF" (en Email+PDF) abre una ventana
 //   con iframe y botón "✕ Volver" para regresar a la hoja sin perder el trabajo. Hereda v45.
 // VERSION: v45 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera del término:
@@ -888,7 +891,7 @@ export default function TerminosPage() {
     const Rv = calcResult({ garantia: lg, servicios: ls, reparaciones: lr }, 0, garantiaVal, repPresu, quienGar)
     // La AUTO ("Arreglos presupuesto") representa el presupuesto: si el propietario la excluye, no se muestra su detalle.
     const autoIncluida = lr.some(l => l.concepto === AUTO_CONCEPTO)
-    return {
+    const datos = {
       idadmon: idadmonSel,
       inmueble: A?.inmueble || '',
       arrendatario: A?.arrendatario || '',
@@ -906,6 +909,29 @@ export default function TerminosPage() {
       // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
       descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
     }
+    // PDF del PROPIETARIO: en vez de tragarnos las líneas 🚫, las dejamos ver en NEGATIVO (otro color) como
+    // "no repercutido — en reclamación al ex-arrendatario/aval", y adjuntamos el RESULTADO REAL (todas las
+    // líneas) para el bloque de subtotales: real vs. asumido por el propietario vs. pendiente de recuperar.
+    if (esProp) {
+      const exG = (lineas.garantia || []).filter(l => l.excluir_prop)
+      const exS = (lineas.servicios || []).filter(l => l.excluir_prop)
+      const exR = (lineas.reparaciones || []).filter(l => l.excluir_prop)
+      const excl = [...exG, ...exS, ...exR]
+        .map(l => ({ concepto: l.concepto, comentario: l.comentario || '', monto: l.auto ? repPresu : n0(l.monto) }))
+        .filter(x => n0(x.monto) !== 0)
+      if (excl.length) {
+        const Rreal = calcResult({ garantia: lineas.garantia || [], servicios: lineas.servicios || [], reparaciones: lineas.reparaciones || [] }, 0, garantiaVal, repPresu, quienGar)
+        const vReal = n0(Rreal?.resultado)
+        const vAsum = n0(Rv?.resultado)   // == datos.resultado.valor (variante propietario)
+        datos.reclamacion = {
+          lineas: excl,
+          resultadoReal: { valor: vReal, label: vReal >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
+          resultadoAsumido: { valor: vAsum },
+          pendiente: vReal - vAsum,   // real - asumido = lo que el propietario no repercute (a recuperar)
+        }
+      }
+    }
+    return datos
   }
 
   // Genera el PDF DEFINITIVO (sin marca de borrador) del término y devuelve { ok, url, nombre }.
