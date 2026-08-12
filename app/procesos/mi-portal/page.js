@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v5 · 2026-08-12 · Mi Portal: botón "+ Nueva alerta" en la tarjeta Alertas (solo Dirección, viendo el
+//   portal de otra persona), como el "+ Nueva tarea". Abre un modal (título, detalle, fecha) e inserta la alerta en
+//   `alertas` para esa persona (origen manual, con nota de quién la creó y cuándo). Hereda v4.
 // VERSION: v4 · 2026-08-11 · Oculta TEMPORALMENTE en "Tareas de procesos" las tareas de la gestión ANTIGUA
 //   de Términos (nodos T*/ tarea "Notificar") para TODO el personal, hasta estabilizar el módulo de Términos.
 //   Reversible: poner OCULTAR_TAREAS_TERMINOS = false y vuelven a aparecer. Hereda v3.
@@ -121,6 +124,8 @@ export default function MiPortalPage() {
   const [posFecha, setPosFecha] = useState('')
   const [posMotivo, setPosMotivo] = useState('')
   const [guardandoAlerta, setGuardandoAlerta] = useState(false)
+  const [nuevaAlerta, setNuevaAlerta] = useState(null)     // { tema, cuerpo, fecha_resolver } — asignar a mano
+  const [creandoAlerta, setCreandoAlerta] = useState(false)
   const puedeAlertas = session?.user?.email && ALERTAS_EMAILS.includes(session.user.email)
 
   const cargarAlertas = async (mail) => {
@@ -166,6 +171,24 @@ export default function MiPortalPage() {
       .update({ estado: 'pendiente', resuelta_at: null, resuelta_por: null })
       .eq('id', a.id)
     if (!error) cargarAlertas(emailActivo)
+  }
+
+  // Dirección asigna una alerta a la persona cuyo portal está viendo (queda registrado quién y cuándo).
+  const crearAlerta = async () => {
+    if (!nuevaAlerta || !(nuevaAlerta.tema || '').trim()) { alert('Escribe un título para la alerta.'); return }
+    setCreandoAlerta(true)
+    const hoy = new Date().toISOString().slice(0, 10)
+    const detalle = (nuevaAlerta.cuerpo || '').trim()
+    const cuerpo = (detalle ? detalle + ' · ' : '') + 'Asignada por ' + session.user.email + ' el ' + hoy
+    const { error } = await supabase.from('alertas').insert({
+      para_email: emailActivo, tema: nuevaAlerta.tema.trim(), cuerpo,
+      fecha: hoy, fecha_resolver: nuevaAlerta.fecha_resolver || null,
+      estado: 'pendiente', origen: 'manual',
+    })
+    setCreandoAlerta(false)
+    if (error) { alert(error.message || 'No se pudo crear la alerta'); return }
+    setNuevaAlerta(null)
+    cargarAlertas(emailActivo)
   }
 
   const alertasVisibles = (alertas || []).filter(a => verResueltas ? true : a.estado !== 'resuelta')
@@ -468,6 +491,10 @@ export default function MiPortalPage() {
                   <div style={cardHead}>
                     <span>🔔 Alertas</span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {esDireccion && emailActivo && emailActivo !== session.user.email && (
+                        <button onClick={() => setNuevaAlerta({ tema: '', cuerpo: '', fecha_resolver: '' })}
+                          style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nueva alerta</button>
+                      )}
                       <button onClick={() => setVerResueltas(v => !v)}
                         style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: verResueltas ? '#EEF3F8' : '#fff', color: 'var(--gray-600)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                         {verResueltas ? 'Ocultar resueltas' : 'Ver resueltas'}
@@ -682,6 +709,36 @@ export default function MiPortalPage() {
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
               <button onClick={crearTarea} disabled={creandoTarea}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1a56db', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{creandoTarea ? 'Creando\u2026' : 'Crear tarea'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {nuevaAlerta && (
+        <div onClick={() => setNuevaAlerta(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 12, padding: 24, width: 'min(560px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 4 }}>Nueva alerta para {nombre}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Asignar alerta</div>
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>T\u00edtulo</label>
+            <input value={nuevaAlerta.tema} onChange={e => setNuevaAlerta({ ...nuevaAlerta, tema: e.target.value })}
+              placeholder="Ej.: Revisar cobro urgente A00xxx"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14 }} />
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Detalle (opcional)</label>
+            <textarea value={nuevaAlerta.cuerpo} onChange={e => setNuevaAlerta({ ...nuevaAlerta, cuerpo: e.target.value })}
+              rows={3} placeholder="Qu\u00e9 hay que hacer y por qu\u00e9 es prioritario"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 14, resize: 'vertical' }} />
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 4 }}>Fecha para resolver (opcional)</label>
+            <input type="date" value={nuevaAlerta.fecha_resolver} onChange={e => setNuevaAlerta({ ...nuevaAlerta, fecha_resolver: e.target.value })}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', marginBottom: 20 }} />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setNuevaAlerta(null)} disabled={creandoAlerta}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={crearAlerta} disabled={creandoAlerta || !(nuevaAlerta.tema || '').trim()}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (nuevaAlerta.tema || '').trim() ? '#dc2626' : '#C9C7BF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: (nuevaAlerta.tema || '').trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>{creandoAlerta ? 'Creando\u2026' : 'Asignar alerta'}</button>
             </div>
           </div>
         </div>
