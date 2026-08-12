@@ -1,3 +1,6 @@
+// VERSION: v11 · 2026-08-12 · APAGADO GLOBAL: interruptor AUTO_OFF=true apaga TODO el automático (términos del día,
+//   reclamaciones/cobranzas y valoración legal) para TODAS las personas mientras se depura. Solo quedan las alertas
+//   asignadas a mano. Poner AUTO_OFF=false para reactivar. Hereda v10.
 // VERSION: v10 · 2026-08-12 · Alertas automáticas de TÉRMINOS y COBRANZAS APAGADAS para Adalis, Fabiola y Karina
 //   (siguen recibiendo lo que se les asigne a mano). Dirección (Alberto/Luis) gana botón "➕ Asignar alerta" que crea
 //   una alerta en `alertas` para la persona elegida (queda registrada). Aviso de "prioridad absoluta" + chip PRIORIDAD
@@ -49,6 +52,10 @@ const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '
 const EMAILS_DIR = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 // A estos se les APAGA lo automático de términos y cobranzas (siguen recibiendo las asignadas a mano).
 const INHIBIR_AUTO = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com', 'karina.morales@fondocapital.com']
+// INTERRUPTOR GLOBAL: mientras se depura el sistema, TODO el automático (términos del día, reclamaciones/cobranzas
+// y valoración legal) está APAGADO para TODAS las personas. Las alertas solo llegan asignadas a mano. Poner en
+// false para reactivarlo cuando esté afinado.
+const AUTO_OFF = true
 // Destinatarios a los que Dirección puede asignar una alerta.
 const PERSONAS = [
   { email: 'adalis@fondocapital.com', nombre: 'Adalis' },
@@ -114,9 +121,9 @@ export default function AlertasPage() {
     if (!session) { router.replace('/panel'); return }
     if (!puede) { router.replace('/procesos/mi-portal'); return }
     cargar()
-    if (esKarinaDir && !autoInhibido) cargarTerDia()   // términos automáticos: apagados para los inhibidos
-    if (esAdmin && !autoInhibido) cargarRecDia()        // cobranzas automáticas: apagadas para los inhibidos
-    if (esLegal) cargarValList()
+    if (esKarinaDir && !autoInhibido && !AUTO_OFF) cargarTerDia()   // términos automáticos
+    if (esAdmin && !autoInhibido && !AUTO_OFF) cargarRecDia()        // cobranzas automáticas
+    if (esLegal && !AUTO_OFF) cargarValList()                        // valoración legal (también en pausa)
     // eslint-disable-next-line
   }, [status, session])
 
@@ -334,13 +341,13 @@ export default function AlertasPage() {
           {nPend} sin gestionar · {nPosp} pospuesta(s). Tareas urgentes generadas por el sistema y fechas clave a atender.
         </div>
 
-        {autoInhibido && (
+        {(AUTO_OFF || autoInhibido) && (
           <div style={{ border: '1px solid #FBBF77', background: '#FFF7ED', borderRadius: 12, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#7C2D12', lineHeight: 1.5 }}>
-            <b>Alertas automáticas en pausa.</b> Mientras depuramos el sistema, las de términos y cobranzas no salen solas (eran demasiadas y con datos inconsistentes). Las que veas aquí las revisamos Alberto y Luis, o las levanta Karina por su impacto económico: son de <b>PRIORIDAD ABSOLUTA</b>.
+            <b>Alertas automáticas en pausa.</b> Mientras depuramos el sistema, las de términos y cobranzas no salen solas (eran demasiadas y con datos inconsistentes). Las que veáis aquí las asigna Dirección, o las levanta Karina por su impacto económico: son de <b>PRIORIDAD ABSOLUTA</b>.
           </div>
         )}
 
-        {!autoInhibido && terDia && terDia.terminos && terDia.terminos.length > 0 && (
+        {!AUTO_OFF && !autoInhibido && terDia && terDia.terminos && terDia.terminos.length > 0 && (
           <div style={{ border: '1px solid #F0C0A8', background: '#FEF6F2', borderRadius: 12, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, color: '#9B1C1C', marginBottom: 2 }}>Términos del día — a analizar</div>
             <div style={{ fontSize: 12, color: '#9B1C1C', opacity: 0.8, marginBottom: 10 }}>
@@ -368,7 +375,7 @@ export default function AlertasPage() {
         )}
 
         {/* RECLAMACIONES DEL DÍA — Administración (Adalis y Fabiola) */}
-        {esAdmin && !autoInhibido && recDia && recDia.reclamaciones && recDia.reclamaciones.length > 0 && (
+        {esAdmin && !AUTO_OFF && !autoInhibido && recDia && recDia.reclamaciones && recDia.reclamaciones.length > 0 && (
           <div style={{ border: '1px solid #E5B9A0', background: '#FDF4EF', borderRadius: 12, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, color: '#9A3412', marginBottom: 2 }}>Reclamaciones del día — las {recDia.reclamaciones.length} más graves</div>
             <div style={{ fontSize: 12, color: '#9A3412', opacity: 0.85, marginBottom: 10 }}>
@@ -406,7 +413,7 @@ export default function AlertasPage() {
         )}
 
         {/* VALORACIÓN LEGAL — Legal (Anthony): 2 vertientes */}
-        {esLegal && valList && (valList.total > 0) && (
+        {esLegal && !AUTO_OFF && valList && (valList.total > 0) && (
           <div style={{ border: '1px solid #B9C7E5', background: '#F1F5FD', borderRadius: 12, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, color: '#1E3A8A', marginBottom: 8 }}>Valoración legal</div>
 
