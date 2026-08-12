@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-12 · ALTA (añadir líneas cargo/abono): Dirección Y Karina (antes solo Dirección). Cada acción
+//   deja en cuentas_bitacora el usuario (email de la sesión) y la fecha/hora. Edición completa sigue solo en MANUALES;
+//   anulación/reactivación sigue abierta a líneas de cargo (Dirección + editores). Hereda v3.
 // VERSION: v3 · 2026-08-12 · ALTA (añadir líneas cargo/abono) restringida a SOLO Dirección. Edición completa sigue
 //   solo en MANUALES; anulación/reactivación sigue abierta a líneas de cargo (Dirección + editores). Hereda v2.
 // VERSION: v2 · 2026-08-12 · ANULACIÓN abierta a cualquier LÍNEA DE CARGO (además de las manuales): Dirección +
@@ -24,7 +27,11 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 const money = (v) => Math.round(Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const okFecha = (s) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(s || '').trim())
 
-async function anotar(rows) { if (rows && rows.length) await admin.from('cuentas_bitacora').insert(rows) }
+async function anotar(rows) {
+  if (!rows || !rows.length) return
+  const cuando = new Date().toISOString()   // "cuándo" explícito, además de cualquier default de la tabla
+  await admin.from('cuentas_bitacora').insert(rows.map(r => ('fecha' in r ? r : { ...r, fecha: cuando })))
+}
 
 export async function POST(req) {
   const session = await getServerSession(authOptions)
@@ -42,8 +49,9 @@ export async function POST(req) {
 
   // ───────────────────────── ALTA ─────────────────────────
   if (accion === 'alta') {
-    // v3: AÑADIR líneas (cargo o abono) es SOLO de Dirección (editar/anular siguen abiertos a los editores).
-    if (rol !== 'direccion') return Response.json({ error: 'Solo Dirección puede añadir líneas a la cartola.' }, { status: 403 })
+    // v4: AÑADIR líneas (cargo o abono): Dirección Y Karina (editar/anular siguen abiertos a los tres editores).
+    if (!(rol === 'direccion' || email === 'karina.morales@fondocapital.com'))
+      return Response.json({ error: 'Solo Dirección y Karina pueden añadir líneas a la cartola.' }, { status: 403 })
     const idadmon = String(body?.idadmon || '').trim().toUpperCase()
     const fecha = String(body?.fecha || '').trim()          // dd/mm/aaaa (el resto de la cartola usa ese formato)
     const concepto = String(body?.concepto || '').trim()
