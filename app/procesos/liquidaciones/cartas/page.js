@@ -1,3 +1,5 @@
+// VERSION: v15 · 2026-08-12 · CARTAS: el MES de la liquidación (p. ej. AGOSTO 2026) se muestra CENTRADO en la franja de
+//   cada propietario (grande y en negrita); se quita el mes pequeño de la derecha para no duplicar. Hereda v14.
 // VERSION: v14 · 2026-08-10 · COMPLEMENTARIAS (paso 1 UI): CARTAS consulta /api/liquidaciones/complementaria y, en la línea
 //   en espera de un moroso, si el endpoint detecta que YA entró el pago (abono en bi imputado a un mes posterior) muestra
 //   "💰 Pago recibido · 🧩 Generar complementaria" (Dirección); al pulsar registra en liquidacion_complementaria. Si ya
@@ -726,7 +728,9 @@ export default function CartasPage() {
           return (
             <div key={b.idprop} id={'liq-' + b.idprop} style={{ scrollMarginTop: 110, border: tieneOvr ? '1.5px solid #EF4444' : '1px solid #C7D2FE', borderRadius: 10, marginBottom: 16, overflow: 'hidden', background: '#fff' }}>
               {/* Cabecera del bloque */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: tieneOvr ? '#FEE2E2' : '#E0E7FF', borderBottom: tieneOvr ? '1px solid #FCA5A5' : '1px solid #C7D2FE' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: tieneOvr ? '#FEE2E2' : '#E0E7FF', borderBottom: tieneOvr ? '1px solid #FCA5A5' : '1px solid #C7D2FE' }}>
+                {/* Mes de la liquidación, centrado en la franja de cada propietario */}
+                <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', fontSize: 15, fontWeight: 800, letterSpacing: '0.05em', color: '#3730a3', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{aammToTxt(mes)}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
@@ -735,7 +739,6 @@ export default function CartasPage() {
                   {tieneObs && <span title="Este propietario tiene una observación de Alberto" style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>📝 Observación</span>}
                   {tieneOvr && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>⚠ AJUSTADA</span>}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>{aammToTxt(mes)}</div>
               </div>
 
               {/* Tabla de inmuebles (scroll horizontal) */}
