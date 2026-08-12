@@ -1,3 +1,6 @@
+// VERSION: v32 · 2026-08-12 · SA: la columna MONTO cambia su desplegable por un filtro POR RANGO con signo
+//   (Desde/Hasta): cargos negativos / abonos positivos, un lado opcional. Se quitan de ese menú el "ordenar" y las
+//   opciones inactivas (borrar filtro / quitar todos). El resto de columnas conserva su filtro Excel. Hereda v31.
 // VERSION: v31 · 2026-07-30 · SA: Cuenta 1 se pone sola en 2105-05 en pagos a proveedor.
 //   Cuando la linea CUADRA con una factura de Compras (mismo importe, ±20 dias), el pago
 //   cancela la deuda del proveedor, asi que la contrapartida SIEMPRE es 2105-05 PROVEEDORES.
@@ -326,6 +329,7 @@ const condPuesta = (c) => !!(c && c.op && (SIN_VALOR.has(c.op) || (c.v1 !== '' &
 export function filtroActivo(s) {
   if (!s) return false
   return Array.isArray(s.sel) || condPuesta(s.c1) || condPuesta(s.c2)
+    || (!!s.rango && (s.rango.min != null || s.rango.max != null))   // rango de Monto (con signo)
 }
 
 // Evalúa UNA condición. valores = los del movimiento (para monto incluye sus líneas).
@@ -388,6 +392,8 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
   const [conector, setConector] = useState('Y')
   const [verCond, setVerCond] = useState(false)
   const [abiertos, setAbiertos] = useState({})
+  const [rMin, setRMin] = useState('')   // rango de Monto (con signo): desde
+  const [rMax, setRMax] = useState('')   // rango de Monto (con signo): hasta
   const yaFiltrado = Array.isArray(state?.sel)
 
   useEffect(() => {
@@ -396,6 +402,8 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     setDraft(inicial); setBase(inicial); setAnadir(false); setBusca('')
     setC1(state?.c1 || vacio); setC2(state?.c2 || vacio); setConector(state?.conector || 'Y')
     setVerCond(condPuesta(state?.c1) || condPuesta(state?.c2))
+    setRMin(state?.rango?.min != null ? String(state.rango.min) : '')
+    setRMax(state?.rango?.max != null ? String(state.rango.max) : '')
   }, [abierto]) // eslint-disable-line
 
   const coincide = (k, t) => String(col.flabel(k)).toLowerCase().includes(t)
@@ -442,6 +450,14 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
     setOpen(null)
   }
 
+  // Monto: filtro por RANGO con signo (Desde/Hasta). Deja un lado vacío para acotar solo por arriba o por abajo.
+  const numRango = (s) => { const t = String(s ?? '').trim(); if (t === '') return null; const n = Number(t.replace(',', '.')); return isNaN(n) ? null : n }
+  const aceptarMonto = () => {
+    const min = numRango(rMin), max = numRango(rMax)
+    setState((min == null && max == null) ? null : { rango: { min, max } })
+    setOpen(null)
+  }
+
   const campo = { width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box' }
   const itemMenu = { display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: '6px 4px', color: '#2C2C2A', fontFamily: 'inherit' }
   const casilla = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', cursor: 'pointer' }
@@ -473,6 +489,27 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
         <>
           <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
           <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 272, textAlign: 'left', fontWeight: 400, overflow: 'hidden' }}>
+            {col.key === 'monto' ? (
+              <>
+                <div style={{ padding: '10px 10px 4px' }}>
+                  <div style={{ fontSize: 11, color: '#888780', fontWeight: 700, marginBottom: 4 }}>Filtrar por importe (con signo)</div>
+                  <div style={{ fontSize: 10.5, color: '#B4B2A9', marginBottom: 8 }}>Cargos negativos, abonos positivos. Deja un campo vacío para acotar solo por un lado. Enter aplica.</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Desde
+                      <input type="number" value={rMin} onChange={e => setRMin(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') aceptarMonto() }} placeholder="mín" style={{ ...campo, marginTop: 3, textAlign: 'right' }} />
+                    </label>
+                    <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Hasta
+                      <input type="number" value={rMax} onChange={e => setRMax(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') aceptarMonto() }} placeholder="máx" style={{ ...campo, marginTop: 3, textAlign: 'right' }} />
+                    </label>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, padding: 8, borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
+                  <button onClick={aceptarMonto} style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: 'none', background: '#1D9E75', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Aplicar</button>
+                  <button onClick={() => { setState(null); setOpen(null) }} style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Limpiar</button>
+                </div>
+              </>
+            ) : (
+              <>
 
             <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
               <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>↑ Orden ascendente</button>
@@ -579,6 +616,8 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
               </button>
               <button onClick={() => setOpen(null)} style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
             </div>
+              </>
+            )}
           </div>
         </>
       )}
@@ -723,6 +762,11 @@ const wantScroll = useRef(false)
       for (const c of COLDEFS) {
         const f = filters[c.key]
         if (!filtroActivo(f)) continue
+        if (f.rango) {   // Monto: rango CON SIGNO sobre el monto del movimiento
+          const v = Number(m.monto) || 0
+          if (f.rango.min != null && v < f.rango.min) return false
+          if (f.rango.max != null && v > f.rango.max) return false
+        }
         if (Array.isArray(f.sel) && !f.sel.includes(c.fkey(m))) return false
 
         const vals = valoresDe(c, m)
