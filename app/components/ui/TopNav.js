@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v11 · 2026-08-12 · Nuevo enlace "BB1" (Operaciones comerciales · VENTAS) junto a BB2, mismo público
+//   (Dirección + Anthony). Orden en la barra: BB1, BB2. Hereda v10.
 // VERSION: v10 · 2026-08-12 · El enlace "Captaciones" pasa a verse SOLO por Dirección (Alberto y Luis); se quita
 //   Administración. Hereda v9.
 // VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible para
@@ -464,11 +466,13 @@ export default function TopNav() {
       </div>
       )}
 
-      {/* BB2 / BB1 — Operaciones comerciales. En construcción: solo Dirección + Anthony. */}
+      {/* BB1 (venta) / BB2 (arriendo sin admón) — Operaciones comerciales. En construcción: solo Dirección + Anthony. */}
+      {esBB && (
+        <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>
+      )}
       {esBB && (
         <Link href="/bb2" style={s.link(isActive('/bb2'))}>BB2</Link>
       )}
-      {/* BB1 (ventas) llegará aquí:  {esBB && <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>} */}
       {esCaptacion && (
         <Link href="/captaciones" style={s.link(isActive('/captaciones'))}>Captaciones</Link>
       )}
