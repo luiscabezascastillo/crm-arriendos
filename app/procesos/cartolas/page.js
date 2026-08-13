@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v18 · 2026-08-13 · Movimientos: las filas con CAMBIO MANUAL (línea añadida a mano, cargo editado o
+//   cargo con override) se pintan con fondo ROJO SUAVE, para localizarlas de un vistazo. Hereda v17.
 // VERSION: v17 · 2026-08-13 · RECAP bajo "Movimientos": se repite IDADMON+Estado, Propietario e Inmueble, para
 //   saber siempre qué contrato se está mirando al hacer scroll a la tabla. Hereda v16.
 // VERSION: v16 · 2026-08-12 · AÑADIR líneas (cargo o abono): Dirección Y KARINA (antes solo Dirección). El botón
@@ -1122,7 +1124,9 @@ function CartolaIdadmonVista() {
               <tbody>
                 {movs.map((r) => {
                   const el = estadoLiq(r)
-                  const filaBg = el === 'no_cuadra' ? '#FDECEC' : el === 'sin_liq' ? '#FEF9E7' : null
+                  // Cambio manual: línea añadida a mano, cargo editado o cargo con override → fondo rojo suave.
+                  const manualCambio = !!(r.manual || r.cargo_editado_en != null || (r.cargo_manual != null && r.cargo_manual !== ''))
+                  const filaBg = manualCambio ? '#FADBD8' : el === 'no_cuadra' ? '#FDECEC' : el === 'sin_liq' ? '#FEF9E7' : null
                   return (
                   <tr key={r.id}>
                     {MCOLS.map((c, ci) => (
