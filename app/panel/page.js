@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v8 · 2026-08-13 · Fila de LOGROS compacta a una sola línea (tarjetas horizontales: número + texto al
+//   lado), en vez de las cajas altas. Hereda v7.
 // VERSION: v7 · 2026-08-13 · Aviso "DATOS NO VERIFICADOS · PANEL EN FASE DE CONSTRUCCIÓN" en la franja de Operación.
 //   Fix: la espera media de las P acota los días a >=0 (había P con fecha futura → media negativa). Hereda v6.
 // VERSION: v6 · 2026-08-13 · CC3 Mantenimiento pasa a DATOS REALES (3 meses): Facturación (ventas ccb='CC3', neto),
@@ -131,10 +133,12 @@ const IcoWrench = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="no
 // ── Tarjeta de LOGRO ─────────────────────────────────────────────
 function Logro({ valor, label, color, sub }) {
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 10, padding: '12px 14px' }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color, lineHeight: 1.1 }}>{valor}</div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-700)', marginTop: 2 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10.5, color: 'var(--gray-400)', marginTop: 1 }}>{sub}</div>}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 10, padding: '8px 12px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1, flexShrink: 0 }}>{valor}</div>
+      <div style={{ minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--gray-700)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+        {sub && <div style={{ fontSize: 10, color: 'var(--gray-400)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
+      </div>
     </div>
   )
 }
