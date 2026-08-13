@@ -1,37 +1,8 @@
 'use client'
-// VERSION: v47 · 2026-08-12 · PDF del PROPIETARIO: las líneas 🚫 ya NO se ocultan; se muestran en NEGATIVO
-//   (bloque "no repercutido — en reclamación al arrendatario/aval") y el RESULTADO trae tres cifras:
-//   liquidación real · asumido por el propietario · pendiente de recuperar. Necesita lib/terminoPdf v8. Hereda v46.
-// VERSION: v46 · 2026-08-12 · Visor de PDF dentro de la app: "Ver PDF" (en Email+PDF) abre una ventana
-//   con iframe y botón "✕ Volver" para regresar a la hoja sin perder el trabajo. Hereda v45.
-// VERSION: v45 · 2026-08-12 · Panel de MOROSIDAD (componente MorosidadCartola) bajo la cabecera del término:
-//   comportamiento de pago del arrendatario desde la cartola, para matizar la reclamación. Hereda v44.
-// VERSION: v44 · 2026-08-11 · ENLACES también en la columna REF de Servicios y Reparaciones (helper RefLinks):
-//   "Descto. NNNN" abre el descuento y "Cxxx / Pres. Cxxx" abre el presupuesto. Textos no-ref (p. ej. "Saldo
-//   cartola…") quedan como estaban. Hereda v43.
-// VERSION: v43 · 2026-08-11 · ENLACES: los NUM de descuento (tabla del término, sucesor y garantía) enlazan a
-//   /procesos/descuentos?num=, y el código de presupuesto (Cxxx) enlaza a /procesos/presupuestos?codigo=, para
-//   abrir ese descuento/presupuesto directo. Rutas en constantes RUTA_DESCUENTOS / RUTA_PRESUPUESTOS. Hereda v42.
-// VERSION: v42 · 2026-08-11 · PERMISOS: Dirección (Luis/Alberto) entra también por rol 'direccion' (no solo por
-//   email ni por el 'admin' muerto), para tener SIEMPRE todo. Los botones ✉ Email y PDF (arrendatario/propietario/
-//   presupuesto) y ver PDF ya estaban abiertos a Karina + Dirección + Adalis/Fabiola (puedeTerminoDocs). Hereda v41.
-// VERSION: v41 · 2026-08-11 · DEEP-LINK: si la URL trae ?id=IDADMON, abre esa hoja directamente al cargar
-//   (para enlazar la "Hoja de término" desde Alertas y desde el Reloj). Aditivo, no cambia la lista. Hereda v40.
-// VERSION: v40 · 2026-08-11 · REDISEÑO de los botones y del correo. Se sustituyen TODOS los botones de envío por TRES
-//   acciones, cada una con UN panel único de correo (sin abrir PDFs en pestañas que rompían la navegación):
-//   "✉ Email y PDF arrendatario" (PDF adjunto; si hay saldo, texto de pago + DATOS DE BANCO INTERNACIONAL y abre la
-//   reclamación en Cobros; si sale a favor, texto de DEVOLUCIÓN + aviso de registrarla en Descuentos), "✉ Email y PDF
-//   propietario" (informativo, excluye líneas 🚫) y "✉ Email presupuesto" (destinatario a elegir). Todos con Para/CC/CCO,
-//   prueba y APROBACIÓN visual antes del envío. "Cambiar estado" se OCULTA a Adalis y Fabiola. "Editar" deja constancia
-//   de quién editó (historico_idadmon). Textos estándar nuevos (borrador-email v2). Endpoints: borrador-email v2,
-//   enviar-email v4 (CC/CCO del cliente), enviar-reclamacion v3. Hereda v39.
-// VERSION: v39 · 2026-08-11 · ENVÍO DE LOS PDF DEFINITIVOS: los botones "✉ Enviar Email" y "Hacer Reclamación" ahora
-//   permiten ADJUNTAR el PDF definitivo (sin marca de borrador) al correo, con doble confirmación y prueba previa.
-//   · Enviar Email: cada borrador (ex-arrendatario / propietario) puede adjuntar su liquidación (la del propietario
-//     excluye las líneas 🚫) y/o el presupuesto. "Enviar Presupuesto" ahora adjunta el PDF de verdad (no un enlace).
-//   · Hacer Reclamación: puede adjuntar la liquidación del arrendatario y/o el presupuesto.
-//   Los PDF se generan definitivos (borrador:false) y se validan en el servidor contra nuestro bucket. Se listan en
-//   la caja de confirmación para aprobarlos visualmente. Endpoints: enviar-email v3, enviar-reclamacion v3. Hereda v38.
+// VERSION: v39 · 2026-08-13 · FIX: el "Balance de pagos del arrendatario" EXCLUYE los movimientos ANULADOS de la
+//   cartola (soft-delete `cuentas.anulado=true`). Antes los sumaba, así que al "quitar" (anular) un cargo el balance no
+//   bajaba (p.ej. A00861: mostraba $1.021.188/7 mov con la fila de agosto anulada; correcto = $68/6 mov). Se lee
+//   `anulado` y se filtran esas filas en el saldo y en el conteo de "N mov.". Hereda v38.
 // VERSION: v38 · 2026-08-11 · FASE 2 — EXCLUSIÓN AL PROPIETARIO: cada línea (garantía/servicios/reparaciones) tiene un
 //   tick "🚫 Excl. prop." que la marca para NO incluirla en la liquidación del propietario (p.ej. la deuda de arriendo,
 //   que no se le abonó). Se guarda en termino_lineas.excluir_propietario. El botón del PDF se desdobla en "🧾 PDF
@@ -96,35 +67,11 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
-import MorosidadCartola from '@/app/components/MorosidadCartola'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
 // Administración (Adalis y Fabiola): pueden generar el PDF del término y enviar los correos de liquidación.
 const ADMIN_EMAILS = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
-// Rutas de los módulos enlazados desde la hoja (ajústalas si en tu repo cuelgan de otra ruta).
-const RUTA_DESCUENTOS = '/procesos/descuentos'
-const RUTA_PRESUPUESTOS = '/procesos/presupuestos'
-
-// Convierte una cadena de REF ("Descto. 4658", "Pres. C169, C176", "Saldo cartola (28 mov.)") en enlaces:
-// "Descto. NNNN" -> ficha del descuento; "Cxxx"/"Pres. Cxxx" -> ficha del presupuesto. El resto, texto plano.
-function RefLinks({ texto }) {
-  const s = String(texto || '').trim()
-  if (!s) return null
-  const partes = s.split(',').map(x => x.trim()).filter(Boolean)
-  return partes.map((p, i) => {
-    const low = p.toLowerCase()
-    const mC = p.match(/C\d+/i)
-    const mN = p.match(/\d{2,}/)
-    let href = null
-    if (mC && (low.includes('pres') || /^c\d+$/i.test(p))) href = `${RUTA_PRESUPUESTOS}?codigo=${mC[0].toUpperCase()}`
-    else if (low.includes('descto') && mN) href = `${RUTA_DESCUENTOS}?num=${mN[0]}`
-    const sep = i < partes.length - 1 ? ', ' : ''
-    return href
-      ? <span key={i}><a href={href} title="Abrir" style={{ color: '#6b7fb0', textDecoration: 'none' }}>{p} ↗</a>{sep}</span>
-      : <span key={i}>{p}{sep}</span>
-  })
-}
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
@@ -302,29 +249,21 @@ export default function TerminosPage() {
   const [form, setForm] = useState(FORM_T)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
+  const [pdfTermGen, setPdfTermGen] = useState(false)   // generando el PDF profesional del término
   const [testTo, setTestTo] = useState('')              // dirección para envíos de PRUEBA (por defecto, la del usuario)
   const [completandoWf, setCompletandoWf] = useState(false)
-  // Panel ÚNICO de correo (sustituye a emailPanel/reclamPanel/presupuesto). modo: 'arrendatario'|'propietario'|'presupuesto'.
-  const [mailPanel, setMailPanel] = useState(null)
-  const [pdfVer, setPdfVer] = useState(null)   // { url, nombre } — visor de PDF dentro de la app (con "Volver")
+  const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
+  const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
-    if (rol === 'admin' || rol === 'direccion' || DIRECCION_EMAILS.includes(email)) { setAccesoOk(true); return }
+    if (rol === 'admin' || DIRECCION_EMAILS.includes(email)) { setAccesoOk(true); return }
     supabase.from('proceso_permisos').select('proceso').eq('email', email).eq('activo', true)
       .then(({ data }) => setAccesoOk(!!(data || []).some(p => (p.proceso || '').toLowerCase().includes('termino'))))
   }, [status, email, rol])
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
   useEffect(() => { if (accesoOk === true) { cargarLista(); cargarNodos() } }, [accesoOk])
-  // Deep-link: /procesos/terminos?id=IDADMON abre esa hoja directamente (enlace desde Alertas / Reloj).
-  useEffect(() => {
-    if (accesoOk !== true) return
-    try {
-      const id = new URLSearchParams(window.location.search).get('id')
-      if (id) abrir(id)
-    } catch { /* noop */ }
-    // eslint-disable-next-line
-  }, [accesoOk])
 
   async function completarPaso(nodo) {
     if (!nodo) return
@@ -413,7 +352,7 @@ export default function TerminosPage() {
       supabase.from('termino_lineas').select('*').eq('idadmon', idadmon).order('orden'),
       supabase.from('workflow_instances').select('id').eq('idadmon', idadmon).eq('workflow_codigo', 'TERMINO').limit(1),
       supabase.from('ggcc_agua_luz').select('id, aamm, mes, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua').eq('idadmon', idadmon).order('aamm', { ascending: false }).limit(1),
-      supabase.from('cuentas').select('cargo, abono, cargo_manual').eq('idadmon', idadmon),
+      supabase.from('cuentas').select('cargo, abono, cargo_manual, anulado').eq('idadmon', idadmon),
       // Cargos al PROPIETARIO derivados de este término (saldo sin saldo, complementos, devolución de garantía…):
       // descuentos con idadmon_relacionado = este término y repercutir_a = PROPIETARIO.
       supabase.from('descuentos').select('num, mes_a_imputar, monto_a_imputar, idadmon, tipo, texto_explicativo_para_carta_a_propietario').eq('idadmon_relacionado', idadmon).eq('repercutir_a', 'PROPIETARIO'),
@@ -422,7 +361,9 @@ export default function TerminosPage() {
       .filter(r => String(r.mes_a_imputar || '') !== '----MES')
       .map(r => ({ num: r.num, monto: n0(r.monto_a_imputar), idadmon: r.idadmon, mes: r.mes_a_imputar, tipo: r.tipo, texto: r.texto_explicativo_para_carta_a_propietario || '' }))
     const ggcc = (ggccRes.data && ggccRes.data[0]) || null
-    const cuentasMovs = cuentasRes ? (cuentasRes.data || []) : []
+    // Excluir movimientos ANULADOS en la cartola (soft-delete `anulado=true`): la cartola no los cuenta en su
+    // saldo, así que el término tampoco debe (antes los sumaba → balance no bajaba al quitar un cargo). idem "N mov.".
+    const cuentasMovs = (cuentasRes ? (cuentasRes.data || []) : []).filter(r => !r.anulado)
     // MISMO cálculo que la Cartola por IDADMON: saldo = Σ(cargoEfectivo − abono), con cargoEfectivo
     // = cargo_manual (override) si existe. Así el balance cuadra al peso con el último saldo de la cartola.
     const balanceCuentas = cuentasMovs.reduce((a, r) => a + cargoEfectivo(r) - numC(r.abono), 0)
@@ -596,94 +537,141 @@ export default function TerminosPage() {
         .update({ termino_actual: form.fecha_entrega }).eq('idadmon', idadmonSel)
       if (upDA.error) { setMsg({ tipo: 'error', txt: 'Guardado el término, pero no se pudo actualizar la fecha en LOG: ' + upDA.error.message }); setGuardando(false); return }
     }
-    // Constancia de quién editó el término (auditoría). No rompe el guardado si falla.
-    try {
-      await supabase.from('historico_idadmon').insert([{
-        idadmon: idadmonSel, evento: 'termino_editado',
-        estado_anterior: null, estado_nuevo: null,
-        fecha: new Date().toISOString().slice(0, 10),
-        usuario: email, email_subject: null,
-        detalle: 'Editó la liquidación del término (resultado ' + fmtPesos(R.resultado) + ')',
-      }])
-    } catch (_) { /* la auditoría no debe bloquear el guardado */ }
     setEditando(false); setGuardando(false); setMsg({ tipo: 'ok', txt: 'Guardado.' })
   }
 
-  // ── Panel ÚNICO de correo del término ──────────────────────────────────────────────────────────
-  // Un solo flujo para las tres acciones: 'arrendatario' (con PDF; si hay saldo, invita a pagar y abre la
-  // solicitud en Cobros; si sale a favor, texto de devolución), 'propietario' (con PDF, informativo) y
-  // 'presupuesto' (con PDF del presupuesto; destinatario a elegir). Todo con CC/CCO, prueba y doble
-  // confirmación. El PDF se adjunta SOLO (definitivo, sin borrador); "Ver PDF" lo abre sin cerrar el panel.
-  async function abrirMail(modo) {
+  // ── Borradores de email (notificación de liquidación, N16/N17) ──
+  // Enviar Presupuesto: genera el PDF (descargable) y abre los borradores de email con el enlace añadido.
+  // Gate real en el endpoint (solo Karina + Dirección); aquí se refuerza con puedeVerMarkup.
+  async function generarYEnviarPresupuesto() {
     if (!puedeTerminoDocs) return
-    setTestTo(prev => prev || session?.user?.email || '')
-    setMailPanel({ modo, loading: true, error: null, adjunto: null, adjuntando: true })
-    // 1. Texto + destinatarios (borrador-email v2)
-    let base
+    setPresuGen(true); setMsg(null)
     try {
-      const res = await fetch('/api/terminos/borrador-email', {
+      const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, destinatario: modo }),
+        body: JSON.stringify({ idadmon: idadmonSel }),
       })
-      base = await res.json()
-      if (!res.ok || base.error) { setMailPanel({ modo, loading: false, error: base.error || ('Error ' + res.status) }); return }
-    } catch (e) { setMailPanel({ modo, loading: false, error: String(e?.message || e) }); return }
-    const aFavor = !!base.aFavor
-    const esCobro = modo === 'arrendatario' && !aFavor   // saldo en contra del arrendatario → va por Cobros
-    setMailPanel({
-      modo, loading: false, error: null,
-      to: base.to || '', cc: base.cc || '', bcc: '',
-      subject: base.subject || '', cuerpo: base.cuerpo || '',
-      saldo: n0(base.saldo), aFavor, esCobro, sinEmail: !!base.sinEmail,
-      contactos: base.contactos || {},
-      adjunto: null, adjuntando: true, adjuntoError: null,
-      pruebaMsg: null, enviando: false, enviado: false, confirmando: false, reenvio: false, yaAbierta: false,
-    })
-    // 2. Generar y ADJUNTAR el PDF definitivo que corresponde (arrendatario/propietario → término; presupuesto → presupuesto)
-    const r = modo === 'presupuesto' ? await pedirPdfPresupuesto() : await pedirPdfTermino(modo)
-    setMailPanel(p => (p && p.modo === modo)
-      ? ({ ...p, adjuntando: false, adjunto: r.ok ? { url: r.url, nombre: r.nombre } : null, adjuntoError: r.ok ? null : r.error })
-      : p)
-  }
-  const setMail = (field, v) => setMailPanel(p => p ? ({ ...p, [field]: v }) : p)
-
-  // Envío. { test:true } manda una PRUEBA a `testTo` (no toca a nadie real, no deja rastro, no abre Cobros).
-  // El envío REAL solo se dispara desde "✓ Confirmar y enviar". Ruta real: cobro al arrendatario → enviar-reclamacion
-  // (abre la solicitud en Cobros); el resto → enviar-email.
-  async function enviarMail({ test = false, forzar = false } = {}) {
-    const p = mailPanel
-    if (!p) return
-    const destino = test ? String(testTo || '').trim() : String(p.to || '').trim()
-    if (!destino || !/@/.test(destino)) { setMail('error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
-    if (!p.subject || !p.cuerpo) { setMail('error', 'Falta asunto o cuerpo.'); return }
-    setMailPanel(s => s ? ({ ...s, enviando: true, error: null, pruebaMsg: null }) : s)
-    const adjuntos = p.adjunto ? [{ url: p.adjunto.url, nombre: p.adjunto.nombre }] : []
-    const usarReclamacion = !test && p.esCobro
-    try {
-      let res
-      if (usarReclamacion) {
-        res = await fetch('/api/terminos/enviar-reclamacion', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idadmon: idadmonSel, to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject, cuerpo: p.cuerpo, forzar, adjuntos }),
-        })
-      } else {
-        res = await fetch('/api/terminos/enviar-email', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idadmon: idadmonSel, destinatario: p.modo, to: p.to, cc: p.cc, bcc: p.bcc, subject: p.subject, cuerpo: p.cuerpo, test, toTest: test ? destino : undefined, adjuntos }),
+      const data = await res.json()
+      if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
+      const url = data.pdf_url || null
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')   // PDF descargable en pestaña nueva
+      setMsg({ tipo: 'ok', txt: url ? 'PDF del presupuesto generado (abierto en otra pestaña para descargar). Abajo tienes el email por si quieres enviarlo.' : 'Presupuesto generado.' })
+      // Abrir los borradores de email y añadir el enlace del PDF al cuerpo de cada uno.
+      await abrirBorradores()
+      if (url) {
+        setEmailPanel(p => {
+          if (!p || !p.drafts) return p
+          const nd = {}
+          for (const k of Object.keys(p.drafts)) {
+            const d = p.drafts[k]; const cuerpo = d.cuerpo || ''
+            nd[k] = { ...d, cuerpo: cuerpo.includes(url) ? cuerpo : (cuerpo + `\n\nPresupuesto detallado (PDF): ${url}`) }
+          }
+          return { ...p, drafts: nd }
         })
       }
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: String(e?.message || e) })
+    } finally {
+      setPresuGen(false)
+    }
+  }
+
+  async function abrirBorradores() {
+    setEmailPanel({ loading: true, drafts: {} })
+    setTestTo(prev => prev || session?.user?.email || '')   // por defecto, las pruebas van a mi propio correo
+    const dests = ['arrendatario', 'propietario']
+    const drafts = {}
+    for (const d of dests) {
+      try {
+        const res = await fetch('/api/terminos/borrador-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idadmon: idadmonSel, destinatario: d }),
+        })
+        const data = await res.json()
+        drafts[d] = (res.ok && !data.error)
+          ? { to: data.to || '', subject: data.subject || '', cuerpo: data.cuerpo || '', sinEmail: !!data.sinEmail, error: null, enviando: false, enviado: false }
+          : { to: '', subject: '', cuerpo: '', sinEmail: true, error: data.error || ('Error ' + res.status), enviando: false, enviado: false }
+      } catch (e) {
+        drafts[d] = { to: '', subject: '', cuerpo: '', sinEmail: true, error: e.message, enviando: false, enviado: false }
+      }
+    }
+    setEmailPanel({ loading: false, drafts })
+  }
+  const setDraft = (dest, field, v) => setEmailPanel(p => p ? ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], [field]: v } } }) : p)
+  // Envío del borrador. Con { test:true } manda una PRUEBA a `testTo` (no toca al destinatario real ni deja rastro).
+  // El envío REAL solo se dispara desde el botón "✓ Confirmar y enviar" (doble validación en la UI).
+  async function enviarBorrador(dest, { test = false } = {}) {
+    const dr = emailPanel?.drafts?.[dest]
+    if (!dr) return
+    const destino = test ? String(testTo || '').trim() : String(dr.to || '').trim()
+    if (!destino || !/@/.test(destino)) { setDraft(dest, 'error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
+    if (!dr.subject || !dr.cuerpo) { setDraft(dest, 'error', 'Falta asunto o cuerpo.'); return }
+    setDraft(dest, 'enviando', true); setDraft(dest, 'error', null); setDraft(dest, 'pruebaMsg', null)
+    try {
+      const res = await fetch('/api/terminos/enviar-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, destinatario: dest, to: dr.to, subject: dr.subject, cuerpo: dr.cuerpo, test, toTest: test ? destino : undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setDraft(dest, 'enviando', false); setDraft(dest, 'error', data.error || ('Error ' + res.status)); return }
+      if (test) {
+        setEmailPanel(p => ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) } } }))
+      } else {
+        setEmailPanel(p => ({ ...p, drafts: { ...p.drafts, [dest]: { ...p.drafts[dest], enviando: false, enviado: true, confirmando: false, error: null } } }))
+      }
+    } catch (e) {
+      setDraft(dest, 'enviando', false); setDraft(dest, 'error', e.message)
+    }
+  }
+
+  // ── Reclamación de saldo pendiente (N18/N21) ──
+  // Un solo correo al ex-arrendatario, cc CONDICIONAL al aval. No cambia el estado.
+  async function abrirReclamacion() {
+    setReclamPanel({ loading: true, draft: null, aviso: null })
+    try {
+      const res = await fetch('/api/terminos/borrador-reclamacion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setReclamPanel({ loading: false, draft: null, aviso: data.error || ('Error ' + res.status) }); return }
+      setReclamPanel({ loading: false, aviso: null, draft: {
+        to: data.to || '', cc: data.cc || '', bcc: '', subject: data.subject || '', cuerpo: data.cuerpo || '',
+        saldo: n0(data.saldo), hayAval: !!data.hayAval, sinEmail: !!data.sinEmail,
+        error: null, yaAbierta: false, enviando: false, enviado: false, reenvio: false, pruebaMsg: null, confirmando: false,
+      } })
+      setTestTo(prev => prev || session?.user?.email || '')
+    } catch (e) {
+      setReclamPanel({ loading: false, draft: null, aviso: e.message })
+    }
+  }
+  const setReclam = (field, v) => setReclamPanel(p => (p && p.draft) ? ({ ...p, draft: { ...p.draft, [field]: v } }) : p)
+  // Con { test:true } manda una PRUEBA a `testTo` (no abre solicitud ni deja rastro). El envío real solo se dispara
+  // desde "✓ Confirmar y enviar" (doble validación).
+  async function enviarReclamacion(forzar, { test = false } = {}) {
+    const dr = reclamPanel?.draft
+    if (!dr) return
+    const destino = test ? String(testTo || '').trim() : String(dr.to || '').trim()
+    if (!destino || !/@/.test(destino)) { setReclam('error', test ? 'Pon un correo de prueba válido.' : 'Falta un destinatario válido.'); return }
+    if (!dr.subject || !dr.cuerpo) { setReclam('error', 'Falta asunto o cuerpo.'); return }
+    setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: true, error: null, pruebaMsg: null } }) : p)
+    try {
+      const res = await fetch('/api/terminos/enviar-reclamacion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, to: dr.to, cc: dr.cc, bcc: dr.bcc, subject: dr.subject, cuerpo: dr.cuerpo, forzar: !!forzar, test, toTest: test ? destino : undefined }),
+      })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setMailPanel(s => s ? ({ ...s, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta }) : s)
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: data.error || ('Error ' + res.status), yaAbierta: !!data.yaAbierta } }) : p)
         return
       }
       if (test) {
-        setMailPanel(s => s ? ({ ...s, enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) }) : s)
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: null, pruebaMsg: '✓ Prueba enviada a ' + (data.enviadoA || destino) } }) : p)
       } else {
-        setMailPanel(s => s ? ({ ...s, enviando: false, enviado: true, confirmando: false, error: null, reenvio: !!data.reenvio }) : s)
+        setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, enviado: true, error: null, confirmando: false, reenvio: !!data.reenvio } }) : p)
       }
     } catch (e) {
-      setMailPanel(s => s ? ({ ...s, enviando: false, error: String(e?.message || e) }) : s)
+      setReclamPanel(p => p ? ({ ...p, draft: { ...p.draft, enviando: false, error: e.message } }) : p)
     }
   }
 
@@ -863,7 +851,7 @@ export default function TerminosPage() {
     pasoHumano = nd; break
   }
   // ¿Es el turno de quien mira? Dirección/admin ve todo; si no, compara el área del nodo con su perfil.
-  const esDireccion = rol === 'admin' || rol === 'direccion' || DIRECCION_EMAILS.includes(email)
+  const esDireccion = rol === 'admin' || DIRECCION_EMAILS.includes(email)
   const puedeVerMarkup = esDireccion || FINANZAS_EMAILS.includes(email)  // Karina + Dirección ven/editan el markup
   // PDF del término y envío de correos: Dirección + Karina + Adalis + Fabiola (Administración). El PDF muestra precio
   // final (nunca el markup), por eso Adalis/Fabiola pueden generarlo aunque no vean/editen el % de markup.
@@ -879,88 +867,53 @@ export default function TerminosPage() {
   // ── PDF profesional del término ──────────────────────────────────────────
   // Arma el documento con los MISMOS datos que se ven en pantalla (líneas, resultado, descuentos ya filtrados
   // a "cercanos al cierre") y lo abre para revisarlo. Solo Karina + Dirección (muestra presupuesto a precio cliente).
-  // Construye el objeto `datos` que espera el PDF del término (mismos números que ve el usuario en pantalla).
-  // variante='propietario' EXCLUYE las líneas marcadas 🚫 y recalcula su resultado.
-  function construirDatosTermino(variante = 'arrendatario') {
-    const esProp = variante === 'propietario'
-    const mkDef = (() => { const v = n0(form?.markup_fcr); return v > 0 ? v : 20 })()
-    const inc = l => !(esProp && l.excluir_prop)
-    const lg = (lineas.garantia || []).filter(inc)
-    const ls = (lineas.servicios || []).filter(inc)
-    const lr = (lineas.reparaciones || []).filter(inc)
-    const Rv = calcResult({ garantia: lg, servicios: ls, reparaciones: lr }, 0, garantiaVal, repPresu, quienGar)
-    // La AUTO ("Arreglos presupuesto") representa el presupuesto: si el propietario la excluye, no se muestra su detalle.
-    const autoIncluida = lr.some(l => l.concepto === AUTO_CONCEPTO)
-    const datos = {
-      idadmon: idadmonSel,
-      inmueble: A?.inmueble || '',
-      arrendatario: A?.arrendatario || '',
-      propietario: A?.propietario || '',
-      fechaEntrega: form?.fecha_entrega ? fmtFecha(form.fecha_entrega) : '',
-      garantia: { monto: garantiaVal, quien: quienGar },
-      resultado: { tipo: Rv?.tipo || '', valor: Rv?.resultado || 0, label: (Rv?.resultado ?? 0) >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
-      datosEconomicos: lg.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-      servicios: ls.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-      reparaciones: {
-        total: Rv?.sr || 0,
-        lineas: lr.filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-        presupuesto: autoIncluida ? { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) } : { total: 0, detalle: [] },
-      },
-      // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
-      descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
-    }
-    // PDF del PROPIETARIO: en vez de tragarnos las líneas 🚫, las dejamos ver en NEGATIVO (otro color) como
-    // "no repercutido — en reclamación al ex-arrendatario/aval", y adjuntamos el RESULTADO REAL (todas las
-    // líneas) para el bloque de subtotales: real vs. asumido por el propietario vs. pendiente de recuperar.
-    if (esProp) {
-      const exG = (lineas.garantia || []).filter(l => l.excluir_prop)
-      const exS = (lineas.servicios || []).filter(l => l.excluir_prop)
-      const exR = (lineas.reparaciones || []).filter(l => l.excluir_prop)
-      const excl = [...exG, ...exS, ...exR]
-        .map(l => ({ concepto: l.concepto, comentario: l.comentario || '', monto: l.auto ? repPresu : n0(l.monto) }))
-        .filter(x => n0(x.monto) !== 0)
-      if (excl.length) {
-        const Rreal = calcResult({ garantia: lineas.garantia || [], servicios: lineas.servicios || [], reparaciones: lineas.reparaciones || [] }, 0, garantiaVal, repPresu, quienGar)
-        const vReal = n0(Rreal?.resultado)
-        const vAsum = n0(Rv?.resultado)   // == datos.resultado.valor (variante propietario)
-        datos.reclamacion = {
-          lineas: excl,
-          resultadoReal: { valor: vReal, label: vReal >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
-          resultadoAsumido: { valor: vAsum },
-          pendiente: vReal - vAsum,   // real - asumido = lo que el propietario no repercute (a recuperar)
-        }
-      }
-    }
-    return datos
-  }
-
-  // Genera el PDF DEFINITIVO (sin marca de borrador) del término y devuelve { ok, url, nombre }.
-  async function pedirPdfTermino(variante = 'arrendatario') {
+  async function generarPdfTerminoBtn(variante = 'arrendatario') {
+    if (!puedeTerminoDocs || !panel) return
+    setPdfTermGen(true); setMsg(null)
     try {
-      const datos = construirDatosTermino(variante)
+      const esProp = variante === 'propietario'
+      const mkDef = (() => { const v = n0(form?.markup_fcr); return v > 0 ? v : 20 })()
+      // Versión del PROPIETARIO: se EXCLUYEN las líneas marcadas (🚫 excluir_prop) y se recalcula su resultado.
+      const inc = l => !(esProp && l.excluir_prop)
+      const lg = (lineas.garantia || []).filter(inc)
+      const ls = (lineas.servicios || []).filter(inc)
+      const lr = (lineas.reparaciones || []).filter(inc)
+      const Rv = calcResult({ garantia: lg, servicios: ls, reparaciones: lr }, 0, garantiaVal, repPresu, quienGar)
+      // La AUTO ("Arreglos presupuesto") representa el presupuesto: si el propietario la excluye, no se muestra su detalle.
+      const autoIncluida = lr.some(l => l.concepto === AUTO_CONCEPTO)
+      const datos = {
+        idadmon: idadmonSel,
+        inmueble: A?.inmueble || '',
+        arrendatario: A?.arrendatario || '',
+        propietario: A?.propietario || '',
+        fechaEntrega: form?.fecha_entrega ? fmtFecha(form.fecha_entrega) : '',
+        garantia: { monto: garantiaVal, quien: quienGar },
+        resultado: { tipo: Rv?.tipo || '', valor: Rv?.resultado || 0, label: (Rv?.resultado ?? 0) >= 0 ? 'A favor del arrendatario (a devolver)' : 'A cobrar al arrendatario' },
+        datosEconomicos: lg.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        servicios: ls.map(l => ({ concepto: l.concepto, monto: l.auto ? repPresu : n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+        reparaciones: {
+          total: Rv?.sr || 0,
+          lineas: lr.filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
+          presupuesto: autoIncluida ? { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) } : { total: 0, detalle: [] },
+        },
+        // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
+        descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
+      }
       const res = await fetch('/api/terminos/generar-termino-pdf', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, datos, variante, borrador: false }),
+        body: JSON.stringify({ idadmon: idadmonSel, datos, variante }),
       })
       const data = await res.json()
-      if (!res.ok || data.error) return { ok: false, error: data.error || ('Error ' + res.status) }
-      return { ok: true, url: data.pdf_url || null, nombre: `Liquidacion-${idadmonSel}-${variante === 'propietario' ? 'propietario' : 'arrendatario'}.pdf` }
-    } catch (e) { return { ok: false, error: String(e?.message || e) } }
+      if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
+      const url = data.pdf_url || null
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      setMsg({ tipo: 'ok', txt: url ? `PDF ${esProp ? 'del PROPIETARIO (sin las líneas marcadas)' : 'del arrendatario'} generado — abierto en otra pestaña para revisarlo.` : 'PDF generado.' })
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: String(e?.message || e) })
+    } finally {
+      setPdfTermGen(false)
+    }
   }
-
-  // Genera el PDF del presupuesto y devuelve { ok, url, nombre }.
-  async function pedirPdfPresupuesto() {
-    try {
-      const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel }),
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) return { ok: false, error: data.error || ('Error ' + res.status) }
-      return { ok: true, url: data.pdf_url || null, nombre: `Presupuesto-${idadmonSel}.pdf` }
-    } catch (e) { return { ok: false, error: String(e?.message || e) } }
-  }
-
   // Etiqueta y color del tipo de nodo (AUTO / TAREA / VERIFICACION / DECISION)
   const tipoInfo = (tp) => {
     switch (String(tp || '').toUpperCase()) {
@@ -997,7 +950,7 @@ export default function TerminosPage() {
                 <td style={tdL}>{(!l.es_fijo && editando) ? <input style={{ ...inEd, fontSize: 11, minWidth: 110 }} value={l.concepto} placeholder="(concepto)" onChange={e => setLinea(bk, idx, 'concepto', e.target.value)} /> : (l.concepto || '—')}</td>
                 <td style={tdR}>{l.auto ? fmtPesos(repPresu) : (editando ? <input style={inNum} type="number" value={l.monto} onChange={e => setLinea(bk, idx, 'monto', e.target.value)} /> : fmtPesos(n0(l.monto)))}</td>
                 <td style={tdL}>{editando ? <input style={{ ...inEd, fontSize: 11 }} value={l.comentario} onChange={e => setLinea(bk, idx, 'comentario', e.target.value)} /> : (l.comentario || '')}</td>
-                <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? <RefLinks texto={'Pres. ' + arreglosRef} /> : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : <RefLinks texto={l.ref} />)}</td>
+                <td style={{ ...tdL, color: '#9ca3af', width: 82 }}>{l.auto ? ('Pres. ' + arreglosRef) : (editando ? <input style={{ ...inEd, fontSize: 11, width: 72 }} value={l.ref} onChange={e => setLinea(bk, idx, 'ref', e.target.value)} /> : (l.ref || ''))}</td>
                 <td style={{ textAlign: 'center', width: 58 }}>
                   {editando
                     ? <input type="checkbox" checked={!!l.excluir_prop} onChange={e => setLinea(bk, idx, 'excluir_prop', e.target.checked)} title="No incluir esta línea en el PDF/correo del propietario" />
@@ -1031,16 +984,18 @@ export default function TerminosPage() {
             <span style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button onClick={puedeTerminoDocs ? () => abrirMail('arrendatario') : undefined} disabled={!puedeTerminoDocs}
-              title={puedeTerminoDocs ? 'Correo al ex-arrendatario (y aval en copia) con el PDF de la liquidación adjunto' : 'Solo Dirección, Karina, Adalis y Fabiola'}
-              style={btn('#0891b2', !puedeTerminoDocs)}>✉ Email y PDF arrendatario</button>
-            <button onClick={puedeTerminoDocs ? () => abrirMail('propietario') : undefined} disabled={!puedeTerminoDocs}
-              title={puedeTerminoDocs ? 'Correo al propietario con el PDF de la liquidación (excluye las líneas 🚫)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
-              style={btn('#0e7490', !puedeTerminoDocs)}>✉ Email y PDF propietario</button>
-            <button onClick={puedeTerminoDocs ? () => abrirMail('presupuesto') : undefined} disabled={!puedeTerminoDocs}
-              title={puedeTerminoDocs ? 'Correo con el PDF del presupuesto (eliges el destinatario)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
-              style={btn('#7c3aed', !puedeTerminoDocs)}>✉ Email presupuesto</button>
-            {!ADMIN_EMAILS.includes(email) && <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>}
+            <button onClick={abrirBorradores} style={btn('#2563eb')}>✉ Enviar Email</button>
+            <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen}
+              title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
+              style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
+            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('arrendatario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
+              title={puedeTerminoDocs ? 'PDF de la liquidación para el ARRENDATARIO (todas las líneas)' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
+              style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF arrendatario'}</button>
+            <button onClick={puedeTerminoDocs ? () => generarPdfTerminoBtn('propietario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
+              title={puedeTerminoDocs ? 'PDF para el PROPIETARIO — excluye las líneas marcadas con 🚫 y recalcula su resultado' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar el PDF'}
+              style={btn('#0e7490', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF propietario'}</button>
+            <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
+            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             {!editando && <button onClick={() => abrir(idadmonSel)} disabled={loadingPanel}
@@ -1051,96 +1006,135 @@ export default function TerminosPage() {
         </div>
         {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
 
-        {mailPanel && (() => {
-          const p = mailPanel
-          const titulo = p.modo === 'arrendatario' ? 'Email y PDF · Ex-arrendatario'
-            : p.modo === 'propietario' ? 'Email y PDF · Propietario'
-              : 'Email · Presupuesto'
-          const accent = p.modo === 'presupuesto' ? '#7c3aed' : (p.modo === 'propietario' ? '#0e7490' : '#0891b2')
-          return (
-            <div style={{ ...card, maxWidth: 800, border: '2px solid ' + accent, background: '#FBFCFE' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>{titulo}</div>
-                <button onClick={() => setMailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
-              </div>
-              {p.loading ? <div style={{ color: '#888', fontSize: 13 }}>Preparando correo…</div>
-                : (p.error && !p.to && !p.subject) ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{p.error}</div>
-                  : p.enviado ? (
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ {p.esCobro ? ('Reclamación ' + (p.reenvio ? 'reenviada' : 'enviada') + ' y registrada en Cobros') : 'Correo enviado'} a {p.to}{p.cc ? ' (cc ' + p.cc + ')' : ''}</div>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Sale desde info@fondocapital.com con copia a administración@; si responden, te llega a ti (reply-to).{p.esCobro ? ' Al enviar de verdad se abre además la reclamación en Cobros.' : ''} Nada se envía sin tu doble confirmación.</div>
-
-                      {p.modo === 'arrendatario' && p.esCobro && <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', marginBottom: 8 }}>Saldo a cobrar: <span style={{ color: '#9B1C1C' }}>{fmtPesos(p.saldo)}</span></div>}
-                      {p.modo === 'arrendatario' && p.aFavor && <div style={{ fontSize: 12, color: '#075E54', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: 8, borderRadius: 6, marginBottom: 8 }}>Resultado a FAVOR del arrendatario: <b>{fmtPesos(p.saldo)}</b> a devolver. Recuerda registrar la devolución en el módulo <b>Descuentos</b> (este correo no la crea).</div>}
-                      {p.error && <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>{p.error}{p.yaAbierta && <button onClick={() => enviarMail({ forzar: true })} disabled={p.enviando} style={{ ...btn('#334155', p.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}</div>}
-                      {p.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{p.pruebaMsg}</div>}
-                      {p.sinEmail && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ No hay email en la ficha. Escríbelo a mano abajo.</div>}
-
-                      {p.modo === 'presupuesto' && (
-                        <div style={{ marginBottom: 8 }}>
-                          <div style={lbl}>Destinatario — elige uno o escribe abajo</div>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                            {[['Propietario', p.contactos?.propietario], ['Arrendatario', p.contactos?.arrendatario], ['Aval', p.contactos?.aval]].map(([et, mail]) => (
-                              <button key={et} onClick={() => mail && setMail('to', mail)} disabled={!mail} title={mail || 'sin email en la ficha'}
-                                style={{ ...btn(mail ? '#475569' : '#cbd5e1', !mail), width: 'auto', whiteSpace: 'nowrap' }}>{et}{mail ? '' : ' —'}</button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div style={lbl}>Para</div>
-                      <input style={{ ...inEd, marginBottom: 8 }} value={p.to} onChange={e => setMail('to', e.target.value)} placeholder="correo@…" />
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <div style={{ flex: 1 }}><div style={lbl}>Cc — copias visibles</div><input style={{ ...inEd, marginBottom: 8 }} value={p.cc} onChange={e => setMail('cc', e.target.value)} placeholder="correo1, correo2…" /></div>
-                        <div style={{ flex: 1 }}><div style={lbl}>Cco — copias ocultas</div><input style={{ ...inEd, marginBottom: 8 }} value={p.bcc} onChange={e => setMail('bcc', e.target.value)} placeholder="no visibles para los demás…" /></div>
-                      </div>
-                      <div style={lbl}>Asunto</div>
-                      <input style={{ ...inEd, marginBottom: 8 }} value={p.subject} onChange={e => setMail('subject', e.target.value)} />
-                      <div style={lbl}>Cuerpo</div>
-                      <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={p.cuerpo} onChange={e => setMail('cuerpo', e.target.value)} />
-
-                      {/* Adjunto automático (PDF definitivo). "Ver PDF" abre en pestaña nueva sin cerrar el panel. */}
-                      <div style={{ marginTop: 10, borderTop: '1px dashed #E8E6E0', paddingTop: 8 }}>
-                        <div style={{ ...lbl, marginBottom: 6 }}>Documento adjunto</div>
-                        {p.adjuntando ? <div style={{ fontSize: 12, color: '#6b7280' }}>Generando el PDF…</div>
-                          : p.adjunto ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 999, padding: '3px 10px', fontSize: 12, color: '#3730A3', fontWeight: 700 }}>
-                              📎 {p.adjunto.nombre}
-                              <button type="button" onClick={() => setPdfVer({ url: p.adjunto.url, nombre: p.adjunto.nombre })} style={{ border: 'none', background: 'none', padding: 0, color: '#4338ca', textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>Ver PDF</button>
-                              <a href={p.adjunto.url} target="_blank" rel="noopener noreferrer" title="Abrir en pestaña nueva" style={{ color: '#8a90a8', textDecoration: 'none', marginLeft: 6, fontSize: 11 }}>↗ pestaña</a>
-                            </span>
-                          ) : <div style={{ fontSize: 12, color: '#9B1C1C' }}>{p.adjuntoError || 'No se pudo adjuntar el PDF.'} <button onClick={() => abrirMail(p.modo)} style={{ ...btn('#6b7280'), width: 'auto', padding: '2px 8px', marginLeft: 6 }}>↻ Reintentar</button></div>}
-                      </div>
-
-                      {/* PRUEBA: manda este correo (con el adjunto) a la dirección de prueba. No toca al destinatario real. */}
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
-                        <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
-                        <button onClick={() => enviarMail({ test: true })} disabled={p.enviando || p.adjuntando} title="Envía este correo (con el adjunto) a la dirección de prueba" style={{ ...btn('#6b7280', p.enviando || p.adjuntando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
-                      </div>
-
-                      {/* ENVÍO REAL con DOBLE confirmación (aprobación visual). */}
-                      {!p.confirmando ? (
-                        <button onClick={() => { setMail('error', null); setMail('confirmando', true) }} disabled={p.enviando || p.adjuntando}
-                          style={{ ...btn(accent, p.enviando || p.adjuntando), marginTop: 8, width: '100%' }}>✉ Revisar y enviar</button>
-                      ) : (
-                        <div style={{ marginTop: 8, border: '1px solid #f59e0b', background: '#fffbeb', borderRadius: 8, padding: 10 }}>
-                          <div style={{ fontSize: 12, color: '#92400e', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar este correo DE VERDAD a:</div>
-                          <div style={{ fontSize: 13, color: '#1a1a2e', marginBottom: 2, fontWeight: 700 }}>{p.to || '(sin destinatario)'}</div>
-                          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 6 }}>Cc: {p.cc || '(ninguna)'} + administración@{p.bcc ? ' · Cco: ' + p.bcc : ''}.{p.esCobro ? ' Se abrirá la reclamación en Cobros.' : ''} Revisa el correo antes de confirmar.</div>
-                          {p.adjunto ? <div style={{ fontSize: 11, color: '#3730A3', marginBottom: 8, fontWeight: 700 }}>📎 Adjunta: {p.adjunto.nombre}</div>
-                            : <div style={{ fontSize: 11, color: '#9B1C1C', marginBottom: 8, fontWeight: 700 }}>⚠ Se enviará SIN PDF adjunto.</div>}
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <button onClick={() => enviarMail({ test: false })} disabled={p.enviando} style={{ ...btn('#16a34a', p.enviando), flex: 1 }}>{p.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
-                            <button onClick={() => setMail('confirmando', false)} disabled={p.enviando} style={{ ...btn('#6b7280', p.enviando), flex: 1 }}>← Volver</button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+        {emailPanel && (
+          <div style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>✉ Notificación de liquidación — borradores editables</div>
+              <button onClick={() => setEmailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
             </div>
-          )
-        })()}
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Revisa y edita cada correo antes de enviarlo. Sale desde info@fondocapital.com con copia a administración@; si alguien responde, le llega a ti (reply-to). Nada se envía sin tu clic.</div>
+            {emailPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borradores…</div> : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {['arrendatario', 'propietario'].map(dest => {
+                  const dr = emailPanel.drafts?.[dest]
+                  const titulo = dest === 'arrendatario' ? 'Ex-arrendatario' : 'Propietario'
+                  if (!dr) return <div key={dest} style={{ ...card, marginBottom: 0 }}>Sin datos.</div>
+                  return (
+                    <div key={dest} style={{ background: '#fff', border: '1px solid #E8E6E0', borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', marginBottom: 8 }}>{titulo}</div>
+                      {dr.enviado ? (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Enviado a {dr.to}</div>
+                      ) : (
+                        <>
+                          {dr.error && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>{dr.error}</div>}
+                          {dr.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{dr.pruebaMsg}</div>}
+                          {dr.sinEmail && !dr.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ No hay email en la ficha. Escríbelo a mano abajo.</div>}
+                          <div style={lbl}>Para</div>
+                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.to} onChange={e => setDraft(dest, 'to', e.target.value)} placeholder="correo@…" />
+                          <div style={lbl}>Asunto</div>
+                          <input style={{ ...inEd, marginBottom: 8 }} value={dr.subject} onChange={e => setDraft(dest, 'subject', e.target.value)} />
+                          <div style={lbl}>Cuerpo</div>
+                          <textarea style={{ ...inEd, minHeight: 220, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={dr.cuerpo} onChange={e => setDraft(dest, 'cuerpo', e.target.value)} />
+
+                          {/* PRUEBA: manda este borrador a la dirección que elijas (por defecto la tuya). No toca al destinatario real. */}
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+                            <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
+                            <button onClick={() => enviarBorrador(dest, { test: true })} disabled={dr.enviando}
+                              title="Envía este borrador a la dirección de prueba (no al destinatario real)"
+                              style={{ ...btn('#6b7280', dr.enviando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
+                          </div>
+
+                          {/* ENVÍO REAL con DOBLE confirmación: ver → confirmar/volver. Nada sale sin este segundo clic. */}
+                          {!dr.confirmando ? (
+                            <button onClick={() => { setDraft(dest, 'error', null); setDraft(dest, 'confirmando', true) }} disabled={dr.enviando}
+                              style={{ ...btn('#2563eb', dr.enviando), marginTop: 8, width: '100%' }}>✉ Enviar a {titulo}</button>
+                          ) : (
+                            <div style={{ marginTop: 8, border: '1px solid #f59e0b', background: '#fffbeb', borderRadius: 8, padding: 10 }}>
+                              <div style={{ fontSize: 12, color: '#92400e', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar este correo DE VERDAD a:</div>
+                              <div style={{ fontSize: 13, color: '#1a1a2e', marginBottom: 2, fontWeight: 700 }}>{dr.to || '(sin destinatario)'}</div>
+                              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>En copia: administración@{dest === 'arrendatario' ? ' y al aval (si tiene email en ficha)' : ''}. Revisa el correo de arriba antes de confirmar.</div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => enviarBorrador(dest, { test: false })} disabled={dr.enviando} style={{ ...btn('#16a34a', dr.enviando), flex: 1 }}>{dr.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
+                                <button onClick={() => setDraft(dest, 'confirmando', false)} disabled={dr.enviando} style={{ ...btn('#6b7280', dr.enviando), flex: 1 }}>← Volver</button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {reclamPanel && (
+          <div style={{ ...card, maxWidth: 780, borderColor: '#cbd5e1', background: '#F8FAFC' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>⚖ Reclamación de saldo pendiente</div>
+              <button onClick={() => setReclamPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>Un solo correo al ex-arrendatario, con copia al aval (si existe) y a administración@. No cambia el estado del contrato; abre una reclamación que cierra Cobranzas al pagar. Nada se envía sin tu doble confirmación.</div>
+            {reclamPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Cargando borrador…</div>
+              : reclamPanel.aviso ? <div style={{ fontSize: 13, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: 10, borderRadius: 8 }}>{reclamPanel.aviso}</div>
+              : reclamPanel.draft ? (
+                reclamPanel.draft.enviado ? (
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Reclamación {reclamPanel.draft.reenvio ? 'reenviada' : 'enviada'} a {reclamPanel.draft.to}{reclamPanel.draft.cc ? ' (cc ' + reclamPanel.draft.cc + ')' : ''}</div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#334155', marginBottom: 10 }}>Saldo a reclamar: <span style={{ color: '#9B1C1C' }}>{fmtPesos(reclamPanel.draft.saldo)}</span></div>
+                    {reclamPanel.draft.pruebaMsg && <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, background: '#F0FDF4', padding: 8, borderRadius: 6, fontWeight: 700 }}>{reclamPanel.draft.pruebaMsg}</div>}
+                    {reclamPanel.draft.error && (
+                      <div style={{ fontSize: 12, color: '#9B1C1C', marginBottom: 8, background: '#fef2f2', padding: 8, borderRadius: 6 }}>
+                        {reclamPanel.draft.error}
+                        {reclamPanel.draft.yaAbierta && <button onClick={() => enviarReclamacion(true)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginLeft: 8, padding: '3px 8px' }}>↻ Reenviar de todas formas</button>}
+                      </div>
+                    )}
+                    {reclamPanel.draft.sinEmail && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>⚠ El arrendatario no tiene email en la ficha. Escríbelo a mano abajo.</div>}
+                    {!reclamPanel.draft.hayAval && !reclamPanel.draft.error && <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>Sin avalista registrado: se envía solo al arrendatario (puedes añadir copias a mano).</div>}
+                    <div style={lbl}>Para (arrendatario)</div>
+                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.to} onChange={e => setReclam('to', e.target.value)} placeholder="correo@…" />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={lbl}>Cc — copias visibles (aval, etc.)</div>
+                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.cc} onChange={e => setReclam('cc', e.target.value)} placeholder="correo1, correo2…" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={lbl}>Cco — copias ocultas</div>
+                        <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.bcc} onChange={e => setReclam('bcc', e.target.value)} placeholder="no visibles para los demás…" />
+                      </div>
+                    </div>
+                    <div style={lbl}>Asunto</div>
+                    <input style={{ ...inEd, marginBottom: 8 }} value={reclamPanel.draft.subject} onChange={e => setReclam('subject', e.target.value)} />
+                    <div style={lbl}>Cuerpo</div>
+                    <textarea style={{ ...inEd, minHeight: 240, resize: 'vertical', fontFamily: 'monospace', whiteSpace: 'pre' }} value={reclamPanel.draft.cuerpo} onChange={e => setReclam('cuerpo', e.target.value)} />
+
+                    {/* PRUEBA interna: manda una copia a tu correo (o al que pongas), sin enviar al arrendatario ni al aval. */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+                      <input style={{ ...inEd, flex: 1, marginBottom: 0 }} value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="correo de prueba" />
+                      <button onClick={() => enviarReclamacion(false, { test: true })} disabled={reclamPanel.draft.enviando} title="Envía una copia de prueba (no al arrendatario ni al aval)" style={{ ...btn('#6b7280', reclamPanel.draft.enviando), width: 'auto', whiteSpace: 'nowrap' }}>🧪 Prueba</button>
+                    </div>
+
+                    {/* ENVÍO REAL con DOBLE confirmación */}
+                    {!reclamPanel.draft.confirmando ? (
+                      <button onClick={() => { setReclam('error', null); setReclam('confirmando', true) }} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), marginTop: 8, width: '100%' }}>⚖ Enviar reclamación</button>
+                    ) : (
+                      <div style={{ marginTop: 8, border: '1px solid #94a3b8', background: '#F1F5F9', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, color: '#334155', fontWeight: 800, marginBottom: 6 }}>⚠ Vas a enviar esta reclamación DE VERDAD a:</div>
+                        <div style={{ fontSize: 13, color: '#1e293b', marginBottom: 2, fontWeight: 700 }}>{reclamPanel.draft.to || '(sin destinatario)'}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Cc: {reclamPanel.draft.cc || '(ninguna)'} + administración@{reclamPanel.draft.bcc ? ' · Cco: ' + reclamPanel.draft.bcc : ''}. Revisa el correo antes de confirmar.</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => enviarReclamacion(false, { test: false })} disabled={reclamPanel.draft.enviando} style={{ ...btn('#334155', reclamPanel.draft.enviando), flex: 1 }}>{reclamPanel.draft.enviando ? 'Enviando…' : '✓ Confirmar y enviar'}</button>
+                          <button onClick={() => setReclam('confirmando', false)} disabled={reclamPanel.draft.enviando} style={{ ...btn('#6b7280', reclamPanel.draft.enviando), flex: 1 }}>← Volver</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : null}
+          </div>
+        )}
 
         {loadingPanel || !panel ? <div style={{ ...card, color: '#888' }}>Cargando término…</div>
           : !A ? <div style={{ ...card, color: '#b91c1c' }}>No se encontró {idadmonSel} en datos_arriendos.</div>
@@ -1164,11 +1158,6 @@ export default function TerminosPage() {
                     <div><div style={lbl}>Cont. Agua</div>{editando ? <input style={inEd} value={form.lectura_agua} onChange={e => setF('lectura_agua', e.target.value)} /> : <div style={val}>{form.lectura_agua || '—'}</div>}</div>
                     <div><div style={lbl}>Cont. Luz</div>{editando ? <input style={inEd} value={form.lectura_luz} onChange={e => setF('lectura_luz', e.target.value)} /> : <div style={val}>{form.lectura_luz || '—'}</div>}</div>
                   </div>
-                </div>
-
-                {/* MOROSIDAD — comportamiento de pago del arrendatario (desde la cartola) */}
-                <div style={{ ...card, padding: 14 }}>
-                  <MorosidadCartola idadmon={idadmonSel} />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16, alignItems: 'start' }}>
@@ -1335,7 +1324,7 @@ export default function TerminosPage() {
                     {descGarantia.length > 0 && (
                       <div style={{ ...card, padding: 10 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', marginBottom: 6 }}>Movimientos de garantía (informativo, no suma)</div>
-                        {descGarantia.map(d => <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}><span style={{ color: '#555' }}>{d.texto_explicativo_para_carta_a_propietario || d.tipo} <a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#93a0b5', textDecoration: 'none' }}>Dto. {d.num} ↗</a></span><span style={{ fontWeight: 600 }}>{fmtPesos(d.monto_a_imputar)}</span></div>)}
+                        {descGarantia.map(d => <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}><span style={{ color: '#555' }}>{d.texto_explicativo_para_carta_a_propietario || d.tipo} <span style={{ color: '#bbb' }}>Dto. {d.num}</span></span><span style={{ fontWeight: 600 }}>{fmtPesos(d.monto_a_imputar)}</span></div>)}
                       </div>
                     )}
                     <div style={card}>
@@ -1361,7 +1350,7 @@ export default function TerminosPage() {
                           <tbody>
                             {descDelTermino.map((d, i) => (
                               <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                <td style={{ ...tdL, fontWeight: 700 }}><a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#185FA5', textDecoration: 'none' }}>{d.num} ↗</a></td>
+                                <td style={{ ...tdL, color: '#185FA5', fontWeight: 700 }}>{d.num}</td>
                                 <td style={{ ...tdL, color: '#888', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
                                 <td style={{ ...tdL, color: '#666' }}>{d.repercutir_a || '—'}</td>
                                 <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
@@ -1390,7 +1379,7 @@ export default function TerminosPage() {
                               <tbody>
                                 {descDelSucesor.map((d, i) => (
                                   <tr key={i} style={{ borderBottom: '1px solid #EDE7D9' }}>
-                                    <td style={{ ...tdL, fontWeight: 700 }}><a href={`${RUTA_DESCUENTOS}?num=${d.num}`} title="Ver este descuento" style={{ color: '#8a6d3b', textDecoration: 'none' }}>{d.num} ↗</a></td>
+                                    <td style={{ ...tdL, color: '#8a6d3b', fontWeight: 700 }}>{d.num}</td>
                                     <td style={{ ...tdL, color: '#a08a5b', whiteSpace: 'nowrap' }}>{fmtFecha(d.fecha_contable)}</td>
                                     <td style={{ ...tdL, color: '#8a6d3b' }}>{d.repercutir_a || '—'}</td>
                                     <td style={tdR}>{fmtPesos(d.monto_a_imputar)}</td>
@@ -1426,7 +1415,7 @@ export default function TerminosPage() {
                           const totTotalMk = conMk.reduce((a, x) => a + x.m.total, 0)
                           return (
                             <div key={p.id} style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', marginBottom: 4 }}><a href={`${RUTA_PRESUPUESTOS}?codigo=${p.numero}`} title="Ver este presupuesto" style={{ color: '#185FA5', textDecoration: 'none' }}>{p.numero} ↗</a> · {p.descripcion || 'presupuesto'}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', marginBottom: 4 }}>{p.numero} · {p.descripcion || 'presupuesto'}</div>
                               {/* Presupuesto CON markup (precio al cliente) — el comunicable */}
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead><tr style={{ background: '#FAFAF8' }}><th style={th}>Descripción</th><th style={{ ...th, textAlign: 'right' }}>Cant</th><th style={{ ...th, textAlign: 'right' }}>Base</th><th style={{ ...th, textAlign: 'right' }}>IVA</th><th style={{ ...th, textAlign: 'right' }}>Total</th></tr></thead>
@@ -1528,20 +1517,6 @@ export default function TerminosPage() {
               </>
             )}
       </div>
-
-      {pdfVer && (
-        <div onClick={() => setPdfVer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9500, display: 'flex', flexDirection: 'column', padding: '2vh 2vw', boxSizing: 'border-box' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #E5E7EB', background: '#F8FAFC' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdfVer.nombre || 'PDF'}</span>
-              <a href={pdfVer.url} download style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', padding: '5px 10px', border: '1px solid #C7D6E6', borderRadius: 6 }}>Descargar</a>
-              <a href={pdfVer.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none', padding: '5px 10px', border: '1px solid #D8DCE2', borderRadius: 6 }}>Abrir en pestaña ↗</a>
-              <button onClick={() => setPdfVer(null)} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#334155', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>✕ Volver</button>
-            </div>
-            <iframe src={pdfVer.url} title={pdfVer.nombre || 'PDF'} style={{ flex: 1, width: '100%', border: 'none' }} />
-          </div>
-        </div>
-      )}
     </>
   )
 }
