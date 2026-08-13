@@ -1,3 +1,6 @@
+// VERSION: v23 · 2026-08-13 · Filtro de cantidad (Cargo/Abono/Saldo) mejorado: (1) campo "Igual a (exacto)" para
+//   buscar un valor concreto sin usar Desde/Hasta (si se rellena, manda sobre el rango). (2) Layout corregido:
+//   los rótulos Desde/Hasta/Igual van ENCIMA de su input (antes se solapaban con el placeholder). Hereda v22.
 // VERSION: v22 · 2026-08-12 · Columnas de dinero (Cargo/Abono/Saldo) con filtro por RANGO (Desde/Hasta) en vez de la
 //   lista de valores; y sin "Ordenar" en esas columnas. El resto de columnas mantiene su filtro tipo Excel. Hereda v21.
 // VERSION: v21 · 2026-08-04 · Columna "Descuento" movida a antes de COMENTARIOS (tras UNIQUE CONCEPT). Hereda v20 (Exportar Excel + LIQ. MES2).
@@ -166,7 +169,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
   const [pos, setPos] = useState({ left: 0, top: 0 })   // coords del dropdown (fixed)
   const [buscar, setBuscar] = useState('')
   const [pending, setPending] = useState(null)
-  const [rango, setRango] = useState({ min: '', max: '' })   // filtro por cantidad (columnas numéricas)
+  const [rango, setRango] = useState({ min: '', max: '', igual: '' })   // filtro por cantidad (columnas numéricas): rango o valor exacto
   const ref = useRef(null)
   const btnRef = useRef(null)
   useEffect(() => {
@@ -174,7 +177,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
-  useEffect(() => { if (open) { setBuscar(''); if (numeric) setRango({ min: value?.min ?? '', max: value?.max ?? '' }); else setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
+  useEffect(() => { if (open) { setBuscar(''); if (numeric) setRango({ min: value?.min ?? '', max: value?.max ?? '', igual: value?.igual ?? '' }); else setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
   // Abre el dropdown calculando su posición fija (respecto a la pantalla, no a la tabla con scroll).
   const abrir = () => {
     if (open) { setOpen(false); return }
@@ -188,7 +191,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     setOpen(true)
   }
   const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  const rangoActivo = numeric && value && typeof value === 'object' && !Array.isArray(value) && (value.min != null || value.max != null)
+  const rangoActivo = numeric && value && typeof value === 'object' && !Array.isArray(value) && (value.min != null || value.max != null || value.igual != null)
   const activo = (!numeric && value && value.length > 0) || rangoActivo || (!numeric && sortCol === col) || (chips && catFiltro && catFiltro !== 'todos')
   const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
   const p = pending || new Set()
@@ -197,7 +200,11 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
   const toggleTodas = () => { const n = new Set(p); todasVisiblesMarcadas ? visibles.forEach(o => n.delete(o)) : visibles.forEach(o => n.add(o)); setPending(n) }
   const toNum = (s) => { const t = String(s ?? '').trim(); if (t === '') return null; const n = Number(t.replace(/[^\d.-]/g, '')); return isNaN(n) ? null : n }
   const aplicar = () => {
-    if (numeric) { onApply(col, { min: toNum(rango.min), max: toNum(rango.max) }); setOpen(false); return }
+    if (numeric) {
+      const ig = toNum(rango.igual)
+      onApply(col, ig != null ? { igual: ig } : { min: toNum(rango.min), max: toNum(rango.max) })
+      setOpen(false); return
+    }
     const arr = [...p]; onApply(col, (arr.length === 0 || arr.length === (opciones || []).length) ? [] : arr); setOpen(false)
   }
   const limpiar = () => {
@@ -230,17 +237,27 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
           {numeric ? (
             <>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Filtrar por cantidad</div>
-              <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 8 }}>Deja un campo vacío para acotar solo por un lado.</div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Desde
+              <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 8 }}>Un valor exacto, o un rango Desde/Hasta (deja un lado vacío para acotar solo por uno).</div>
+              {/* Valor exacto: si se rellena, manda sobre el rango */}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#6B7280', marginBottom: 8 }}>
+                <span>Igual a (exacto)</span>
+                <input inputMode="numeric" value={rango.igual} onChange={e => setRango(v => ({ ...v, igual: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') aplicar() }} placeholder="valor exacto"
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
+              </label>
+              <div style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', margin: '0 0 8px' }}>— o un rango —</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 4, opacity: String(rango.igual).trim() ? 0.4 : 1 }}>
+                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#6B7280' }}>
+                  <span>Desde</span>
                   <input inputMode="numeric" value={rango.min} onChange={e => setRango(v => ({ ...v, min: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') aplicar() }} placeholder="mín"
-                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginTop: 3, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
+                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
                 </label>
-                <label style={{ flex: 1, fontSize: 11, color: '#6B7280' }}>Hasta
+                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#6B7280' }}>
+                  <span>Hasta</span>
                   <input inputMode="numeric" value={rango.max} onChange={e => setRango(v => ({ ...v, max: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') aplicar() }} placeholder="máx"
-                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginTop: 3, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
+                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }} />
                 </label>
               </div>
               <div style={{ height: 8 }} />
@@ -345,7 +362,7 @@ export default function BiVista() {
   const colFiltrada = (key) => {
     const a = filtros[key]
     if (Array.isArray(a)) return a.length > 0
-    if (a && typeof a === 'object') return a.min != null || a.max != null   // filtro de rango numérico
+    if (a && typeof a === 'object') return a.min != null || a.max != null || a.igual != null   // filtro numérico (rango o exacto)
     return false
   }
   const hayFiltroActivo = catFiltro !== 'todos' || COLS.some(c => colFiltrada(c.key)) || !!sortCol
@@ -354,7 +371,7 @@ export default function BiVista() {
     const n = { ...prev }
     const vacio = !val
       || (Array.isArray(val) && val.length === 0)
-      || (typeof val === 'object' && !Array.isArray(val) && val.min == null && val.max == null)
+      || (typeof val === 'object' && !Array.isArray(val) && val.min == null && val.max == null && val.igual == null)
     if (vacio) delete n[col]; else n[col] = val
     return n
   })
@@ -430,10 +447,11 @@ export default function BiVista() {
     let out = conCheck
     if (catFiltro !== 'todos') out = out.filter(r => colorFila(r) === catFiltro)
     const activos = Object.entries(filtros).filter(([, a]) =>
-      (Array.isArray(a) && a.length > 0) || (a && typeof a === 'object' && !Array.isArray(a) && (a.min != null || a.max != null)))
+      (Array.isArray(a) && a.length > 0) || (a && typeof a === 'object' && !Array.isArray(a) && (a.min != null || a.max != null || a.igual != null)))
     if (activos.length) out = out.filter(r => activos.every(([k, a]) => {
       if (Array.isArray(a)) return a.includes(valorCelda(r, k))   // filtro de casillas (texto)
-      const x = num(r[k])                                          // filtro de rango (numérico)
+      const x = num(r[k])                                          // filtro numérico (exacto o rango)
+      if (a.igual != null) return x === a.igual                    // valor exacto: manda sobre el rango
       if (a.min != null && x < a.min) return false
       if (a.max != null && x > a.max) return false
       return true
