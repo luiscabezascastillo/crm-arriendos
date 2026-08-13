@@ -1,5 +1,9 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v3 · 2026-08-13 · Botón "Ver pagos de más" (por defecto OCULTO): además de los deudores, permite mostrar
+//   los IDADMON con saldo a FAVOR (falta < 0). No afectan a las métricas (En falta / Falta de arriendo / Deuda
+//   servicios), que siguen contando solo deudores; se distinguen con badge "+pagó", fondo e importe en verde.
+//   Se enriquecen y filtran igual que el resto (comentario, chequeado). Hereda v2.
 // VERSION: v2 · 2026-08-13 · Columna "Chequeado" (tick por fila) para marcar las filas ya revisadas, con filtro
 //   Excel arriba (SI/NO). Es solo de gestión: se guarda por idadmon+mes en la tabla `faltan_check` (endpoint
 //   /api/faltan/check) SIN tocar ningún dato de la liquidación. Gate de escritura = Dirección + Admin (igual que
@@ -83,6 +87,8 @@ export default function FaltanPage() {
   const [editTxt, setEditTxt] = useState('')
   const [savingCom, setSavingCom] = useState(false)
   const [checks, setChecks] = useState({})              // idadmon -> true (chequeado del mes)
+  const [filasPago, setFilasPago] = useState([])        // IDADMON con saldo a favor (pagaron de más)
+  const [verPagoDeMas, setVerPagoDeMas] = useState(false)   // por defecto ocultos
 
   // ── Filtros estilo Excel (mismo motor que CC1/Cobranza): un estado por columna + orden global ──
   const [filters, setFilters] = useState({})
@@ -93,9 +99,11 @@ export default function FaltanPage() {
   const hayAlguno = FALTAN_COLS.some(c => filtroActivo(filters[c.key])) || !!orden?.key
 
   // Enriquecer cada fila con su comentario (que vive en otro estado) para poder filtrar/exportar por él.
+  // Fuente visible: deudores siempre; los "pagó de más" solo si el botón está activo.
+  const filasVista = useMemo(() => (verPagoDeMas ? [...filas, ...filasPago] : filas), [filas, filasPago, verPagoDeMas])
   const filasEnr = useMemo(
-    () => filas.map(f => ({ ...f, comentario: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '', chequeado: checks[f.idadmon] ? 'SI' : 'NO' })),
-    [filas, comentarios, checks]
+    () => filasVista.map(f => ({ ...f, comentario: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '', chequeado: checks[f.idadmon] ? 'SI' : 'NO' })),
+    [filasVista, comentarios, checks]
   )
   // Derivación: filtros de columna → orden. Sin orden explícito, se mantiene el orden original
   // (FCR primero, luego por deuda desc), igual que antes.
@@ -118,7 +126,7 @@ export default function FaltanPage() {
   useEffect(() => { if (accesoOk === true) cargar(mes) }, [accesoOk])
 
   async function cargar(m) {
-    setCargando(true); setError(null); setFilas([]); setComentarios({}); setChecks({})
+    setCargando(true); setError(null); setFilas([]); setFilasPago([]); setComentarios({}); setChecks({})
     try {
       // 1) Liquidación del periodo -> quedarse con los que tienen falta de arriendo > 0
       const { data: liq, error: e1 } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
@@ -134,11 +142,13 @@ export default function FaltanPage() {
         if (!esProp) g.inmueble = r.inmueble
         else if (!g.inmueble) g.inmueble = String(r.inmueble || '').replace('[proporcional mes anterior] ', '')
       }
-      const conFalta = Object.values(porId).filter(g => g.falta > 0)
-      if (conFalta.length === 0) { setFilas([]); setCargando(false); return }
+      const grupos = Object.values(porId)
+      const conFalta = grupos.filter(g => g.falta > 0)
+      const conPago  = grupos.filter(g => g.falta < 0)   // pagaron de más (saldo a favor)
+      if (conFalta.length === 0 && conPago.length === 0) { setFilas([]); setFilasPago([]); setCargando(false); return }
 
-      // 2) Servicios (saldo vigente = fila del aamm más alto por IDADMON)
-      const ids = conFalta.map(g => g.idadmon)
+      // 2) Servicios (saldo vigente = fila del aamm más alto por IDADMON) — para deudores y pagos de más
+      const ids = [...conFalta, ...conPago].map(g => g.idadmon)
       const { data: serv, error: e2 } = await supabase
         .from('ggcc_agua_luz')
         .select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas')
@@ -165,7 +175,7 @@ export default function FaltanPage() {
         }
       }
 
-      const out = conFalta.map(g => {
+      const construir = (g, pagoDeMas) => {
         const s = vig[g.idadmon] || { ggcc: 0, luz: 0, agua: 0, gas: 0, aamm: null }
         const servTotal = s.ggcc + s.luz + s.agua + s.gas
         return {
@@ -173,10 +183,15 @@ export default function FaltanPage() {
           falta: g.falta, base: g.base, recibido: g.recibido,
           ggcc: s.ggcc, luz: s.luz, agua: s.agua, gas: s.gas, servTotal, servAamm: s.aamm,
           cobraDueno: cobraMap[g.idadmon] === 'DUEÑO',   // paga directo al dueño (no lo controla FCR)
+          pagoDeMas,
         }
-      }).sort((a, b) => (Number(a.cobraDueno) - Number(b.cobraDueno)) || (b.falta - a.falta))   // FCR primero (por deuda desc), dueño al final
+      }
+      const out = conFalta.map(g => construir(g, false))
+        .sort((a, b) => (Number(a.cobraDueno) - Number(b.cobraDueno)) || (b.falta - a.falta))   // FCR primero (por deuda desc), dueño al final
+      const outPago = conPago.map(g => construir(g, true)).sort((a, b) => a.falta - b.falta)     // mayor pago de más arriba
 
       setFilas(out)
+      setFilasPago(outPago)
 
       // 3) Comentarios internos del mes (por idadmon)
       try {
@@ -346,6 +361,12 @@ export default function FaltanPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          {filasPago.length > 0 && (
+            <button onClick={() => setVerPagoDeMas(v => !v)}
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: 7, border: '1px solid ' + (verPagoDeMas ? '#A7F3D0' : '#E5E7EB'), background: verPagoDeMas ? '#ECFDF5' : '#fff', color: verPagoDeMas ? '#065F46' : '#6B7280', cursor: 'pointer' }}>
+              {verPagoDeMas ? '− Ocultar pagos de más' : '+ Ver pagos de más'} ({filasPago.length})
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           {hayAlguno && (
             <button onClick={limpiarTodo}
@@ -388,19 +409,22 @@ export default function FaltanPage() {
             </div>
 
             <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px' }}>
-              {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
-              {filas.length > 0 && filtradas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>Sin resultados con los filtros aplicados.</div>}
+              {filasEnr.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
+              {filasEnr.length > 0 && filtradas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>Sin resultados con los filtros aplicados.</div>}
 
               {filtradas.map((f, i) => (
-                <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: f.cobraDueno ? '#F9FAFB' : '#fff' }}>
-                  <div style={{ fontWeight: 600, color: f.cobraDueno ? '#9CA3AF' : undefined }}>{f.idadmon}</div>
+                <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: f.pagoDeMas ? '#F0FDF4' : (f.cobraDueno ? '#F9FAFB' : '#fff') }}>
+                  <div style={{ fontWeight: 600, color: f.cobraDueno ? '#9CA3AF' : undefined, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span>{f.idadmon}</span>
+                    {f.pagoDeMas && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: '#D1FAE5', color: '#065F46', whiteSpace: 'nowrap' }}>+pagó</span>}
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, color: f.cobraDueno ? '#9CA3AF' : undefined }} title={f.propietario || ''}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.propietario || '—'}</span>
                     {f.cobraDueno && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#E5E7EB', color: '#6B7280' }}>cobra dueño</span>}
                   </div>
                   <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: f.cobraDueno ? '#9CA3AF' : '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
                   <div style={{ textAlign: 'right', color: f.cobraDueno ? '#9CA3AF' : undefined }}>{fmtPesos(f.base)}</div>
-                  <div style={{ textAlign: 'right', fontWeight: 700, color: f.cobraDueno ? '#9CA3AF' : '#B91C1C' }}>{fmtPesos(f.falta)}</div>
+                  <div style={{ textAlign: 'right', fontWeight: 700, color: f.pagoDeMas ? '#047857' : (f.cobraDueno ? '#9CA3AF' : '#B91C1C') }}>{fmtPesos(f.falta)}</div>
                   {celdaServ(f.ggcc, UMBRAL.ggcc)}
                   {celdaServ(f.luz, UMBRAL.luz)}
                   {celdaServ(f.agua, UMBRAL.agua)}
