@@ -1,4 +1,12 @@
 'use client'
+// VERSION: v4 · 2026-08-13 · CC1: fila "Costes a verificar" cableada (vw_panel_cc1_costes): nóminas de
+//   Karina/Adalis/Anthony (rem_lineas) + honorarios de Luis/Tirza, del MES CERRADO anterior (AGO usa JUL).
+//   Parcial: falta Fabiola y aportes patronales. También: morosos ahora incluyen estado S y SQ. Hereda v3.
+// VERSION: v3 · 2026-08-13 · CC1 Administración pasa a DATOS REALES: mini-tabla de los 3 últimos meses de
+//   liquidación (ventana móvil que avanza el día 23) con Propiedades arrendadas · Total Dueños · Admon de FCR
+//   (comisión neta sin IVA, excluyendo a Paola + $210.000 fijos). Mes CONGELADO → vw_panel_cc1_idadmon; mes EN
+//   CURSO (no congelado) → vw_panel_cc1_vivo (estimado en vivo desde datos_arriendos: renta UF×valor_uf o cuota,
+//   comisión = renta×pct_adm). Cambia solo al congelarse. Costes "por definir", morosidad "próx.". CC2/CC3 demo. Hereda v2.
 // VERSION: v2 · 2026-08-13 · Zona inferior del panel reconstruida con DATOS REALES (Supabase): cuadro de LOGROS
 //   + 4 columnas (Términos pendientes ×2, Morosos cartola+servicios, Disponibles SQ/P). Lee las vistas
 //   vw_panel_terminos / vw_panel_morosos / vw_panel_disponibles. Se quitan "Actividad reciente" y "Tareas
@@ -10,6 +18,47 @@ import TopNav from '../components/ui/TopNav'
 import { supabase } from '../../lib/supabaseClient'
 
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
+
+// Formato compacto para la mini-tabla de CC1 ($76,7M · $5,1M · $298K)
+const compact = n => {
+  const v = Number(n) || 0
+  if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(1).replace('.', ',') + 'M'
+  if (Math.abs(v) >= 1e3) return '$' + Math.round(v / 1e3) + 'K'
+  return '$' + Math.round(v)
+}
+
+// Ventana móvil de 3 meses de liquidación. Avanza uno el día 23 (cuando se cierra el mes).
+const MABR = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
+function mesesVentana() {
+  const now = new Date()
+  let y = now.getFullYear(), m = now.getMonth()
+  if (now.getDate() >= 23) { m += 1; if (m > 11) { m = 0; y += 1 } }
+  const out = []
+  for (let k = 2; k >= 0; k--) {
+    let mm = m - k, yy = y
+    while (mm < 0) { mm += 12; yy -= 1 }
+    out.push({ aamm: String(yy % 100).padStart(2, '0') + String(mm + 1).padStart(2, '0'), lbl: MABR[mm] + ' ' + String(yy % 100).padStart(2, '0') })
+  }
+  return out
+}
+
+// AAMM del mes anterior (para el coste del mes ya cerrado: AGO usa JUL, etc.)
+function prevAamm(aamm) {
+  let yy = +aamm.slice(0, 2), mm = +aamm.slice(2)
+  mm -= 1; if (mm < 1) { mm = 12; yy -= 1 }
+  return String(yy).padStart(2, '0') + String(mm).padStart(2, '0')
+}
+
+function CC1Row({ label, vals, strong, color }) {
+  return (
+    <tr>
+      <td style={{ textAlign: 'left', fontSize: 11.5, color: 'var(--gray-600)', padding: '5px 4px', whiteSpace: 'nowrap' }}>{label}</td>
+      {vals.map((v, i) => (
+        <td key={i} style={{ textAlign: 'right', fontSize: 12, fontWeight: strong ? 700 : 500, color: color || 'var(--gray-800)', padding: '5px 4px', fontVariantNumeric: 'tabular-nums' }}>{v}</td>
+      ))}
+    </tr>
+  )
+}
 
 const palette = {
   blue:   { header: '#1a56db' },
@@ -107,6 +156,8 @@ export default function PanelPage() {
   const [morosos, setMorosos]   = useState([])
   const [dispon, setDispon]     = useState([])
   const [logros, setLogros]     = useState({ auditados: 0, reclamaciones: 0, depuradas: 0, activos: 0, disponibles: 0 })
+  const [meses]                 = useState(mesesVentana)
+  const [cc1, setCc1]           = useState([])
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -125,6 +176,24 @@ export default function PanelPage() {
           supabase.from('vw_panel_morosos').select('*').order('deuda_total', { ascending: false }).limit(60),
           supabase.from('vw_panel_disponibles').select('*').order('dias', { ascending: false, nullsFirst: false }).limit(60),
         ])
+        const aamm = meses.map(x => x.aamm)
+        const prevs = meses.map(x => prevAamm(x.aamm))   // costes = mes cerrado anterior
+        const [cad, cvivo, ccos] = await Promise.all([
+          supabase.from('vw_panel_cc1_idadmon').select('*').in('mes', aamm),   // meses congelados
+          supabase.from('vw_panel_cc1_vivo').select('*').limit(1),             // mes en curso (estimado)
+          supabase.from('vw_panel_cc1_costes').select('*').in('aamm', prevs),  // costes del mes cerrado
+        ])
+        const byMes = {}
+        for (const r of cad.data || []) byMes[r.mes] = { ...r, vivo: false }
+        const vivo = (cvivo.data && cvivo.data[0]) || null
+        const costesMap = {}
+        for (const r of ccos.data || []) costesMap[r.aamm] = r.costes
+        // Mes congelado → idadmon; mes en curso (no está en idadmon) → estimado en vivo. Costes = mes anterior.
+        const cc1data = meses.map(x => {
+          const base = byMes[x.aamm] ? { ...x, ...byMes[x.aamm] } : { ...x, ...(vivo || {}), vivo: true }
+          base.costes = costesMap[prevAamm(x.aamm)]
+          return base
+        })
         const [auditados, depuradas, activos, disponibles] = await Promise.all([
           cnt('datos_arriendos', [['estado', 'Q-Auditado']]),
           cnt('cuentas', [['concepto', 'COBRO DIRECTO PROPIETARIA']]),
@@ -135,6 +204,7 @@ export default function PanelPage() {
         try { const { count } = await supabase.from('cobranza_gestiones').select('*', { count: 'exact', head: true }); reclamaciones = count || 0 } catch { /* tabla vacía o inexistente */ }
         if (!vivo) return
         setTerminos(t.data || []); setMorosos(m.data || []); setDispon(d.data || [])
+        setCc1(cc1data)
         setLogros({ auditados, reclamaciones, depuradas, activos, disponibles })
       } finally {
         if (vivo) setCargando(false)
@@ -171,9 +241,41 @@ export default function PanelPage() {
         {/* OPERACIÓN (demo — pendiente de cablear) */}
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Operación</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
-          <AreaCard color="blue"  icon={<IcoHome />}   title="CC1 Administración"   href="/cc1"  actionLabel="+ Nueva propiedad"
-            rows={[{ label: 'Propiedades', value: '95' }, { label: 'Ingresos', value: '$78.200' }, { label: 'Costes', value: '$45.000' }, { label: 'Morosos', value: '8 (8,4%)', highlight: 'danger', labelHref: '/op/morosidad' }]}
-            alert={{ type: 'danger', text: 'Aviso por morosidad' }} />
+          {/* CC1 — DATOS REALES (liquidaciones, 3 meses) */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ background: '#1a56db', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#fff', opacity: 0.9, display: 'flex' }}><IcoHome /></span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>CC1 Administración</span>
+              <GridDots />
+            </div>
+            <div style={{ padding: '8px 14px 4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={{ textAlign: 'left', padding: '2px 4px' }}></th>
+                  {meses.map((mm, i) => <th key={mm.aamm} style={{ textAlign: 'right', fontSize: 10, color: cc1[i]?.vivo ? '#c2410c' : 'var(--gray-500)', fontWeight: 700, padding: '2px 4px', letterSpacing: '.02em' }}>{mm.lbl}{cc1[i]?.vivo ? ' *' : ''}</th>)}
+                </tr></thead>
+                <tbody>
+                  <CC1Row label="Propiedades arrendadas" vals={cc1.map(c => c.arrendadas != null ? c.arrendadas : '—')} />
+                  <CC1Row label="Total Dueños"           vals={cc1.map(c => c.total_duenos != null ? compact(c.total_duenos) : '—')} strong />
+                  <CC1Row label="Admon de FCR"           vals={cc1.map(c => c.admon_fcr != null ? compact(c.admon_fcr) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Costes a verificar"     vals={cc1.map(c => c.costes != null ? compact(c.costes) : '—')} color="#B45309" />
+                </tbody>
+              </table>
+              {cc1.some(c => c.vivo) && (
+                <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso: estimado en vivo (sin reajuste IPC); se fija al congelar</div>
+              )}
+              <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Costes = mes cerrado anterior · parcial (nóminas + honorarios; falta Fabiola y aportes)</div>
+            </div>
+            <div style={{ padding: '2px 18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>Índice de morosidad</span>
+                <span style={{ fontSize: 11, color: 'var(--gray-400)', fontStyle: 'italic' }}>próximamente</span>
+              </div>
+            </div>
+            <div style={{ padding: '10px 16px 16px' }}>
+              <Link href="/procesos/liquidaciones" style={{ display: 'block', padding: '7px 0', borderRadius: 8, background: '#1a56db', color: '#fff', textAlign: 'center', fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>Ver liquidaciones</Link>
+            </div>
+          </div>
           <AreaCard color="amber" icon={<IcoKey />}    title="CC2 Arriendos Admon"  href="/cc2"  actionLabel="+ Nuevo arriendo"
             rows={[{ label: 'Cerrados', value: '18' }, { label: 'Ingresos', value: '$10.500' }, { label: 'Conversión', value: '45%' }, { label: 'Prop. vacías', value: '6 (6,3%)', highlight: 'warning' }]}
             alert={{ type: 'warning', text: 'Pendientes de firma' }} />
