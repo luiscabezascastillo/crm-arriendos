@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v11 · 2026-08-13 · Cartolas/Inicios: filtros tipo Excel por columna (mismo motor que CC1,
+//   lib/filtroExcel) en cada cabecera de la tabla, con orden y multiselección, y botón "Exportar Excel"
+//   que vuelca EXACTAMENTE lo filtrado (respetando filtros y orden) a .xlsx. Cada grupo (Vigentes/Término)
+//   filtra y exporta de forma independiente. Hereda v10.
 // VERSION: v10 · 2026-08-10 · Escalera alineada a la regla FCR: 1er aviso SOLO arrendatario; desde el 2º,
 //   arrendatario + aval juntos (día 5). La worklist lo refleja. Hereda v9.
 // VERSION: v9 · 2026-08-10 · Multa/interés automático en la reclamación: días de mora × % diario × deuda
@@ -19,8 +23,9 @@
 //   Cabecera "Cobranza de {tipo} · situación al {fecha, hora}". Columna "Último abono". Toggles vigente/término,
 //   sin_cobrador resaltado. Inicios sigue disponible como sub-vista. Servicios enlaza a /op/deudas.
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const money = (v) => { const n = num(v); return (n ? '$' + n.toLocaleString('es-CL') : '$0') }
@@ -68,6 +73,30 @@ function pendientesDe(dias, r) {
   const d = dias == null ? 999 : dias   // sin fecha de abono → tratar como mora antigua
   return LADDER.filter(s => d >= s.dia && !pasoHecho(s, r))
 }
+
+// ── Filtros estilo Excel (mismo motor que CC1: lib/filtroExcel). Una definición de columna por
+//    cada campo filtrable de la tabla de Cartolas/Inicios. `fkey` extrae el valor de la fila y
+//    `flabel` lo formatea para el desplegable del filtro. ──
+const SIT_LBL = { moroso: 'Moroso', al_dia: 'Al día', sobrepago: 'Revisar · sobrepago' }
+const fmtNumCL = (k) => { const n = Number(k); return isNaN(n) ? String(k) : n.toLocaleString('es-CL') }
+const COB_COLS = [
+  { key: 'idadmon', label: 'IDADMON', tipo: 'texto',
+    fkey: f => f.idadmon || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'propietario', label: 'Propietario', tipo: 'texto',
+    fkey: f => f.propietario || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'inmueble', label: 'Inmueble', tipo: 'texto',
+    fkey: f => f.inmueble || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'arrendatario', label: 'Arrendatario', tipo: 'texto',
+    fkey: f => f.arrendatario || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'estado', label: 'Est.', tipo: 'texto',
+    fkey: f => f.estado || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'ultimo_abono', label: 'Último abono', tipo: 'texto',
+    fkey: f => f.ultimo_abono || '', flabel: k => (k === '' ? '(sin abono)' : k) },
+  { key: 'deuda', label: 'Deuda', tipo: 'num',
+    fkey: f => String(num(f.deuda)), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'clase', label: 'Situación', tipo: 'texto',
+    fkey: f => f.clase || '', flabel: k => (k === '' ? '(vacías)' : (SIT_LBL[k] || k)) },
+]
 
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
@@ -193,7 +222,7 @@ function VistaCobranza({ tipo }) {
                     {r.con_deuda || 0} con deuda · {r.al_dia || 0} al día · {r.sobrepago || 0} a revisar · deuda total {money(r.total_deuda)}
                   </span>
                 </div>
-                <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} onGestionar={setGestionar} pendMap={pendMap} />
+                <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} grupo={g} onGestionar={setGestionar} pendMap={pendMap} />
               </div>
             ))}
 
@@ -210,79 +239,150 @@ function VistaCobranza({ tipo }) {
   )
 }
 
-function Tabla({ filas, tipo, onGestionar, pendMap }) {
-  if (!filas.length) return <div style={{ padding: 16, color: C.sub, fontSize: 13 }}>Sin registros en este grupo.</div>
+function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
+  // Estado de filtro/orden PROPIO de esta tabla (como una mini-CC1): cada grupo (Vigentes/Término)
+  // filtra y ordena de forma independiente. Así no hay colisión entre las dos tablas de la vista.
+  const [filters, setFilters] = useState({})
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
+  const hayAlguno = COB_COLS.some(c => filtroActivo(filters[c.key])) || !!orden?.key
+
+  const esInicios = tipo === 'inicios'
+
+  // Derivación en memoria: filtros de columna → orden (mismo motor que CC1).
+  const filtradas = useMemo(() => aplicarFiltros(filas, COB_COLS, filters, orden), [filas, filters, orden])
+
+  // Exporta a Excel EXACTAMENTE lo filtrado (`filtradas`), con las columnas de la tabla.
+  async function exportarExcel() {
+    const XLSX = await import('xlsx')
+    const salida = filtradas.map(f => {
+      const pm = pendMap && pendMap[f.idadmon]
+      let prox = ''
+      if (f.clase === 'moroso' && pm) prox = pm.pend.length ? pm.pend[0].label : 'al día en gestiones'
+      const row = {
+        IDADMON: f.idadmon || '',
+        Propietario: f.propietario || '',
+        Inmueble: f.inmueble || '',
+        Arrendatario: f.arrendatario || '',
+        Estado: f.estado || '',
+        'Último abono': f.ultimo_abono || '',
+      }
+      if (esInicios) row['Último inicio'] = f.fecha_ultimo_inicio || ''
+      row['Deuda'] = num(f.deuda)
+      row['Situación'] = SIT_LBL[f.clase] || f.clase || ''
+      row['Días mora'] = (pm && pm.dias != null) ? pm.dias : ''
+      row['Próxima acción'] = prox
+      row['Comentario'] = f.comentario || f.coment_interno || ''
+      return row
+    })
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(salida)
+    XLSX.utils.book_append_sheet(wb, ws, 'Cobranza')
+    const hoy = new Date().toISOString().slice(0, 10)
+    const gtxt = grupo === 'termino' ? 'termino' : 'vigente'
+    XLSX.writeFile(wb, `Cobranza_${tipo}_${gtxt}_${hoy}.xlsx`)
+  }
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
   const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
-  const esInicios = tipo === 'inicios'
+  const lbl = { fontSize: 11, fontWeight: 600, color: C.sub }
+
+  // Cabecera reutilizable: etiqueta + control de filtro Excel para una columna.
+  const HF = (key) => (
+    <HeaderFilter col={COB_COLS.find(c => c.key === key)} movs={filas}
+      state={filters[key]} setState={v => setFiltroCol(key, v)}
+      open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
+      limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} />
+  )
+
+  if (!filas.length) return <div style={{ padding: 16, color: C.sub, fontSize: 13 }}>Sin registros en este grupo.</div>
 
   return (
-    <div style={{ overflowX: 'auto', border: '0.5px solid ' + C.line, borderRadius: 8 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1060 }}>
-        <thead>
-          <tr>
-            <th style={th}>IDADMON</th>
-            <th style={th}>Propietario / Inmueble</th>
-            <th style={th}>Arrendatario</th>
-            <th style={{ ...th, textAlign: 'center' }}>Est.</th>
-            <th style={{ ...th, textAlign: 'right' }}>Último abono</th>
-            {esInicios && <th style={{ ...th, textAlign: 'right' }}>Últ. inicio</th>}
-            <th style={{ ...th, textAlign: 'right' }}>Deuda</th>
-            <th style={th}>Situación</th>
-            <th style={th}>Próxima acción</th>
-            <th style={{ ...th, textAlign: 'center' }}>Gestión</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map(f => {
-            const esMoroso = f.clase === 'moroso'
-            const esSobre = f.clase === 'sobrepago'
-            const bg = f.clase === 'al_dia' ? C.verdeBg : (esSobre ? C.ambarBg : '#fff')
-            const aviso = f.sin_cobrador
-            return (
-              <tr key={f.idadmon} style={{ background: bg, boxShadow: aviso ? 'inset 3px 0 0 ' + C.ambar : 'none' }}>
-                <td style={{ ...td, fontWeight: 600 }}>{f.idadmon}</td>
-                <td style={td}>
-                  <div style={{ fontWeight: 600 }}>{f.propietario || '—'}</div>
-                  <div style={{ color: C.sub, fontSize: 11 }}>{f.inmueble || ''}</div>
-                </td>
-                <td style={{ ...td, color: C.sub }}>{f.arrendatario || '—'}</td>
-                <td style={{ ...td, textAlign: 'center' }}>{f.estado || '—'}</td>
-                <td style={{ ...td, textAlign: 'right', color: C.sub, fontVariantNumeric: 'tabular-nums' }}>{f.ultimo_abono || '—'}</td>
-                {esInicios && <td style={{ ...td, textAlign: 'right', color: C.sub, fontVariantNumeric: 'tabular-nums' }}>{f.fecha_ultimo_inicio || '—'}</td>}
-                <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: esSobre ? 700 : 600,
-                  color: esMoroso ? C.rojo : (f.clase === 'al_dia' ? C.verde : C.ambar) }}>
-                  {money(f.deuda)}
-                </td>
-                <td style={td}>
-                  {esMoroso && <span style={{ color: C.rojo, fontWeight: 600 }}>Moroso</span>}
-                  {f.clase === 'al_dia' && <span style={{ color: C.verde }}>Al día</span>}
-                  {esSobre && <span style={{ color: C.ambar, fontWeight: 700 }}>Revisar · posible mala asignación</span>}
-                  {aviso && <div style={{ color: C.ambar, fontSize: 11, fontWeight: 600, marginTop: 2 }}>⚠ Falta «quién cobra» en el LOG</div>}
-                </td>
-                <td style={td}>{(() => {
-                  const pm = pendMap && pendMap[f.idadmon]
-                  if (!pm || f.clase !== 'moroso') return <span style={{ color: C.sub }}>—</span>
-                  if (!pm.pend.length) return <span style={{ color: C.verde, fontSize: 11 }}>✓ al día en gestiones</span>
-                  const next = pm.pend[0]
-                  return <span style={{ fontSize: 11, fontWeight: 700, color: C.rojo }}>
-                    {next.label}{pm.pend.length > 1 ? ' +' + (pm.pend.length - 1) : ''}
-                    {pm.dias != null ? <span style={{ color: C.sub, fontWeight: 400 }}> · {pm.dias}d</span> : null}
-                  </span>
-                })()}</td>
-                <td style={{ ...td, textAlign: 'center' }}>
-                  <button onClick={() => onGestionar(f)} style={{
-                    fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid ' + C.acento,
-                    background: '#fff', color: C.acento, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
-                  }}>Gestionar</button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+        {hayAlguno && (
+          <button onClick={limpiarTodo} style={{ padding: '6px 11px', borderRadius: 7, border: '1px solid ' + C.line,
+            background: '#FBF7EC', fontSize: 12, color: C.ambar, cursor: 'pointer', fontWeight: 600 }}>
+            ✕ Limpiar filtros
+          </button>
+        )}
+        <button onClick={exportarExcel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 12px', borderRadius: 7, border: 'none', background: '#1c7d3f', color: '#fff',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          ⬇ Exportar Excel ({filtradas.length})
+        </button>
+      </div>
+
+      <div style={{ overflow: 'visible', border: '0.5px solid ' + C.line, borderRadius: 8 }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1060 }}>
+          <thead>
+            <tr>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>IDADMON</span>{HF('idadmon')}</span></th>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Propietario</span>{HF('propietario')}<span style={{ color: C.line }}>/</span><span style={lbl}>Inmueble</span>{HF('inmueble')}</span></th>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Arrendatario</span>{HF('arrendatario')}</span></th>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Est.</span>{HF('estado')}</span></th>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Último abono</span>{HF('ultimo_abono')}</span></th>
+              {esInicios && <th style={{ ...th, textAlign: 'right' }}>Últ. inicio</th>}
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Deuda</span>{HF('deuda')}</span></th>
+              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Situación</span>{HF('clase')}</span></th>
+              <th style={th}>Próxima acción</th>
+              <th style={{ ...th, textAlign: 'center' }}>Gestión</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtradas.length === 0 ? (
+              <tr><td colSpan={esInicios ? 10 : 9} style={{ padding: 20, textAlign: 'center', color: C.sub, fontSize: 12 }}>Sin resultados con los filtros aplicados.</td></tr>
+            ) : filtradas.map(f => {
+              const esMoroso = f.clase === 'moroso'
+              const esSobre = f.clase === 'sobrepago'
+              const bg = f.clase === 'al_dia' ? C.verdeBg : (esSobre ? C.ambarBg : '#fff')
+              const aviso = f.sin_cobrador
+              return (
+                <tr key={f.idadmon} style={{ background: bg, boxShadow: aviso ? 'inset 3px 0 0 ' + C.ambar : 'none' }}>
+                  <td style={{ ...td, fontWeight: 600 }}>{f.idadmon}</td>
+                  <td style={td}>
+                    <div style={{ fontWeight: 600 }}>{f.propietario || '—'}</div>
+                    <div style={{ color: C.sub, fontSize: 11 }}>{f.inmueble || ''}</div>
+                  </td>
+                  <td style={{ ...td, color: C.sub }}>{f.arrendatario || '—'}</td>
+                  <td style={{ ...td, textAlign: 'center' }}>{f.estado || '—'}</td>
+                  <td style={{ ...td, textAlign: 'right', color: C.sub, fontVariantNumeric: 'tabular-nums' }}>{f.ultimo_abono || '—'}</td>
+                  {esInicios && <td style={{ ...td, textAlign: 'right', color: C.sub, fontVariantNumeric: 'tabular-nums' }}>{f.fecha_ultimo_inicio || '—'}</td>}
+                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: esSobre ? 700 : 600,
+                    color: esMoroso ? C.rojo : (f.clase === 'al_dia' ? C.verde : C.ambar) }}>
+                    {money(f.deuda)}
+                  </td>
+                  <td style={td}>
+                    {esMoroso && <span style={{ color: C.rojo, fontWeight: 600 }}>Moroso</span>}
+                    {f.clase === 'al_dia' && <span style={{ color: C.verde }}>Al día</span>}
+                    {esSobre && <span style={{ color: C.ambar, fontWeight: 700 }}>Revisar · posible mala asignación</span>}
+                    {aviso && <div style={{ color: C.ambar, fontSize: 11, fontWeight: 600, marginTop: 2 }}>⚠ Falta «quién cobra» en el LOG</div>}
+                  </td>
+                  <td style={td}>{(() => {
+                    const pm = pendMap && pendMap[f.idadmon]
+                    if (!pm || f.clase !== 'moroso') return <span style={{ color: C.sub }}>—</span>
+                    if (!pm.pend.length) return <span style={{ color: C.verde, fontSize: 11 }}>✓ al día en gestiones</span>
+                    const next = pm.pend[0]
+                    return <span style={{ fontSize: 11, fontWeight: 700, color: C.rojo }}>
+                      {next.label}{pm.pend.length > 1 ? ' +' + (pm.pend.length - 1) : ''}
+                      {pm.dias != null ? <span style={{ color: C.sub, fontWeight: 400 }}> · {pm.dias}d</span> : null}
+                    </span>
+                  })()}</td>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <button onClick={() => onGestionar(f)} style={{
+                      fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid ' + C.acento,
+                      background: '#fff', color: C.acento, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+                    }}>Gestionar</button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
