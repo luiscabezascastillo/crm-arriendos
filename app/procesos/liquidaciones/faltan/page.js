@@ -1,5 +1,9 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v2 · 2026-08-13 · Columna "Chequeado" (tick por fila) para marcar las filas ya revisadas, con filtro
+//   Excel arriba (SI/NO). Es solo de gestión: se guarda por idadmon+mes en la tabla `faltan_check` (endpoint
+//   /api/faltan/check) SIN tocar ningún dato de la liquidación. Gate de escritura = Dirección + Admin (igual que
+//   los comentarios). Se exporta también a Excel. Hereda v1.
 // VERSION: v1 · 2026-08-13 · Filtros tipo Excel por columna (mismo motor que CC1/Cobranza, lib/filtroExcel)
 //   en TODAS las columnas (IDADMON, Propietario, Inmueble, A cobrar, Falta arriendo, GGCC, Luz, Agua, Gas,
 //   Serv. total, Comentario) + botón "Exportar Excel" que vuelca EXACTAMENTE lo filtrado del mes. Primera
@@ -58,6 +62,7 @@ const FALTAN_COLS = [
   { key: 'gas', label: 'Gas', tipo: 'num', fkey: f => nkey(f.gas), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'servTotal', label: 'Serv. total', tipo: 'num', fkey: f => nkey(f.servTotal), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'comentario', label: 'Coment. interno', tipo: 'texto', fkey: f => f.comentario || '', flabel: k => (k === '' ? '(sin comentario)' : k) },
+  { key: 'chequeado', label: 'Chequeado', tipo: 'texto', fkey: f => f.chequeado || 'NO', flabel: k => (k || 'NO') },
 ]
 
 export default function FaltanPage() {
@@ -77,6 +82,7 @@ export default function FaltanPage() {
   const [editCom, setEditCom] = useState(null)          // idadmon en edicion (o null)
   const [editTxt, setEditTxt] = useState('')
   const [savingCom, setSavingCom] = useState(false)
+  const [checks, setChecks] = useState({})              // idadmon -> true (chequeado del mes)
 
   // ── Filtros estilo Excel (mismo motor que CC1/Cobranza): un estado por columna + orden global ──
   const [filters, setFilters] = useState({})
@@ -88,8 +94,8 @@ export default function FaltanPage() {
 
   // Enriquecer cada fila con su comentario (que vive en otro estado) para poder filtrar/exportar por él.
   const filasEnr = useMemo(
-    () => filas.map(f => ({ ...f, comentario: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '' })),
-    [filas, comentarios]
+    () => filas.map(f => ({ ...f, comentario: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '', chequeado: checks[f.idadmon] ? 'SI' : 'NO' })),
+    [filas, comentarios, checks]
   )
   // Derivación: filtros de columna → orden. Sin orden explícito, se mantiene el orden original
   // (FCR primero, luego por deuda desc), igual que antes.
@@ -112,7 +118,7 @@ export default function FaltanPage() {
   useEffect(() => { if (accesoOk === true) cargar(mes) }, [accesoOk])
 
   async function cargar(m) {
-    setCargando(true); setError(null); setFilas([]); setComentarios({})
+    setCargando(true); setError(null); setFilas([]); setComentarios({}); setChecks({})
     try {
       // 1) Liquidación del periodo -> quedarse con los que tienen falta de arriendo > 0
       const { data: liq, error: e1 } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
@@ -180,6 +186,15 @@ export default function FaltanPage() {
         for (const c of (jc.rows || [])) map[c.idadmon] = c
         setComentarios(map)
       } catch { setComentarios({}) }
+
+      // 4) Chequeados del mes (por idadmon) — solo gestión, no toca datos
+      try {
+        const rk = await fetch(`/api/faltan/check?mes=${m}`, { cache: 'no-store' })
+        const jk = await rk.json()
+        const cm = {}
+        for (const c of (jk.rows || [])) cm[c.idadmon] = true
+        setChecks(cm)
+      } catch { setChecks({}) }
     } catch (err) { setError(err.message) }
     setCargando(false)
   }
@@ -211,6 +226,23 @@ export default function FaltanPage() {
     setSavingCom(false)
   }
 
+  // Marcar/desmarcar "chequeado" (optimista + persistencia por idadmon+mes). No altera ningún dato de la liquidación.
+  async function toggleCheck(idadmon) {
+    if (!puedeComentar) return
+    const nuevo = !checks[idadmon]
+    setChecks(prev => { const n = { ...prev }; if (nuevo) n[idadmon] = true; else delete n[idadmon]; return n })
+    try {
+      const res = await fetch('/api/faltan/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon, mes, chequeado: nuevo }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Error al guardar') }
+    } catch (e) {
+      setChecks(prev => { const n = { ...prev }; if (nuevo) delete n[idadmon]; else n[idadmon] = true; return n })
+      alert(e.message)
+    }
+  }
+
   if (status === 'loading' || accesoOk === null) return (<><TopNav /><div style={{ padding: 40, color: '#888' }}>Cargando…</div></>)
   if (accesoOk === false) return null
 
@@ -230,7 +262,7 @@ export default function FaltanPage() {
   }
 
   const th = { fontSize: 11, color: '#888', fontWeight: 700 }
-  const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 1.5fr'
+  const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 1.5fr 0.8fr'
 
   // Control de filtro Excel para una columna (mismo patrón que CC1). `movs` = todas las filas
   // enriquecidas, para que el desplegable liste todos los valores.
@@ -265,6 +297,7 @@ export default function FaltanPage() {
       'Serv. total': Math.round(n0(f.servTotal)),
       'Cobra dueño': f.cobraDueno ? 'SÍ' : '',
       Comentario: f.comentario || '',
+      Chequeado: f.chequeado || 'NO',
     }))
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.json_to_sheet(salida)
@@ -351,6 +384,7 @@ export default function FaltanPage() {
               {Hh('Gas', 'gas', true)}
               {Hh('Serv. total', 'servTotal', true)}
               {Hh('Coment. interno', 'comentario', false)}
+              {Hh('Chequeado', 'chequeado', false)}
             </div>
 
             <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px' }}>
@@ -391,6 +425,17 @@ export default function FaltanPage() {
                         style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? 600 : 400, color: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) ? '#92400E' : '#666' }}>
                         {(comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '—'}
                       </div>
+                    )}
+                  </div>
+                  {/* Chequeado: tick de gestión (guardado por idadmon+mes; no toca datos) */}
+                  <div style={{ textAlign: 'center' }}>
+                    {puedeComentar ? (
+                      <button onClick={() => toggleCheck(f.idadmon)} title={checks[f.idadmon] ? 'Chequeado — clic para desmarcar' : 'Marcar como chequeado'}
+                        style={{ cursor: 'pointer', border: '1px solid ' + (checks[f.idadmon] ? '#16a34a' : '#D1D5DB'), background: checks[f.idadmon] ? '#16a34a' : '#fff', color: '#fff', width: 22, height: 22, borderRadius: 6, fontSize: 13, fontWeight: 800, lineHeight: 1, fontFamily: 'inherit', padding: 0 }}>
+                        {checks[f.idadmon] ? '✓' : ''}
+                      </button>
+                    ) : (
+                      <span style={{ color: checks[f.idadmon] ? '#16a34a' : '#C7C7C2', fontWeight: 800 }}>{checks[f.idadmon] ? '✓' : '—'}</span>
                     )}
                   </div>
                 </div>
