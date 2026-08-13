@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v17 · 2026-08-13 · RECAP bajo "Movimientos": se repite IDADMON+Estado, Propietario e Inmueble, para
+//   saber siempre qué contrato se está mirando al hacer scroll a la tabla. Hereda v16.
 // VERSION: v16 · 2026-08-12 · AÑADIR líneas (cargo o abono): Dirección Y KARINA (antes solo Dirección). El botón
 //   "➕ Añadir línea" sigue encima de la tabla y arriba. Cada alta/edición/anulación registra usuario y fecha/hora en
 //   cuentas_bitacora. Requiere movimiento v4 (alta para Dirección + Karina). Hereda v15.
@@ -1098,6 +1100,15 @@ function CartolaIdadmonVista() {
                 ➕ Añadir línea (cargo o abono)
               </button>
             )}
+          </div>
+          {/* RECAP bajo Movimientos: repite IDADMON+Estado, Propietario e Inmueble para saber siempre qué se mira al hacer scroll */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px', padding: '6px 10px', border: '0.5px solid #E3E1D8', borderRadius: 8, background: '#FBFAF6', fontSize: 12 }}>
+            <span style={{ fontWeight: 700, color: '#0C447C' }}>{ficha.idadmon}</span>
+            <span style={{ fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C', fontSize: 11 }}>Estado: {ficha.estado || '—'}</span>
+            <span style={{ color: '#C9C7BF' }}>·</span>
+            <span style={{ color: '#5F5E5A' }}><span style={{ color: '#888780' }}>Propietario:</span> <b style={{ color: '#2C2C2A' }}>{ficha.propietario || '—'}</b></span>
+            <span style={{ color: '#C9C7BF' }}>·</span>
+            <span style={{ color: '#5F5E5A' }}><span style={{ color: '#888780' }}>Inmueble:</span> <b style={{ color: '#2C2C2A' }}>{ficha.inmueble || '—'}</b></span>
           </div>
           <div style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: 980, width: '100%', fontVariantNumeric: 'tabular-nums' }}>
