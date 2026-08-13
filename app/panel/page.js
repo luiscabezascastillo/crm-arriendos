@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v5 · 2026-08-13 · CC2 Arriendos Admon pasa a DATOS REALES (mini-tabla 3 meses como CC1): Cerrados
+//   (datos_arriendos por fecha_inicio, mes en curso con *), Ingresos (comision_base + comision_a_base) y Costes a
+//   verificar (Neika [rem_lineas] + honorarios de Ángela + $1M fijo de Alberto, del mes cerrado anterior). Línea de
+//   "No arrendados" P/(S+SQ+P) en vivo, y caja con espera máx./media de las P (reemplaza "Pendientes de firma").
+//   Vistas nuevas: vw_panel_cc2 y vw_panel_cc2_costes. Hereda v4.
 // VERSION: v4 · 2026-08-13 · CC1: fila "Costes a verificar" cableada (vw_panel_cc1_costes): nóminas de
 //   Karina/Adalis/Anthony (rem_lineas) + honorarios de Luis/Tirza, del MES CERRADO anterior (AGO usa JUL).
 //   Parcial: falta Fabiola y aportes patronales. También: morosos ahora incluyen estado S y SQ. Hereda v3.
@@ -158,6 +163,9 @@ export default function PanelPage() {
   const [logros, setLogros]     = useState({ auditados: 0, reclamaciones: 0, depuradas: 0, activos: 0, disponibles: 0 })
   const [meses]                 = useState(mesesVentana)
   const [cc1, setCc1]           = useState([])
+  const [cc2, setCc2]           = useState([])
+  const [noArr, setNoArr]       = useState(null)                 // % no arrendados (en vivo)
+  const [espera, setEspera]     = useState({ max: null, med: null })
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -194,6 +202,32 @@ export default function PanelPage() {
           base.costes = costesMap[prevAamm(x.aamm)]
           return base
         })
+        // ── CC2 (Arriendos Admon): cerrados + ingresos por mes + costes (Neika + Ángela + $1M Alberto) ──
+        const [c2, c2cos] = await Promise.all([
+          supabase.from('vw_panel_cc2').select('*').in('aamm', aamm),
+          supabase.from('vw_panel_cc2_costes').select('*').in('aamm', prevs),
+        ])
+        const c2Mes = {}; for (const r of c2.data || []) c2Mes[r.aamm] = r
+        const c2Cos = {}; for (const r of c2cos.data || []) c2Cos[r.aamm] = r.costes
+        const cc2data = meses.map(x => ({
+          ...x,
+          cerrados: c2Mes[x.aamm]?.cerrados ?? 0,
+          ingresos: c2Mes[x.aamm]?.ingresos ?? 0,
+          costes: Math.round(Number(c2Cos[prevAamm(x.aamm)] ?? 0)) + 1000000,   // + Alberto $1M fijo
+        }))
+        // % no arrendados (en vivo): P / (S + SQ + P)
+        const [nP, nS, nSQ] = await Promise.all([
+          cnt('datos_arriendos', [['estado', 'P']]),
+          cnt('datos_arriendos', [['estado', 'S']]),
+          cnt('datos_arriendos', [['estado', 'SQ']]),
+        ])
+        const denom = nP + nS + nSQ
+        const noArrVivo = denom ? Math.round((nP / denom) * 1000) / 10 : null
+        // Espera de las P (desde la vista de disponibles ya leída): máx y media de días en búsqueda
+        const pRows = (d.data || []).filter(r => r.estado === 'P' && r.dias != null)
+        const eMax = pRows.length ? Math.max(...pRows.map(r => Number(r.dias) || 0)) : null
+        const eMed = pRows.length ? Math.round(pRows.reduce((a, r) => a + (Number(r.dias) || 0), 0) / pRows.length) : null
+
         const [auditados, depuradas, activos, disponibles] = await Promise.all([
           cnt('datos_arriendos', [['estado', 'Q-Auditado']]),
           cnt('cuentas', [['concepto', 'COBRO DIRECTO PROPIETARIA']]),
@@ -205,6 +239,7 @@ export default function PanelPage() {
         if (!vivo) return
         setTerminos(t.data || []); setMorosos(m.data || []); setDispon(d.data || [])
         setCc1(cc1data)
+        setCc2(cc2data); setNoArr(noArrVivo); setEspera({ max: eMax, med: eMed })
         setLogros({ auditados, reclamaciones, depuradas, activos, disponibles })
       } finally {
         if (vivo) setCargando(false)
@@ -212,6 +247,9 @@ export default function PanelPage() {
     })()
     return () => { vivo = false }
   }, [])
+
+  // Mes en curso (para el * de Cerrados/Ingresos de CC2): AAMM del mes real de hoy.
+  const nowAamm = (() => { const n = new Date(); return String(n.getFullYear() % 100).padStart(2, '0') + String(n.getMonth() + 1).padStart(2, '0') })()
 
   const nivelColor = n => n >= 3 ? 'var(--danger-600)' : n === 2 ? 'var(--warning-600)' : 'var(--success-600)'
   const nivelBg    = n => n >= 3 ? '#dc2626' : n === 2 ? '#d97706' : '#16a34a'
@@ -276,9 +314,54 @@ export default function PanelPage() {
               <Link href="/procesos/liquidaciones" style={{ display: 'block', padding: '7px 0', borderRadius: 8, background: '#1a56db', color: '#fff', textAlign: 'center', fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>Ver liquidaciones</Link>
             </div>
           </div>
-          <AreaCard color="amber" icon={<IcoKey />}    title="CC2 Arriendos Admon"  href="/cc2"  actionLabel="+ Nuevo arriendo"
-            rows={[{ label: 'Cerrados', value: '18' }, { label: 'Ingresos', value: '$10.500' }, { label: 'Conversión', value: '45%' }, { label: 'Prop. vacías', value: '6 (6,3%)', highlight: 'warning' }]}
-            alert={{ type: 'warning', text: 'Pendientes de firma' }} />
+          {/* CC2 — DATOS REALES (arriendos: cerrados + ingresos + costes, 3 meses) */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ background: '#d97706', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#fff', opacity: 0.9, display: 'flex' }}><IcoKey /></span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>CC2 Arriendos Admon</span>
+              <GridDots />
+            </div>
+            <div style={{ padding: '8px 14px 4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={{ textAlign: 'left', padding: '2px 4px' }}></th>
+                  {meses.map(mm => <th key={mm.aamm} style={{ textAlign: 'right', fontSize: 10, color: mm.aamm === nowAamm ? '#c2410c' : 'var(--gray-500)', fontWeight: 700, padding: '2px 4px', letterSpacing: '.02em' }}>{mm.lbl}{mm.aamm === nowAamm ? ' *' : ''}</th>)}
+                </tr></thead>
+                <tbody>
+                  <CC1Row label="Cerrados"           vals={cc2.map(c => c.cerrados != null ? c.cerrados : '—')} strong />
+                  <CC1Row label="Ingresos"           vals={cc2.map(c => c.ingresos != null ? compact(c.ingresos) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Costes a verificar" vals={cc2.map(c => c.costes != null ? compact(c.costes) : '—')} color="#B45309" />
+                </tbody>
+              </table>
+              {meses.some(mm => mm.aamm === nowAamm) && (
+                <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso (aún no cerrado)</div>
+              )}
+              <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Costes = mes cerrado anterior · Neika + honorarios Ángela + $1M Alberto</div>
+            </div>
+            <div style={{ padding: '2px 18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>No arrendados (P / S+SQ+P)</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: noArr != null && noArr >= 10 ? 'var(--warning-600)' : 'var(--gray-800)' }}>
+                  {noArr != null ? String(noArr).replace('.', ',') + '%' : '—'} <span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 }}>en vivo</span>
+                </span>
+              </div>
+            </div>
+            {/* Espera de las P (reemplaza "Pendientes de firma") */}
+            <div style={{ margin: '4px 16px 12px', padding: '8px 10px', borderRadius: 7, background: 'var(--warning-50)', border: '1px solid #fcd34d', display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: 'var(--gray-500)', fontWeight: 600 }}>Espera máx. para arrendar</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{espera.max != null ? espera.max + ' d' : '—'}</div>
+              </div>
+              <div style={{ flex: 1, borderLeft: '1px solid #fcd34d', paddingLeft: 12 }}>
+                <div style={{ fontSize: 10, color: 'var(--gray-500)', fontWeight: 600 }}>Media en espera (P)</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{espera.med != null ? espera.med + ' d' : '—'}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, padding: '0 16px 16px' }}>
+              <Link href="/cc2" style={{ flex: 1, padding: '7px 0', borderRadius: 8, background: '#d97706', color: '#fff', textAlign: 'center', fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>Ver detalle</Link>
+              <button style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--gray-600)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>+ Nuevo arriendo</button>
+            </div>
+          </div>
           <AreaCard color="red"   icon={<IcoWrench />} title="CC3 Mantenimiento"    href="/cc3"  actionLabel="+ Nueva incidencia"
             rows={[{ label: 'Abiertas', value: '12' }, { label: 'Facturación', value: '$6.800' }, { label: 'Coste', value: '$10.200' }, { label: 'Margen', value: '12%', highlight: 'warning' }]}
             alert={{ type: 'danger', text: '3 urgencias pendientes' }} />
