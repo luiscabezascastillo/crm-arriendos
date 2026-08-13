@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v19 · 2026-08-13 · Colores de fila diferenciados: CAMBIO MANUAL → rojo SUAVE (#FDEBEA); "no cuadra
+//   con la liquidación" → rojo FUERTE (#F5B7B1, prioritario). Hereda v18.
 // VERSION: v18 · 2026-08-13 · Movimientos: las filas con CAMBIO MANUAL (línea añadida a mano, cargo editado o
 //   cargo con override) se pintan con fondo ROJO SUAVE, para localizarlas de un vistazo. Hereda v17.
 // VERSION: v17 · 2026-08-13 · RECAP bajo "Movimientos": se repite IDADMON+Estado, Propietario e Inmueble, para
@@ -1124,9 +1126,10 @@ function CartolaIdadmonVista() {
               <tbody>
                 {movs.map((r) => {
                   const el = estadoLiq(r)
-                  // Cambio manual: línea añadida a mano, cargo editado o cargo con override → fondo rojo suave.
+                  // Cambio manual: línea añadida a mano, cargo editado o cargo con override → rojo SUAVE.
+                  // "No cuadra con la liquidación" → rojo MÁS FUERTE (prioritario, es el aviso crítico).
                   const manualCambio = !!(r.manual || r.cargo_editado_en != null || (r.cargo_manual != null && r.cargo_manual !== ''))
-                  const filaBg = manualCambio ? '#FADBD8' : el === 'no_cuadra' ? '#FDECEC' : el === 'sin_liq' ? '#FEF9E7' : null
+                  const filaBg = el === 'no_cuadra' ? '#F5B7B1' : manualCambio ? '#FDEBEA' : el === 'sin_liq' ? '#FEF9E7' : null
                   return (
                   <tr key={r.id}>
                     {MCOLS.map((c, ci) => (
