@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v7 · 2026-08-13 · Aviso "DATOS NO VERIFICADOS · PANEL EN FASE DE CONSTRUCCIÓN" en la franja de Operación.
+//   Fix: la espera media de las P acota los días a >=0 (había P con fecha futura → media negativa). Hereda v6.
 // VERSION: v6 · 2026-08-13 · CC3 Mantenimiento pasa a DATOS REALES (3 meses): Facturación (ventas ccb='CC3', neto),
 //   Compras CC3 (compras ccb='CC3', neto, sin RECHAZADA) y Otros costes CC3 (Cristhian [rem] del mes anterior +
 //   honorarios VIGENTE de todos menos Luis/Tirza/Ángela/Lorena + $527.067 fijo de Alberto) + línea Resultado. Se
@@ -229,9 +231,9 @@ export default function PanelPage() {
         const denom = nP + nS + nSQ
         const noArrVivo = denom ? Math.round((nP / denom) * 1000) / 10 : null
         // Espera de las P (desde la vista de disponibles ya leída): máx y media de días en búsqueda
-        const pRows = (d.data || []).filter(r => r.estado === 'P' && r.dias != null)
-        const eMax = pRows.length ? Math.max(...pRows.map(r => Number(r.dias) || 0)) : null
-        const eMed = pRows.length ? Math.round(pRows.reduce((a, r) => a + (Number(r.dias) || 0), 0) / pRows.length) : null
+        const pDias = (d.data || []).filter(r => r.estado === 'P' && r.dias != null).map(r => Math.max(0, Number(r.dias) || 0))
+        const eMax = pDias.length ? Math.max(...pDias) : null
+        const eMed = pDias.length ? Math.round(pDias.reduce((a, x) => a + x, 0) / pDias.length) : null
 
         // ── CC3 (Mantenimiento): facturación (ventas CC3) + compras CC3 + otros costes (Cristhian + honorarios + $527.067 Alberto) ──
         const [c3f, c3c, c3o] = await Promise.all([
@@ -297,8 +299,11 @@ export default function PanelPage() {
 
       <div style={{ padding: '20px 24px' }}>
 
-        {/* OPERACIÓN (demo — pendiente de cablear) */}
-        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Operación</div>
+        {/* OPERACIÓN */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operación</span>
+          <span style={{ flex: 1, padding: '6px 12px', borderRadius: 8, background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', fontSize: 11.5, fontWeight: 800, letterSpacing: '.04em', textAlign: 'center' }}>⚠ DATOS NO VERIFICADOS · PANEL EN FASE DE CONSTRUCCIÓN</span>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
           {/* CC1 — DATOS REALES (liquidaciones, 3 meses) */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
