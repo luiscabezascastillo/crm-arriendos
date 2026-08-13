@@ -1,4 +1,6 @@
 // app/api/bi/movimientos/route.js
+// VERSION: v2 · 2026-08-13 · FIX: la lista blanca decía 'liq_mes2' pero la columna real es 'liquidacion_mes2',
+//   por lo que el PATCH rechazaba la reasignación del mes de liquidación (no guardaba). Corregido el nombre.
 // VERSION: v1 · 2026-07-28 · Lectura y edición de la tabla `bi` por el SERVIDOR con service_role,
 //   para que la pantalla BI · Movimientos funcione con RLS activado. El navegador ya no lee `bi`
 //   directo con anon (que RLS bloquea → 0 filas); pasa por aquí.
@@ -15,7 +17,7 @@ const COLUMNAS_EDITABLES = new Set([
   'discriminador',
   'check2_pasar_a_cartola',
   'color_manual',
-  'liq_mes2',
+  'liquidacion_mes2',
 ])
 
 // GET /api/bi/movimientos → todas las filas de bi
