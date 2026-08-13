@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v6 · 2026-08-13 · CC3 Mantenimiento pasa a DATOS REALES (3 meses): Facturación (ventas ccb='CC3', neto),
+//   Compras CC3 (compras ccb='CC3', neto, sin RECHAZADA) y Otros costes CC3 (Cristhian [rem] del mes anterior +
+//   honorarios VIGENTE de todos menos Luis/Tirza/Ángela/Lorena + $527.067 fijo de Alberto) + línea Resultado. Se
+//   quitan los botones de CC2. Vistas nuevas: vw_panel_cc3_fact / _compras / _otros. Hereda v5.
 // VERSION: v5 · 2026-08-13 · CC2 Arriendos Admon pasa a DATOS REALES (mini-tabla 3 meses como CC1): Cerrados
 //   (datos_arriendos por fecha_inicio, mes en curso con *), Ingresos (comision_base + comision_a_base) y Costes a
 //   verificar (Neika [rem_lineas] + honorarios de Ángela + $1M fijo de Alberto, del mes cerrado anterior). Línea de
@@ -164,6 +168,7 @@ export default function PanelPage() {
   const [meses]                 = useState(mesesVentana)
   const [cc1, setCc1]           = useState([])
   const [cc2, setCc2]           = useState([])
+  const [cc3, setCc3]           = useState([])
   const [noArr, setNoArr]       = useState(null)                 // % no arrendados (en vivo)
   const [espera, setEspera]     = useState({ max: null, med: null })
   const [cargando, setCargando] = useState(true)
@@ -228,6 +233,22 @@ export default function PanelPage() {
         const eMax = pRows.length ? Math.max(...pRows.map(r => Number(r.dias) || 0)) : null
         const eMed = pRows.length ? Math.round(pRows.reduce((a, r) => a + (Number(r.dias) || 0), 0) / pRows.length) : null
 
+        // ── CC3 (Mantenimiento): facturación (ventas CC3) + compras CC3 + otros costes (Cristhian + honorarios + $527.067 Alberto) ──
+        const [c3f, c3c, c3o] = await Promise.all([
+          supabase.from('vw_panel_cc3_fact').select('*').in('aamm', aamm),
+          supabase.from('vw_panel_cc3_compras').select('*').in('aamm', aamm),
+          supabase.from('vw_panel_cc3_otros').select('*').in('aamm', prevs),
+        ])
+        const c3fMes = {}; for (const r of c3f.data || []) c3fMes[r.aamm] = r.facturacion
+        const c3cMes = {}; for (const r of c3c.data || []) c3cMes[r.aamm] = r.compras
+        const c3oMes = {}; for (const r of c3o.data || []) c3oMes[r.aamm] = r.otros
+        const cc3data = meses.map(x => {
+          const facturacion = Math.round(Number(c3fMes[x.aamm] ?? 0))
+          const compras = Math.round(Number(c3cMes[x.aamm] ?? 0))
+          const otros = Math.round(Number(c3oMes[prevAamm(x.aamm)] ?? 0)) + 527067   // + Alberto $527.067 fijo
+          return { ...x, facturacion, compras, otros, resultado: facturacion - compras - otros }
+        })
+
         const [auditados, depuradas, activos, disponibles] = await Promise.all([
           cnt('datos_arriendos', [['estado', 'Q-Auditado']]),
           cnt('cuentas', [['concepto', 'COBRO DIRECTO PROPIETARIA']]),
@@ -239,7 +260,7 @@ export default function PanelPage() {
         if (!vivo) return
         setTerminos(t.data || []); setMorosos(m.data || []); setDispon(d.data || [])
         setCc1(cc1data)
-        setCc2(cc2data); setNoArr(noArrVivo); setEspera({ max: eMax, med: eMed })
+        setCc2(cc2data); setCc3(cc3data); setNoArr(noArrVivo); setEspera({ max: eMax, med: eMed })
         setLogros({ auditados, reclamaciones, depuradas, activos, disponibles })
       } finally {
         if (vivo) setCargando(false)
@@ -357,14 +378,33 @@ export default function PanelPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{espera.med != null ? espera.med + ' d' : '—'}</div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, padding: '0 16px 16px' }}>
-              <Link href="/cc2" style={{ flex: 1, padding: '7px 0', borderRadius: 8, background: '#d97706', color: '#fff', textAlign: 'center', fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>Ver detalle</Link>
-              <button style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--gray-600)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>+ Nuevo arriendo</button>
+          </div>
+          {/* CC3 — DATOS REALES (mantenimiento: facturación − compras − otros, 3 meses) */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ background: '#dc2626', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#fff', opacity: 0.9, display: 'flex' }}><IcoWrench /></span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1 }}>CC3 Mantenimiento</span>
+              <GridDots />
+            </div>
+            <div style={{ padding: '8px 14px 4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={{ textAlign: 'left', padding: '2px 4px' }}></th>
+                  {meses.map(mm => <th key={mm.aamm} style={{ textAlign: 'right', fontSize: 10, color: mm.aamm === nowAamm ? '#c2410c' : 'var(--gray-500)', fontWeight: 700, padding: '2px 4px', letterSpacing: '.02em' }}>{mm.lbl}{mm.aamm === nowAamm ? ' *' : ''}</th>)}
+                </tr></thead>
+                <tbody>
+                  <CC1Row label="Facturación"       vals={cc3.map(c => c.facturacion != null ? compact(c.facturacion) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Compras CC3"        vals={cc3.map(c => c.compras != null ? compact(c.compras) : '—')} color="#B45309" />
+                  <CC1Row label="Otros costes CC3"   vals={cc3.map(c => c.otros != null ? compact(c.otros) : '—')} color="#B45309" />
+                  <CC1Row label="Resultado"          vals={cc3.map(c => c.resultado != null ? compact(c.resultado) : '—')} strong color="#1a1a2e" />
+                </tbody>
+              </table>
+              {meses.some(mm => mm.aamm === nowAamm) && (
+                <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso (aún no cerrado)</div>
+              )}
+              <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Facturación y compras = mes en curso · Otros = Cristhian (mes anterior) + honorarios + $527.067 Alberto</div>
             </div>
           </div>
-          <AreaCard color="red"   icon={<IcoWrench />} title="CC3 Mantenimiento"    href="/cc3"  actionLabel="+ Nueva incidencia"
-            rows={[{ label: 'Abiertas', value: '12' }, { label: 'Facturación', value: '$6.800' }, { label: 'Coste', value: '$10.200' }, { label: 'Margen', value: '12%', highlight: 'warning' }]}
-            alert={{ type: 'danger', text: '3 urgencias pendientes' }} />
         </div>
 
         {/* ── LOGROS (datos reales) ─────────────────────────────── */}
