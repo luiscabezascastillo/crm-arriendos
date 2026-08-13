@@ -1,31 +1,29 @@
-'use client';
-// VERSION: v12 · 2026-08-13 · Alertas en pausa: el badge del nav NO parpadea ni muestra número (queda gris)
-//   mientras ALERTAS_AUTO_OFF = true. Al retomar se pone en false. Sin tocar Captaciones/BB1/BB2. Hereda v11.
-// VERSION: v11 · 2026-08-12 · Nuevo enlace "BB1" (Operaciones comerciales · VENTAS) junto a BB2, mismo público
-//   (Dirección + Anthony). Orden en la barra: BB1, BB2. Hereda v10.
-// VERSION: v10 · 2026-08-12 · El enlace "Captaciones" pasa a verse SOLO por Dirección (Alberto y Luis); se quita
-//   Administración. Hereda v9.
-// VERSION: v9 · 2026-08-12 · Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible para
-//   Dirección + Administración. Hereda v8.
-// VERSION: v8 · 2026-08-12 · Nuevo enlace "BB2" (Operaciones comerciales · arriendo sin admón) en la barra, visible
-//   SOLO para Dirección (Alberto/Luis) + Anthony (Legal). Preparado para añadir "BB1" al lado cuando exista.
-//   Sin cambios en el resto de gates ni del menú. Hereda v7.
-// VERSION: v7 · 2026-08-11 · El botón "Alertas" se abre por ROL: Administración (Adalis/Fabiola) y Legal
-//   (Anthony) además de Karina + Dirección. El badge cuenta lo de cada rol: Admin -> reclamaciones del día;
-//   Legal -> términos sin valorar; Karina/Dir -> alertas propias + Términos del día. Hereda v6.
-// VERSION: v6 · 2026-08-11 · El badge "Alertas" (Karina + Dirección) ahora PARPADEA en rojo cuando hay
-//   pendientes: alertas propias o Términos del día sin tratar. Mismo público que v5. Hereda v5.
-// VERSION: v5 · 2026-07-28 · Botón "Alertas" (Karina, Alberto, Luis) entre Ayuda y Mis tareas, con
-//   SEMÁFORO según las alertas propias (para_email): rojo si hay alguna pendiente sin gestionar,
-//   ámbar si todas las abiertas están pospuestas (gestionadas), verde si no queda ninguna abierta.
-// VERSION: v4 · 2026-07-23 · Botón "Direccion" partido: el texto va a /direccion y la ▾ abre un
-//   dropdown con las operaciones propias de Dirección (Control de Asistencia, Tareas, Valoraciones,
-//   Budget y Problemas pendientes de crear, Reparar inicios). Mismo patrón que el botón "Procesos".
-//   Sin cambios en gates ni en el resto del menú.
-// VERSION: v3 · 2026-07-21 · Dropdown de 'Procesos en producción' ordenado alfabéticamente por título.
-// VERSION: v2 · 2026-07-20 · Rol 'comercial' ve su bloque Ventas (Publicaciones/Requerimientos/Visitas/Calendario/Contactos); Cumpleaños y Edificios ocultos salvo permiso. Tirza fuera de DIRECCION_EMAILS para pruebas de espejo.
-// VERSION: v1 · 2026-07-19 · El menú "Propiedades" solo lo ve Dirección (esDireccion: rol direccion
-//   o email de dirección), además del permiso de proceso que ya existía. Resto del TopNav sin cambios.
+﻿'use client';
+// VERSION: v11 ┬À 2026-08-12 ┬À Nuevo enlace "BB1" (Operaciones comerciales ┬À VENTAS) junto a BB2, mismo p├║blico
+//   (Direcci├│n + Anthony). Orden en la barra: BB1, BB2. Hereda v10.
+// VERSION: v10 ┬À 2026-08-12 ┬À El enlace "Captaciones" pasa a verse SOLO por Direcci├│n (Alberto y Luis); se quita
+//   Administraci├│n. Hereda v9.
+// VERSION: v9 ┬À 2026-08-12 ┬À Nuevo enlace "Captaciones" (cartera de propietarios) junto a BB2, visible para
+//   Direcci├│n + Administraci├│n. Hereda v8.
+// VERSION: v8 ┬À 2026-08-12 ┬À Nuevo enlace "BB2" (Operaciones comerciales ┬À arriendo sin adm├│n) en la barra, visible
+//   SOLO para Direcci├│n (Alberto/Luis) + Anthony (Legal). Preparado para a├▒adir "BB1" al lado cuando exista.
+//   Sin cambios en el resto de gates ni del men├║. Hereda v7.
+// VERSION: v7 ┬À 2026-08-11 ┬À El bot├│n "Alertas" se abre por ROL: Administraci├│n (Adalis/Fabiola) y Legal
+//   (Anthony) adem├ís de Karina + Direcci├│n. El badge cuenta lo de cada rol: Admin -> reclamaciones del d├¡a;
+//   Legal -> t├®rminos sin valorar; Karina/Dir -> alertas propias + T├®rminos del d├¡a. Hereda v6.
+// VERSION: v6 ┬À 2026-08-11 ┬À El badge "Alertas" (Karina + Direcci├│n) ahora PARPADEA en rojo cuando hay
+//   pendientes: alertas propias o T├®rminos del d├¡a sin tratar. Mismo p├║blico que v5. Hereda v5.
+// VERSION: v5 ┬À 2026-07-28 ┬À Bot├│n "Alertas" (Karina, Alberto, Luis) entre Ayuda y Mis tareas, con
+//   SEM├üFORO seg├║n las alertas propias (para_email): rojo si hay alguna pendiente sin gestionar,
+//   ├ímbar si todas las abiertas est├ín pospuestas (gestionadas), verde si no queda ninguna abierta.
+// VERSION: v4 ┬À 2026-07-23 ┬À Bot├│n "Direccion" partido: el texto va a /direccion y la Ôû¥ abre un
+//   dropdown con las operaciones propias de Direcci├│n (Control de Asistencia, Tareas, Valoraciones,
+//   Budget y Problemas pendientes de crear, Reparar inicios). Mismo patr├│n que el bot├│n "Procesos".
+//   Sin cambios en gates ni en el resto del men├║.
+// VERSION: v3 ┬À 2026-07-21 ┬À Dropdown de 'Procesos en producci├│n' ordenado alfab├®ticamente por t├¡tulo.
+// VERSION: v2 ┬À 2026-07-20 ┬À Rol 'comercial' ve su bloque Ventas (Publicaciones/Requerimientos/Visitas/Calendario/Contactos); Cumplea├▒os y Edificios ocultos salvo permiso. Tirza fuera de DIRECCION_EMAILS para pruebas de espejo.
+// VERSION: v1 ┬À 2026-07-19 ┬À El men├║ "Propiedades" solo lo ve Direcci├│n (esDireccion: rol direccion
+//   o email de direcci├│n), adem├ís del permiso de proceso que ya exist├¡a. Resto del TopNav sin cambios.
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -36,22 +34,18 @@ import { PROCESOS } from '../../../lib/procesos';
 const DIRECCION_EMAILS = [
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
-  // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Dirección.
+  // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Direcci├│n.
 ];
 
-// Quién ve el botón de Alertas (solo Karina + Dirección; el resto tendrá sus propias alertas más adelante).
+// Qui├®n ve el bot├│n de Alertas (solo Karina + Direcci├│n; el resto tendr├í sus propias alertas m├ís adelante).
 const ALERTAS_EMAILS = [
   'karina.morales@fondocapital.com',
   'alberto.cabezas@fondocapital.com',
   'luis.cabezas@fondocapital.com',
 ];
 
-// Alertas automáticas en pausa (mismo criterio que /alertas). Mientras esté en true, el badge del nav
-// NO parpadea ni muestra número: se queda en gris neutro. Al retomar se pone en false. Cambia solo esta constante.
-const ALERTAS_AUTO_OFF = true;
-
-// --- Transición de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
-// Permite que el código nuevo funcione mientras la BD aún tenga roles viejos.
+// --- Transici├│n de roles (Fase 1): traduce nombres viejos -> nuevos al vuelo.
+// Permite que el c├│digo nuevo funcione mientras la BD a├║n tenga roles viejos.
 const ROL_ALIAS = {
   admin: 'direccion',
   operaciones: 'administracion',
@@ -62,7 +56,7 @@ const normRol = (r) => ROL_ALIAS[r] || r;
 // Roles internos de la empresa (todos menos 'comercial', que es externo).
 const INTERNOS = ['direccion', 'administracion', 'mantencion', 'finanzas', 'legal', 'ventas'];
 
-// RUTAS: deny by default. Lo que NO está listado aquí, solo lo ve Dirección.
+// RUTAS: deny by default. Lo que NO est├í listado aqu├¡, solo lo ve Direcci├│n.
 const RUTAS = {
   '/panel':         INTERNOS,
   '/procesos':      INTERNOS,
@@ -76,7 +70,7 @@ const RUTAS = {
   '/cumpleanos':     ['ventas'],
   '/contactos':      ['ventas', 'comercial'],
   '/edificios':      ['ventas'],
-  // /admin (Config): NO se lista -> solo Dirección.
+  // /admin (Config): NO se lista -> solo Direcci├│n.
 };
 
 const DOCS = {
@@ -115,7 +109,7 @@ export default function TopNav() {
   const ayudaRef = useRef(null);
   const userRef = useRef(null);
 
-  // Permisos por proceso (mismo criterio que la página /procesos): un proceso está
+  // Permisos por proceso (mismo criterio que la p├ígina /procesos): un proceso est├í
   // "con acceso" si el usuario tiene fila activa en proceso_permisos con esa key.
   const [procKeys, setProcKeys] = useState(new Set());
   useEffect(() => {
@@ -124,9 +118,9 @@ export default function TopNav() {
       .then(({ data }) => { if (data) setProcKeys(new Set(data.map(r => r.proceso))); });
   }, [session?.user?.email]);
 
-  // Semáforo de Alertas: rojo si hay alguna 'pendiente'; si no, ámbar si hay 'pospuesta';
-  // si no queda ninguna abierta, verde. Solo para quien ve el botón.
-  // Quién ve el botón de Alertas: Karina + Dirección (por email/rol), Administración y Legal (por rol).
+  // Sem├íforo de Alertas: rojo si hay alguna 'pendiente'; si no, ├ímbar si hay 'pospuesta';
+  // si no queda ninguna abierta, verde. Solo para quien ve el bot├│n.
+  // Qui├®n ve el bot├│n de Alertas: Karina + Direcci├│n (por email/rol), Administraci├│n y Legal (por rol).
   const rolNav = normRol(session?.user?.role);
   const esDireccionNav = rolNav === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
   const esKarinaDir = ALERTAS_EMAILS.includes(session?.user?.email);
@@ -135,7 +129,6 @@ export default function TopNav() {
   const puedeAlertas = esKarinaDir || esDireccionNav || esAdminRol || esLegalRol;
   useEffect(() => {
     if (!puedeAlertas || !session?.user?.email) return;
-    if (ALERTAS_AUTO_OFF) { setAlertaSem({ color: null, n: 0 }); return; }   // en pausa: gris, sin parpadeo ni número
     let vivo = true;
     const calc = async () => {
       const { data } = await supabase.from('alertas').select('estado').eq('para_email', session.user.email);
@@ -184,11 +177,11 @@ export default function TopNav() {
   const isActive = (path) => pathname === path || pathname?.startsWith(path + '/');
   const rol = normRol(session?.user?.role);
   const esDireccion = rol === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email);
-  // Operaciones BB (arriendo/venta sin/ con admón): en construcción, solo Dirección + Anthony (Legal).
+  // Operaciones BB (arriendo/venta sin/ con adm├│n): en construcci├│n, solo Direcci├│n + Anthony (Legal).
   const esBB = esDireccion || session?.user?.email === 'anthony.mendoza@fondocapital.com';
-  // Captaciones (cartera de propietarios): Dirección (incluye Alberto) + Administración (Adalis/Fabiola).
-  const esCaptacion = esDireccion; // solo Alberto + Luis (Dirección)
-  // Dirección ve todo. Lo no listado en RUTAS solo lo ve Dirección (deny by default).
+  // Captaciones (cartera de propietarios): Direcci├│n (incluye Alberto) + Administraci├│n (Adalis/Fabiola).
+  const esCaptacion = esDireccion; // solo Alberto + Luis (Direcci├│n)
+  // Direcci├│n ve todo. Lo no listado en RUTAS solo lo ve Direcci├│n (deny by default).
   const puede = (ruta) => esDireccion || (RUTAS[ruta] ? RUTAS[ruta].includes(rol) : false);
 
   function abrirDoc(tipo) {
@@ -289,33 +282,33 @@ export default function TopNav() {
     <nav style={s.nav}>
       <style>{`@keyframes fcrNavBlink{0%,49%{opacity:1}50%,100%{opacity:0.2}}`}</style>
 
-      {/* FCR — selector de workspace/portal */}
+      {/* FCR ÔÇö selector de workspace/portal */}
       <div ref={fcrRef} style={{ position: 'relative', marginRight: 8 }}>
         <button style={s.brand} onClick={() => setFcrOpen(v => !v)}>
           <span>FCR</span>
-          <span style={{ fontSize: 9, opacity: 0.5 }}>▾</span>
+          <span style={{ fontSize: 9, opacity: 0.5 }}>Ôû¥</span>
         </button>
         {fcrOpen && (
           <div style={s.dropdown}>
             <div style={s.dropLabel}>Cambiar de portal</div>
             <span style={{ ...s.dropItem, fontWeight: 600, color: '#185FA5', cursor: 'default', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              CRM Interno (Backoffice) <span style={{ color: '#0F6E56', fontSize: 11 }}>●</span>
+              CRM Interno (Backoffice) <span style={{ color: '#0F6E56', fontSize: 11 }}>ÔùÅ</span>
             </span>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
               onClick={() => { abrirWorkspace(WORKSPACES.propietarios); setFcrOpen(false); }}>
-              Portal de Propietarios ↗
+              Portal de Propietarios Ôåù
             </button>
-            <span style={s.dropItemSoon}>Portal Comercial · pronto</span>
+            <span style={s.dropItemSoon}>Portal Comercial ┬À pronto</span>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
               onClick={() => { abrirWorkspace(WORKSPACES.web); setFcrOpen(false); }}>
-              Web Corporativa ↗
+              Web Corporativa Ôåù
             </button>
           </div>
         )}
       </div>
 
-      {/* Dirección — botón partido: el texto va a /direccion; la ▾ abre las operaciones
-          propias de Dirección. Visible por rol 'direccion' (o email de respaldo). */}
+      {/* Direcci├│n ÔÇö bot├│n partido: el texto va a /direccion; la Ôû¥ abre las operaciones
+          propias de Direcci├│n. Visible por rol 'direccion' (o email de respaldo). */}
       {esDireccion && (
       <div ref={direccionRef} style={{ position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', borderRadius: 6,
@@ -329,7 +322,7 @@ export default function TopNav() {
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px 6px 2px',
               color: direccionActive ? '#fff' : '#1a1a2e', display: 'flex', alignItems: 'center' }}>
             <span style={{ fontSize: 9, opacity: 0.6, transition: 'transform 0.15s',
-              transform: direccionOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+              transform: direccionOpen ? 'rotate(180deg)' : 'none' }}>Ôû¥</span>
           </button>
         </div>
         {direccionOpen && (
@@ -340,8 +333,8 @@ export default function TopNav() {
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
               Control de Asistencia
             </Link>
-            <span style={s.dropItemSoon}>Budget · pronto</span>
-            <span style={s.dropItemSoon}>Problemas · pronto</span>
+            <span style={s.dropItemSoon}>Budget ┬À pronto</span>
+            <span style={s.dropItemSoon}>Problemas ┬À pronto</span>
             <div style={s.dropDivider} />
             <Link href="/direccion/tareas" style={s.dropItem} onClick={() => setDireccionOpen(false)}
               onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
@@ -363,19 +356,19 @@ export default function TopNav() {
             <div style={s.dropDivider} />
             <Link href="/direccion" onClick={() => setDireccionOpen(false)}
               style={{ ...s.dropItem, color: '#185FA5', fontWeight: 600 }}>
-              Ver panel de Direccion →
+              Ver panel de Direccion ÔåÆ
             </Link>
           </div>
         )}
       </div>
       )}
 
-      {/* Panel — dashboard operativo */}
+      {/* Panel ÔÇö dashboard operativo */}
       {puede('/panel') && (
         <Link href="/panel" style={s.link(isActive('/panel'))}>Panel</Link>
       )}
 
-      {/* Propiedades — módulo de datos maestros. Solo Dirección (rol direccion o email de dirección). */}
+      {/* Propiedades ÔÇö m├│dulo de datos maestros. Solo Direcci├│n (rol direccion o email de direcci├│n). */}
       {esDireccion && puede('/propiedades') && (
       <div ref={propiedadesRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(propiedadesActive)} onClick={() => { setPropiedadesOpen(v => !v); setProcesosOpen(false); setVentasOpen(false); }}>
@@ -384,19 +377,19 @@ export default function TopNav() {
         {propiedadesOpen && (
           <div style={s.dropdown}>
             <Link href="/propiedades" style={s.dropItem} onClick={() => setPropiedadesOpen(false)}>Cartera de Propiedades</Link>
-            <span style={s.dropItemSoon}>Unidades · pronto</span>
-            <span style={s.dropItemSoon}>Propietarios · pronto</span>
-            <span style={s.dropItemSoon}>Arrendatarios · pronto</span>
-            <span style={s.dropItemSoon}>Contratos · pronto</span>
-            <span style={s.dropItemSoon}>Documentos · pronto</span>
-            <span style={s.dropItemSoon}>Historial · pronto</span>
+            <span style={s.dropItemSoon}>Unidades ┬À pronto</span>
+            <span style={s.dropItemSoon}>Propietarios ┬À pronto</span>
+            <span style={s.dropItemSoon}>Arrendatarios ┬À pronto</span>
+            <span style={s.dropItemSoon}>Contratos ┬À pronto</span>
+            <span style={s.dropItemSoon}>Documentos ┬À pronto</span>
+            <span style={s.dropItemSoon}>Historial ┬À pronto</span>
           </div>
         )}
       </div>
       )}
 
-      {/* Procesos — botón partido: el texto va a /procesos; la ▾ abre el desplegable
-          de procesos EN PRODUCCIÓN, filtrado por perfil (candado 🔒 si no hay acceso). */}
+      {/* Procesos ÔÇö bot├│n partido: el texto va a /procesos; la Ôû¥ abre el desplegable
+          de procesos EN PRODUCCI├ôN, filtrado por perfil (candado ­ƒöÆ si no hay acceso). */}
       {puede('/procesos') && (
       <div ref={procesosRef} style={{ position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', borderRadius: 6,
@@ -405,17 +398,17 @@ export default function TopNav() {
             style={{ ...s.link(procesosActive), background: 'transparent', paddingRight: 4 }}>
             Procesos
           </Link>
-          <button aria-label="Ver procesos en producción"
+          <button aria-label="Ver procesos en producci├│n"
             onClick={() => { setProcesosOpen(v => !v); setPropiedadesOpen(false); setVentasOpen(false); }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px 6px 2px',
               color: procesosActive ? '#185FA5' : '#555', display: 'flex', alignItems: 'center' }}>
             <span style={{ fontSize: 9, opacity: 0.6, transition: 'transform 0.15s',
-              transform: procesosOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+              transform: procesosOpen ? 'rotate(180deg)' : 'none' }}>Ôû¥</span>
           </button>
         </div>
         {procesosOpen && (
           <div style={s.dropdown}>
-            <div style={s.dropLabel}>Procesos en producción</div>
+            <div style={s.dropLabel}>Procesos en producci├│n</div>
             {PROCESOS.filter(p => p.produccion).slice().sort((a, b) => a.titulo.localeCompare(b.titulo, 'es')).map(p => {
               const tiene = procKeys.has(p.key) && !!p.href;
               return tiene ? (
@@ -427,21 +420,21 @@ export default function TopNav() {
               ) : (
                 <span key={p.key} title="Sin acceso"
                   style={{ ...s.dropItem, color: '#bbb', cursor: 'default', display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ fontSize: 11 }}>🔒</span>{p.titulo}
+                  <span style={{ fontSize: 11 }}>­ƒöÆ</span>{p.titulo}
                 </span>
               );
             })}
             <div style={s.dropDivider} />
             <Link href="/procesos" onClick={() => setProcesosOpen(false)}
               style={{ ...s.dropItem, color: '#185FA5', fontWeight: 600 }}>
-              Ver todos los procesos →
+              Ver todos los procesos ÔåÆ
             </Link>
           </div>
         )}
       </div>
       )}
 
-      {/* Ventas (interno) — Inventario y Contactos */}
+      {/* Ventas (interno) ÔÇö Inventario y Contactos */}
       {puede('/publicaciones') && (
       <div ref={ventasRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(ventasActive)} onClick={() => { setVentasOpen(v => !v); setPropiedadesOpen(false); setProcesosOpen(false); }}>
@@ -450,11 +443,11 @@ export default function TopNav() {
         {ventasOpen && (
           <div style={s.dropdown}>
             <Link href="/requerimientos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Requerimientos</Link>
-            <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y órdenes</Link>
+            <Link href="/visitas" style={s.dropItem} onClick={() => setVentasOpen(false)}>Visitas y ├│rdenes</Link>
             <div style={s.dropDivider}/>
             <Link href="/calendario" style={s.dropItem} onClick={() => setVentasOpen(false)}>Calendario</Link>
             {puede('/cumpleanos') && (
-            <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumpleaños</Link>
+            <Link href="/cumpleanos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Cumplea├▒os</Link>
             )}
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Inventario</div>
@@ -467,13 +460,13 @@ export default function TopNav() {
             )}
             <div style={s.dropDivider}/>
             <Link href="/contactos" style={s.dropItem} onClick={() => setVentasOpen(false)}>Contactos</Link>
-            <span style={s.dropItemSoon}>Leads / buzón · pronto</span>
+            <span style={s.dropItemSoon}>Leads / buz├│n ┬À pronto</span>
           </div>
         )}
       </div>
       )}
 
-      {/* BB1 (venta) / BB2 (arriendo sin admón) — Operaciones comerciales. En construcción: solo Dirección + Anthony. */}
+      {/* BB1 (venta) / BB2 (arriendo sin adm├│n) ÔÇö Operaciones comerciales. En construcci├│n: solo Direcci├│n + Anthony. */}
       {esBB && (
         <Link href="/bb1" style={s.link(isActive('/bb1'))}>BB1</Link>
       )}
@@ -484,19 +477,19 @@ export default function TopNav() {
         <Link href="/captaciones" style={s.link(isActive('/captaciones'))}>Captaciones</Link>
       )}
 
-      {/* Comercial — Portal externo (pendiente de desarrollo). Solo Dirección por ahora. */}
+      {/* Comercial ÔÇö Portal externo (pendiente de desarrollo). Solo Direcci├│n por ahora. */}
       {esDireccion && (
-        <span style={{ ...s.link(false), opacity: 0.4, cursor: 'default' }}>Comercial · pronto</span>
+        <span style={{ ...s.link(false), opacity: 0.4, cursor: 'default' }}>Comercial ┬À pronto</span>
       )}
 
-      {/* Config — solo Dirección */}
+      {/* Config ÔÇö solo Direcci├│n */}
       {puede('/admin') && (
         <Link href="/config" style={s.link(isActive('/config'))}>Config</Link>
       )}
 
       <div style={s.spacer}/>
 
-      {/* Ayuda — Reglamento, Mapa de procesos y manuales */}
+      {/* Ayuda ÔÇö Reglamento, Mapa de procesos y manuales */}
       <div ref={ayudaRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(false)} onClick={() => setAyudaOpen(v => !v)}>
           Ayuda <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
@@ -504,28 +497,28 @@ export default function TopNav() {
         {ayudaOpen && (
           <div style={s.dropdownRight}>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('reglamento'); setAyudaOpen(false); }}>📋 Reglamento Interno</button>
+              onClick={() => { abrirDoc('reglamento'); setAyudaOpen(false); }}>­ƒôï Reglamento Interno</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('procesos'); setAyudaOpen(false); }}>🗺 Mapa de Procesos</button>
+              onClick={() => { abrirDoc('procesos'); setAyudaOpen(false); }}>­ƒù║ Mapa de Procesos</button>
             <div style={s.dropDivider}/>
             <div style={s.dropLabel}>Manuales</div>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_deudas'); setAyudaOpen(false); }}>💧 Manual de Deudas de Servicios</button>
+              onClick={() => { abrirDoc('manual_deudas'); setAyudaOpen(false); }}>­ƒÆº Manual de Deudas de Servicios</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_terminos'); setAyudaOpen(false); }}>🔑 Guía de Términos</button>
+              onClick={() => { abrirDoc('manual_terminos'); setAyudaOpen(false); }}>­ƒöæ Gu├¡a de T├®rminos</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_publicaciones'); setAyudaOpen(false); }}>🏠 Manual de Publicaciones</button>
+              onClick={() => { abrirDoc('manual_publicaciones'); setAyudaOpen(false); }}>­ƒÅá Manual de Publicaciones</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_descuentos'); setAyudaOpen(false); }}>💸 Manual de Descuentos</button>
+              onClick={() => { abrirDoc('manual_descuentos'); setAyudaOpen(false); }}>­ƒÆ© Manual de Descuentos</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_bi'); setAyudaOpen(false); }}>📊 Manual del BI</button>
+              onClick={() => { abrirDoc('manual_bi'); setAyudaOpen(false); }}>­ƒôè Manual del BI</button>
             <button style={{ ...s.dropItem, width: '100%', textAlign: 'left', background: 'none', border: 'none', fontFamily: 'inherit' }}
-              onClick={() => { abrirDoc('manual_gestion_log'); setAyudaOpen(false); }}>📑 Manual de Gestión LOG</button>
+              onClick={() => { abrirDoc('manual_gestion_log'); setAyudaOpen(false); }}>­ƒôæ Manual de Gesti├│n LOG</button>
           </div>
         )}
       </div>
 
-      {/* Alertas — semáforo según las alertas propias (rojo/ámbar/verde) */}
+      {/* Alertas ÔÇö sem├íforo seg├║n las alertas propias (rojo/├ímbar/verde) */}
       {puedeAlertas && (
         <Link href="/alertas" style={s.infoLink(isActive('/alertas'))}
           title={alertaSem.color === '#DC2626' ? 'Tienes alertas sin gestionar'
@@ -547,10 +540,10 @@ export default function TopNav() {
 
       {/* Mis tareas */}
       {puede('/procesos/mi-portal') && (
-        <Link href="/procesos/mi-portal" style={s.infoLink(isActive('/procesos/mi-portal'))}>📋 Mis tareas</Link>
+        <Link href="/procesos/mi-portal" style={s.infoLink(isActive('/procesos/mi-portal'))}>­ƒôï Mis tareas</Link>
       )}
 
-      {/* Menú de usuario */}
+      {/* Men├║ de usuario */}
       {session?.user && (
       <div ref={userRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(userOpen)} onClick={() => setUserOpen(v => !v)}>
@@ -558,15 +551,15 @@ export default function TopNav() {
         </button>
         {userOpen && (
           <div style={s.dropdownRight}>
-            <span style={s.dropItemSoon}>Mi Perfil · pronto</span>
+            <span style={s.dropItemSoon}>Mi Perfil ┬À pronto</span>
             {esDireccion && (
               <>
                 <div style={s.dropDivider}/>
                 <div style={s.dropLabel}>Administracion</div>
-                <span style={s.dropItemSoon}>Usuarios y Permisos · pronto</span>
-                <span style={s.dropItemSoon}>Catalogos / Listas Maestras · pronto</span>
-                <span style={s.dropItemSoon}>Integraciones · pronto</span>
-                <span style={s.dropItemSoon}>Configuracion General · pronto</span>
+                <span style={s.dropItemSoon}>Usuarios y Permisos ┬À pronto</span>
+                <span style={s.dropItemSoon}>Catalogos / Listas Maestras ┬À pronto</span>
+                <span style={s.dropItemSoon}>Integraciones ┬À pronto</span>
+                <span style={s.dropItemSoon}>Configuracion General ┬À pronto</span>
               </>
             )}
             <div style={s.dropDivider}/>
