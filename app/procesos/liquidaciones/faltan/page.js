@@ -1,9 +1,15 @@
 'use client'
+// RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v1 · 2026-08-13 · Filtros tipo Excel por columna (mismo motor que CC1/Cobranza, lib/filtroExcel)
+//   en TODAS las columnas (IDADMON, Propietario, Inmueble, A cobrar, Falta arriendo, GGCC, Luz, Agua, Gas,
+//   Serv. total, Comentario) + botón "Exportar Excel" que vuelca EXACTAMENTE lo filtrado del mes. Primera
+//   versión versionada de esta pantalla.
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 import TopNav from '@/app/components/ui/TopNav'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
@@ -36,6 +42,24 @@ function mesEnCurso() {
 // Umbrales de riesgo por servicio (rojo al superar)
 const UMBRAL = { ggcc: 100000, luz: 80000, agua: 50000, gas: 50000 }
 
+// ── Filtros estilo Excel (mismo motor que CC1/Cobranza: lib/filtroExcel). Una definición por columna.
+//    `fkey` extrae el valor de la fila y `flabel` lo formatea para el desplegable. ──
+const fmtNumCL = (k) => { const x = Number(k); return isNaN(x) ? String(k) : x.toLocaleString('es-CL') }
+const nkey = (v) => String(Math.round(n0(v)))   // clave numérica estable para el filtro
+const FALTAN_COLS = [
+  { key: 'idadmon', label: 'IDADMON', tipo: 'texto', fkey: f => f.idadmon || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'propietario', label: 'Propietario', tipo: 'texto', fkey: f => f.propietario || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'inmueble', label: 'Inmueble', tipo: 'texto', fkey: f => f.inmueble || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'base', label: 'A cobrar', tipo: 'num', fkey: f => nkey(f.base), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'falta', label: 'Falta arriendo', tipo: 'num', fkey: f => nkey(f.falta), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'ggcc', label: 'GGCC', tipo: 'num', fkey: f => nkey(f.ggcc), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'luz', label: 'Luz', tipo: 'num', fkey: f => nkey(f.luz), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'agua', label: 'Agua', tipo: 'num', fkey: f => nkey(f.agua), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'gas', label: 'Gas', tipo: 'num', fkey: f => nkey(f.gas), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'servTotal', label: 'Serv. total', tipo: 'num', fkey: f => nkey(f.servTotal), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'comentario', label: 'Coment. interno', tipo: 'texto', fkey: f => f.comentario || '', flabel: k => (k === '' ? '(sin comentario)' : k) },
+]
+
 export default function FaltanPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -53,6 +77,29 @@ export default function FaltanPage() {
   const [editCom, setEditCom] = useState(null)          // idadmon en edicion (o null)
   const [editTxt, setEditTxt] = useState('')
   const [savingCom, setSavingCom] = useState(false)
+
+  // ── Filtros estilo Excel (mismo motor que CC1/Cobranza): un estado por columna + orden global ──
+  const [filters, setFilters] = useState({})
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
+  const hayAlguno = FALTAN_COLS.some(c => filtroActivo(filters[c.key])) || !!orden?.key
+
+  // Enriquecer cada fila con su comentario (que vive en otro estado) para poder filtrar/exportar por él.
+  const filasEnr = useMemo(
+    () => filas.map(f => ({ ...f, comentario: (comentarios[f.idadmon] && comentarios[f.idadmon].comentario) || '' })),
+    [filas, comentarios]
+  )
+  // Derivación: filtros de columna → orden. Sin orden explícito, se mantiene el orden original
+  // (FCR primero, luego por deuda desc), igual que antes.
+  const filtradas = useMemo(() => {
+    let out = aplicarFiltros(filasEnr, FALTAN_COLS, filters, orden)
+    if (!orden?.key) {
+      out = [...out].sort((a, b) => (Number(a.cobraDueno) - Number(b.cobraDueno)) || (b.falta - a.falta))
+    }
+    return out
+  }, [filasEnr, filters, orden])
 
   // Acceso (mismo criterio que Liquidaciones)
   useEffect(() => {
@@ -185,6 +232,47 @@ export default function FaltanPage() {
   const th = { fontSize: 11, color: '#888', fontWeight: 700 }
   const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 1.5fr'
 
+  // Control de filtro Excel para una columna (mismo patrón que CC1). `movs` = todas las filas
+  // enriquecidas, para que el desplegable liste todos los valores.
+  const HF = (key) => (
+    <HeaderFilter col={FALTAN_COLS.find(c => c.key === key)} movs={filasEnr}
+      state={filters[key]} setState={v => setFiltroCol(key, v)}
+      open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
+      limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} />
+  )
+  // Celda de cabecera: etiqueta + filtro (alineada izq. o der. según sea texto o número).
+  const Hh = (label, key, right) => (
+    <div style={right ? { ...th, textAlign: 'right' } : th}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: '100%', justifyContent: right ? 'flex-end' : 'flex-start' }}>
+        <span>{label}</span>{HF(key)}
+      </span>
+    </div>
+  )
+
+  // Exporta a Excel EXACTAMENTE lo filtrado (`filtradas`) del mes en pantalla.
+  async function exportarExcel() {
+    const XLSX = await import('xlsx')
+    const salida = filtradas.map(f => ({
+      IDADMON: f.idadmon || '',
+      Propietario: f.propietario || '',
+      Inmueble: f.inmueble || '',
+      'A cobrar': Math.round(n0(f.base)),
+      'Falta arriendo': Math.round(n0(f.falta)),
+      GGCC: Math.round(n0(f.ggcc)),
+      Luz: Math.round(n0(f.luz)),
+      Agua: Math.round(n0(f.agua)),
+      Gas: Math.round(n0(f.gas)),
+      'Serv. total': Math.round(n0(f.servTotal)),
+      'Cobra dueño': f.cobraDueno ? 'SÍ' : '',
+      Comentario: f.comentario || '',
+    }))
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(salida)
+    XLSX.utils.book_append_sheet(wb, ws, 'FALTAN')
+    const hoy = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `FALTAN_${mes}_${hoy}.xlsx`)
+  }
+
   return (
     <>
       <TopNav />
@@ -225,6 +313,17 @@ export default function FaltanPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
             {cargando ? 'Calculando…' : '🔄 Recalcular'}
           </button>
+          <div style={{ flex: 1 }} />
+          {hayAlguno && (
+            <button onClick={limpiarTodo}
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#FBF7EC', color: '#B8860B', cursor: 'pointer' }}>
+              ✕ Limpiar filtros
+            </button>
+          )}
+          <button onClick={exportarExcel}
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#1c7d3f', color: '#fff', cursor: 'pointer' }}>
+            ⬇ Exportar Excel ({filtradas.length})
+          </button>
         </div>
 
         {/* KPIs */}
@@ -240,24 +339,25 @@ export default function FaltanPage() {
           <div>
             {/* Fila de títulos: sticky top:52 (bajo el TopNav). Debe compartir
                 contenedor con las filas de datos para que el sticky funcione. */}
-            <div style={{ position: 'sticky', top: 52, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0' }}>
-              <div style={th}>IDADMON</div>
-              <div style={th}>Propietario</div>
-              <div style={th}>Inmueble</div>
-              <div style={{ ...th, textAlign: 'right' }}>A cobrar</div>
-              <div style={{ ...th, textAlign: 'right' }}>Falta arriendo</div>
-              <div style={{ ...th, textAlign: 'right' }}>GGCC</div>
-              <div style={{ ...th, textAlign: 'right' }}>Luz</div>
-              <div style={{ ...th, textAlign: 'right' }}>Agua</div>
-              <div style={{ ...th, textAlign: 'right' }}>Gas</div>
-              <div style={{ ...th, textAlign: 'right' }}>Serv. total</div>
-              <div style={th}>Coment. interno</div>
+            <div style={{ position: 'sticky', top: 52, zIndex: 5, display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 16px', background: '#FAFAF8', border: '1px solid #E8E6E0', borderRadius: '12px 12px 0 0', overflow: 'visible' }}>
+              {Hh('IDADMON', 'idadmon', false)}
+              {Hh('Propietario', 'propietario', false)}
+              {Hh('Inmueble', 'inmueble', false)}
+              {Hh('A cobrar', 'base', true)}
+              {Hh('Falta arriendo', 'falta', true)}
+              {Hh('GGCC', 'ggcc', true)}
+              {Hh('Luz', 'luz', true)}
+              {Hh('Agua', 'agua', true)}
+              {Hh('Gas', 'gas', true)}
+              {Hh('Serv. total', 'servTotal', true)}
+              {Hh('Coment. interno', 'comentario', false)}
             </div>
 
             <div style={{ background: '#fff', borderLeft: '1px solid #E8E6E0', borderRight: '1px solid #E8E6E0', borderBottom: '1px solid #E8E6E0', borderRadius: '0 0 12px 12px' }}>
               {filas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>No hay morosos de arriendo en {aammToTxt(mes)}. 🎉</div>}
+              {filas.length > 0 && filtradas.length === 0 && <div style={{ padding: 20, color: '#888', fontSize: 13 }}>Sin resultados con los filtros aplicados.</div>}
 
-              {filas.map((f, i) => (
+              {filtradas.map((f, i) => (
                 <div key={f.idadmon + (f.esProp ? '·prop' : '')} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '9px 16px', borderTop: i ? '1px solid #F0EEE8' : 'none', alignItems: 'center', fontSize: 12.5, background: f.cobraDueno ? '#F9FAFB' : '#fff' }}>
                   <div style={{ fontWeight: 600, color: f.cobraDueno ? '#9CA3AF' : undefined }}>{f.idadmon}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, color: f.cobraDueno ? '#9CA3AF' : undefined }} title={f.propietario || ''}>
