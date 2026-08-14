@@ -1,3 +1,8 @@
+// VERSION: v24 · 2026-08-13 · Reasignar el IDADMON de un movimiento ahora AVISA (afecta al contrato anterior y al
+//   nuevo, y a sus liquidaciones del mes): confirm al escribir un IDADMON distinto en UNIQUE CONCEPT y al usar +RUT,
+//   solo cuando es reasignación real (viejo válido → nuevo distinto). El diálogo +RUT explica cuándo NO usarlo (ingreso
+//   puntual → usar FALTA + "Copiar FALTA a CUENTAS"). Nuevo botón "?" con ayuda completa (dos procedimientos, botones,
+//   estados FALTA/PASADO/CORREGIDO). Hereda v23.
 // VERSION: v23 · 2026-08-13 · Filtro de cantidad (Cargo/Abono/Saldo) mejorado: (1) campo "Igual a (exacto)" para
 //   buscar un valor concreto sin usar Desde/Hasta (si se rellena, manda sobre el rango). (2) Layout corregido:
 //   los rótulos Desde/Hasta/Igual van ENCIMA de su input (antes se solapaban con el placeholder). Hereda v22.
@@ -472,6 +477,22 @@ export default function BiVista() {
   }, [filas, verTodos, hayFiltroActivo])
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
+  const [ayudaOpen, setAyudaOpen] = useState(false)
+  // Aviso al REASIGNAR un movimiento de un IDADMON a otro (afecta al anterior y al nuevo + sus liquidaciones del mes).
+  const RE_IDADMON = /^A\d{5}$/
+  const esReasignacion = (viejo, nuevo) => {
+    const v = String(viejo || '').trim().toUpperCase(), n = String(nuevo || '').trim().toUpperCase()
+    return RE_IDADMON.test(v) && RE_IDADMON.test(n) && v !== n
+  }
+  const AVISO_REASIGNACION =
+    '⚠ Estás REASIGNANDO este movimiento a otro IDADMON.\n\n' +
+    'El abono/cargo se moverá del IDADMON anterior al nuevo:\n' +
+    '• el anterior lo PIERDE (su cartola baja → puede subir su falta de arriendo),\n' +
+    '• el nuevo lo GANA (su cartola sube → baja su falta).\n\n' +
+    'Afecta a las cartolas y a la liquidación del mes de AMBOS contratos.\n' +
+    'Después, revisa la cartola del anterior y la del nuevo, y la liquidación del mes en los dos.\n\n' +
+    '¿Confirmas el cambio?'
+
   const guardarCelda = async (id, k, valor) => {
     if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
     const v = valor === '' ? null : valor
@@ -539,6 +560,8 @@ export default function BiVista() {
       valor = raw
     }
     const { row, rut } = asocOpen
+    // Si ya tenía un IDADMON válido y lo cambias por otro, es una reasignación: avisar de las consecuencias.
+    if (esReasignacion(row.unique_concept, valor) && !window.confirm(AVISO_REASIGNACION)) { return }
     setAsocGuardando(true); setAsocErr(null)
     try {
       // Pasamos biId: el endpoint asocia en bi_admon Y rellena este movimiento (server-side).
@@ -767,7 +790,10 @@ export default function BiVista() {
             const sigueAm = baseAm && !estaIdentificado(actual)
             e.target.style.border = '1px solid transparent'
             e.target.style.background = sigueAm ? '#FFE84D' : 'transparent'
-            if (orig !== actual) guardarCelda(r.id, c.key, actual)
+            if (orig !== actual) {
+              if (esReasignacion(orig, actual) && !window.confirm(AVISO_REASIGNACION)) { onLocal(r.id, c.key, orig); return }
+              guardarCelda(r.id, c.key, actual)
+            }
           }}
           style={{ width: '100%', border: '1px solid transparent', borderRadius: 4, padding: '2px 4px', fontSize: 11, fontWeight: amarillo ? 700 : 400, background: amarillo ? '#FFE84D' : 'transparent', textAlign: c.align, color: '#2C2C2A', boxSizing: 'border-box' }} />
       )
@@ -955,6 +981,8 @@ export default function BiVista() {
               </button>
             )
           })}
+          <button onClick={() => setAyudaOpen(true)} title="¿Qué hace cada botón y cuándo usar +RUT?"
+            style={{ fontSize: 13, fontWeight: 800, width: 26, height: 26, borderRadius: '50%', border: '1px solid #C8C5BC', background: '#fff', color: '#6B4423', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>?</button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           <button onClick={() => setVerTodos(v => !v)}
             title={verTodos ? 'Mostrar solo las más recientes' : 'Mostrar las 6.7k filas (puede ir más lento)'}
@@ -1036,6 +1064,11 @@ export default function BiVista() {
             <div style={{ padding: '14px 18px', overflow: 'auto' }}>
               {asocErr && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{asocErr}</div>}
 
+              <div style={{ marginBottom: 12, padding: '9px 12px', borderRadius: 8, background: '#EFF6FF', border: '0.5px solid #BFDBFE', color: '#1E40AF', fontSize: 11.5, lineHeight: 1.5 }}>
+                <b>Usa +RUT solo si este RUT volverá a pagar</b> (arrendatario habitual): queda memorizado y sus abonos futuros se reconocen solos.<br />
+                Si es un <b>ingreso puntual</b> que no se repetirá (p. ej. un amigo que pagó una vez), <b>no uses +RUT</b>: cierra esto, escribe el IDADMON en UNIQUE CONCEPT, pon <b>check2 = FALTA</b> y pulsa <b>“Copiar FALTA a CUENTAS”</b>. Corrige la cartola sin dejar el RUT guardado.
+              </div>
+
               {asocOpen.soloManual ? (
                 <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F1EFE8', color: '#5F5E5A', fontSize: 12, marginBottom: 4 }}>
                   Escribe el IDADMON del contrato al que pertenece este abono. Al guardar, este RUT
@@ -1080,6 +1113,33 @@ export default function BiVista() {
                 </div>
               </div>
             </div>
+          </div>
+        </>
+      )}
+      {ayudaOpen && (
+        <>
+          <div onClick={() => setAyudaOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
+          <div style={{ position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', width: 'min(560px, 94vw)', maxHeight: '84vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71, padding: 20, fontSize: 13, lineHeight: 1.55, color: '#2C2C2A' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Cómo identificar un ingreso y pasarlo a Cartolas</div>
+              <button onClick={() => setAyudaOpen(false)} style={{ border: 'none', background: '#F1EFE8', borderRadius: 8, padding: '5px 11px', cursor: 'pointer', fontWeight: 700, color: '#5F5E5A' }}>Cerrar</button>
+            </div>
+            <p style={{ margin: '6px 0' }}><b>Hay dos formas de asignar el IDADMON a un abono</b>, según si el pagador se repetirá:</p>
+            <p style={{ margin: '6px 0', padding: '8px 12px', background: '#F0FAF6', border: '0.5px solid #9BD7C2', borderRadius: 8 }}>
+              <b>1) Botón +RUT</b> — para un RUT que <b>volverá a pagar</b> (arrendatario habitual). Asocia el RUT al IDADMON (sus abonos futuros se reconocen solos) y <b>corrige la cartola en el momento</b>. Deja check2 = <b>CORREGIDO</b>. No hace falta nada más.
+            </p>
+            <p style={{ margin: '6px 0', padding: '8px 12px', background: '#FBF7EC', border: '0.5px solid #EAD9A0', borderRadius: 8 }}>
+              <b>2) Escribir el IDADMON + FALTA + “Copiar FALTA a CUENTAS”</b> — para un <b>ingreso puntual</b> que no se repetirá (p. ej. un amigo que pagó una vez). Escribe el IDADMON en UNIQUE CONCEPT, pon check2 = <b>FALTA</b> y pulsa el botón. Corrige la cartola <b>sin memorizar el RUT</b>. Queda check2 = <b>PASADO</b>.
+            </p>
+            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Los botones</p>
+            <ul style={{ margin: '4px 0 8px 18px', padding: 0 }}>
+              <li><b>Verificar si en CUENTAS</b>: comprueba qué ingresos ya están volcados en CUENTAS.</li>
+              <li><b>Copiar FALTA a CUENTAS</b>: vuelca a CUENTAS los marcados <b>FALTA</b> (solo IDADMON válido Axxxxx). Si ese registro ya estaba con otro IDADMON, lo <b>corrige</b> y marca <b>PASADO</b>.</li>
+            </ul>
+            <p style={{ margin: '4px 0' }}><b>Estados de check2:</b> <b>FALTA</b> = pendiente de pulsar el botón · <b>PASADO</b> = ya volcado por el botón · <b>CORREGIDO</b> = ya corregido por +RUT.</p>
+            <p style={{ margin: '10px 0 0', padding: '8px 12px', background: '#FDECEC', border: '0.5px solid #F1B0B0', borderRadius: 8, color: '#9B1C1C' }}>
+              ⚠ <b>Cambiar el IDADMON de un movimiento afecta a DOS contratos</b>: el anterior pierde el abono y el nuevo lo gana. Cambian sus cartolas y su liquidación del mes. Revisa siempre ambas después.
+            </p>
           </div>
         </>
       )}
