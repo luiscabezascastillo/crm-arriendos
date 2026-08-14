@@ -1,3 +1,5 @@
+// VERSION: v28 · 2026-08-14 · Se QUITA el botón "Verificar si en CUENTAS" (acción null, ya no tenía sentido) y su
+//   línea de ayuda. La barra de botones queda con "Copiar FALTA a CUENTAS" (el .map sigue funcionando con 1 solo). Hereda v27.
 // VERSION: v27 · 2026-08-14 · Ajuste fino: Detalle mov. +10 caracteres (w210) y check2 más estrecha (w16). Hereda v26.
 // VERSION: v26 · 2026-08-14 · La tabla usa el 100% del ancho (sin scroll horizontal): se quita el minWidth fijo de 1600
 //   y se estrechan columnas (Detalle 150, UNIQUE 150, COMENTARIOS 130, check2 40, N°Doc/Cargo/Abono/Saldo/Reg/Desc menores).
@@ -976,7 +978,6 @@ export default function BiVista() {
           )}
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           {[
-            ['Verificar si en CUENTAS', 'Verifica qué ingresos ya están en CUENTAS', null],
             ['Copiar FALTA a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido). Si el reg ya está pero con otro IDADMON, lo corrige.', copiarFaltan],
           ].map(([label, hint, accion], i) => {
             const habilitado = !!accion && !copiando && puedeEditar
@@ -1140,7 +1141,6 @@ export default function BiVista() {
             </p>
             <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Los botones</p>
             <ul style={{ margin: '4px 0 8px 18px', padding: 0 }}>
-              <li><b>Verificar si en CUENTAS</b>: comprueba qué ingresos ya están volcados en CUENTAS.</li>
               <li><b>Copiar FALTA a CUENTAS</b>: vuelca a CUENTAS los marcados <b>FALTA</b> (solo IDADMON válido Axxxxx). Si ese registro ya estaba con otro IDADMON, lo <b>corrige</b> y marca <b>PASADO</b>.</li>
             </ul>
             <p style={{ margin: '4px 0' }}><b>Estados de check2:</b> <b>FALTA</b> = pendiente de pulsar el botón · <b>PASADO</b> = ya volcado por el botón · <b>CORREGIDO</b> = ya corregido por +RUT.</p>
