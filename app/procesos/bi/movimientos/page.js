@@ -1,3 +1,4 @@
+// VERSION: v27 · 2026-08-14 · Ajuste fino: Detalle mov. +10 caracteres (w210) y check2 más estrecha (w16). Hereda v26.
 // VERSION: v26 · 2026-08-14 · La tabla usa el 100% del ancho (sin scroll horizontal): se quita el minWidth fijo de 1600
 //   y se estrechan columnas (Detalle 150, UNIQUE 150, COMENTARIOS 130, check2 40, N°Doc/Cargo/Abono/Saldo/Reg/Desc menores).
 //   Hereda v25 (check1 30, LIQ.MES2 54, DISCRIMINADOR oculta).
@@ -105,13 +106,13 @@ function extraerRut(txt) {
 
 const COLS = [
   { key: 'fecha',                  h: 'Fecha',          ro: true, w: 72,  align: 'left',  filt: true },
-  { key: 'detalle_movimiento',     h: 'Detalle mov.',   ro: true, w: 150, align: 'left',  filt: true, wrap: true },
+  { key: 'detalle_movimiento',     h: 'Detalle mov.',   ro: true, w: 210, align: 'left',  filt: true, wrap: true },
   { key: 'n_doc',                  h: 'N° Doc',         ro: true, w: 74,  align: 'left',  filt: true },
   { key: 'cargos',                 h: 'Cargo',          ro: true, w: 74,  align: 'right', money: true, color: '#9B1C1C', filt: true },
   { key: 'abonos',                 h: 'Abono',          ro: true, w: 74,  align: 'right', money: true, color: '#085041', filt: true },
   { key: 'saldos',                 h: 'Saldo',          ro: true, w: 80,  align: 'right', money: true, filt: true },
   { key: '_check1',                h: 'check1',         ro: true, w: 30,  align: 'right' },
-  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 40,  align: 'left',  filt: true },
+  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 16,  align: 'left',  filt: true },
   { key: 'reg',                    h: 'Reg',            ro: true, w: 50,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 150, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 52, align: 'center' },
