@@ -1,3 +1,7 @@
+// VERSION: v30 · 2026-08-14 · Ayuda del "?" reescrita al flujo real: (1) lo que hace el sistema solo (auto + validar
+//   con "✓ auto"/chip "Por validar"), (2) cuándo asignas tú (+RUT o escribir el IDADMON en la celda, que ya vuelca
+//   solo — se elimina el paso obsoleto "FALTA + botón"), (3) "Copiar FALTA" reencuadrado como repesca en lote, y
+//   estados de check2 actualizados. Solo texto de ayuda; ninguna lógica cambia. Hereda v29.
 // VERSION: v29 · 2026-08-14 · VALIDAR IDADMON AUTO. Los abonos con idadmon_origen='auto' (IDADMON que puso el
 //   sistema solo al cargar la cartola) se RESALTAN con una barra ámbar a la izquierda y muestran en su celda un
 //   botón "✓ auto": al pulsarlo se validan (pasa a 'manual' vía /api/bi/validar-idadmon, queda en bitácora y sale
@@ -1164,18 +1168,26 @@ export default function BiVista() {
               <div style={{ fontSize: 15, fontWeight: 800 }}>Cómo identificar un ingreso y pasarlo a Cartolas</div>
               <button onClick={() => setAyudaOpen(false)} style={{ border: 'none', background: '#F1EFE8', borderRadius: 8, padding: '5px 11px', cursor: 'pointer', fontWeight: 700, color: '#5F5E5A' }}>Cerrar</button>
             </div>
-            <p style={{ margin: '6px 0' }}><b>Hay dos formas de asignar el IDADMON a un abono</b>, según si el pagador se repetirá:</p>
+            <p style={{ margin: '6px 0' }}>Al cargar la cartola, el sistema intenta identificar cada abono <b>solo</b>. Tú solo intervienes cuando no pudo, o para <b>validar</b> lo que propuso.</p>
+
+            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Lo que hace el sistema solo</p>
+            <p style={{ margin: '6px 0', padding: '8px 12px', background: '#FEF3C7', border: '0.5px solid #E0A93B', borderRadius: 8, color: '#5b4708' }}>
+              Si reconoce el RUT (porque ya se asoció antes con +RUT, o por el RUT del contrato) <b>asigna el IDADMON y lo vuelca a Cartolas</b> al momento. Esos abonos salen con una <b>barra ámbar</b> a la izquierda y el botón <b>“✓ auto”</b>: son propuestas del sistema <b>pendientes de validar</b>.<br />
+              <b>Validar:</b> pulsa <b>“✓ auto”</b> para confirmar que el IDADMON es correcto (pasa a manual, queda en bitácora y desaparece de la lista). Para verlos todos juntos, usa el chip <b>“⚠ Por validar (n)”</b> del filtro de UNIQUE CONCEPT. Si el sistema se equivocó, corrígelo escribiendo el IDADMON bueno en la celda (ver abajo).
+            </p>
+
+            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Cuando tienes que asignarlo tú</p>
             <p style={{ margin: '6px 0', padding: '8px 12px', background: '#F0FAF6', border: '0.5px solid #9BD7C2', borderRadius: 8 }}>
               <b>1) Botón +RUT</b> — para un RUT que <b>volverá a pagar</b> (arrendatario habitual). Asocia el RUT al IDADMON (sus abonos futuros se reconocen solos) y <b>corrige la cartola en el momento</b>. Deja check2 = <b>CORREGIDO</b>. No hace falta nada más.
             </p>
             <p style={{ margin: '6px 0', padding: '8px 12px', background: '#FBF7EC', border: '0.5px solid #EAD9A0', borderRadius: 8 }}>
-              <b>2) Escribir el IDADMON + FALTA + “Copiar FALTA a CUENTAS”</b> — para un <b>ingreso puntual</b> que no se repetirá (p. ej. un amigo que pagó una vez). Escribe el IDADMON en UNIQUE CONCEPT, pon check2 = <b>FALTA</b> y pulsa el botón. Corrige la cartola <b>sin memorizar el RUT</b>. Queda check2 = <b>PASADO</b>.
+              <b>2) Escribir el IDADMON en la celda UNIQUE CONCEPT</b> — para un <b>ingreso puntual</b> (no se repetirá) o para <b>corregir</b> uno mal asignado. Al salir de la celda se <b>vuelca solo a Cartolas</b> (inserta la línea o corrige la que hubiera) y queda check2 = <b>CORREGIDO</b>. Ya <b>no</b> hace falta marcar FALTA ni pulsar ningún botón.
             </p>
-            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Los botones</p>
-            <ul style={{ margin: '4px 0 8px 18px', padding: 0 }}>
-              <li><b>Copiar FALTA a CUENTAS</b>: vuelca a CUENTAS los marcados <b>FALTA</b> (solo IDADMON válido Axxxxx). Si ese registro ya estaba con otro IDADMON, lo <b>corrige</b> y marca <b>PASADO</b>.</li>
-            </ul>
-            <p style={{ margin: '4px 0' }}><b>Estados de check2:</b> <b>FALTA</b> = pendiente de pulsar el botón · <b>PASADO</b> = ya volcado por el botón · <b>CORREGIDO</b> = ya corregido por +RUT.</p>
+
+            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>El botón “Copiar FALTA a CUENTAS”</p>
+            <p style={{ margin: '4px 0' }}>Es una <b>repesca en lote</b>: vuelca a Cartolas todo lo que quede en <b>FALTA</b> con IDADMON válido (Axxxxx), y corrige la línea si ya existía con otro IDADMON. Es la <b>red de seguridad / puesta al día</b>. En el día a día no lo necesitas, porque editar la celda o usar +RUT ya vuelcan solos.</p>
+
+            <p style={{ margin: '8px 0' }}><b>Estados de check2:</b> <b>FALTA</b> = aún no está en Cartolas (sin identificar o a decidir) · <b>PASADO</b> = ya volcado (automático o por la repesca) · <b>CORREGIDO</b> = volcado al editar la celda o por +RUT.</p>
             <p style={{ margin: '10px 0 0', padding: '8px 12px', background: '#FDECEC', border: '0.5px solid #F1B0B0', borderRadius: 8, color: '#9B1C1C' }}>
               ⚠ <b>Cambiar el IDADMON de un movimiento afecta a DOS contratos</b>: el anterior pierde el abono y el nuevo lo gana. Cambian sus cartolas y su liquidación del mes. Revisa siempre ambas después.
             </p>
