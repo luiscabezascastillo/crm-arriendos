@@ -1,3 +1,5 @@
+// VERSION: v5 · 2026-08-14 · El +RUT marca idadmon_origen='manual' (lo confirma una persona): así, si el
+//   movimiento venía de una asignación 'auto', sale de la lista «Por validar» del BI. Hereda v4.
 // VERSION: v4 · 2026-08-14 · CIERRA EL HUECO del desincronismo: al hacer +RUT con un IDADMON válido, si la
 //   fila NO existía en `cuentas` (seguía en FALTA), ahora se INSERTA (antes solo se corregía la existente y,
 //   como el BI quedaba CORREGIDO, "Copiar FALTA" ya no la recogía → el abono se perdía). Se unifica el volcado
@@ -168,8 +170,9 @@ export async function POST(req) {
       if (eMov) return { rellenado: false, errorRelleno: eMov.message }
       const reg = mov?.reg != null && String(mov.reg).trim() !== '' ? String(mov.reg).trim() : null
 
-      // 2) Marcar el movimiento del BI: unique_concept + idadmon2 (espejo) + check2 = CORREGIDO
-      const patchBi = { unique_concept: valor }
+      // 2) Marcar el movimiento del BI: unique_concept + idadmon2 (espejo) + check2 = CORREGIDO.
+      //    idadmon_origen='manual': lo confirma una persona → sale de «Por validar».
+      const patchBi = { unique_concept: valor, idadmon_origen: 'manual' }
       if (esIdadmonValido) { patchBi.idadmon2 = valor; patchBi.check2_pasar_a_cartola = 'CORREGIDO' }
       const { error: eBi } = await supaAdmin.from('bi').update(patchBi).eq('id', biId)
       if (eBi) return { rellenado: false, errorRelleno: eBi.message }

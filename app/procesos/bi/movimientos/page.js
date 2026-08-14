@@ -1,3 +1,7 @@
+// VERSION: v29 · 2026-08-14 · VALIDAR IDADMON AUTO. Los abonos con idadmon_origen='auto' (IDADMON que puso el
+//   sistema solo al cargar la cartola) se RESALTAN con una barra ámbar a la izquierda y muestran en su celda un
+//   botón "✓ auto": al pulsarlo se validan (pasa a 'manual' vía /api/bi/validar-idadmon, queda en bitácora y sale
+//   de la lista). Nuevo chip "⚠ Por validar (n)" en el filtro de UNIQUE CONCEPT para aislar los pendientes. Hereda v28.
 // VERSION: v28 · 2026-08-14 · Se QUITA el botón "Verificar si en CUENTAS" (acción null, ya no tenía sentido) y su
 //   línea de ayuda. La barra de botones queda con "Copiar FALTA a CUENTAS" (el .map sigue funcionando con 1 solo). Hereda v27.
 // VERSION: v27 · 2026-08-14 · Ajuste fino: Detalle mov. +10 caracteres (w210) y check2 más estrecha (w16). Hereda v26.
@@ -347,6 +351,7 @@ export default function BiVista() {
   const [asocErr, setAsocErr] = useState(null)
   const [asocId, setAsocId] = useState('')         // idadmon escrito a mano
   const [asocGuardando, setAsocGuardando] = useState(false)
+  const [validando, setValidando] = useState(null)  // id del movimiento que se está validando (auto→manual)
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
@@ -459,7 +464,8 @@ export default function BiVista() {
   // Si hay filtro/orden activo, se oculta check1 (deja de tener sentido sobre un subconjunto/reordenado).
   const filas = useMemo(() => {
     let out = conCheck
-    if (catFiltro !== 'todos') out = out.filter(r => colorFila(r) === catFiltro)
+    if (catFiltro === 'por_validar') out = out.filter(r => String(r.idadmon_origen ?? '').trim() === 'auto')
+    else if (catFiltro !== 'todos') out = out.filter(r => colorFila(r) === catFiltro)
     const activos = Object.entries(filtros).filter(([, a]) =>
       (Array.isArray(a) && a.length > 0) || (a && typeof a === 'object' && !Array.isArray(a) && (a.min != null || a.max != null || a.igual != null)))
     if (activos.length) out = out.filter(r => activos.every(([k, a]) => {
@@ -589,6 +595,25 @@ export default function BiVista() {
       flash(d.yaExistia ? `Ya estaba asociado (${rut} → ${valor})` : `✓ Asociado ${rut} → ${valor}`)
       setAsocGuardando(false); setAsocOpen(null)
     } catch { setAsocErr('Error de conexión'); setAsocGuardando(false) }
+  }
+
+  // ── Validar un IDADMON auto-asignado ────────────────────────────────────────
+  // Confirma que el IDADMON que el sistema puso solo (idadmon_origen='auto') es el correcto:
+  // lo pasa a 'manual' (queda registrado en bi_idadmon_log) y con eso sale de "pendientes de validar".
+  const validarIdadmon = async (r) => {
+    if (!puedeAsociar) { flash('No tienes permiso para validar'); return }
+    setValidando(r.id)
+    try {
+      const res = await fetch('/api/bi/validar-idadmon', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: r.id }),
+      })
+      const d = await res.json()
+      if (!res.ok) { flash(d.error || 'No se pudo validar'); setValidando(null); return }
+      setRows(rs => rs.map(x => x.id === r.id ? { ...x, idadmon_origen: 'manual' } : x))
+      flash('✓ Validado ' + (r.unique_concept || ''))
+    } catch { flash('Error de conexión al validar') }
+    setValidando(null)
   }
 
   // Exporta a Excel EXACTAMENTE lo filtrado (variable `filas`), con las columnas visibles de la tabla.
@@ -815,9 +840,15 @@ export default function BiVista() {
       const mostrarRut = num(r.abonos) > 0 && rutUC && puedeAsociar
       const resueltoUC = String(r.idadmon2 || r.unique_concept || '').trim() !== ''
       const asocAbiertoUC = asocOpen && asocOpen.row?.id === r.id
+      const esAuto = String(r.idadmon_origen ?? '').trim() === 'auto'
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           <div style={{ flex: 1, minWidth: 0 }}>{inputUC}</div>
+          {esAuto && (
+            <button onClick={() => validarIdadmon(r)} disabled={validando === r.id || !puedeAsociar}
+              title="IDADMON asignado automáticamente por el sistema (pendiente de validar). Pulsa para confirmarlo: pasa a 'manual', queda en bitácora y sale de «Por validar»."
+              style={{ flexShrink: 0, border: '0.5px solid #E0A93B', background: validando === r.id ? '#FDE9C8' : '#FEF3C7', color: '#92600A', borderRadius: 5, cursor: puedeAsociar ? 'pointer' : 'default', fontSize: 10, fontWeight: 700, padding: '1px 5px', lineHeight: 1.4 }}>{validando === r.id ? '…' : '✓ auto'}</button>
+          )}
           {mostrarRut && (
             <button onClick={() => abrirAsociar(r)}
               title={`Asociar el RUT ${rutUC} a un IDADMON (busca en CUENTAS a qué contrato pagó antes)`}
@@ -835,7 +866,8 @@ export default function BiVista() {
 
   // Los filtros de cabecera los dibuja el componente <ColFilterExcel> (patrón del LOG),
   // definido fuera de este componente. Aquí solo se pasan onSort / onApply y el estado.
-  const CHIPS_CAT = [['todos', 'Todos', null], [COLOR.abono, 'Abono', COLOR.abono], [COLOR.amarillo, 'A corregir', COLOR.amarillo], [COLOR.cargo, 'Cargo', COLOR.cargo], [COLOR.naranja_sa, 'Negocio SA', COLOR.naranja_sa]]
+  const nPorValidar = rows.reduce((n, r) => n + (String(r.idadmon_origen ?? '').trim() === 'auto' ? 1 : 0), 0)
+  const CHIPS_CAT = [['todos', 'Todos', null], [COLOR.abono, 'Abono', COLOR.abono], [COLOR.amarillo, 'A corregir', COLOR.amarillo], [COLOR.cargo, 'Cargo', COLOR.cargo], [COLOR.naranja_sa, 'Negocio SA', COLOR.naranja_sa], ['por_validar', `⚠ Por validar (${nPorValidar})`, '#F59E0B']]
 
 
   // ---- popover de descuentos (texto para contabilidad, con copiar) ----
@@ -1037,7 +1069,7 @@ export default function BiVista() {
                     // para poder leer lo que se corta. Columnas de botón/check no llevan.
                     const tdTitle = c.key.startsWith('_') ? undefined : (c.money ? (fmt(r[c.key]) || undefined) : (String(r[c.key] ?? '').trim() || undefined))
                     return (
-                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: c.key === '_asociar' ? '#fff' : bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis', position: c.key === '_asociar' ? 'sticky' : undefined, right: c.key === '_asociar' ? 0 : undefined, zIndex: c.key === '_asociar' ? 2 : undefined, boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
+                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: c.key === '_asociar' ? '#fff' : bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', borderLeft: (ci === 0 && String(r.idadmon_origen ?? '').trim() === 'auto') ? '3px solid #F59E0B' : undefined, maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis', position: c.key === '_asociar' ? 'sticky' : undefined, right: c.key === '_asociar' ? 0 : undefined, zIndex: c.key === '_asociar' ? 2 : undefined, boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
                       {cell(r, c)}
                     </td>
                     )
