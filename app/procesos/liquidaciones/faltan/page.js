@@ -1,5 +1,8 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v4 · 2026-08-14 · Los "pagos de más" (saldo a favor, falta < 0) salen AHORA VISIBLES por defecto
+//   (antes ocultos). El botón se mantiene, pero al revés: arranca como "− Ocultar pagos de más". No cambia el
+//   cálculo ni las métricas. Hereda v3.
 // VERSION: v3 · 2026-08-13 · Botón "Ver pagos de más" (por defecto OCULTO): además de los deudores, permite mostrar
 //   los IDADMON con saldo a FAVOR (falta < 0). No afectan a las métricas (En falta / Falta de arriendo / Deuda
 //   servicios), que siguen contando solo deudores; se distinguen con badge "+pagó", fondo e importe en verde.
@@ -88,7 +91,7 @@ export default function FaltanPage() {
   const [savingCom, setSavingCom] = useState(false)
   const [checks, setChecks] = useState({})              // idadmon -> true (chequeado del mes)
   const [filasPago, setFilasPago] = useState([])        // IDADMON con saldo a favor (pagaron de más)
-  const [verPagoDeMas, setVerPagoDeMas] = useState(false)   // por defecto ocultos
+  const [verPagoDeMas, setVerPagoDeMas] = useState(true)   // por defecto VISIBLES (el botón permite ocultarlos)
 
   // ── Filtros estilo Excel (mismo motor que CC1/Cobranza): un estado por columna + orden global ──
   const [filters, setFilters] = useState({})
