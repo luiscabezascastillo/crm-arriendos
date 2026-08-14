@@ -1,3 +1,11 @@
+// VERSION: v36 · 2026-08-14 · SA: nueva columna CHECK (a la derecha de Est.). Muestra SÍ/NO por movimiento y
+//   abre un cajón "COMENTARIOS" con Observación, Acciones y Mejoras propuestas (3 campos libres). Al guardar,
+//   el servidor sella automáticamente "Revisado por" (email de quien revisa) y "Fecha". Persiste en sa_marcas
+//   (columnas check_*) vía PATCH /api/financiero/sa v9. Solo editores pueden guardar; el resto lo ve en lectura.
+//   Requiere el ALTER TABLE de sa_marcas (ver route v9). Hereda v35.
+// VERSION: v35 · 2026-08-14 · SA: columnas más compactas — C/A a la mitad (24px) y Estado reducido ~80% mostrándose
+//   como un punto de color (verde=Cuadrado, gris=Sin clasificar, rojo=Descuadrado; el texto sale al pasar el ratón).
+//   Cabecera "Est.". (La columna CHECK con SI/NO + comentarios va aparte.) Hereda v34.
 // VERSION: v34 · 2026-08-12 · SA: COLORear movimientos con paleta fija de 5 (MANDATOS / error corregido / DEVOLUCIÓN
 //   A FCR / PRÉSTAMOS / ERROR a corregir). Botón ▾ tras el Monto abre la paleta; tiñe SOLO el fondo de las 4 primeras
 //   columnas; leyenda encima de la tabla. Guarda en sa_marcas vía PATCH (requiere sa/route v8). Hereda v33.
@@ -261,7 +269,7 @@ const COLDEFS = [
   { key: 'saldo_calc', label: 'Saldo', w: '118px', align: 'right', tipo: 'num',
     get: m => m.saldo_calc,
     fkey: m => String(m.saldo_calc ?? ''), flabel: k => (k === '' ? '(vacías)' : clp(Number(k))) },
-  { key: 'cargo_abono', label: 'C/A', w: '46px', align: 'center', tipo: 'texto',
+  { key: 'cargo_abono', label: 'C/A', w: '24px', align: 'center', tipo: 'texto',
     get: m => m.cargo_abono || '',
     fkey: m => m.cargo_abono || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'ccb_res', label: 'CCB', w: '78px', align: 'center', tipo: 'texto',
@@ -270,9 +278,12 @@ const COLDEFS = [
   { key: 'cuenta_res', label: 'Cuenta', w: '92px', align: 'left', tipo: 'texto',
     get: m => m.__cta || '',
     fkey: m => m.__cta || '', flabel: k => (k === '' ? '(sin cuenta)' : k) },
-  { key: 'estado_clasificacion', label: 'Estado', w: '116px', align: 'center', tipo: 'texto',
+  { key: 'estado_clasificacion', label: 'Est.', w: '30px', align: 'center', tipo: 'texto',
     get: m => m.estado_clasificacion,
     fkey: m => m.estado_clasificacion || '', flabel: k => (k === '' ? '(vacías)' : (ESTADO[k]?.label || k)) },
+  { key: 'check', label: 'CHECK', w: '64px', align: 'center', tipo: 'texto',
+    get: m => m.check_estado || '',
+    fkey: m => m.check_estado || '', flabel: k => (k === '' ? '(sin revisar)' : k) },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -669,8 +680,47 @@ export default function SaPage() {
   const [savedFlag, setSavedFlag] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDesc, setConfirmDesc] = useState(false)
+  const [checkSel, setCheckSel] = useState(null)     // movimiento en revisión (modal CHECK)
+  const [checkDraft, setCheckDraft] = useState(null) // { estado, observacion, acciones, mejoras }
+  const [savingCheck, setSavingCheck] = useState(false)
 
   const canEdit = EDITORES.includes(session?.user?.email)
+
+  // Abre el cajón de revisión CHECK con lo que ya hubiera guardado el movimiento.
+  function abrirCheck(m) {
+    setCheckSel(m)
+    setCheckDraft({
+      estado: (m.check_estado === 'SI' || m.check_estado === 'NO') ? m.check_estado : null,
+      observacion: m.check_observacion || '',
+      acciones: m.check_acciones || '',
+      mejoras: m.check_mejoras || '',
+    })
+  }
+
+  // Guarda la revisión: SI/NO + 3 comentarios. El servidor sella email de quien revisa y fecha.
+  async function guardarCheck() {
+    if (!checkSel || !checkDraft) return
+    setSavingCheck(true)
+    try {
+      const res = await fetch('/api/financiero/sa', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ movimiento_id: checkSel.id, check: checkDraft }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'No se pudo guardar la revisión.'); return }
+      setMovs(ms => ms.map(x => x.id === checkSel.id ? {
+        ...x,
+        check_estado: d.check_estado ?? null,
+        check_observacion: d.check_observacion ?? null,
+        check_acciones: d.check_acciones ?? null,
+        check_mejoras: d.check_mejoras ?? null,
+        check_revisado_por: d.check_revisado_por ?? null,
+        check_fecha: d.check_fecha ?? null,
+      } : x))
+      setCheckSel(null); setCheckDraft(null)
+    } catch (e) { alert(String(e?.message || e)) }
+    finally { setSavingCheck(false) }
+  }
 const wantScroll = useRef(false)
   const [topTabla, setTopTabla] = useState(0)
   const [uploading, setUploading] = useState(false)
@@ -1256,7 +1306,7 @@ const wantScroll = useRef(false)
                   <div style={{ fontWeight: 600 }}>{apertura.label}</div>
                   <div />
                   <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{clp(apertura.saldo)}</div>
-                  <div /><div /><div /><div />
+                  <div /><div /><div /><div /><div />
                 </div>
               )}
               {movsFiltrados.length === 0 ? (
@@ -1301,7 +1351,26 @@ const wantScroll = useRef(false)
                         title={describeVarias(lineasByMov[m.id])}>
                         {m.__cta || <span style={{ color: '#D3D1C7' }}>—</span>}
                       </div>
-                      <div style={{ textAlign: 'center' }}><Chip estado={m.estado_clasificacion} /></div>
+                      <div style={{ textAlign: 'center' }} title={(ESTADO[m.estado_clasificacion] || ESTADO.SIN_CLASIFICAR).label}>
+                        <span style={{ display: 'inline-block', width: 11, height: 11, borderRadius: '50%', background: (ESTADO[m.estado_clasificacion] || ESTADO.SIN_CLASIFICAR).color }} />
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (canEdit) abrirCheck(m) }}
+                          disabled={!canEdit}
+                          title={m.check_revisado_por ? `Revisado por ${m.check_revisado_por}${m.check_fecha ? ' · ' + fmtFecha(m.check_fecha) : ''}` : (canEdit ? 'Revisar: SÍ/NO + comentarios' : 'Solo lectura')}
+                          style={{ cursor: canEdit ? 'pointer' : 'default', border: '0.5px solid #E4E2DA', borderRadius: 6, background: '#fff', padding: '2px 6px', fontSize: 11, fontWeight: 700, lineHeight: 1.3, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {m.check_estado === 'SI'
+                            ? <span style={{ color: '#0B7A57' }}>SÍ</span>
+                            : m.check_estado === 'NO'
+                              ? <span style={{ color: '#B23A3A' }}>NO</span>
+                              : <span style={{ color: '#C9C7BF' }}>·</span>}
+                          {(m.check_observacion || m.check_acciones || m.check_mejoras)
+                            ? <span title="Con comentarios" style={{ width: 5, height: 5, borderRadius: '50%', background: '#0C447C' }} />
+                            : null}
+                          <span style={{ fontSize: 10, color: '#B7B5AC' }}>✎</span>
+                        </button>
+                      </div>
                     </div>
                     {desg.map((l, k) => (
                       <div key={l.id ?? k} onClick={() => abrir(m)} style={{ display: 'grid', gridTemplateColumns: GRID, padding: '4px 12px', fontSize: 12, color: '#6b6b66', background: seleccionada ? '#fff' : '#FCFCFA', boxShadow: seleccionada ? 'inset 3px 0 0 #1D9E75' : undefined, borderBottom: k === desg.length - 1 ? '0.5px solid #F0EFEA' : 'none', cursor: 'pointer', alignItems: 'center' }}>
@@ -1320,7 +1389,7 @@ const wantScroll = useRef(false)
                         <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={describeCuenta(l.cuenta_1)}>
                           {(String(l.cuenta_1 || '').match(/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?/) || [''])[0] || <span style={{ color: '#D3D1C7' }}>—</span>}
                         </div>
-                        <div />
+                        <div /><div />
                       </div>
                     ))}
                   </div>
@@ -1383,6 +1452,60 @@ const wantScroll = useRef(false)
               <span style={{ width: 16, height: 16, borderRadius: 4, background: '#fff', border: '0.5px solid #C9C7BF', flexShrink: 0 }} />
               Sin color
             </button>
+          </div>
+        </>
+      )}
+
+      {/* MODAL CHECK: revisión SÍ/NO + comentarios (Observación, Acciones, Mejoras propuestas). */}
+      {checkSel && checkDraft && (
+        <>
+          <div onClick={() => { if (!savingCheck) { setCheckSel(null); setCheckDraft(null) } }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.32)', zIndex: 9600 }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 9601, background: '#fff', borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.22)', width: 'min(560px, 94vw)', maxHeight: '90vh', overflowY: 'auto', padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A' }}>COMENTARIOS</div>
+              <div style={{ fontSize: 12, color: '#888780' }}>Folio {folioVisible(checkSel) ?? '—'}</div>
+            </div>
+            <div style={{ fontSize: 12, color: '#888780', marginBottom: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{checkSel.descripcion || ''}</div>
+
+            {/* SÍ / NO */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {['SI', 'NO'].map(v => {
+                const on = checkDraft.estado === v
+                const col = v === 'SI' ? '#0B7A57' : '#B23A3A'
+                return (
+                  <button key={v} onClick={() => setCheckDraft(d => ({ ...d, estado: on ? null : v }))}
+                    style={{ flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700,
+                      border: on ? `1.5px solid ${col}` : '1px solid #D3D1C7', background: on ? col : '#fff', color: on ? '#fff' : '#888780' }}>
+                    {v === 'SI' ? 'SÍ' : 'NO'}
+                  </button>
+                )
+              })}
+            </div>
+
+            {[
+              { k: 'observacion', label: 'Observación' },
+              { k: 'acciones', label: 'Acciones' },
+              { k: 'mejoras', label: 'Mejoras propuestas' },
+            ].map(f => (
+              <div key={f.k} style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b6b66', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>{f.label}</label>
+                <textarea value={checkDraft[f.k]} onChange={e => setCheckDraft(d => ({ ...d, [f.k]: e.target.value }))}
+                  rows={2} style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontSize: 13, color: '#2C2C2A', padding: '8px 10px', borderRadius: 8, border: '1px solid #D3D1C7', fontFamily: 'inherit' }} />
+              </div>
+            ))}
+
+            <div style={{ fontSize: 11, color: '#9CA3AF', background: '#F7F6F2', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
+              <div><b style={{ color: '#6b6b66' }}>Revisado por:</b> {checkSel.check_revisado_por || <span style={{ color: '#C9C7BF' }}>— (se guarda tu email al guardar)</span>}</div>
+              <div><b style={{ color: '#6b6b66' }}>Fecha:</b> {checkSel.check_fecha ? fmtFecha(checkSel.check_fecha) : <span style={{ color: '#C9C7BF' }}>— (se sella al guardar)</span>}</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => { if (!savingCheck) { setCheckSel(null); setCheckDraft(null) } }}
+                style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#6b6b66', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cancelar</button>
+              <button onClick={guardarCheck} disabled={savingCheck}
+                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: savingCheck ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, opacity: savingCheck ? 0.7 : 1 }}>{savingCheck ? 'Guardando…' : 'Guardar'}</button>
+            </div>
           </div>
         </>
       )}

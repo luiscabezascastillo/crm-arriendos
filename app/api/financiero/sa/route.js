@@ -1,3 +1,14 @@
+// VERSION: v9 · 2026-08-14 · Columna CHECK: el PATCH ahora también guarda la revisión de un movimiento en
+//   sa_marcas (SI/NO + 3 comentarios libres: Observación, Acciones, Mejoras propuestas). Al guardar se sella
+//   automáticamente quién revisa (email) y la fecha. El GET devuelve esos campos junto al resto de marcas.
+//   Requiere en Supabase:
+//     alter table public.sa_marcas add column if not exists check_estado       text;
+//     alter table public.sa_marcas add column if not exists check_observacion  text;
+//     alter table public.sa_marcas add column if not exists check_acciones     text;
+//     alter table public.sa_marcas add column if not exists check_mejoras      text;
+//     alter table public.sa_marcas add column if not exists check_revisado_por text;
+//     alter table public.sa_marcas add column if not exists check_fecha        timestamptz;
+//   Hereda v8.
 // VERSION: v8 · 2026-08-12 · Nuevo PATCH: guarda el COLOR de fondo (marca) de un movimiento en sa_marcas
 //   (upsert manual por movimiento_id). Sirve para colorear las 4 primeras columnas según un criterio fijo
 //   (MANDATOS / error corregido / DEVOLUCIÓN A FCR / PRÉSTAMOS / ERROR a corregir). Solo editores. Hereda v7.
@@ -124,7 +135,7 @@ export async function GET(req) {
         try {
           marcas = await enTrozos(ids, (parte) =>
             admin.from('sa_marcas')
-              .select('movimiento_id, sufijo_orden, color_fondo, nota_auditoria')
+              .select('movimiento_id, sufijo_orden, color_fondo, nota_auditoria, check_estado, check_observacion, check_acciones, check_mejoras, check_revisado_por, check_fecha')
               .in('movimiento_id', parte)
               .order('movimiento_id', { ascending: true })
           )
@@ -199,7 +210,10 @@ export async function PUT(req) {
   return Response.json({ ok: true, n: lineas.length })
 }
 
-// PATCH: guarda (o quita) el COLOR de fondo de un movimiento en sa_marcas. Una fila por movimiento.
+// PATCH: guarda marcas de un movimiento en sa_marcas (una fila por movimiento). Dos usos, según el cuerpo:
+//   · color: { movimiento_id, color_fondo }  → COLOR de fondo (marca de auditoría).
+//   · check: { movimiento_id, check: { estado, observacion, acciones, mejoras } } → REVISIÓN CHECK. Al guardar
+//     se sella automáticamente check_revisado_por (email de quien revisa) y check_fecha (ahora).
 export async function PATCH(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -210,17 +224,35 @@ export async function PATCH(req) {
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
   const movimientoId = body?.movimiento_id
   if (!movimientoId) return Response.json({ error: 'Falta movimiento_id' }, { status: 400 })
-  const color = (body?.color_fondo == null || body.color_fondo === '') ? null : String(body.color_fondo).trim()
+
+  // Construir el parche según lo que venga en el cuerpo (aditivo: solo toca lo enviado).
+  const patch = {}
+  if (Object.prototype.hasOwnProperty.call(body, 'color_fondo')) {
+    patch.color_fondo = (body.color_fondo == null || body.color_fondo === '') ? null : String(body.color_fondo).trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'check') && body.check && typeof body.check === 'object') {
+    const c = body.check
+    const est = (c.estado === 'SI' || c.estado === 'NO') ? c.estado : null
+    const txt = (v) => { const s = String(v ?? '').trim(); return s === '' ? null : s }
+    patch.check_estado = est
+    patch.check_observacion = txt(c.observacion)
+    patch.check_acciones = txt(c.acciones)
+    patch.check_mejoras = txt(c.mejoras)
+    // Sello automático: quién revisa y cuándo.
+    patch.check_revisado_por = email
+    patch.check_fecha = new Date().toISOString()
+  }
+  if (Object.keys(patch).length === 0) return Response.json({ error: 'Nada que guardar' }, { status: 400 })
 
   // Upsert manual (no dependemos de que exista una restricción única en movimiento_id).
   const { data: ex, error: eSel } = await admin.from('sa_marcas').select('movimiento_id').eq('movimiento_id', movimientoId).limit(1)
   if (eSel) return Response.json({ error: eSel.message }, { status: 500 })
   let error
-  if (ex && ex.length) ({ error } = await admin.from('sa_marcas').update({ color_fondo: color }).eq('movimiento_id', movimientoId))
-  else ({ error } = await admin.from('sa_marcas').insert({ movimiento_id: movimientoId, color_fondo: color }))
+  if (ex && ex.length) ({ error } = await admin.from('sa_marcas').update(patch).eq('movimiento_id', movimientoId))
+  else ({ error } = await admin.from('sa_marcas').insert({ movimiento_id: movimientoId, ...patch }))
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  return Response.json({ ok: true, movimiento_id: movimientoId, color_fondo: color })
+  return Response.json({ ok: true, movimiento_id: movimientoId, ...patch })
 }
 
 // POST: cargar un extracto. Reconcilia por el N° MOVIMIENTO del banco.
