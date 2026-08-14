@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v42 · 2026-08-14 · Los botones "PDF arrendatario" y "PDF propietario" de la cabecera generan el PDF
+//   DEFINITIVO, SIN la marca de agua "BORRADOR" (antes iban sin `borrador:false`, así que el servidor los sellaba
+//   como borrador por defecto). Incluye todo lo de v41 (botón "?" + ayuda de 6 etapas). Hereda v41.
 // VERSION: v41 · 2026-08-14 · Botón "?" en la cabecera del término (junto a Recargar): abre un modal escueto con
 //   las 6 etapas — encabezado "Responsable del proceso: Karina", NOMBRES en vez de departamentos (Legal→Anthony,
 //   Finanzas→Karina, Administración→Adalis y Fabiola) en la ayuda y en el stepper, y etiquetas renombradas (Markup
@@ -929,7 +932,7 @@ export default function TerminosPage() {
       }
       const res = await fetch('/api/terminos/generar-termino-pdf', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idadmon: idadmonSel, datos, variante }),
+        body: JSON.stringify({ idadmon: idadmonSel, datos, variante, borrador: false }),   // PDF definitivo, SIN marca de agua BORRADOR
       })
       const data = await res.json()
       if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return }
