@@ -1,4 +1,10 @@
 'use client'
+// VERSION: v41 · 2026-08-14 · Botón "?" en la cabecera del término (junto a Recargar): abre un modal escueto con
+//   las 6 etapas — encabezado "Responsable del proceso: Karina", NOMBRES en vez de departamentos (Legal→Anthony,
+//   Finanzas→Karina, Administración→Adalis y Fabiola) en la ayuda y en el stepper, y etiquetas renombradas (Markup
+//   Presupuesto · Notificar Arrendatario y Aval · Cobro/Devolución y paso a Auditado · Reclamaciones legales / Dicom).
+//   Reconstruido sobre la base restaurada con los PDFs (el v40 anterior se revirtió). El stepper toma los nombres de
+//   workflow_etapas: ejecutar el UPDATE que acompaña para que las etiquetas de la barra coincidan. Hereda v39.
 // VERSION: v39 · 2026-08-13 · FIX: el "Balance de pagos del arrendatario" EXCLUYE los movimientos ANULADOS de la
 //   cartola (soft-delete `cuentas.anulado=true`). Antes los sumaba, así que al "quitar" (anular) un cargo el balance no
 //   bajaba (p.ej. A00861: mostraba $1.021.188/7 mov con la fila de agosto anulada; correcto = $68/6 mov). Se lee
@@ -121,6 +127,27 @@ const PLANTILLA = {
   reparaciones: ['Arreglos presupuesto', 'Reparaciones extras', 'Limpieza General del dpto.', 'Mantención de TERMO', 'Limpieza de alfombras', 'Otros Reparaciones 1', 'Otros Reparaciones 2', 'Otros Reparaciones 3'],
 }
 const AUTO_CONCEPTO = 'Arreglos presupuesto'
+
+// Departamento -> persona, para mostrar NOMBRES en vez de áreas en la ayuda y en el stepper.
+const AREA_PERSONA = {
+  'Legal': 'Anthony',
+  'Finanzas': 'Karina',
+  'Administración': 'Adalis y Fabiola',
+  'Administracion': 'Adalis y Fabiola',
+  'Dirección': 'Dirección', 'Direccion': 'Dirección',
+}
+const personaDeArea = a => AREA_PERSONA[a] || a || '—'
+
+// Ayuda del "?": las 6 etapas del término, una línea de qué hacer + quién. Directa y escueta.
+// La responsable/propietaria del proceso completo es Karina; cada etapa la ejecuta la persona indicada.
+const AYUDA_ETAPAS = [
+  { n: 0, nombre: 'Consideración legal', quien: 'Anthony', que: 'Revisar si el término necesita acción legal (reclamación / DICOM) o sigue sin más.' },
+  { n: 1, nombre: 'Markup Presupuesto', quien: 'Karina', critico: true, que: 'Fijar el markup FCR sobre las reparaciones y dar el visto bueno a la liquidación.' },
+  { n: 2, nombre: 'Verificar liquidación', quien: 'Karina', critico: true, que: 'Comprobar balance del arrendatario, garantía, servicios y descuentos: que el resultado cuadre.' },
+  { n: 3, nombre: 'Notificar Arrendatario y Aval', quien: 'Adalis y Fabiola', que: 'Notificar la liquidación al arrendatario y al aval (email + PDF).' },
+  { n: 4, nombre: 'Cobro/Devolución y paso a Auditado', quien: 'Karina', critico: true, que: 'Cobrar el déficit o devolver la garantía según el resultado, y pasar el término a Auditado.' },
+  { n: 5, nombre: 'Reclamaciones legales / Dicom', quien: 'Anthony', que: 'Gestionar las reclamaciones legales y, si queda deuda, derivar a DICOM. Cierre.' },
+]
 const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '',
   // Aprobación bilateral del presupuesto (Etapa 4). Columnas ya existentes en `terminos`.
   aprob_arrendatario_fecha: '', aprob_arrendatario_via: '', aprob_propietario_fecha: '', aprob_propietario_via: '' }
@@ -241,6 +268,7 @@ export default function TerminosPage() {
   const [nodos, setNodos] = useState([])
   const [etapas, setEtapas] = useState([])
   const [wfExpandido, setWfExpandido] = useState(false)
+  const [ayudaOpen, setAyudaOpen] = useState(false)   // modal "?" con la guía de las 6 etapas
   const [sucesorExpandido, setSucesorExpandido] = useState(false)  // descuentos del inmueble siguiente (colapsado por defecto)
   const [costeExpandido, setCosteExpandido] = useState(false)  // drop-down "ver coste sin markup" (solo Karina/Dir)
   const [lineas, setLineas] = useState({ garantia: [], servicios: [], reparaciones: [] })
@@ -998,6 +1026,9 @@ export default function TerminosPage() {
             <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
+            <button onClick={() => setAyudaOpen(true)}
+              title="Cómo trabajar un término: las 6 etapas, qué hacer y quién"
+              style={{ ...input, width: 'auto', padding: '8px 12px', cursor: 'pointer', background: '#EAF2FB', color: '#185FA5', fontWeight: 800 }}>?</button>
             {!editando && <button onClick={() => abrir(idadmonSel)} disabled={loadingPanel}
               title="Vuelve a leer cuentas, descuentos y servicios y recalcula el balance del arrendatario"
               style={{ ...input, width: 'auto', cursor: loadingPanel ? 'wait' : 'pointer', background: '#EEF2FF', color: '#3730A3', fontWeight: 700 }}>{loadingPanel ? '…' : '🔄 Recargar'}</button>}
@@ -1005,6 +1036,42 @@ export default function TerminosPage() {
           </div>
         </div>
         {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
+
+        {/* MODAL "?" — guía escueta de las 6 etapas del término (qué hacer + quién) */}
+        {ayudaOpen && (
+          <div onClick={() => setAyudaOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.25)', width: 'min(620px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 22 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Cómo trabajar un término</h2>
+                <button onClick={() => setAyudaOpen(false)} style={{ border: 'none', background: 'transparent', fontSize: 20, color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ fontSize: 13, color: '#1a1a2e', background: '#EAF2FB', border: '1px solid #C9DEF5', borderRadius: 8, padding: '9px 12px', margin: '4px 0 12px' }}>
+                Responsable del proceso: <b>Karina</b>. Ella lo lleva de principio a fin; cada etapa la ejecuta la persona indicada.
+              </div>
+              <p style={{ fontSize: 13, color: '#555', margin: '0 0 14px' }}>
+                6 etapas en orden. En cada una, la persona responsable hace lo suyo y pulsa <b>✓ Hacer y avanzar</b>. Las etapas con 🔒 no dejan cerrar hasta completarse.
+              </p>
+              {AYUDA_ETAPAS.map(e => (
+                <div key={e.n} style={{ display: 'flex', gap: 12, padding: '9px 0', borderTop: e.n === 0 ? 'none' : '1px solid #F0EFEA' }}>
+                  <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: '#EAF2FB', color: '#185FA5', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{e.n}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>
+                      {e.nombre}
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', marginLeft: 8 }}>{e.quien}</span>
+                      {e.critico ? <span title="No deja cerrar hasta completarse" style={{ fontSize: 11, color: '#dc2626', marginLeft: 6 }}>🔒 crítico</span> : null}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#555', marginTop: 2 }}>{e.que}</div>
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: 14, fontSize: 11.5, color: '#9ca3af' }}>
+                La etapa en curso sale marcada como “Ahora te toca a ti” si eres el responsable, o “Esperando a otro equipo” si le toca a otra persona.
+              </div>
+            </div>
+          </div>
+        )}
 
         {emailPanel && (
           <div style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF' }}>
@@ -1260,7 +1327,7 @@ export default function TerminosPage() {
                                   <div style={{ padding: 12, background: '#FAFAF8', borderRadius: 8, border: '1px solid #EEE' }}>
                                     <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Esperando a otro equipo</div>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: '#666', margin: '3px 0' }}>{pasoHumano.nombre}</div>
-                                    <div style={{ fontSize: 12, color: '#999' }}>Responsable: {pasoHumano.area_responsable}</div>
+                                    <div style={{ fontSize: 12, color: '#999' }}>Responsable: {personaDeArea(pasoHumano.area_responsable)}</div>
                                   </div>
                                 )}
 
