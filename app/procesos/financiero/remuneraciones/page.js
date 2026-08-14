@@ -1,3 +1,8 @@
+// VERSION: v6 · 2026-08-14 · Carga principal por LRE (CSV de Nubox): botón "Cargar LRE (CSV)" +
+//   arrastrar, parseado en el navegador (lib/parseLRE). El LRE trae haberes, descuentos Y aportes
+//   del empleador (ap_origen='lre'), así que el coste empresa queda completo sin carga aparte de
+//   Previred/ACHS. El "Cargar libro (PDF)" queda como alternativa secundaria. Nota de dónde bajar
+//   el LRE en Nubox (Utilitarios → Archivo LRE → Descargar → Formato CSV). Hereda v5.
 // VERSION: v5 · 2026-07-27 · Remuneraciones: carga del Libro en PDF (arrastrar o botón).
 //   El PDF de Nubox se lee EN EL NAVEGADOR (lib/parseRemuneraciones) y se manda ya en
 //   JSON, igual que hacen Ventas y Compras con el Excel.
@@ -43,6 +48,7 @@ import { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import { parseLibroRemuneracionesPDF } from '@/app/lib/parseRemuneraciones'
+import { parseLibroRemuneracionesLRE } from '@/app/lib/parseLRE'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -96,6 +102,7 @@ export default function RemuneracionesPage() {
   const [selAbierto, setSelAbierto] = useState(false)
   const [anioVista, setAnioVista] = useState(null)
   const fileRef = useRef(null)
+  const lreRef = useRef(null)
   const [subiendo, setSubiendo] = useState(false)
   const [msgCarga, setMsgCarga] = useState(null)
   const [dragOver, setDragOver] = useState(false)
@@ -288,10 +295,43 @@ export default function RemuneracionesPage() {
     } finally { setSubiendo(false) }
   }
 
+  // Carga principal: el LRE (CSV) de Nubox. Trae haberes, descuentos Y aportes del empleador,
+  // así que el coste empresa queda completo de una. Misma mecánica que cargarLibro (PDF).
+  const cargarLRE = async (file, sobrescribir = false) => {
+    if (!file) return
+    if (!/\.csv$/i.test(file.name)) { setMsgCarga({ error: 'El LRE es el CSV de Nubox: Utilitarios → Archivo LRE → Descargar → Formato CSV.' }); return }
+    setSubiendo(true); setMsgCarga(null)
+    try {
+      const r = await parseLibroRemuneracionesLRE(file)
+      if (r.avisos && r.avisos.length) {
+        setMsgCarga({ error: 'El LRE no cuadra consigo mismo, no lo cargo: ' + r.avisos.join(' · ') })
+        return
+      }
+      const res = await fetch('/api/financiero/remuneraciones', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'cargar_libro', periodo: r.periodo, mes_texto: r.mes_texto, archivo: r.archivo,
+          lineas: r.lineas, totales: r.totales, sobrescribir,
+        }),
+      })
+      const j = await res.json()
+      if (j.error === 'mes_ya_cargado') {
+        if (window.confirm(j.mensaje + '\n\n¿Recargar de todos modos?')) return cargarLRE(file, true)
+        return
+      }
+      if (j.error) { setMsgCarga({ error: j.mensaje || j.error }); return }
+      setMsgCarga({ text: `${r.mes_texto} · ${j.n_lineas} personas cargadas desde el LRE` + (j.empleados_nuevos ? `, ${j.empleados_nuevos} nuevas en el maestro` : '') + '. ' + j.aviso })
+      const d = await fetch('/api/financiero/remuneraciones').then(x => x.json()).catch(() => ({}))
+      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) setCargaSel(nueva.id) }
+    } catch (e) {
+      setMsgCarga({ error: String(e?.message || e) })
+    } finally { setSubiendo(false) }
+  }
+
   useEffect(() => {
     const over = (e) => { e.preventDefault(); if (puedeEditar) setDragOver(true) }
     const leave = (e) => { e.preventDefault(); setDragOver(false) }
-    const drop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f && puedeEditar) cargarLibro(f) }
+    const drop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f && puedeEditar) { if (/\.csv$/i.test(f.name)) cargarLRE(f); else cargarLibro(f) } }
     window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop)
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop) }
   }) // eslint-disable-line
@@ -451,13 +491,23 @@ export default function RemuneracionesPage() {
               </button>
             )}
             {puedeEditar && (
-              <button onClick={() => fileRef.current?.click()} disabled={subiendo}
-                title="Subir o arrastrar el PDF del Libro de Remuneraciones"
+              <button onClick={() => lreRef.current?.click()} disabled={subiendo}
+                title="Carga principal: subir o arrastrar el LRE (CSV) de Nubox. Trae haberes, descuentos y aportes del empleador."
                 style={{ ...pill, padding: '6px 14px', fontSize: 13, fontWeight: 600, border: 'none',
                   background: subiendo ? '#B4D8CB' : '#1D9E75', color: '#fff', cursor: subiendo ? 'default' : 'pointer' }}>
-                ⬆ {subiendo ? 'Leyendo…' : 'Cargar libro (PDF)'}
+                ⬆ {subiendo ? 'Leyendo…' : 'Cargar LRE (CSV)'}
               </button>
             )}
+            {puedeEditar && (
+              <button onClick={() => fileRef.current?.click()} disabled={subiendo}
+                title="Alternativa: PDF del Libro de Remuneraciones. NO trae los aportes del empleador (el coste empresa queda incompleto)."
+                style={{ ...pill, padding: '6px 12px', fontSize: 12,
+                  background: '#fff', color: '#6b6b66', borderColor: BORDE, cursor: subiendo ? 'default' : 'pointer' }}>
+                Cargar libro (PDF)
+              </button>
+            )}
+            <input ref={lreRef} type="file" accept=".csv" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cargarLRE(f) }} />
             <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cargarLibro(f) }} />
             <button onClick={() => { setCargaSel('TODAS'); setExpandida(null); setEditando(null); setAviso(null) }}
@@ -468,6 +518,15 @@ export default function RemuneracionesPage() {
             </button>
           </div>
         </div>
+
+        {puedeEditar && (
+          <div style={{ marginBottom: 12, fontSize: 11.5, color: '#888780', lineHeight: 1.5 }}>
+            Carga principal: el <b>LRE en formato CSV</b> — trae haberes, descuentos y los aportes del empleador
+            (SIS, cesantía patronal, mutual y SANNA), así que el coste empresa queda completo de una.
+            Descárgalo de Nubox en <b>Utilitarios → Archivo LRE → Descargar → Formato CSV</b> y súbelo con su nombre original.
+            El PDF del Libro sigue disponible como alternativa, pero no incluye los aportes.
+          </div>
+        )}
 
         {msgCarga && (
           <div style={{ marginBottom: 12, fontSize: 13, padding: '9px 12px', borderRadius: 8,

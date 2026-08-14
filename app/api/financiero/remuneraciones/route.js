@@ -1,3 +1,8 @@
+// VERSION: v4 · 2026-08-14 · La carga (accion:'cargar_libro') ahora es APORTES-AWARE: si las líneas
+//   traen aportes del empleador (ap_sis/ap_cesantia/ap_mutual/ap_sanna/ap_otros) y un ap_origen,
+//   se escriben en rem_lineas y coste_empresa (columna generada) queda COMPLETO. El LRE de Nubox
+//   (parseLRE) los aporta con ap_origen='lre'; el PDF antiguo no los trae y sigue igual (ap_* null →
+//   falta_previred). El aviso de respuesta es condicional según haya aportes o no. Hereda v3.
 // VERSION: v1 · 2026-07-23 · Endpoint del módulo Remuneraciones.
 //   GET  → cargas (meses) · líneas de un mes o TODAS · desglose CCB de una línea · maestros
 //   PUT  → guarda el desglose CCB de una línea (rem_ccb). Respeta rem_cargas.congelado.
@@ -359,19 +364,27 @@ async function cargarLibro(body, email) {
     prevision: N(l.prevision), salud: N(l.salud), imp_unico: N(l.imp_unico), seg_ces: N(l.seg_ces),
     otros_dleg: N(l.otros_dleg), tot_dleg: N(l.tot_dleg), desc_varios: N(l.desc_varios),
     tot_desc: N(l.tot_desc), liquido: N(l.liquido),
-    // coste_empresa NO se escribe: es una columna generada (haberes + aportes).
-    // Los aportes del empleador tampoco vienen en el libro: llegan de Previred,
-    // asi que hasta entonces coste_empresa saldra igual a tot_haberes.
+    // Aportes del empleador. El LRE (parseLRE) los trae; el PDF no (quedan null → falta_previred).
+    // coste_empresa NO se escribe: es columna generada (haberes + aportes) y Postgres la calcula.
+    ap_sis: N(l.ap_sis), ap_cesantia: N(l.ap_cesantia),
+    ap_mutual: N(l.ap_mutual), ap_sanna: N(l.ap_sanna), ap_otros: N(l.ap_otros),
+    ap_origen: (l.ap_origen == null || l.ap_origen === '') ? null : String(l.ap_origen).trim(),
   }))
 
   const { error: eI } = await admin.from('rem_lineas').insert(filas)
   if (eI) return Response.json({ error: eI.message }, { status: 500 })
+
+  // ¿La carga trajo aportes del empleador? (LRE sí; PDF no.)
+  const conAportes = lineas.some(l => l && l.ap_origen)
 
   return Response.json({
     ok: true, periodo, carga_id: cargaId,
     n_lineas: filas.length,
     empleados_nuevos: nuevos.length,
     sobrescrito: !!cg,
-    aviso: 'Faltan los aportes del empleador (SIS, cesantía patronal, mutual, SANNA): vienen de Previred.',
+    con_aportes: conAportes,
+    aviso: conAportes
+      ? 'Aportes del empleador cargados desde el LRE: el coste empresa queda completo.'
+      : 'Faltan los aportes del empleador (SIS, cesantía patronal, mutual, SANNA): vienen del LRE o de Previred.',
   })
 }
