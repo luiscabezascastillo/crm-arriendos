@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v11 · 2026-08-14 · Cambiar estado: dos sub-estados nuevos del término, Q-Auditado y Q-Reclamado
+//   (desde Q). Solo Dirección + Karina los ven y los pueden aplicar (cap.puedeAuditarTermino); el resto de
+//   transiciones sigue igual. Quedan registrados en datos_arriendos como cualquier cambio de estado. Requiere
+//   endpoint cambiar-estado v7 y lib/cc1Permisos con puedeAuditarTermino. Hereda v10.
 // VERSION: v10 · 2026-08-07 · ADMINISTRACIÓN SIEMPRE CON IVA. El "Tipo" de ADMON MES solo ofrece variantes con IVA
 //   (% + IVA / FIJO + IVA) y elijas lo que elijas se fuerza adicionar_iva='SI'; se muestra siempre "+ IVA". Al guardar
 //   (GUARDAR y Cerrar/Facturar) se fuerza adicionar_iva='SI' en datos_arriendos. Antes se podía quedar sin IVA y la
@@ -335,7 +339,11 @@ const TRANSICIONES = {
   P: ['S'],
   S: ['SQ', 'Q'],
   SQ: ['Q'],
-  Q: ['N', 'N-DICOM'],
+  Q: ['Q-Auditado', 'Q-Reclamado', 'N', 'N-DICOM'],
+  // Claves en MAYÚSCULA porque el lookup normaliza form.estado a mayúsculas; los valores van en
+  // 'Q-Auditado'/'Q-Reclamado' (tal cual se guardan en datos_arriendos.estado).
+  'Q-AUDITADO': ['Q-Reclamado', 'N', 'N-DICOM'],
+  'Q-RECLAMADO': ['Q-Auditado', 'N', 'N-DICOM'],
   N: [],
   'N-DICOM': [],
 }
@@ -343,10 +351,14 @@ const ESTADO_LABEL = {
   S: 'S – Contrato firmado',
   SQ: 'SQ – Aviso de término',
   Q: 'Q – Término (llaves)',
+  'Q-Auditado': 'Q-Auditado – Término auditado',
+  'Q-Reclamado': 'Q-Reclamado – Término reclamado',
   N: 'N – Cierre término',
   'N-DICOM': 'N-DICOM – Cierre con DICOM',
   P: 'P – Pendiente arrendar',
 }
+// Sub-estados de auditoría del término: en el desplegable SOLO se ofrecen a Dirección + Karina.
+const ESTADOS_AUDITORIA = ['Q-Auditado', 'Q-Reclamado']
 
 const msgColors = {
   ok:    { bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
@@ -366,7 +378,7 @@ const AJUSTE_MENSUAL = new Set([
 // Estados de contrato ACTIVO firmado: editar datos contractuales dispara la advertencia.
 const ESTADOS_ACTIVOS = new Set(['S', 'SQ'])
 // Estados de TÉRMINO / CERRADO: cualquier edición (incluso ajustes) dispara advertencia reforzada.
-const ESTADOS_CERRADOS = new Set(['Q', 'N', 'N-DICOM', 'N_DICOM'])
+const ESTADOS_CERRADOS = new Set(['Q', 'Q-Auditado', 'Q-Reclamado', 'N', 'N-DICOM', 'N_DICOM'])
 
 // ── Parser del email de inicio (sin IA, por reglas sobre las etiquetas habituales) ──
 // Tolerante a acentos, mayúsculas y typos ("Incio"). Devuelve un objeto con lo que encuentre.
@@ -1485,7 +1497,7 @@ function AdminContent() {
         }}>{msg.text}</div>
       )}
 
-      {cap?.puedeCambiarEstado && form.idadmon && !isNew && form.estado !== 'P' && (
+      {(cap?.puedeCambiarEstado || cap?.puedeAuditarTermino) && form.idadmon && !isNew && form.estado !== 'P' && (
         <div style={{
           margin: '8px 16px 0', padding: '8px 14px', borderRadius: 6,
           background: '#eef4fb', border: `1px solid ${C.headerBg}`,
@@ -1497,7 +1509,10 @@ function AdminContent() {
           {(() => {
             // Normaliza el estado actual (admite "N DICOM" y "N_DICOM" como "N-DICOM")
             const actual = (form.estado || '').toUpperCase().replace(/[ _]/g, '-')
-            const validos = TRANSICIONES[actual] || []
+            // Filtrado por permiso: los sub-estados de auditoría (Q-Auditado/Q-Reclamado) solo para
+            // Dirección + Karina; el resto (N, N-DICOM…) requiere puedeCambiarEstado. Candado real en el endpoint.
+            const validos = (TRANSICIONES[actual] || []).filter(s =>
+              ESTADOS_AUDITORIA.includes(s) ? cap?.puedeAuditarTermino : cap?.puedeCambiarEstado)
             if (validos.length === 0) {
               return (
                 <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic' }}>

@@ -1,3 +1,8 @@
+// VERSION: v7 · 2026-08-14 · Nuevos sub-estados de término Q-Auditado y Q-Reclamado (Q → Q-Auditado / Q-Reclamado).
+//   Acción SENSIBLE: solo Dirección + Karina (cap.puedeAuditarTermino), sin exigir rol en Gestión LOG. Solo desde
+//   un término en Q (o alternando entre los dos sub-estados). Escribe en datos_arriendos.estado y registra en
+//   historico_idadmon como cualquier cambio de estado; NO crea IDADMON en P ni workflow (eso es solo al entrar en Q).
+//   Hereda v6.
 // VERSION: v6 · 2026-08-12 · FECHAS dd/mm → ISO: normaliza la `fecha` de entrada (dd/mm/aaaa) a aaaa-mm-dd
 //   con aISO() ANTES de escribir termino_actual y de armar el correo, para que ni JS ni Postgres (datestyle
 //   MDY) intercambien día y mes. Corrige el swap de la fecha de entrega/aviso de término. Hereda v5.
@@ -39,7 +44,9 @@ const CAMPOS_HEREDADOS = [
   'quien_cobra', 'tiene_termo_mant',
 ]
 
-const ESTADOS_VALIDOS = ['P', 'S', 'SQ', 'Q', 'N', 'N-Liquidacion', 'N-DICOM', 'Inactiva']
+const ESTADOS_VALIDOS = ['P', 'S', 'SQ', 'Q', 'Q-Auditado', 'Q-Reclamado', 'N', 'N-Liquidacion', 'N-DICOM', 'Inactiva']
+// Sub-estados de auditoría del término: solo Dirección + Karina, y solo desde un término en Q.
+const ESTADOS_AUDITORIA = ['Q-Auditado', 'Q-Reclamado']
 
 // Normaliza CUALQUIER fecha de entrada a ISO aaaa-mm-dd (dd/mm/aaaa y España/Chile), SIN usar new Date()
 // (que asume mm/dd) y sin dejar que Postgres adivine (datestyle MDY convierte "11/04/2026" en 4-nov).
@@ -156,15 +163,24 @@ export async function POST(req) {
   if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
 
   const cap = await getCapacidades(email)
-  if (!cap.puedeCambiarEstado) {
-    return Response.json({ error: 'Sin permiso para cambiar estados (requiere responsable/supervisor en Gestión LOG).' }, { status: 403 })
-  }
 
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
   const { idadmon, estadoNuevo, fecha, comentario } = body || {}
   if (!idadmon || !estadoNuevo) return Response.json({ error: 'Faltan idadmon o estadoNuevo' }, { status: 400 })
   if (!ESTADOS_VALIDOS.includes(estadoNuevo)) return Response.json({ error: 'Estado no válido: ' + estadoNuevo }, { status: 400 })
+
+  // Gate de permiso. Los sub-estados de auditoría (Q-Auditado / Q-Reclamado) son acción sensible:
+  // SOLO Dirección + Karina (puedeAuditarTermino), sin depender del rol en Gestión LOG. El resto de
+  // transiciones siguen exigiendo puedeCambiarEstado (responsable/supervisor en revision_log).
+  const esAuditoriaTermino = ESTADOS_AUDITORIA.includes(estadoNuevo)
+  if (esAuditoriaTermino) {
+    if (!cap.puedeAuditarTermino) {
+      return Response.json({ error: 'Solo Dirección y Karina pueden marcar un término como Auditado o Reclamado.' }, { status: 403 })
+    }
+  } else if (!cap.puedeCambiarEstado) {
+    return Response.json({ error: 'Sin permiso para cambiar estados (requiere responsable/supervisor en Gestión LOG).' }, { status: 403 })
+  }
 
   // ─── Cierre de la "puerta trasera" a S ───────────────────────────────────────
   // La activación (llegar a estado 'S') SOLO se hace por CERRAR Y FACTURAR, que valida
@@ -211,8 +227,15 @@ export async function POST(req) {
   }
   // ▲▲▲ BLOQUE 2 · CAMBIO 1
 
-  // Validar que ESTE rol puede hacer ESTA transición concreta
-  if (!puedeTransicion(cap, estadoAnterior, estadoNuevo, ctxCierre)) {
+  // Validar que ESTE rol puede hacer ESTA transición concreta.
+  if (esAuditoriaTermino) {
+    // Auditado / Reclamado: permiso ya comprobado (puedeAuditarTermino). Solo se exige que el término
+    // esté en Q (o ya en uno de los sub-estados de auditoría, para poder alternar entre ellos).
+    const de = String(estadoAnterior || '').trim().toUpperCase().replace(/[ _]/g, '-')
+    if (!['Q', 'Q-AUDITADO', 'Q-RECLAMADO'].includes(de)) {
+      return Response.json({ error: `Solo se puede marcar Auditado/Reclamado desde un término en Q (estado actual: ${estadoAnterior || '—'}).` }, { status: 409 })
+    }
+  } else if (!puedeTransicion(cap, estadoAnterior, estadoNuevo, ctxCierre)) {
     const extra = (estadoNuevo === 'N' && ctxCierre.altoRiesgo)
       ? ` Este cierre es de alto riesgo (${ctxCierre.motivo}) y requiere autorización de Dirección.`
       : ` Validar inicio (P→S) y el cierre final (→N) tienen reglas específicas de rol.`
