@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v46 · 2026-08-14 · Ajuste del flujo PDF/EMAIL: el botón abre DIRECTAMENTE el correo (NO abre el PDF en
+//   otra pestaña). El PDF va DENTRO de la vista del correo, clicable en "Ver PDF". Dentro puedes: mandarte una
+//   prueba, editar el texto, añadir destinatario, CC y CCO; al enviar sale la vista previa con el PDF incorporado
+//   y te pregunta si continuar (enviar / volver). Hereda v45.
 // VERSION: v45 · 2026-08-14 · Vista unificada PDF/EMAIL (recuperada): se quita el botón "Enviar Email" y los de PDF
 //   pasan a "PDF/EMAIL Arrendatario" y "PDF/EMAIL Propietario". Cada uno: (1) genera y ABRE el PDF definitivo para
 //   revisarlo; (2) prepara el correo de ESE destinatario, editable, con TO / CC / CCO (aval precargado en CC) y el
@@ -958,8 +962,8 @@ export default function TerminosPage() {
       const data = await res.json()
       if (!res.ok || data.error) { setMsg({ tipo: 'error', txt: data.error || ('Error ' + res.status) }); return null }
       const url = data.pdf_url || null
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')
-      setMsg({ tipo: 'ok', txt: url ? `PDF ${esProp ? 'del PROPIETARIO (sin las líneas marcadas)' : 'del arrendatario'} generado — abierto en otra pestaña para revisarlo.` : 'PDF generado.' })
+      // NO se abre en otra pestaña: el PDF va DENTRO del correo (enlace "Ver PDF"). Aquí solo se genera y adjunta.
+      setMsg({ tipo: 'ok', txt: url ? `Correo preparado con el PDF ${esProp ? 'del propietario' : 'del arrendatario'} adjunto — púlsalo en "Ver PDF" para revisarlo antes de enviar.` : 'PDF generado.' })
       // Devuelve el PDF para adjuntarlo al email (flujo PDF/EMAIL).
       return url ? { url, nombre: `Liquidacion_${esProp ? 'propietario' : 'arrendatario'}_${idadmonSel}.pdf` } : null
     } catch (e) {
@@ -1073,10 +1077,10 @@ export default function TerminosPage() {
               title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
               style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
             <button onClick={puedeTerminoDocs ? () => abrirPdfYEmail('arrendatario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
-              title={puedeTerminoDocs ? 'Genera el PDF de la liquidación del ARRENDATARIO, lo abre para revisarlo y luego prepara el email (editable, con CC/CCO y el PDF adjunto)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
+              title={puedeTerminoDocs ? 'Abre el correo del ARRENDATARIO (editable, con CC/CCO) y el PDF de su liquidación adjunto; púlsalo en "Ver PDF" para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola'}
               style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF/EMAIL Arrendatario'}</button>
             <button onClick={puedeTerminoDocs ? () => abrirPdfYEmail('propietario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
-              title={puedeTerminoDocs ? 'Genera el PDF del PROPIETARIO (excluye las líneas 🚫 y recalcula), lo abre para revisarlo y luego prepara el email (editable, con CC/CCO y el PDF adjunto)' : 'Solo Dirección, Karina, Adalis y Fabiola'}
+              title={puedeTerminoDocs ? 'Abre el correo del PROPIETARIO (editable, con CC/CCO) y el PDF de su liquidación adjunto (excluye las líneas 🚫 y recalcula); púlsalo en "Ver PDF" para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola'}
               style={btn('#0e7490', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF/EMAIL Propietario'}</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
             <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
@@ -1139,7 +1143,7 @@ export default function TerminosPage() {
               <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>✉ PDF/EMAIL — {titulo}</div>
               <button onClick={() => setEmailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
             </div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>El PDF se ha abierto en otra pestaña para que lo revises. Abajo tienes el correo (editable) con ese PDF adjunto. Sale desde info@fondocapital.com, siempre con copia a administración@; si responden, te llega a ti. Nada se envía sin tu confirmación.</div>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>Este es el correo (editable) con el PDF adjunto — pulsa <b>Ver PDF</b> para revisarlo. Puedes cambiar el texto, añadir destinatarios, CC y CCO, y mandarte una prueba. Sale desde info@fondocapital.com, siempre con copia a administración@; si responden, te llega a ti. Nada se envía sin tu confirmación.</div>
             {emailPanel.loading ? <div style={{ color: '#888', fontSize: 13 }}>Preparando el correo…</div>
               : !dr ? <div style={{ fontSize: 13 }}>Sin datos.</div>
               : dr.enviado ? <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', padding: '10px 0' }}>✓ Enviado a {dr.to}</div>
