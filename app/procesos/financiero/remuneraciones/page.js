@@ -1,3 +1,7 @@
+// VERSION: v7 · 2026-08-14 · Dos arreglos: (1) tras cargar (LRE o PDF) se refresca la tabla del mes
+//   aunque ya estuviera seleccionado (antes había que recargar la página para ver el coste completo);
+//   (2) la nota "meses sin cargar" ya NO cuenta el mes en curso (la nómina se corre a fin de mes),
+//   y se añade un recordatorio "📅 Carga <mes> antes de fin de mes" a partir del día 25. Hereda v6.
 // VERSION: v6 · 2026-08-14 · Carga principal por LRE (CSV de Nubox): botón "Cargar LRE (CSV)" +
 //   arrastrar, parseado en el navegador (lib/parseLRE). El LRE trae haberes, descuentos Y aportes
 //   del empleador (ap_origen='lre'), así que el coste empresa queda completo sin carga aparte de
@@ -130,14 +134,15 @@ export default function RemuneracionesPage() {
   }, [status])
 
   // Líneas del mes seleccionado
-  const recargar = async () => {
-    if (!cargaSel) return
+  const recargar = async (idOverride) => {
+    const sel = idOverride != null ? idOverride : cargaSel
+    if (!sel) return
     setCargando(true)
     setError(null)
     try {
-      const url = cargaSel === 'TODAS'
+      const url = sel === 'TODAS'
         ? '/api/financiero/remuneraciones?todas=1'
-        : `/api/financiero/remuneraciones?carga=${cargaSel}`
+        : `/api/financiero/remuneraciones?carga=${sel}`
       const r = await fetch(url)
       const j = await r.json()
       if (j.error) { setError(j.error); setLineas([]); setCcb([]) }
@@ -182,12 +187,26 @@ export default function RemuneracionesPage() {
     return m
   }, [cargas, anioActivo])
 
+  // Meses SIN cargar: solo los ya vencidos. El mes en curso NO cuenta (la nómina se corre
+  // a fin de mes), así que hasta que no termina no es un hueco de verdad — antes marcaba
+  // agosto como "sin cargar" el día 1. tope = mes anterior al actual (getMonth() ya es 0-based).
   const sinCargar = useMemo(() => {
     const hoy = new Date()
-    const tope = anioActivo === hoy.getFullYear() ? hoy.getMonth() + 1 : 12
+    const tope = anioActivo === hoy.getFullYear() ? hoy.getMonth() : 12
     let n = 0
     for (let i = 1; i <= tope; i++) if (!porMes[i]) n++
     return n
+  }, [porMes, anioActivo])
+
+  // Recordatorio del mes EN CURSO: a partir del día 25, si aún no está cargado, se avisa
+  // amablemente de que toca cargarlo (la nómina se corre hacia el 29-30). Devuelve el nº de mes.
+  const recordarMesActual = useMemo(() => {
+    const hoy = new Date()
+    if (anioActivo !== hoy.getFullYear()) return null
+    const m = hoy.getMonth() + 1
+    if (porMes[m]) return null            // ya está cargado
+    if (hoy.getDate() < 25) return null   // todavía no toca
+    return m
   }, [porMes, anioActivo])
 
   const anioCerrado = useMemo(() => {
@@ -289,7 +308,7 @@ export default function RemuneracionesPage() {
       if (j.error) { setMsgCarga({ error: j.mensaje || j.error }); return }
       setMsgCarga({ text: `${r.mes_texto} · ${j.n_lineas} personas cargadas` + (j.empleados_nuevos ? `, ${j.empleados_nuevos} nuevas en el maestro` : '') + '. ' + j.aviso })
       const d = await fetch('/api/financiero/remuneraciones').then(x => x.json()).catch(() => ({}))
-      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) setCargaSel(nueva.id) }
+      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) { setCargaSel(nueva.id); await recargar(nueva.id) } }
     } catch (e) {
       setMsgCarga({ error: String(e?.message || e) })
     } finally { setSubiendo(false) }
@@ -322,7 +341,7 @@ export default function RemuneracionesPage() {
       if (j.error) { setMsgCarga({ error: j.mensaje || j.error }); return }
       setMsgCarga({ text: `${r.mes_texto} · ${j.n_lineas} personas cargadas desde el LRE` + (j.empleados_nuevos ? `, ${j.empleados_nuevos} nuevas en el maestro` : '') + '. ' + j.aviso })
       const d = await fetch('/api/financiero/remuneraciones').then(x => x.json()).catch(() => ({}))
-      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) setCargaSel(nueva.id) }
+      if (d.cargas) { setCargas(d.cargas); const nueva = d.cargas.find(c => String(c.periodo).slice(0, 10) === r.periodo); if (nueva) { setCargaSel(nueva.id); await recargar(nueva.id) } }
     } catch (e) {
       setMsgCarga({ error: String(e?.message || e) })
     } finally { setSubiendo(false) }
@@ -485,10 +504,17 @@ export default function RemuneracionesPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {sinCargar > 0 && (
               <button onClick={() => setSelAbierto(true)}
-                title="Meses del año sin libro de remuneraciones cargado"
+                title="Meses ya vencidos sin libro de remuneraciones cargado"
                 style={{ ...pill, padding: '5px 12px', fontSize: 12, background: '#FDF6E3', color: '#9A6E00', borderColor: '#EFE0B8' }}>
                 ⚠ {sinCargar} {sinCargar === 1 ? 'mes sin cargar' : 'meses sin cargar'}
               </button>
+            )}
+            {recordarMesActual && puedeEditar && (
+              <span
+                title="La nómina del mes en curso se corre a fin de mes. Cárgala con el LRE cuando esté lista."
+                style={{ ...pill, padding: '5px 12px', fontSize: 12, background: '#EEF3F8', color: '#0C447C', borderColor: '#CFE0F0', cursor: 'default' }}>
+                📅 Carga {MESES_LARGOS[recordarMesActual - 1]} antes de fin de mes
+              </span>
             )}
             {puedeEditar && (
               <button onClick={() => lreRef.current?.click()} disabled={subiendo}
