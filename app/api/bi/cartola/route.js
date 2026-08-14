@@ -1,3 +1,8 @@
+// VERSION: v8 · 2026-08-14 · MARCA ORIGEN 'auto'. Cada abono al que el sistema le asigna un IDADMON por sí solo al
+//   cargar la cartola (match en bi_admon, en datos_arriendos.rut, o el candidato "más probable" de un ambiguo) se
+//   guarda con idadmon_origen='auto'. Así en BI · Movimientos se pueden resaltar y filtrar los "pendientes de
+//   validar" (una persona los confirma → pasa a 'manual'). No marca los CARGO ni PROPIETARIOS. Requiere la columna
+//   bi.idadmon_origen (misma del route de movimientos v3). Hereda v7.
 // VERSION: v7 · 2026-08-07 · AUTO-CLASIFICAR TRANSFERENCIAS A PROPIETARIOS. Al cargar la cartola, todo CARGO cuyo
 //   detalle contenga un idprop "P###" (P + 3 dígitos, p. ej. P105) se marca solo con unique_concept='PROPIETARIOS'
 //   (así lo cuenta la RPC transferido_propietario sin tener que etiquetarlo a mano). idadmon2 queda null. Hereda v6.
@@ -192,6 +197,9 @@ export async function POST(req) {
         check1: String(c1),
         check2_pasar_a_cartola: m.abono > 0 ? 'FALTA' : null, reg: null,
         unique_concept: s.uniqueConcept, idadmon2: s.sug, comentarios: s.nota || null,
+        // Origen 'auto': el sistema propuso este IDADMON (bi_admon, datos_arriendos o el "más probable" de un
+        // ambiguo). Queda pendiente de que una persona lo valide (que lo pasará a 'manual'). Cargos/PROPIETARIOS: null.
+        idadmon_origen: (s.sug && esIdadmonValido(s.sug)) ? 'auto' : null,
         mes: aammDe(m.fecha),
         liquidacion_mes2: liqMes2De(m.fecha),
         updated_at: ahora,
