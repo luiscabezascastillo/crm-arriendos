@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v44 · 2026-08-14 · Regla de bloques alineada con el modelo real: la INCLUSIÓN en el término es por
+//   repercutir_a que empieza por "T-"; el TIPO solo decide el bloque. Ahora los descuentos de tipo DEVOLUCIONES
+//   se muestran y SUMAN en "Datos económicos" (antes se saltaban como garantía). Solo el depósito de garantía
+//   (tipo GARANTIAS) sigue siendo informativo (cabecera + recuadro "Movimientos de garantía"). Hereda v43.
 // VERSION: v43 · 2026-08-14 · FIX descuentos que no se recogían: el término re-siembra AHORA los descuentos que
 //   aún no estén en las líneas guardadas (antes solo la 1ª vez, así que un descuento añadido después —p.ej. una
 //   devolución— no aparecía ni contaba en el resultado). Además, las DEVOLUCIONES / comisiones / corretaje van a
@@ -499,10 +503,13 @@ export default function TerminosPage() {
       descuentos.forEach(d => {
         const numD = String(d.num || '').trim()
         if (numD && numsPresentes.has(numD)) return   // ya está en una línea guardada/fija: no duplicar
+        const t = up(d.tipo)
         const fam = familiaDe(d.tipo)
-        if (fam === 'garantia') return // informativo
+        // Solo el DEPÓSITO de garantía (tipo GARANTIAS) es informativo (sale en la cabecera). Las
+        // DEVOLUCIONES sí se listan, en "Datos económicos" (bloque garantía).
+        if (t === 'GARANTIAS') return
         const texto = d.texto_explicativo_para_carta_a_propietario || d.tipo || '(descuento)'
-        const bk = esDevolucion(texto) ? 'garantia' : (fam === 'servicios' ? 'servicios' : 'reparaciones')
+        const bk = (t === 'DEVOLUCIONES' || esDevolucion(texto)) ? 'garantia' : (fam === 'servicios' ? 'servicios' : 'reparaciones')
         const monto = n0(d.monto_a_imputar)
         const ref = 'Descto. ' + (d.num || '')
         const conceptoFijo = mapear(bk, texto)
@@ -887,7 +894,9 @@ export default function TerminosPage() {
   const garantiaVal = n0(A?.garantia_pedida)
   const R = panel ? calcResult(lineas, 0, garantiaVal, repPresu, quienGar) : null
   const etiq = R ? `T. ${R.conSaldo ? 'CON' : 'SIN'} SALDO - ${R.esFCR ? 'FCR' : 'DUEÑO'}` : ''
-  const descGarantia = descuentos.filter(d => familiaDe(d.tipo) === 'garantia')
+  // "Movimientos de garantía (informativo)": SOLO el depósito de garantía (GARANTIAS). Las DEVOLUCIONES
+  // ya no van aquí — se listan y suman en Datos económicos.
+  const descGarantia = descuentos.filter(d => up(d.tipo) === 'GARANTIAS')
   const tareasPorNodo = {}; wfTasks.forEach(t => { tareasPorNodo[t.node_codigo] = t })
   let pasoActual = null
   for (const nd of nodos) { if (estadoTarea(tareasPorNodo[nd.codigo]) !== 'hecho') { pasoActual = nd; break } }
