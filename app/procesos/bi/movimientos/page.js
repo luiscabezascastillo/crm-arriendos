@@ -1,3 +1,5 @@
+// VERSION: v25 · 2026-08-14 · Ajustes de columnas: check1 más estrecha (w30), check2 justo para "CORREGIDO" (w88),
+//   LIQ. MES2 a ~6 caracteres (w54) y DISCRIMINADOR OCULTA (el dato sigue en `bi`). Hereda v24.
 // VERSION: v24 · 2026-08-13 · Reasignar el IDADMON de un movimiento ahora AVISA (afecta al contrato anterior y al
 //   nuevo, y a sus liquidaciones del mes): confirm al escribir un IDADMON distinto en UNIQUE CONCEPT y al usar +RUT,
 //   solo cuando es reasignación real (viejo válido → nuevo distinto). El diálogo +RUT explica cuándo NO usarlo (ingreso
@@ -105,15 +107,16 @@ const COLS = [
   { key: 'cargos',                 h: 'Cargo',          ro: true, w: 84,  align: 'right', money: true, color: '#9B1C1C', filt: true },
   { key: 'abonos',                 h: 'Abono',          ro: true, w: 84,  align: 'right', money: true, color: '#085041', filt: true },
   { key: 'saldos',                 h: 'Saldo',          ro: true, w: 92,  align: 'right', money: true, filt: true },
-  { key: '_check1',                h: 'check1',         ro: true, w: 60,  align: 'right' },
-  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 78,  align: 'left',  filt: true },
+  { key: '_check1',                h: 'check1',         ro: true, w: 30,  align: 'right' },
+  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 88,  align: 'left',  filt: true },
   { key: 'reg',                    h: 'Reg',            ro: true, w: 62,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 170, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 76, align: 'center' },
   { key: 'comentarios',            h: 'COMENTARIOS',    w: 180, align: 'left', filt: true, wrap: true },
-  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 80,  align: 'left', filt: true },
-  // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM. DISCRIMINADOR ensanchado.
-  { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
+  { key: 'liquidacion_mes2',       h: 'LIQ. MES2',      w: 54,  align: 'left', filt: true },
+  // IDADMON (idadmon2) oculto: vestigio del Excel VBA, sin uso en el CRM.
+  // DISCRIMINADOR oculta (petición 2026-08-14): se deja de renderizar, el dato sigue en `bi`.
+  // { key: 'discriminador',          h: 'DISCRIMINADOR',  w: 200, align: 'left', filt: true, wrap: true },
   // Columna +RUT (_asociar) oculta: el botón +RUT ahora vive dentro de la celda de UNIQUE CONCEPT, junto al de color.
   // { key: '_asociar',               h: 'bi_admon',       ro: true, w: 74, align: 'center' },
 ]
