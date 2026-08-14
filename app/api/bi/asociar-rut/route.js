@@ -1,3 +1,7 @@
+// VERSION: v4 · 2026-08-14 · CIERRA EL HUECO del desincronismo: al hacer +RUT con un IDADMON válido, si la
+//   fila NO existía en `cuentas` (seguía en FALTA), ahora se INSERTA (antes solo se corregía la existente y,
+//   como el BI quedaba CORREGIDO, "Copiar FALTA" ya no la recogía → el abono se perdía). Se unifica el volcado
+//   con el del route de movimientos: helper `volcarACuentas` que ACTUALIZA (calif=reg) o INSERTA. Hereda v3.
 // VERSION: v3 · 2026-07-21 · +RUT ahora PROPAGA a CUENTAS (opción B automática): además de asociar en
 //   bi_admon y marcar unique_concept, si el valor es un IDADMON válido corrige la fila ya volcada en
 //   `cuentas` (por calif = bi.reg) y marca el movimiento del BI como CORREGIDO. Si aún no está en cuentas
@@ -29,6 +33,63 @@ const supaAdmin = createClient(
 function normRut(txt) {
   const m = String(txt ?? '').trim().match(/(\d{5,9})-([\dkK])/)
   return m ? `${m[1]}-${m[2].toUpperCase()}` : ''
+}
+
+const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
+
+// timestamp "dd/mm/aaaa HH:MM" en hora de Chile (para JUSTIFICANTES), igual que el route de movimientos.
+function ahoraCL() {
+  const partes = new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date())
+  const g = (t) => partes.find((p) => p.type === t)?.value || ''
+  return `${g('day')}/${g('month')}/${g('year')} ${g('hour')}:${g('minute')}`
+}
+
+// Vuelca a `cuentas` el IDADMON de un movimiento de BI: ACTUALIZA la(s) fila(s) con calif=reg o las INSERTA si
+// no existían. Es el mismo comportamiento que volcarACuentas() del route de movimientos, para que editar el
+// IDADMON a mano y hacer +RUT dejen `cuentas` igual. `mov` debe traer { fecha, detalle_movimiento, cargos, abonos }.
+async function volcarACuentas(mov, reg, idadmon) {
+  // ¿Existe ya la fila en cuentas (por calif = reg)?
+  const { data: ex, error: eSel } = await supaAdmin
+    .from('cuentas').select('id').eq('calif', reg).limit(1)
+  if (eSel) return { propagado: false, error: eSel.message }
+
+  // Datos del contrato para estado/propietario/inmueble.
+  const { data: da } = await supaAdmin
+    .from('datos_arriendos').select('estado, propietario, inmueble').eq('idadmon', idadmon).maybeSingle()
+
+  if (ex && ex.length) {
+    // Corrige la(s) fila(s) existente(s) al nuevo IDADMON (+ propietario/inmueble).
+    const { data: upd, error: eUp } = await supaAdmin.from('cuentas').update({
+      idadmon,
+      propietario: da?.propietario ?? null,
+      inmueble: da?.inmueble ?? null,
+      updated_at: new Date().toISOString(),
+    }).eq('calif', reg).select('id')
+    if (eUp) return { propagado: false, error: eUp.message }
+    return { propagado: true, accion: 'actualizada', filas: (upd || []).length }
+  }
+
+  // No existía: insertar la fila (misma forma que "Copiar FALTA a CUENTAS").
+  const { error: eIns } = await supaAdmin.from('cuentas').insert([{
+    fecha: mov.fecha,
+    idadmon,
+    concepto: mov.detalle_movimiento,
+    cargo: num(mov.cargos),
+    abono: num(mov.abonos),
+    saldo: null,
+    comentarios: 'BI',
+    calif: reg,
+    justificantes: ahoraCL(),
+    estado: da?.estado ?? null,
+    propietario: da?.propietario ?? null,
+    inmueble: da?.inmueble ?? null,
+    updated_at: new Date().toISOString(),
+  }])
+  if (eIns) return { propagado: false, error: eIns.message }
+  return { propagado: true, accion: 'insertada', filas: 1 }
 }
 // VERSION: v3 · 2026-07-19 · POST acepta IDADMON (Axxxxx) O TEXTO LIBRE (ej. "PO64-PAVEZ, JUANA").
 //   Si el valor empieza por A+dígito se exige formato Axxxxx; si no, se acepta como texto de
@@ -101,8 +162,9 @@ export async function POST(req) {
     async function rellenarMovimiento() {
       if (biId == null) return { rellenado: false }
 
-      // 1) Leer el reg del movimiento (es el puente con cuentas.calif)
-      const { data: mov, error: eMov } = await supaAdmin.from('bi').select('reg').eq('id', biId).single()
+      // 1) Leer el movimiento: reg (puente con cuentas.calif) + datos por si hay que INSERTAR en cuentas.
+      const { data: mov, error: eMov } = await supaAdmin
+        .from('bi').select('reg, fecha, detalle_movimiento, cargos, abonos').eq('id', biId).single()
       if (eMov) return { rellenado: false, errorRelleno: eMov.message }
       const reg = mov?.reg != null && String(mov.reg).trim() !== '' ? String(mov.reg).trim() : null
 
@@ -112,16 +174,14 @@ export async function POST(req) {
       const { error: eBi } = await supaAdmin.from('bi').update(patchBi).eq('id', biId)
       if (eBi) return { rellenado: false, errorRelleno: eBi.message }
 
-      // 3) Corregir la fila ya volcada en cuentas (calif = reg). Solo si es IDADMON válido y hay reg.
-      let cuentasCorregidas = 0
+      // 3) Volcar a cuentas: ACTUALIZA la fila (calif=reg) o la INSERTA si no existía. Solo IDADMON válido + reg.
+      //    Antes solo actualizaba: si no existía, el abono quedaba sin volcar (hueco del desincronismo). Ya no.
+      let cuentas = { propagado: false, motivo: 'no_idadmon_o_sin_reg' }
       if (esIdadmonValido && reg) {
-        const { data: upd, error: eCu } = await supaAdmin
-          .from('cuentas').update({ idadmon: valor, updated_at: new Date().toISOString() })
-          .eq('calif', reg).select('id')
-        if (eCu) return { rellenado: true, cuentasCorregidas: 0, errorCuentas: eCu.message }
-        cuentasCorregidas = (upd || []).length
+        cuentas = await volcarACuentas(mov, reg, valor)
+        if (cuentas.error) return { rellenado: true, cuentas, errorCuentas: cuentas.error }
       }
-      return { rellenado: true, cuentasCorregidas }
+      return { rellenado: true, cuentas }
     }
 
     // ¿Ya existe esa pareja activa? No duplicar en bi_admon, pero SÍ rellenar el movimiento.
