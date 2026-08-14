@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v43 · 2026-08-14 · FIX descuentos que no se recogían: el término re-siembra AHORA los descuentos que
+//   aún no estén en las líneas guardadas (antes solo la 1ª vez, así que un descuento añadido después —p.ej. una
+//   devolución— no aparecía ni contaba en el resultado). Además, las DEVOLUCIONES / comisiones / corretaje van a
+//   "Datos económicos" en vez de a Reparaciones. Sin duplicar (dedup por Nº). Incluye v42 (PDFs sin BORRADOR) y
+//   v41 (botón "?"). Hereda v42.
 // VERSION: v42 · 2026-08-14 · Los botones "PDF arrendatario" y "PDF propietario" de la cabecera generan el PDF
 //   DEFINITIVO, SIN la marca de agua "BORRADOR" (antes iban sin `borrador:false`, así que el servidor los sellaba
 //   como borrador por defecto). Incluye todo lo de v41 (botón "?" + ayuda de 6 etapas). Hereda v41.
@@ -464,10 +469,18 @@ export default function TerminosPage() {
       const linBal = L.garantia.find(x => x.concepto === 'Balance de pagos del arrendatario' && x.es_fijo)
       if (linBal) { linBal.monto = balanceCuentas; linBal.ref = 'Saldo cartola (' + cuentasMovs.length + ' mov.)' }
     }
-    // sembrar desde descuentos SOLO la primera vez (sin lineas guardadas)
-    if (saved.length === 0) {
-      // Los servicios del TÉRMINO vienen SOLO de descuentos (proporcionales que pone Adalis/Fabiola).
-      // Los GGCC/luz/agua del mes NO se meten en el cálculo (se mostrarán como referencia informativa aparte).
+    // Sembrar desde descuentos los que AÚN no estén representados (por su Nº) en las líneas guardadas.
+    // Antes solo se sembraba la 1ª vez (saved.length===0): si se añadía un descuento DESPUÉS (p.ej. una
+    // devolución), no aparecía ni entraba en el resultado. Ahora se re-siembra lo que falte, sin duplicar.
+    {
+      // Nºs de descuento ya presentes en cualquier bloque (por su 'ref' = "Descto. N", que puede llevar varios).
+      const numsPresentes = new Set()
+      for (const bkk of ['garantia', 'servicios', 'reparaciones']) {
+        for (const l of (L[bkk] || [])) {
+          const m = String(l.ref || '').match(/Descto\.\s*([0-9]+)/g)
+          if (m) m.forEach(x => numsPresentes.add(x.replace(/\D/g, '')))
+        }
+      }
       const MAP = {
         servicios: [], // servicios vienen de ggcc; los descuentos servicios se listan como lineas aparte
         reparaciones: [
@@ -481,11 +494,15 @@ export default function TerminosPage() {
         for (const [concepto, kws] of (MAP[bk] || [])) { if (kws.some(k => tx.includes(norm(k)))) return concepto }
         return null
       }
+      // Devoluciones / comisiones / corretaje → Datos económicos (bloque garantía), no Reparaciones.
+      const esDevolucion = tx => /devoluc|comisi[oó]n|corretaj/i.test(String(tx || ''))
       descuentos.forEach(d => {
+        const numD = String(d.num || '').trim()
+        if (numD && numsPresentes.has(numD)) return   // ya está en una línea guardada/fija: no duplicar
         const fam = familiaDe(d.tipo)
         if (fam === 'garantia') return // informativo
-        const bk = fam === 'servicios' ? 'servicios' : 'reparaciones'
         const texto = d.texto_explicativo_para_carta_a_propietario || d.tipo || '(descuento)'
+        const bk = esDevolucion(texto) ? 'garantia' : (fam === 'servicios' ? 'servicios' : 'reparaciones')
         const monto = n0(d.monto_a_imputar)
         const ref = 'Descto. ' + (d.num || '')
         const conceptoFijo = mapear(bk, texto)
