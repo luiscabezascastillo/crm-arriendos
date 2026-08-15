@@ -1,5 +1,7 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v6 · 2026-08-15 · La columna de saldo global de la cartola se renombra a "Cartola" y se tiñe de naranja
+//   suave (cabecera y celdas) para distinguirla. Hereda v5.
 // VERSION: v5 · 2026-08-15 · (1) La columna "Falta arriendo" se renombra a "Falta mensual" (es lo cobrado en la
 //   ventana 23 del mes anterior → 22 del mes, según liquidacion_mes2). (2) Nueva columna "Saldo cuentas": saldo
 //   global de la cartola de cada IDADMON (Σ cargo efectivo − Σ abono, sin anuladas), para ver de un vistazo el
@@ -67,7 +69,7 @@ const FALTAN_COLS = [
   { key: 'inmueble', label: 'Inmueble', tipo: 'texto', fkey: f => f.inmueble || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'base', label: 'A cobrar', tipo: 'num', fkey: f => nkey(f.base), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'falta', label: 'Falta mensual', tipo: 'num', fkey: f => nkey(f.falta), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
-  { key: 'saldoCuentas', label: 'Saldo cuentas', tipo: 'num', fkey: f => nkey(f.saldoCuentas), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'saldoCuentas', label: 'Cartola', tipo: 'num', fkey: f => nkey(f.saldoCuentas), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'ggcc', label: 'GGCC', tipo: 'num', fkey: f => nkey(f.ggcc), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'luz', label: 'Luz', tipo: 'num', fkey: f => nkey(f.luz), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'agua', label: 'Agua', tipo: 'num', fkey: f => nkey(f.agua), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
@@ -308,8 +310,8 @@ export default function FaltanPage() {
       limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} />
   )
   // Celda de cabecera: etiqueta + filtro (alineada izq. o der. según sea texto o número).
-  const Hh = (label, key, right) => (
-    <div style={right ? { ...th, textAlign: 'right' } : th}>
+  const Hh = (label, key, right, bg) => (
+    <div style={{ ...(right ? { ...th, textAlign: 'right' } : th), ...(bg ? { background: bg, borderRadius: 6, padding: '2px 6px' } : {}) }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: '100%', justifyContent: right ? 'flex-end' : 'flex-start' }}>
         <span>{label}</span>{HF(key)}
       </span>
@@ -325,7 +327,7 @@ export default function FaltanPage() {
       Inmueble: f.inmueble || '',
       'A cobrar': Math.round(n0(f.base)),
       'Falta mensual': Math.round(n0(f.falta)),
-      'Saldo cuentas': Math.round(n0(f.saldoCuentas)),
+      Cartola: Math.round(n0(f.saldoCuentas)),
       GGCC: Math.round(n0(f.ggcc)),
       Luz: Math.round(n0(f.luz)),
       Agua: Math.round(n0(f.agua)),
@@ -420,7 +422,7 @@ export default function FaltanPage() {
               {Hh('Inmueble', 'inmueble', false)}
               {Hh('A cobrar', 'base', true)}
               {Hh('Falta mensual', 'falta', true)}
-              {Hh('Saldo cuentas', 'saldoCuentas', true)}
+              {Hh('Cartola', 'saldoCuentas', true, '#F6D9BC')}
               {Hh('GGCC', 'ggcc', true)}
               {Hh('Luz', 'luz', true)}
               {Hh('Agua', 'agua', true)}
@@ -447,7 +449,7 @@ export default function FaltanPage() {
                   <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: f.cobraDueno ? '#9CA3AF' : '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
                   <div style={{ textAlign: 'right', color: f.cobraDueno ? '#9CA3AF' : undefined }}>{fmtPesos(f.base)}</div>
                   <div style={{ textAlign: 'right', fontWeight: 700, color: f.pagoDeMas ? '#047857' : (f.cobraDueno ? '#9CA3AF' : '#B91C1C') }}>{fmtPesos(f.falta)}</div>
-                  <div style={{ textAlign: 'right', fontWeight: 600 }} title="Saldo global de la cartola (todo el histórico): + debe · − a favor">
+                  <div style={{ textAlign: 'right', fontWeight: 600, background: '#FDF0E4', borderRadius: 6, padding: '3px 8px' }} title="Saldo global de la cartola (todo el histórico): + debe · − a favor">
                     <span style={{ ...NUM_FONT, color: f.saldoCuentas > 0 ? '#B91C1C' : (f.saldoCuentas < 0 ? '#047857' : '#9CA3AF') }}>{fmtPesos(f.saldoCuentas)}</span>
                   </div>
                   {celdaServ(f.ggcc, UMBRAL.ggcc)}
