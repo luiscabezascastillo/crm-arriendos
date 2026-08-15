@@ -1,3 +1,7 @@
+// VERSION: v37 · 2026-08-15 · LIMPIEZA: (1) se SUPRIME el botón "Copiar FALTA a CUENTAS" (y su función copiarFaltan)
+//   — el volcado ya lo hacen la edición de celda y +RUT; era vestigio del flujo Excel. (2) Se OCULTAN las columnas
+//   check1 y check2 de la tabla (y sus avisos/leyendas asociados). El dato bi.check2_pasar_a_cartola sigue en la BD
+//   (lo lee lógica interna), solo deja de mostrarse. Sin cambios de datos ni de endpoints. Hereda v36.
 // VERSION: v36 · 2026-08-15 · RENDIMIENTO del filtro de cabecera (iba lento / se "enganchaba"): (1) las opciones de
 //   cada columna se MEMOIZAN una vez por carga (antes valoresUnicos() recorría las 7040 filas con localeCompare para
 //   TODAS las columnas en cada render); (2) dentro del desplegable, la forma normalizada de cada opción se precalcula
@@ -143,8 +147,8 @@ const COLS = [
   { key: 'cargos',                 h: 'Cargo',          ro: true, w: 74,  align: 'right', money: true, color: '#9B1C1C', filt: true },
   { key: 'abonos',                 h: 'Abono',          ro: true, w: 74,  align: 'right', money: true, color: '#085041', filt: true },
   { key: 'saldos',                 h: 'Saldo',          ro: true, w: 80,  align: 'right', money: true, filt: true },
-  { key: '_check1',                h: 'check1',         ro: true, w: 30,  align: 'right' },
-  { key: 'check2_pasar_a_cartola', h: 'check2',         w: 16,  align: 'left',  filt: true },
+  // check1 y check2 retirados de la vista (2026-08-15): eran vestigio del flujo Excel; ya no se usan.
+  //   El dato check2_pasar_a_cartola sigue en `bi` (lo lee alguna lógica interna), solo no se muestra.
   { key: 'reg',                    h: 'Reg',            ro: true, w: 50,  align: 'left',  filt: true },
   { key: 'unique_concept',         h: 'UNIQUE CONCEPT', w: 150, align: 'left', filt: true },
   { key: '_descuentos',            h: 'Descuento',      ro: true, w: 52, align: 'center' },
@@ -446,7 +450,6 @@ export default function BiVista() {
   const [savingId, setSavingId] = useState(null)
   const [colorOpen, setColorOpen] = useState(null)   // { row, x, y } — selector de color de fila
   const [toast, setToast] = useState(null)
-  const [copiando, setCopiando] = useState(false)
   const [descOpen, setDescOpen] = useState(null)   // { row, x, y, modo } popover de descuentos
   const [descRows, setDescRows] = useState([])
   const [descLoading, setDescLoading] = useState(false)
@@ -800,32 +803,6 @@ export default function BiVista() {
     XLSX.writeFile(wb, `BI_Movimientos_${hoy}.xlsx`)
   }
 
-  const copiarFaltan = async () => {
-    if (!puedeEditar) { flash('Solo Dirección y Karina pueden editar el BI'); return }
-    if (copiando) return
-    if (!confirm('¿Copiar a CUENTAS todos los movimientos en FALTA con IDADMON válido?')) return
-    setCopiando(true); setError(null)
-    try {
-      const r = await fetch('/api/bi/copiar-cuentas', { method: 'POST' })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Error en el servidor')
-      if (d.invalidos?.length) {
-        const regs = d.invalidos.map(x => x.reg).filter(Boolean).join(', ')
-        setError(
-          `ERROR: se ha colocado "FALTA" a ${d.invalidos.length} movimiento(s) NO asociado(s) a un IDADMON válido (Axxxxx). ` +
-          `NO se han pasado a CARTOLAS y siguen en FALTA. Corrígelos en BI` + (regs ? ` (Reg: ${regs}).` : '.')
-        )
-      }
-      const partes = []
-      if (d.copiados) partes.push(`${d.copiados} copiado(s)`)
-      if (d.actualizados?.length) partes.push(`${d.actualizados.length} actualizado(s) (IDADMON corregido)`)
-      if (d.omitidos_ya_existian?.length) partes.push(`${d.omitidos_ya_existian.length} ya estaban en CUENTAS`)
-      flash(partes.length ? '✓ ' + partes.join(' · ') : '✓ Nada que copiar: todo estaba al día')
-      fetchInitial()
-    } catch (err) {
-      setError('No se pudo copiar: ' + err.message)
-    } finally { setCopiando(false) }
-  }
 
   // Parte B: localizar el descuento que justifica un movimiento y pegar su
   // texto_para_contabilidad en UNIQUE CONCEPT. Dos modos:
@@ -900,7 +877,6 @@ export default function BiVista() {
   const abonos = rows.filter(r => num(r.abonos) > 0).length
   const cargos = rows.filter(r => num(r.cargos) > 0).length
   const sinId = rows.filter(r => num(r.abonos) > 0 && !String(r.idadmon2 || r.unique_concept || '').trim()).length
-  const errChk = conCheck.filter(r => r._check1 != null && r._check1 !== 0).length
 
   const cell = (r, c) => {
     if (c.key === '_check1') return r._check1 == null
@@ -1137,13 +1113,13 @@ export default function BiVista() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>BI · Movimientos (tabla bi)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltroActivo ? ' · filtrado (check1 oculto)' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
+            <div style={{ fontSize: 12, color: '#888780' }}>recientes abajo · carga completa{hayFiltroActivo ? ' · filtrado' : ''}{puedeEditar ? ' · edita desde UNIQUE CONCEPT · los cambios se guardan solos al salir de la celda (✓ Guardado)' : ' · modo solo lectura'}</div>
           </div>
         </div>
 
         {!puedeEditar && (
           <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FBF7EC', border: '0.5px solid #E6D58A', color: '#8a6d1e', fontSize: 12 }}>
-            Modo solo lectura — la edición del BI (asociar RUT, IDADMON, mes de liquidación, copiar a CUENTAS) está reservada a Dirección y Karina.
+            Modo solo lectura — la edición del BI (asociar RUT, IDADMON, mes de liquidación) está reservada a Dirección y Karina.
           </div>
         )}
 
@@ -1151,7 +1127,6 @@ export default function BiVista() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#EAF2FB', border: '0.5px solid #B9D4EE', borderRadius: 2 }} /> Abono ({abonos})</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FBECEC', border: '0.5px solid #E9B9B9', borderRadius: 2 }} /> Cargo ({cargos})</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><i style={{ width: 12, height: 12, background: '#FEF7D6', border: '0.5px solid #E6D58A', borderRadius: 2 }} /> Sin identificar ({sinId})</span>
-          {!hayFiltroActivo && errChk > 0 && <span style={{ color: '#9B1C1C', fontWeight: 600 }}>⚠ check1 ≠ 0 en {errChk}</span>}
           {savingId && <span style={{ color: '#1D9E75' }}>guardando…</span>}
         </div>
 
@@ -1171,18 +1146,6 @@ export default function BiVista() {
             </button>
           )}
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
-          {[
-            ['Copiar FALTA a CUENTAS', 'Exporta a CUENTAS los marcados FALTA (solo IDADMON válido). Si el reg ya está pero con otro IDADMON, lo corrige.', copiarFaltan],
-          ].map(([label, hint, accion], i) => {
-            const habilitado = !!accion && !copiando && puedeEditar
-            return (
-              <button key={i} title={hint} disabled={!habilitado}
-                onClick={() => { if (accion) accion() }}
-                style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid ' + (habilitado ? '#6B4423' : '#C8C5BC'), background: habilitado ? '#8A5A2B' : '#D3D1C7', color: '#fff', cursor: habilitado ? 'pointer' : 'default' }}>
-                {label}
-              </button>
-            )
-          })}
           <button onClick={() => setAyudaOpen(true)} title="¿Qué hace cada botón y cuándo usar +RUT?"
             style={{ fontSize: 13, fontWeight: 800, width: 26, height: 26, borderRadius: '50%', border: '1px solid #C8C5BC', background: '#fff', color: '#6B4423', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>?</button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
@@ -1254,7 +1217,7 @@ export default function BiVista() {
         </div>
 
         <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-          {visibles.length} de {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa · check1 0 (verde) ok; rojo = posible línea saltada/duplicada (solo sin filtros).
+          {visibles.length} de {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa.
         </div>
       </div>
       {/* filtros: ahora en las cabeceras vía ColFilterExcel */}
@@ -1278,7 +1241,7 @@ export default function BiVista() {
 
               <div style={{ marginBottom: 12, padding: '9px 12px', borderRadius: 8, background: '#EFF6FF', border: '0.5px solid #BFDBFE', color: '#1E40AF', fontSize: 11.5, lineHeight: 1.5 }}>
                 <b>Usa +RUT solo si este RUT volverá a pagar</b> (arrendatario habitual): queda memorizado y sus abonos futuros se reconocen solos.<br />
-                Si es un <b>ingreso puntual</b> que no se repetirá (p. ej. un amigo que pagó una vez), <b>no uses +RUT</b>: cierra esto, escribe el IDADMON en UNIQUE CONCEPT, pon <b>check2 = FALTA</b> y pulsa <b>“Copiar FALTA a CUENTAS”</b>. Corrige la cartola sin dejar el RUT guardado.
+                Si es un <b>ingreso puntual</b> que no se repetirá (p. ej. un amigo que pagó una vez), <b>no uses +RUT</b>: cierra esto y escribe el IDADMON directamente en la celda <b>UNIQUE CONCEPT</b>. Al salir de la celda se vuelca solo a Cartolas y corrige la cartola sin dejar el RUT guardado.
               </div>
 
               {asocOpen.soloManual ? (
@@ -1346,16 +1309,12 @@ export default function BiVista() {
 
             <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>Cuando tienes que asignarlo tú</p>
             <p style={{ margin: '6px 0', padding: '8px 12px', background: '#F0FAF6', border: '0.5px solid #9BD7C2', borderRadius: 8 }}>
-              <b>1) Botón +RUT</b> — para un RUT que <b>volverá a pagar</b> (arrendatario habitual). Asocia el RUT al IDADMON (sus abonos futuros se reconocen solos) y <b>corrige la cartola en el momento</b>. Deja check2 = <b>CORREGIDO</b>. No hace falta nada más.
+              <b>1) Botón +RUT</b> — para un RUT que <b>volverá a pagar</b> (arrendatario habitual). Asocia el RUT al IDADMON (sus abonos futuros se reconocen solos) y <b>corrige la cartola en el momento</b>. No hace falta nada más.
             </p>
             <p style={{ margin: '6px 0', padding: '8px 12px', background: '#FBF7EC', border: '0.5px solid #EAD9A0', borderRadius: 8 }}>
-              <b>2) Escribir el IDADMON en la celda UNIQUE CONCEPT</b> — para un <b>ingreso puntual</b> (no se repetirá) o para <b>corregir</b> uno mal asignado. Al salir de la celda se <b>vuelca solo a Cartolas</b> (inserta la línea o corrige la que hubiera) y queda check2 = <b>CORREGIDO</b>. Ya <b>no</b> hace falta marcar FALTA ni pulsar ningún botón.
+              <b>2) Escribir el IDADMON en la celda UNIQUE CONCEPT</b> — para un <b>ingreso puntual</b> (no se repetirá) o para <b>corregir</b> uno mal asignado. Al salir de la celda se <b>vuelca solo a Cartolas</b> (inserta la línea o corrige la que hubiera). No hace falta pulsar ningún botón.
             </p>
 
-            <p style={{ margin: '10px 0 4px', fontWeight: 700 }}>El botón “Copiar FALTA a CUENTAS”</p>
-            <p style={{ margin: '4px 0' }}>Es una <b>repesca en lote</b>: vuelca a Cartolas todo lo que quede en <b>FALTA</b> con IDADMON válido (Axxxxx), y corrige la línea si ya existía con otro IDADMON. Es la <b>red de seguridad / puesta al día</b>. En el día a día no lo necesitas, porque editar la celda o usar +RUT ya vuelcan solos.</p>
-
-            <p style={{ margin: '8px 0' }}><b>Estados de check2:</b> <b>FALTA</b> = aún no está en Cartolas (sin identificar o a decidir) · <b>PASADO</b> = ya volcado (automático o por la repesca) · <b>CORREGIDO</b> = volcado al editar la celda o por +RUT.</p>
             <p style={{ margin: '10px 0 0', padding: '8px 12px', background: '#FDECEC', border: '0.5px solid #F1B0B0', borderRadius: 8, color: '#9B1C1C' }}>
               ⚠ <b>Cambiar el IDADMON de un movimiento afecta a DOS contratos</b>: el anterior pierde el abono y el nuevo lo gana. Cambian sus cartolas y su liquidación del mes. Revisa siempre ambas después.
             </p>
