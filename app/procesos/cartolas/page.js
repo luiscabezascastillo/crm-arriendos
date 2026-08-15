@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v22 · 2026-08-15 · Cartola por IDADMON, mejor aprovechamiento del espacio: (1) CABECERA (ficha) más
+//   compacta (≈mitad de alto): menos padding, saldo total en una línea, etiquetas más cortas ("Quién tiene la
+//   garantía"→"Quién"). (2) El bloque PROPORCIONAL del primer mes deja de ocupar su propia franja y pasa a la
+//   derecha de la línea "Movimientos" (chip desplegable). El panel de Morosidad (cuadros 2/3) se compacta en su
+//   propio componente (MorosidadCartola v6). Hereda v21.
 // VERSION: v21 · 2026-08-15 · Vista Tabla, dos ajustes de espacio/uso: (1) BUSCADOR de IDADMON incrustado en la
 //   barra sticky superior (junto a las pestañas). "Ver cuenta" salta directo a la Cartola por IDADMON YA cargada,
 //   sin pasar por la página en blanco. (2) Se elimina el bloque central redundante (título "Cuentas (CARTOLAS)" +
@@ -950,9 +955,9 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   )
 
   const Dato = ({ label, value, strong }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-      <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</span>
-      <span style={{ fontSize: 13, color: '#2C2C2A', fontWeight: strong ? 700 : 500, whiteSpace: 'normal', wordBreak: 'break-word' }}>{value || '—'}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0 }}>
+      <span style={{ fontSize: 9.5, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.25 }}>{label}</span>
+      <span style={{ fontSize: 12, color: '#2C2C2A', fontWeight: strong ? 700 : 500, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.25 }}>{value || '—'}</span>
     </div>
   )
 
@@ -1046,36 +1051,38 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       {ficha && (
         <>
           {/* CABECERA */}
-          <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '14px 16px', marginBottom: 14, background: '#F8FAFC' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18, fontWeight: 700, color: '#0C447C' }}>{ficha.idadmon}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C' }}>Estado: {ficha.estado || '—'}</span>
+          <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '8px 14px', marginBottom: 10, background: '#F8FAFC' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#0C447C' }}>{ficha.idadmon}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C' }}>Estado: {ficha.estado || '—'}</span>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px 18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '4px 16px' }}>
               <Dato label="Propietario" value={ficha.propietario} strong />
               <Dato label="Arrendatario" value={ficha.arrendatario} strong />
               <Dato label="Avalista" value={ficha.avalista} />
               <Dato label="Inmueble" value={ficha.inmueble} />
               <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
-              <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} />
+              <Dato label="Quién" value={ficha.quien_tiene_garantia} />
             </div>
           </div>
 
           {/* MOROSIDAD — comportamiento de pago a partir de la cartola */}
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 10 }}>
             <MorosidadCartola idadmon={ficha.idadmon} />
           </div>
 
-          {/* PROPORCIONAL PRIMER MES (calculado desde datos_arriendos) · colapsado por defecto */}
-          {propCalc && (
-            <details style={{ border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 10, marginBottom: 14, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
-              <summary style={{ cursor: 'pointer', padding: '8px 16px', fontSize: 12, color: descuadre ? '#92400E' : '#5F5E5A', fontWeight: 600, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* MOVIMIENTOS · el proporcional del primer mes va a la derecha, en la misma línea */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
+            {propCalc && (
+            <details style={{ marginLeft: 'auto', border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 8, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
+              <summary style={{ cursor: 'pointer', padding: '5px 12px', fontSize: 12, color: descuadre ? '#92400E' : '#5F5E5A', fontWeight: 600, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>{descuadre ? '⚠ Proporcional del primer mes — revisar' : '✓ Proporcional del primer mes'}</span>
                 <span style={{ fontWeight: 400, color: '#888780' }}>· ver detalle</span>
               </summary>
@@ -1126,11 +1133,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
               )}
               </div>
             </details>
-          )}
-
-          {/* MOVIMIENTOS */}
-          <div style={{ margin: '4px 0 8px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
+            )}
           </div>
           {/* RECAP bajo Movimientos: repite IDADMON+Estado, Propietario e Inmueble para saber siempre qué se mira al hacer scroll */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px', padding: '6px 10px', border: '0.5px solid #E3E1D8', borderRadius: 8, background: '#FBFAF6', fontSize: 12 }}>

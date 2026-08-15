@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v6 · 2026-08-15 · Compactación del panel (mejor uso del espacio en la cartola): KPIs a ~mitad de alto
+//   (menos padding, cifra 17px) y los toggles de "Saldo a fin de mes" y "Calendario de pagos" se suben a la
+//   cabecera del panel como botones; su contenido (gráfico / calendario) aparece como DRAWER debajo de los KPIs
+//   solo al pincharlos, en vez de ocupar dos franjas fijas. Sin cambios de cálculo. Hereda v5.
 // VERSION: v5 · 2026-08-12 · FIX morosidad falsa: el panel ahora EXCLUYE las líneas ANULADAS y usa el cargo EFECTIVO
 //   (cargo_manual si está editado), igual que la cartola. Antes sumaba cargos anulados → "EN MORA" incorrecto. Hereda v4.
 // VERSION: v4 · 2026-08-12 · Calendario de pagos OCULTO por defecto (se pincha "▼ ver meses"); igual que el gráfico.
@@ -88,6 +92,13 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const ST = { good: { c: C.good, i: '✓', t: 'al día' }, warning: { c: C.warn, i: '!', t: 'atraso' }, critical: { c: C.crit, i: '✕', t: 'mora' } }
   const alDia = D.kpi.saldoActual <= D.kpi.rentaRef * 0.1
   const card = { background: C.surf, border: '1px solid ' + C.grid, borderRadius: 14, padding: 16 }
+  const kpiCard = { background: C.surf, border: '1px solid ' + C.grid, borderRadius: 10, padding: '7px 11px' }
+  // Botón-toggle de los drawers (gráfico / calendario), en la cabecera del panel.
+  const btnDrawer = (on) => ({
+    fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+    border: '1px solid ' + (on ? C.blue : C.grid), background: on ? 'rgba(42,120,214,.10)' : C.surf,
+    color: on ? C.blue : C.ink2, display: 'inline-flex', alignItems: 'center', gap: 5,
+  })
 
   // gráfico saldo a fin de mes
   const S = D.meses
@@ -105,38 +116,42 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
 
   return (
     <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
         <span style={{ fontSize: 15, fontWeight: 800 }}>Morosidad</span>
         <span style={{ fontSize: 12, color: C.ink2 }}>comportamiento de pago (desde la cartola)</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, display: 'inline-flex', gap: 6, alignItems: 'center', background: alDia ? 'rgba(12,163,12,.12)' : 'rgba(208,59,59,.12)', color: alDia ? C.good : C.crit }}>
-          <span style={{ width: 9, height: 9, borderRadius: '50%', background: alDia ? C.good : C.crit }} />{alDia ? 'AL DÍA' : 'EN MORA'}
-        </span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {!compact && (
+            <button onClick={() => setVerSaldo(v => !v)} style={btnDrawer(verSaldo)}>
+              <span>{verSaldo ? '▲' : '▼'}</span> Saldo fin de mes
+            </button>
+          )}
+          <button onClick={() => setVerMeses(v => !v)} style={btnDrawer(verMeses)}>
+            <span>{verMeses ? '▲' : '▼'}</span> Calendario
+          </button>
+          <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, display: 'inline-flex', gap: 6, alignItems: 'center', background: alDia ? 'rgba(12,163,12,.12)' : 'rgba(208,59,59,.12)', color: alDia ? C.good : C.crit }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: alDia ? C.good : C.crit }} />{alDia ? 'AL DÍA' : 'EN MORA'}
+          </span>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
         {[
           { lab: 'Saldo actual', val: D.kpi.saldoActual <= 0 ? P(Math.abs(D.kpi.saldoActual)) : P(D.kpi.saldoActual), note: D.kpi.saldoActual <= 0 ? 'a favor' : 'a cobrar', col: D.kpi.saldoActual > D.kpi.rentaRef * 0.1 ? C.crit : C.greenTxt },
           { lab: 'Meses con deuda', val: D.kpi.mesesConDeuda, note: 'de ' + D.meses.length + ' meses' },
           { lab: 'Día medio de pago', val: D.kpi.diaMedioPago ?? '—', note: 'del mes (vence el 1)' },
           { lab: 'Deuda máx. (fin de mes)', val: P(D.kpi.maxDeudaMes), note: 'peor mes' },
         ].map((k, i) => (
-          <div key={i} style={card}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{k.lab}</div>
-            <div style={{ fontSize: 24, fontWeight: 800, marginTop: 6, color: k.col || '#0b0b0b' }}>{k.val}</div>
-            <div style={{ fontSize: 11, color: C.ink2, marginTop: 2 }}>{k.note}</div>
+          <div key={i} style={kpiCard}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>{k.lab}</div>
+            <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2, color: k.col || '#0b0b0b' }}>{k.val}</div>
+            <div style={{ fontSize: 10, color: C.ink2, marginTop: 1 }}>{k.note}</div>
           </div>
         ))}
       </div>
 
-      {!compact && (
-        <div style={{ ...card, marginBottom: 12 }}>
-          <button onClick={() => setVerSaldo(v => !v)}
-            style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
-            <span style={{ fontSize: 13, fontWeight: 700 }}>Saldo a fin de mes</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: C.blue }}>{verSaldo ? '▲ ocultar' : '▼ ver gráfico'}</span>
-          </button>
-          {verSaldo && (<>
-          <div style={{ fontSize: 12, color: C.ink2, margin: '8px 0 10px' }}>Deuda viva al cierre de cada mes. Por encima de 0 = debe; por debajo = a favor.</div>
+      {!compact && verSaldo && (
+        <div style={{ ...card, marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: C.ink2, marginBottom: 8 }}><b style={{ color: '#0b0b0b' }}>Saldo a fin de mes</b> · deuda viva al cierre de cada mes (arriba de 0 = debe; abajo = a favor).</div>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', width: '100%', height: 'auto', overflow: 'hidden' }}>
             {ticks.map((v, i) => (
               <g key={i}>
@@ -157,18 +172,12 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
               </g>
             ))}
           </svg>
-          </>)}
         </div>
       )}
 
-      <div style={{ ...card, overflowX: 'hidden' }}>
-        <button onClick={() => setVerMeses(v => !v)}
-          style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>Calendario de pagos</span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: C.blue }}>{verMeses ? '▲ ocultar' : '▼ ver meses'}</span>
-        </button>
-        {verMeses && (<>
-        <div style={{ fontSize: 12, color: C.ink2, margin: '6px 0 12px' }}>Estado a fin de cada mes: al día, atraso (~1 renta) o mora (2+ rentas).</div>
+      {verMeses && (
+        <div style={{ ...card, marginTop: 10, overflowX: 'hidden' }}>
+        <div style={{ fontSize: 12, color: C.ink2, marginBottom: 12 }}><b style={{ color: '#0b0b0b' }}>Calendario de pagos</b> · estado a fin de cada mes: al día, atraso (~1 renta) o mora (2+ rentas).</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', boxSizing: 'border-box' }}>
           {D.meses.map((m) => {
             const s = ST[m.estado]
@@ -189,8 +198,8 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: C.warn }} />! atraso</span>
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: C.crit }} />✕ mora</span>
         </div>
-        </>)}
-      </div>
+        </div>
+      )}
 
       {tip && (
         <div style={{ position: 'fixed', left: tip.x + 14, top: tip.y + 14, background: C.surf, border: '1px solid ' + C.base, borderRadius: 8, padding: '7px 9px', fontSize: 12, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 9, pointerEvents: 'none' }}
