@@ -1,4 +1,8 @@
 'use client';
+// VERSION: v13 · 2026-08-15 · Desplegable "Procesos": ahora SOLO lista los procesos a los que la persona tiene
+//   acceso (proceso_permisos). Los que no usa YA NO aparecen (antes salían con candado 🔒). Dirección los ve todos.
+//   Así, quitando el permiso a alguien, el proceso le desaparece del menú (p. ej. Neika: Términos/Cobranza/Notif.).
+//   Hereda v12.
 // VERSION: v12 · 2026-08-13 · Alertas en pausa: el badge del nav NO parpadea ni muestra número (queda gris)
 //   mientras ALERTAS_AUTO_OFF = true. Al retomar se pone en false. Sin tocar Captaciones/BB1/BB2. Hereda v11.
 // VERSION: v11 · 2026-08-12 · Nuevo enlace "BB1" (Operaciones comerciales · VENTAS) junto a BB2, mismo público
@@ -416,21 +420,18 @@ export default function TopNav() {
         {procesosOpen && (
           <div style={s.dropdown}>
             <div style={s.dropLabel}>Procesos en producción</div>
-            {PROCESOS.filter(p => p.produccion).slice().sort((a, b) => a.titulo.localeCompare(b.titulo, 'es')).map(p => {
-              const tiene = procKeys.has(p.key) && !!p.href;
-              return tiene ? (
+            {/* Solo se listan los procesos a los que la persona TIENE acceso (proceso_permisos).
+                Los que no usa YA NO aparecen (antes salían con candado 🔒). Dirección los ve todos. */}
+            {PROCESOS
+              .filter(p => p.produccion && !!p.href && (esDireccion || procKeys.has(p.key)))
+              .slice().sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))
+              .map(p => (
                 <Link key={p.key} href={p.href} style={s.dropItem} onClick={() => setProcesosOpen(false)}
                   onMouseEnter={e => e.currentTarget.style.background = '#F7F6F2'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                   {p.titulo}
                 </Link>
-              ) : (
-                <span key={p.key} title="Sin acceso"
-                  style={{ ...s.dropItem, color: '#bbb', cursor: 'default', display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ fontSize: 11 }}>🔒</span>{p.titulo}
-                </span>
-              );
-            })}
+              ))}
             <div style={s.dropDivider} />
             <Link href="/procesos" onClick={() => setProcesosOpen(false)}
               style={{ ...s.dropItem, color: '#185FA5', fontWeight: 600 }}>

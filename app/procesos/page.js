@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v3 · 2026-08-15 · La lista ("el cuadro") solo muestra los procesos que la persona USA (proceso_permisos);
+//   los que no usa YA NO aparecen (antes salían atenuados con candado). Dirección los ve todos (para gestionar).
+//   Mismo criterio que el desplegable del TopNav. Hereda v2.
 // VERSION: v2 · 2026-07-23 · La rejilla de tarjetas pasa a lista de FILAS de exactamente dos
 //   líneas, ordenadas alfabéticamente por título. Los 16 procesos caben de un vistazo.
 //   Line 1: acceso · título · frecuencia · responsable · participa · encargada/o
@@ -11,6 +14,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 import { PROCESOS } from '../../lib/procesos'
+
+// Dirección ve TODOS los procesos (para gestionar); el resto solo los que usa (proceso_permisos).
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
 
 // Orden de las secciones (departamento responsable)
 const SECCIONES = ['Ventas', 'Administración', 'Mantención', 'Legal', 'Finanzas']
@@ -196,6 +202,10 @@ export default function ProcesosPage() {
     }
   }
 
+  // Visibilidad: solo se muestran los procesos que la persona USA (tiene permiso). Dirección los ve todos.
+  const rolProc = String(session?.user?.role || '').trim().toLowerCase()
+  const esDireccion = rolProc === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email)
+  const visibleProc = (p) => esDireccion || !!permisos[p.key]
   const totalDisponibles = PROCESOS.filter(p => permisos[p.key]).length
 
   if (status === 'loading' || loading) {
@@ -270,7 +280,7 @@ export default function ProcesosPage() {
         {AGRUPAR_POR_PRODUCCION ? (
           <>
             {(() => {
-              const enProd = PROCESOS.filter(p => p.produccion)
+              const enProd = PROCESOS.filter(p => p.produccion && visibleProc(p))
               if (!enProd.length) return null
               const dispProd = enProd.filter(p => permisos[p.key]).length
               return (
@@ -281,7 +291,7 @@ export default function ProcesosPage() {
               )
             })()}
             {(() => {
-              const resto = PROCESOS.filter(p => !p.produccion)
+              const resto = PROCESOS.filter(p => !p.produccion && visibleProc(p))
               if (!resto.length) return null
               const dispResto = resto.filter(p => permisos[p.key]).length
               return (
@@ -294,8 +304,8 @@ export default function ProcesosPage() {
           </>
         ) : (
           <div style={{ marginTop: 12 }}>
-            {sectionLabel('TODOS LOS PROCESOS · A-Z', totalDisponibles, PROCESOS.length, { bg: '#E1F5EE', color: '#085041' })}
-            {renderLista(PROCESOS, null)}
+            {sectionLabel('TODOS LOS PROCESOS · A-Z', totalDisponibles, PROCESOS.filter(visibleProc).length, { bg: '#E1F5EE', color: '#085041' })}
+            {renderLista(PROCESOS.filter(visibleProc), null)}
           </div>
         )}
 
