@@ -1,5 +1,9 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v5 · 2026-08-15 · (1) La columna "Falta arriendo" se renombra a "Falta mensual" (es lo cobrado en la
+//   ventana 23 del mes anterior → 22 del mes, según liquidacion_mes2). (2) Nueva columna "Saldo cuentas": saldo
+//   global de la cartola de cada IDADMON (Σ cargo efectivo − Σ abono, sin anuladas), para ver de un vistazo el
+//   comportamiento global del contrato además de la falta del mes. Se añade también al Excel y al filtro. Hereda v4.
 // VERSION: v4 · 2026-08-14 · Los "pagos de más" (saldo a favor, falta < 0) salen AHORA VISIBLES por defecto
 //   (antes ocultos). El botón se mantiene, pero al revés: arranca como "− Ocultar pagos de más". No cambia el
 //   cálculo ni las métricas. Hereda v3.
@@ -62,7 +66,8 @@ const FALTAN_COLS = [
   { key: 'propietario', label: 'Propietario', tipo: 'texto', fkey: f => f.propietario || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'inmueble', label: 'Inmueble', tipo: 'texto', fkey: f => f.inmueble || '', flabel: k => (k === '' ? '(vacías)' : k) },
   { key: 'base', label: 'A cobrar', tipo: 'num', fkey: f => nkey(f.base), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
-  { key: 'falta', label: 'Falta arriendo', tipo: 'num', fkey: f => nkey(f.falta), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'falta', label: 'Falta mensual', tipo: 'num', fkey: f => nkey(f.falta), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
+  { key: 'saldoCuentas', label: 'Saldo cuentas', tipo: 'num', fkey: f => nkey(f.saldoCuentas), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'ggcc', label: 'GGCC', tipo: 'num', fkey: f => nkey(f.ggcc), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'luz', label: 'Luz', tipo: 'num', fkey: f => nkey(f.luz), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
   { key: 'agua', label: 'Agua', tipo: 'num', fkey: f => nkey(f.agua), flabel: k => (k === '' ? '(vacías)' : fmtNumCL(k)) },
@@ -163,6 +168,17 @@ export default function FaltanPage() {
       const cobraMap = {}
       for (const a of arr || []) cobraMap[a.idadmon] = String(a.quien_cobra || '').trim().toUpperCase()
 
+      // Saldo GLOBAL de la cartola (cuentas) por IDADMON: Σ cargo efectivo − Σ abono (sin líneas anuladas).
+      // Da la visión global del contrato (positivo = debe acumulado; negativo = a favor), además de la falta del mes.
+      const { data: ctas } = await supabase
+        .from('cuentas').select('idadmon, cargo, cargo_manual, abono, anulado').in('idadmon', ids)
+      const saldoCtasMap = {}
+      for (const c of ctas || []) {
+        if (c.anulado) continue
+        const cargoEf = (c.cargo_manual != null && c.cargo_manual !== '') ? n0(c.cargo_manual) : n0(c.cargo)
+        saldoCtasMap[c.idadmon] = (saldoCtasMap[c.idadmon] || 0) + cargoEf - n0(c.abono)
+      }
+
       // Por IDADMON, quedarse con la fila del aamm más reciente (saldo vigente)
       const vig = {}
       for (const s of serv || []) {
@@ -184,6 +200,7 @@ export default function FaltanPage() {
         return {
           idadmon: g.idadmon, propietario: g.propietario, inmueble: g.inmueble,
           falta: g.falta, base: g.base, recibido: g.recibido,
+          saldoCuentas: saldoCtasMap[g.idadmon] || 0,
           ggcc: s.ggcc, luz: s.luz, agua: s.agua, gas: s.gas, servTotal, servAamm: s.aamm,
           cobraDueno: cobraMap[g.idadmon] === 'DUEÑO',   // paga directo al dueño (no lo controla FCR)
           pagoDeMas,
@@ -280,7 +297,7 @@ export default function FaltanPage() {
   }
 
   const th = { fontSize: 11, color: '#888', fontWeight: 700 }
-  const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 1.5fr 0.8fr'
+  const GRID = '0.7fr 1.4fr 1.5fr 0.9fr 0.9fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.9fr 1.5fr 0.8fr'
 
   // Control de filtro Excel para una columna (mismo patrón que CC1). `movs` = todas las filas
   // enriquecidas, para que el desplegable liste todos los valores.
@@ -307,7 +324,8 @@ export default function FaltanPage() {
       Propietario: f.propietario || '',
       Inmueble: f.inmueble || '',
       'A cobrar': Math.round(n0(f.base)),
-      'Falta arriendo': Math.round(n0(f.falta)),
+      'Falta mensual': Math.round(n0(f.falta)),
+      'Saldo cuentas': Math.round(n0(f.saldoCuentas)),
       GGCC: Math.round(n0(f.ggcc)),
       Luz: Math.round(n0(f.luz)),
       Agua: Math.round(n0(f.agua)),
@@ -401,7 +419,8 @@ export default function FaltanPage() {
               {Hh('Propietario', 'propietario', false)}
               {Hh('Inmueble', 'inmueble', false)}
               {Hh('A cobrar', 'base', true)}
-              {Hh('Falta arriendo', 'falta', true)}
+              {Hh('Falta mensual', 'falta', true)}
+              {Hh('Saldo cuentas', 'saldoCuentas', true)}
               {Hh('GGCC', 'ggcc', true)}
               {Hh('Luz', 'luz', true)}
               {Hh('Agua', 'agua', true)}
@@ -428,6 +447,9 @@ export default function FaltanPage() {
                   <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: f.cobraDueno ? '#9CA3AF' : '#666' }} title={f.inmueble || ''}>{f.inmueble || '—'}</div>
                   <div style={{ textAlign: 'right', color: f.cobraDueno ? '#9CA3AF' : undefined }}>{fmtPesos(f.base)}</div>
                   <div style={{ textAlign: 'right', fontWeight: 700, color: f.pagoDeMas ? '#047857' : (f.cobraDueno ? '#9CA3AF' : '#B91C1C') }}>{fmtPesos(f.falta)}</div>
+                  <div style={{ textAlign: 'right', fontWeight: 600 }} title="Saldo global de la cartola (todo el histórico): + debe · − a favor">
+                    <span style={{ ...NUM_FONT, color: f.saldoCuentas > 0 ? '#B91C1C' : (f.saldoCuentas < 0 ? '#047857' : '#9CA3AF') }}>{fmtPesos(f.saldoCuentas)}</span>
+                  </div>
                   {celdaServ(f.ggcc, UMBRAL.ggcc)}
                   {celdaServ(f.luz, UMBRAL.luz)}
                   {celdaServ(f.agua, UMBRAL.agua)}
