@@ -1,3 +1,7 @@
+// VERSION: v31 · 2026-08-15 · Nuevo botón "RUT ↔ IDADMON": abre una vista pivote (en cliente, sobre las filas ya
+//   cargadas) donde, por cada RUT, se muestran tantos bloques de tres columnas (IDADMON · Nº de pagos · fecha del
+//   último pago) como IDADMON distintos le hayamos cobrado en BI, ordenados de más a menos pagos. Con buscador
+//   (RUT o IDADMON) y filtro "solo RUT que pagan a varios IDADMON". No toca datos ni añade endpoint. Hereda v30.
 // VERSION: v30 · 2026-08-14 · Ayuda del "?" reescrita al flujo real: (1) lo que hace el sistema solo (auto + validar
 //   con "✓ auto"/chip "Por validar"), (2) cuándo asignas tú (+RUT o escribir el IDADMON en la celda, que ya vuelca
 //   solo — se elimina el paso obsoleto "FALTA + botón"), (3) "Copiar FALTA" reencuadrado como repesca en lote, y
@@ -497,6 +501,48 @@ export default function BiVista() {
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const [ayudaOpen, setAyudaOpen] = useState(false)
+
+  // ── Vista "RUT → IDADMON": por cada RUT, tantos bloques (IDADMON · nº pagos · última fecha)
+  //    como IDADMON distintos le hayamos cobrado en BI. Se calcula en cliente sobre las filas ya cargadas.
+  const [rutViewOpen, setRutViewOpen] = useState(false)
+  const [rutQuery, setRutQuery] = useState('')
+  const [soloVarios, setSoloVarios] = useState(false)
+  const rutIdadmon = useMemo(() => {
+    const keyF = (f) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(f || '')); return m ? (m[3] + m[2] + m[1]) : '' }
+    const mapa = new Map()   // rut -> Map(idadmon -> {idadmon, pagos, key, ultima, monto})
+    for (const r of rows) {
+      if (num(r.abonos) <= 0) continue
+      const uc = String(r.unique_concept ?? '').trim().toUpperCase()
+      if (!esIdadmonValido(uc)) continue
+      const rut = extraerRut(r.detalle_movimiento)
+      if (!rut) continue
+      if (!mapa.has(rut)) mapa.set(rut, new Map())
+      const mi = mapa.get(rut)
+      const cur = mi.get(uc) || { idadmon: uc, pagos: 0, key: '', ultima: '', monto: 0 }
+      cur.pagos += 1
+      cur.monto += num(r.abonos)
+      const k = keyF(r.fecha)
+      if (k && k > cur.key) { cur.key = k; cur.ultima = r.fecha }
+      mi.set(uc, cur)
+    }
+    const out = []
+    for (const [rut, mi] of mapa) {
+      const grupos = [...mi.values()].sort((a, b) => b.pagos - a.pagos || (a.idadmon < b.idadmon ? -1 : 1))
+      out.push({ rut, grupos, n: grupos.length, total: grupos.reduce((s, g) => s + g.pagos, 0) })
+    }
+    out.sort((a, b) => (a.rut < b.rut ? -1 : a.rut > b.rut ? 1 : 0))
+    return out
+  }, [rows])
+  const rutIdadmonView = useMemo(() => {
+    const q = rutQuery.trim().toUpperCase()
+    return rutIdadmon.filter(x => {
+      if (soloVarios && x.n < 2) return false
+      if (!q) return true
+      if (x.rut.toUpperCase().includes(q)) return true
+      return x.grupos.some(g => g.idadmon.includes(q))
+    })
+  }, [rutIdadmon, rutQuery, soloVarios])
+  const rutMaxGrupos = useMemo(() => rutIdadmonView.reduce((m, x) => Math.max(m, x.n), 0), [rutIdadmonView])
   // Aviso al REASIGNAR un movimiento de un IDADMON a otro (afecta al anterior y al nuevo + sus liquidaciones del mes).
   const RE_IDADMON = /^A\d{5}$/
   const esReasignacion = (viejo, nuevo) => {
@@ -1039,6 +1085,12 @@ export default function BiVista() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #1c7d3f', background: filas.length === 0 ? '#eee' : '#EAF7EF', color: filas.length === 0 ? '#aaa' : '#1c7d3f', cursor: filas.length === 0 ? 'default' : 'pointer' }}>
             ⭳ Exportar Excel ({filas.length})
           </button>
+          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+          <button onClick={() => setRutViewOpen(true)}
+            title="Ver, por cada RUT, a qué IDADMON ha pagado (nº de pagos y última fecha)"
+            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: '#fff', color: '#6B4423', cursor: 'pointer' }}>
+            RUT ↔ IDADMON
+          </button>
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
@@ -1191,6 +1243,51 @@ export default function BiVista() {
             <p style={{ margin: '10px 0 0', padding: '8px 12px', background: '#FDECEC', border: '0.5px solid #F1B0B0', borderRadius: 8, color: '#9B1C1C' }}>
               ⚠ <b>Cambiar el IDADMON de un movimiento afecta a DOS contratos</b>: el anterior pierde el abono y el nuevo lo gana. Cambian sus cartolas y su liquidación del mes. Revisa siempre ambas después.
             </p>
+          </div>
+        </>
+      )}
+      {rutViewOpen && (
+        <>
+          <div onClick={() => setRutViewOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 70 }} />
+          <div style={{ position: 'fixed', top: '5vh', left: '50%', transform: 'translateX(-50%)', width: 'min(1200px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 71, padding: 16, color: '#2C2C2A' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>RUT → IDADMON · a quién paga cada RUT</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A' }}>Por cada RUT, un bloque <b>IDADMON · Nº pagos · Últ. pago</b> por cada IDADMON que le hayamos cobrado en BI (de más a menos pagos).</div>
+              </div>
+              <button onClick={() => setRutViewOpen(false)} style={{ border: 'none', background: '#F1EFE8', borderRadius: 8, padding: '5px 11px', cursor: 'pointer', fontWeight: 700, color: '#5F5E5A' }}>Cerrar</button>
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <input value={rutQuery} onChange={e => setRutQuery(e.target.value)} placeholder="Buscar RUT o IDADMON…"
+                style={{ fontSize: 13, padding: '6px 10px', borderRadius: 8, border: '1px solid #C8C5BC', width: 240 }} />
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={soloVarios} onChange={e => setSoloVarios(e.target.checked)} />
+                Solo RUT que pagan a <b>&nbsp;varios&nbsp;</b> IDADMON
+              </label>
+              <span style={{ fontSize: 12, color: '#5F5E5A' }}>{rutIdadmonView.length} RUT</span>
+            </div>
+            <div style={{ overflow: 'auto', border: '1px solid #E7E4DB', borderRadius: 8 }}>
+              {rutIdadmonView.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: '#888780' }}>Sin resultados.</div>}
+              {rutIdadmonView.map((x) => (
+                <div key={x.rut} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #EDEBE4', minWidth: 'max-content' }}>
+                  <div style={{ position: 'sticky', left: 0, zIndex: 1, background: '#FAF9F5', borderRight: '1px solid #E7E4DB', padding: '8px 10px', minWidth: 128, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <span style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 12 }}>{x.rut}</span>
+                    <span style={{ fontSize: 10, color: '#8A8780' }}>{x.n} IDADMON · {x.total} pagos</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, padding: 6 }}>
+                    {x.grupos.map((g, i) => (
+                      <div key={g.idadmon} title={`${g.pagos} pago(s) · último ${g.ultima || '—'}`}
+                        style={{ display: 'flex', border: '1px solid ' + (i === 0 ? '#9BD7C2' : '#D8D5CC'), borderRadius: 8, overflow: 'hidden', background: i === 0 ? '#F0FAF6' : '#fff', flexShrink: 0 }}>
+                        <span style={{ padding: '6px 8px', fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 12, color: '#085041', borderRight: '1px solid #E7E4DB', minWidth: 62, textAlign: 'center' }}>{g.idadmon}</span>
+                        <span style={{ padding: '6px 8px', fontSize: 12, fontWeight: 600, borderRight: '1px solid #E7E4DB', minWidth: 34, textAlign: 'center' }}>{g.pagos}</span>
+                        <span style={{ padding: '6px 8px', fontSize: 11, color: '#5F5E5A', minWidth: 74, textAlign: 'center' }}>{g.ultima || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: '#8A8780', marginTop: 6 }}>El primer bloque (verde) es el IDADMON con más pagos de ese RUT. Cada bloque tiene tres columnas: IDADMON · Nº de pagos · fecha del último pago.</div>
           </div>
         </>
       )}
