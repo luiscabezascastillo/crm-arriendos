@@ -1,3 +1,8 @@
+// VERSION: v38 · 2026-08-15 · Editar UNIQUE CONCEPT: NO se bloquea (el campo admite texto válido de muchos tipos),
+//   solo se AVISA con las consecuencias y la persona decide. Novedad clave: si se cambia un IDADMON válido por algo
+//   que NO lo es (texto libre o vacío), el aviso muestra el valor anterior y, al confirmar, se QUITA la correspondencia
+//   en CUENTAS (el endpoint borra la línea calif=reg → el abono sale de esa cartola). Requiere ruta movimientos v4.
+//   Hereda v37.
 // VERSION: v37 · 2026-08-15 · LIMPIEZA: (1) se SUPRIME el botón "Copiar FALTA a CUENTAS" (y su función copiarFaltan)
 //   — el volcado ya lo hacen la edición de celda y +RUT; era vestigio del flujo Excel. (2) Se OCULTAN las columnas
 //   check1 y check2 de la tabla (y sus avisos/leyendas asociados). El dato bi.check2_pasar_a_cartola sigue en la BD
@@ -963,7 +968,23 @@ export default function BiVista() {
             e.target.style.border = '1px solid transparent'
             e.target.style.background = sigueAm ? '#FFE84D' : 'transparent'
             if (orig !== actual) {
-              if (esReasignacion(orig, actual) && !window.confirm(AVISO_REASIGNACION)) { onLocal(r.id, c.key, orig); return }
+              const t = String(actual).trim()
+              const actualEsId = RE_IDADMON.test(t)
+              const origEsId = RE_IDADMON.test(String(orig).trim())
+              // NO se bloquea nada (el campo admite texto válido de muchos tipos). Solo se AVISA con las
+              // consecuencias y la persona decide (Aceptar) o vuelve atrás (Cancelar → repone el valor anterior).
+              let aviso = null
+              if (esReasignacion(orig, actual)) {
+                // IDADMON válido → otro IDADMON válido: reasignación entre contratos.
+                aviso = AVISO_REASIGNACION + '\n\n(Reg ' + r.reg + ': ' + orig + ' → ' + actual + ')'
+              } else if (origEsId && !actualEsId) {
+                // Se sustituye un IDADMON válido por algo que NO lo es (texto libre o vacío): la línea réplica
+                // del abono en CUENTAS (bajo ese contrato) se ELIMINA automáticamente. Avisar y mostrar el anterior.
+                aviso = '⚠ Vas a cambiar el IDADMON «' + orig + '» por «' + (actual === '' ? '(vacío)' : actual) + '», que NO es un IDADMON.\n\n' +
+                  'Consecuencia: se ELIMINARÁ automáticamente la línea de este abono en CUENTAS (la cartola de ' + orig + '). Esa línea es solo una réplica del BI bajo el contrato; al quedarse sin IDADMON deja de existir en Cuentas. La cartola de ' + orig + ' baja y puede subir su falta de arriendo. La traza del cambio queda en la bitácora.\n\n' +
+                  'Valor anterior: ' + orig + ' (apúntalo por si quieres volver atrás).\n\n¿Confirmas el cambio?'
+              }
+              if (aviso && !window.confirm(aviso)) { onLocal(r.id, c.key, orig); return }
               guardarCelda(r.id, c.key, actual)
             }
           }}

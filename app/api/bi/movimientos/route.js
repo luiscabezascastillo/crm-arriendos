@@ -1,4 +1,9 @@
 // app/api/bi/movimientos/route.js
+// VERSION: v4 · 2026-08-15 · El PATCH de UNIQUE_CONCEPT gestiona también el caso "se PIERDE el IDADMON": si el valor
+//   pasa de un IDADMON válido a texto libre o vacío, se ELIMINA la línea réplica en `cuentas` (helper quitarDeCuentas:
+//   borra la fila calif=reg con comentarios='BI'). Esa línea de cuentas es solo una réplica del BI bajo un contrato:
+//   sin contrato, deja de existir (la traza queda en la bitácora bi_idadmon_log). Se limpia además el espejo
+//   `bi.idadmon2`. El caso "nuevo IDADMON válido" sigue volcando como en v3. Hereda v3.
 // VERSION: v3 · 2026-08-14 · El PATCH de UNIQUE_CONCEPT ahora (1) PROPAGA a `cuentas` el IDADMON —actualiza la
 //   fila (calif=reg) o la INSERTA si no existía, cerrando el desincronismo bi→cuentas—; (2) lo registra en la
 //   BITÁCORA `bi_idadmon_log` (quién, viejo→nuevo, motivo, origen); (3) marca `bi.idadmon_origen='manual'` (lo puso
@@ -106,6 +111,19 @@ async function volcarACuentas(biRow, idadmon) {
   return { propagado: true, accion: 'insertada', cuentaId: ins?.id }
 }
 
+// ELIMINA de `cuentas` la línea volcada desde BI (calif = reg, comentarios = 'BI') cuando el movimiento deja de
+// tener un IDADMON válido (se cambió por texto libre o se vació). Esa línea de cuentas es solo una RÉPLICA del BI
+// bajo un contrato: si no hay contrato al que pertenecer, deja de existir (se borra). La traza del cambio queda
+// en la bitácora `bi_idadmon_log`. Devuelve cuántas filas réplica se eliminaron.
+async function quitarDeCuentas(biRow) {
+  const reg = biRow.reg != null && String(biRow.reg).trim() !== '' ? String(biRow.reg).trim() : null
+  if (!reg) return { propagado: false, motivo: 'sin_reg' }
+  const { data: del, error } = await supabaseAdmin
+    .from('cuentas').delete().eq('calif', reg).eq('comentarios', 'BI').select('id')
+  if (error) return { propagado: false, error: error.message }
+  return { propagado: true, accion: 'eliminada_de_cuentas', filas: del?.length || 0 }
+}
+
 // PATCH /api/bi/movimientos  body: { id, campo, valor, motivo? }
 export async function PATCH(request) {
   const session = await getServerSession(authOptions)
@@ -133,17 +151,26 @@ export async function PATCH(request) {
     const viejo = biRow.unique_concept
     const nuevo = v
     const esIdadmonValido = RE_IDADMON.test(String(nuevo ?? '').trim())
+    const viejoEraValido = RE_IDADMON.test(String(viejo ?? '').trim())
+    const cambia = String(viejo ?? '').trim() !== String(nuevo ?? '').trim()
 
     // 1) Guardar en bi + marcar origen manual (lo puso una persona).
     const patchBi = { unique_concept: nuevo, idadmon_origen: 'manual', updated_at: new Date().toISOString() }
     if (esIdadmonValido) { patchBi.idadmon2 = nuevo; patchBi.check2_pasar_a_cartola = 'CORREGIDO' }
+    else { patchBi.idadmon2 = null }   // ya no hay IDADMON válido: se limpia el espejo idadmon2
     const { error: eBi } = await supabaseAdmin.from('bi').update(patchBi).eq('id', id)
     if (eBi) return NextResponse.json({ error: 'No se pudo guardar: ' + eBi.message }, { status: 500 })
 
-    // 2) Propagar a cuentas (solo si el nuevo valor es un IDADMON válido).
-    let propagacion = { propagado: false, motivo: 'no_es_idadmon' }
-    if (esIdadmonValido && String(viejo ?? '').trim() !== String(nuevo).trim()) {
-      propagacion = await volcarACuentas(biRow, String(nuevo).trim())
+    // 2) Propagar a cuentas:
+    //    · nuevo IDADMON válido → volcar (actualiza/inserta la línea en la cartola del contrato).
+    //    · se PIERDE el IDADMON (antes válido, ahora texto libre o vacío) → ELIMINAR la línea réplica de
+    //      cuentas (calif=reg, comentarios='BI'): sin contrato al que pertenecer, esa réplica del BI deja de
+    //      existir. La traza queda en la bitácora.
+    let propagacion = { propagado: false, motivo: 'sin_cambio' }
+    if (cambia) {
+      if (esIdadmonValido) propagacion = await volcarACuentas(biRow, String(nuevo).trim())
+      else if (viejoEraValido) propagacion = await quitarDeCuentas(biRow)
+      else propagacion = { propagado: false, motivo: 'no_afecta_cuentas' }
     }
 
     // 3) Bitácora (siempre que haya cambio real).
