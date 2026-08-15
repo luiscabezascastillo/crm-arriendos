@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v7 · 2026-08-15 · Los 4 KPIs (Meses · Día med. · Máx · Actual) suben a la fila del título "Morosidad" como
+//   mini-cajas compactas (con el detalle en el tooltip), en vez de ocupar una rejilla propia debajo. Se quita el
+//   subtítulo para ganar sitio. Gráfico y calendario siguen como drawers a la derecha. Hereda v6.
 // VERSION: v6 · 2026-08-15 · Compactación del panel (mejor uso del espacio en la cartola): KPIs a ~mitad de alto
 //   (menos padding, cifra 17px) y los toggles de "Saldo a fin de mes" y "Calendario de pagos" se suben a la
 //   cabecera del panel como botones; su contenido (gráfico / calendario) aparece como DRAWER debajo de los KPIs
@@ -116,9 +119,22 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
 
   return (
     <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: (verSaldo || verMeses) ? 4 : 0 }}>
         <span style={{ fontSize: 15, fontWeight: 800 }}>Morosidad</span>
-        <span style={{ fontSize: 12, color: C.ink2 }}>comportamiento de pago (desde la cartola)</span>
+        {/* 4 KPIs subidos a la fila del título, como mini-cajas (pasa el ratón para el detalle) */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[
+            { lab: 'Meses', val: D.kpi.mesesConDeuda, note: 'meses con deuda (de ' + D.meses.length + ')' },
+            { lab: 'Día med.', val: D.kpi.diaMedioPago ?? '—', note: 'día medio de pago (vence el 1)' },
+            { lab: 'Máx', val: P(D.kpi.maxDeudaMes), note: 'deuda máx. a fin de mes (peor mes)' },
+            { lab: 'Actual', val: D.kpi.saldoActual <= 0 ? P(Math.abs(D.kpi.saldoActual)) : P(D.kpi.saldoActual), note: 'saldo actual (' + (D.kpi.saldoActual <= 0 ? 'a favor' : 'a cobrar') + ')', col: D.kpi.saldoActual > D.kpi.rentaRef * 0.1 ? C.crit : C.greenTxt },
+          ].map((k, i) => (
+            <div key={i} title={k.note} style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, padding: '3px 9px', border: '1px solid ' + C.grid, borderRadius: 8, background: C.surf }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '.03em' }}>{k.lab}</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: k.col || '#0b0b0b' }}>{k.val}</span>
+            </div>
+          ))}
+        </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           {!compact && (
             <button onClick={() => setVerSaldo(v => !v)} style={btnDrawer(verSaldo)}>
@@ -132,21 +148,6 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
             <span style={{ width: 9, height: 9, borderRadius: '50%', background: alDia ? C.good : C.crit }} />{alDia ? 'AL DÍA' : 'EN MORA'}
           </span>
         </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-        {[
-          { lab: 'Saldo actual', val: D.kpi.saldoActual <= 0 ? P(Math.abs(D.kpi.saldoActual)) : P(D.kpi.saldoActual), note: D.kpi.saldoActual <= 0 ? 'a favor' : 'a cobrar', col: D.kpi.saldoActual > D.kpi.rentaRef * 0.1 ? C.crit : C.greenTxt },
-          { lab: 'Meses con deuda', val: D.kpi.mesesConDeuda, note: 'de ' + D.meses.length + ' meses' },
-          { lab: 'Día medio de pago', val: D.kpi.diaMedioPago ?? '—', note: 'del mes (vence el 1)' },
-          { lab: 'Deuda máx. (fin de mes)', val: P(D.kpi.maxDeudaMes), note: 'peor mes' },
-        ].map((k, i) => (
-          <div key={i} style={kpiCard}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>{k.lab}</div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2, color: k.col || '#0b0b0b' }}>{k.val}</div>
-            <div style={{ fontSize: 10, color: C.ink2, marginTop: 1 }}>{k.note}</div>
-          </div>
-        ))}
       </div>
 
       {!compact && verSaldo && (

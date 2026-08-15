@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v24 · 2026-08-15 · Cartola por IDADMON, cabecera más trabajable: una sola fila con identidad+Estado,
+//   Propietario, Arrendatario/Avalista apilados, Inmueble/Garantía apilados, y a la derecha Saldo total con "Quién
+//   tiene la garantía" debajo. Los 4 KPIs de morosidad suben a la fila del título como mini-cajas (MorosidadCartola
+//   v7). Hereda v23.
 // VERSION: v23 · 2026-08-15 · Cartola por IDADMON: botón "⭳ Exportar Excel" en la barra sticky (junto a "Añadir
 //   línea") — descarga los movimientos de la cuenta mostrada a .xlsx, con el mismo método (import('xlsx') +
 //   json_to_sheet + writeFile) que las demás vistas (BI, Cobranza, Descuentos). Hereda v22.
@@ -981,8 +985,8 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
     faltaRespaldoLog ? true : Math.abs(cargoProp - propLog) > TOL_PROP
   )
 
-  const Dato = ({ label, value, strong }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0 }}>
+  const Dato = ({ label, value, strong, align = 'left' }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0, alignItems: align === 'right' ? 'flex-end' : 'flex-start', textAlign: align }}>
       <span style={{ fontSize: 9.5, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.25 }}>{label}</span>
       <span style={{ fontSize: 12, color: '#2C2C2A', fontWeight: strong ? 700 : 500, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.25 }}>{value || '—'}</span>
     </div>
@@ -1083,25 +1087,34 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
 
       {ficha && (
         <>
-          {/* CABECERA */}
-          <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '8px 14px', marginBottom: 10, background: '#F8FAFC' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: '#0C447C' }}>{ficha.idadmon}</span>
-                <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C' }}>Estado: {ficha.estado || '—'}</span>
+          {/* CABECERA compacta en una sola fila: identidad+Estado · Propietario · Arrendatario/Avalista ·
+              Inmueble/Garantía · (derecha) Saldo total con Quién debajo. */}
+          <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '10px 14px', marginBottom: 10, background: '#F8FAFC' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px 22px', flexWrap: 'wrap' }}>
+              {/* Identidad + Estado (arriba) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <span style={{ fontSize: 17, fontWeight: 700, color: '#0C447C', lineHeight: 1.1 }}>{ficha.idadmon}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C', alignSelf: 'flex-start' }}>Estado: {ficha.estado || '—'}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '4px 16px' }}>
               <Dato label="Propietario" value={ficha.propietario} strong />
-              <Dato label="Arrendatario" value={ficha.arrendatario} strong />
-              <Dato label="Avalista" value={ficha.avalista} />
-              <Dato label="Inmueble" value={ficha.inmueble} />
-              <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
-              <Dato label="Quién" value={ficha.quien_tiene_garantia} />
+              {/* Arrendatario / Avalista apilados */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <Dato label="Arrendatario" value={ficha.arrendatario} strong />
+                <Dato label="Avalista" value={ficha.avalista} />
+              </div>
+              {/* Inmueble / Garantía apilados */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <Dato label="Inmueble" value={ficha.inmueble} />
+                <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
+              </div>
+              {/* Saldo total + Quién (debajo) — a la derecha */}
+              <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</span>
+                  <span style={{ fontSize: 17, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
+                </div>
+                <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} align="right" />
+              </div>
             </div>
           </div>
 
