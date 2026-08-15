@@ -1,3 +1,5 @@
+// VERSION: v10 · 2026-08-15 · Nueva columna "Fecha inicio" (fecha_inicio) ANTES de "Término actual" en el listado
+//   de propiedades administradas, con su filtro de cabecera y en el Excel. Hereda v9.
 // VERSION: v9 · 2026-08-05 · Botón "DICOM" en la barra del LOG → /cc1/dicom (hoja de informes DICOM
 //   Equifax + pago). Visible para todos los que ven el LOG, igual que "Comentarios". Hereda v8.
 // VERSION: v8 · 2026-08-04 · Botón "Exportar Excel" en la barra del LOG: vuelca a xlsx EXACTAMENTE lo filtrado (búsqueda + filtros Excel + orden), con las columnas del listado + arrendatario y un flag Vencido.
@@ -228,6 +230,9 @@ const LOG_COLS = [
   { key: 'cuota', label: 'Cuota', tipo: 'num',
     fkey: p => (p.cuota == null ? '' : String(p.cuota)),
     flabel: k => (k === '' ? '(vacías)' : Number(k).toLocaleString('es-CL')) },
+  { key: 'fecha_inicio', label: 'Fecha inicio', tipo: 'fecha',
+    fkey: p => String(p.fecha_inicio || '').slice(0, 10),
+    flabel: k => (k === '' ? '(vacías)' : fmtFechaLOG(k)) },
   { key: 'termino_actual', label: 'Término actual', tipo: 'fecha',
     fkey: p => String(p.termino_actual || '').slice(0, 10),
     flabel: k => (k === '' ? '(vacías)' : fmtFechaLOG(k)) },
@@ -265,7 +270,7 @@ export default function CC1Page() {
   // con operadores. Trae en bloques de 1000 por si supera el tope por consulta de Supabase.
   async function loadTodas() {
     setLoading(true)
-    const cols = 'idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, termino_actual, arrendatario'
+    const cols = 'idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, fecha_inicio, termino_actual, arrendatario'
     let desde = 0, acc = [], hay = true
     while (hay) {
       const { data, error } = await supabase.from('datos_arriendos').select(cols)
@@ -380,6 +385,7 @@ export default function CC1Page() {
       Estado: p.estado || '',
       Cuota: (p.cuota == null || p.cuota === '') ? '' : Number(p.cuota),
       Unidad: p.unid || '',
+      'Fecha inicio': p.fecha_inicio ? String(p.fecha_inicio).slice(0, 10) : '',
       'Término actual': p.termino_actual ? String(p.termino_actual).slice(0, 10) : '',
       Vencido: (alertaTermino(p.termino_actual, p.estado)?.text === 'Vencido') ? 'SÍ' : '',
       IDPROP: p.idprop || '',
@@ -507,6 +513,7 @@ export default function CC1Page() {
               <col style={{ width: 150 }} />   {/* Propietario */}
               <col style={{ width: 58 }} />    {/* Estado */}
               <col style={{ width: 95 }} />    {/* Cuota */}
+              <col style={{ width: 100 }} />   {/* Fecha inicio */}
               <col style={{ width: 100 }} />   {/* Término actual */}
               <col style={{ width: 55 }} />    {/* IDPROP */}
               <col style={{ width: 175 }} />   {/* IDINMUE — hasta 3 códigos */}
@@ -530,6 +537,9 @@ export default function CC1Page() {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuota</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'cuota')} movs={todas} state={filters['cuota']} setState={v => setFiltroCol('cuota', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fecha inicio</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'fecha_inicio')} movs={todas} state={filters['fecha_inicio']} setState={v => setFiltroCol('fecha_inicio', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
+                </th>
+                <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Término actual</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'termino_actual')} movs={todas} state={filters['termino_actual']} setState={v => setFiltroCol('termino_actual', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
@@ -543,9 +553,9 @@ export default function CC1Page() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Cargando datos...</td></tr>
+                <tr><td colSpan={10} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Cargando datos...</td></tr>
               ) : propiedades.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
+                <tr><td colSpan={10} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>No se encontraron registros</td></tr>
               ) : propiedades.map((p, i) => {
                 const alerta = alertaTermino(p.termino_actual, p.estado)
                 const cargando = portalLoading === p.idadmon
@@ -559,6 +569,9 @@ export default function CC1Page() {
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)' }}><EstadoBadge estado={p.estado} /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
                       {p.cuota ? `${p.unid === 'UF' ? 'UF ' : '$'}${Number(p.cuota).toLocaleString('es-CL')}` : '—'}
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--gray-700)', borderBottom: '1px solid var(--border-subtle)' }}>
+                      {p.fecha_inicio ? new Date(p.fecha_inicio).toLocaleDateString('es-CL') : '—'}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: 12, borderBottom: '1px solid var(--border-subtle)' }}>
                       {p.termino_actual ? (
