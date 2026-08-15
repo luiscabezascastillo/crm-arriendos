@@ -1,5 +1,8 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/faltan/page.js
+// VERSION: v7 · 2026-08-15 · FIX columna "Cartola": el saldo global salía 0 en muchos IDADMON porque el fetch de
+//   `cuentas` topaba a 1000 filas (para ~100 contratos son miles). Ahora se PAGINA (range de 1000 en 1000) y se suman
+//   TODAS las líneas, de modo que el saldo coincide con el saldo corrido de la cartola. Hereda v6.
 // VERSION: v6 · 2026-08-15 · La columna de saldo global de la cartola se renombra a "Cartola" y se tiñe de naranja
 //   suave (cabecera y celdas) para distinguirla. Hereda v5.
 // VERSION: v5 · 2026-08-15 · (1) La columna "Falta arriendo" se renombra a "Falta mensual" (es lo cobrado en la
@@ -172,13 +175,26 @@ export default function FaltanPage() {
 
       // Saldo GLOBAL de la cartola (cuentas) por IDADMON: Σ cargo efectivo − Σ abono (sin líneas anuladas).
       // Da la visión global del contrato (positivo = debe acumulado; negativo = a favor), además de la falta del mes.
-      const { data: ctas } = await supabase
-        .from('cuentas').select('idadmon, cargo, cargo_manual, abono, anulado').in('idadmon', ids)
+      // OJO: para ~100 contratos son MILES de filas en `cuentas` y el fetch topa a 1000 → hay que PAGINAR,
+      // si no, muchos IDADMON se quedan sin sus movimientos y su saldo sale 0 (bug de la v5/v6).
       const saldoCtasMap = {}
-      for (const c of ctas || []) {
-        if (c.anulado) continue
-        const cargoEf = (c.cargo_manual != null && c.cargo_manual !== '') ? n0(c.cargo_manual) : n0(c.cargo)
-        saldoCtasMap[c.idadmon] = (saldoCtasMap[c.idadmon] || 0) + cargoEf - n0(c.abono)
+      {
+        const PAGE = 1000
+        let desde = 0
+        for (;;) {
+          const { data: ctas, error: ec } = await supabase
+            .from('cuentas').select('idadmon, cargo, cargo_manual, abono, anulado')
+            .in('idadmon', ids)
+            .range(desde, desde + PAGE - 1)
+          if (ec) { setError(ec.message); setCargando(false); return }
+          for (const c of ctas || []) {
+            if (c.anulado) continue
+            const cargoEf = (c.cargo_manual != null && c.cargo_manual !== '') ? n0(c.cargo_manual) : n0(c.cargo)
+            saldoCtasMap[c.idadmon] = (saldoCtasMap[c.idadmon] || 0) + cargoEf - n0(c.abono)
+          }
+          if (!ctas || ctas.length < PAGE) break
+          desde += PAGE
+        }
       }
 
       // Por IDADMON, quedarse con la fila del aamm más reciente (saldo vigente)
