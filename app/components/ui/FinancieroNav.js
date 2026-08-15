@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-15 · Nueva pestaña "Alberto" (cuenta corriente del propietario de la empresa),
+//   antes de CONTAB → /procesos/financiero/alberto. Hereda v2.
 // VERSION: v2 · 2026-07-26 · FinancieroNav: se pega DEBAJO del TopNav (top medido, no 0).
 //   El v1 usaba top: 0, que es la misma coordenada a la que ya esta clavado el TopNav:
 //   al hacer scroll la barra se metia detras (el TopNav tiene mas z-index) y desaparecia
@@ -26,6 +28,7 @@ const MODULOS = [
   { id: 'sii',            icon: '📋', label: 'SII',         href: '/procesos/financiero/sii' },
   { id: 'global66',       icon: '🌐', label: 'Global',      href: '/procesos/financiero/global66' },
   { id: 'dj1835',         icon: '🏘️', label: 'DJ 1835',     href: '/procesos/financiero/dj1835' },
+  { id: 'alberto',        icon: '💼', label: 'Alberto',     href: '/procesos/financiero/alberto' },
   { id: 'contab',         icon: '📊', label: 'CONTAB',      href: '/procesos/financiero/contab' },
 ]
 
