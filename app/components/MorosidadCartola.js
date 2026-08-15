@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v8 · 2026-08-15 · Nuevo modo `inline`: el panel se puede incrustar en la fila de la cabecera (raíz como
+//   flex-item; título "MOR" en vez de "Morosidad"). Los KPIs, toggles y AL DÍA van en línea; los drawers (gráfico/
+//   calendario) se despliegan debajo dentro del propio bloque. Sin cambios de cálculo. Hereda v7.
 // VERSION: v7 · 2026-08-15 · Los 4 KPIs (Meses · Día med. · Máx · Actual) suben a la fila del título "Morosidad" como
 //   mini-cajas compactas (con el detalle en el tooltip), en vez de ocupar una rejilla propia debajo. Se quita el
 //   subtítulo para ganar sitio. Gráfico y calendario siguen como drawers a la derecha. Hereda v6.
@@ -35,7 +38,7 @@ const parseFecha = (s) => {
 const numc = (v) => { const x = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(x) ? 0 : x }
 const esInicio = (r) => /INICIO/i.test(String(r.calif || '')) || /garant|comision/i.test(String(r.concepto || ''))
 
-export default function MorosidadCartola({ idadmon, cuentas = null, compact = false }) {
+export default function MorosidadCartola({ idadmon, cuentas = null, compact = false, inline = false }) {
   const [rows, setRows] = useState(cuentas)
   const [cargando, setCargando] = useState(!cuentas)
   const [tip, setTip] = useState(null) // {x,y,html}
@@ -118,9 +121,11 @@ export default function MorosidadCartola({ idadmon, cuentas = null, compact = fa
   const showTip = (e, html) => setTip({ x: e.clientX, y: e.clientY, html })
 
   return (
-    <div style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+    <div style={inline
+      ? { fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', flex: '1 1 320px', minWidth: 0, boxSizing: 'border-box' }
+      : { fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', color: '#0b0b0b', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: (verSaldo || verMeses) ? 4 : 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 800 }}>Morosidad</span>
+        <span style={{ fontSize: inline ? 12 : 15, fontWeight: 800, color: inline ? '#52514e' : '#0b0b0b', textTransform: inline ? 'uppercase' : 'none', letterSpacing: inline ? '.03em' : 0 }}>{inline ? 'MOR' : 'Morosidad'}</span>
         {/* 4 KPIs subidos a la fila del título, como mini-cajas (pasa el ratón para el detalle) */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[

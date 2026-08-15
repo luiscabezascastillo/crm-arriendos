@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v25 · 2026-08-15 · Cartola por IDADMON, cabecera en UN solo frame denso: (1) el aviso de estado (Q/N/P)
+//   pasa del banner a un chip en la barra sticky superior; (2) "Quién tiene la garantía" va en línea (etiqueta: valor)
+//   en la propia cabecera; (3) los KPIs de morosidad se INCRUSTAN en la cabecera (MorosidadCartola modo inline, "MOR"),
+//   quitando la fila aparte; (4) "SALDO TOTAL" → "TOTAL". Requiere MorosidadCartola v8. Hereda v24.
 // VERSION: v24 · 2026-08-15 · Cartola por IDADMON, cabecera más trabajable: una sola fila con identidad+Estado,
 //   Propietario, Arrendatario/Avalista apilados, Inmueble/Garantía apilados, y a la derecha Saldo total con "Quién
 //   tiene la garantía" debajo. Los 4 KPIs de morosidad suben a la fila del título como mini-cajas (MorosidadCartola
@@ -1074,10 +1078,12 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
             ⭳ Exportar Excel ({movs.length})
           </button>
         )}
+        {aviso && (
+          <span title={aviso} style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '0.5px solid #FCD34D', borderRadius: 8, padding: '6px 10px', maxWidth: 560, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>⚠ {aviso}</span>
+        )}
       </div>
 
       {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
-      {aviso && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FEF3C7', border: '0.5px solid #FCD34D', color: '#92400E', fontSize: 12, fontWeight: 600 }}>⚠ {aviso}</div>}
 
       {consultado && !buscando && !ficha && !error && (
         <div style={{ padding: 16, borderRadius: 8, background: '#F1EFE8', color: '#5F5E5A', fontSize: 13 }}>
@@ -1087,11 +1093,11 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
 
       {ficha && (
         <>
-          {/* CABECERA compacta en una sola fila: identidad+Estado · Propietario · Arrendatario/Avalista ·
-              Inmueble/Garantía · (derecha) Saldo total con Quién debajo. */}
+          {/* CABECERA en un solo frame denso: identidad+Estado · Propietario · Arrend/Aval · Inmueble/Garantía ·
+              Quién tiene la garantía (en línea) · MOR + KPIs (morosidad incrustada) · TOTAL a la derecha. */}
           <div style={{ border: '0.5px solid #D3D1C7', borderRadius: 10, padding: '10px 14px', marginBottom: 10, background: '#F8FAFC' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px 22px', flexWrap: 'wrap' }}>
-              {/* Identidad + Estado (arriba) */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px 20px', flexWrap: 'wrap' }}>
+              {/* Identidad + Estado */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                 <span style={{ fontSize: 17, fontWeight: 700, color: '#0C447C', lineHeight: 1.1 }}>{ficha.idadmon}</span>
                 <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: '#E6F1FB', color: '#0C447C', alignSelf: 'flex-start' }}>Estado: {ficha.estado || '—'}</span>
@@ -1107,20 +1113,19 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
                 <Dato label="Inmueble" value={ficha.inmueble} />
                 <Dato label="Garantía" value={ficha.garantia_pedida ? money(ficha.garantia_pedida) : null} />
               </div>
-              {/* Saldo total + Quién (debajo) — a la derecha */}
-              <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Saldo total</span>
-                  <span style={{ fontSize: 17, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
-                </div>
-                <Dato label="Quién tiene la garantía" value={ficha.quien_tiene_garantia} align="right" />
+              {/* Quién tiene la garantía — EN LÍNEA (etiqueta: valor) */}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 9.5, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Quién tiene la garantía:</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#2C2C2A' }}>{ficha.quien_tiene_garantia || '—'}</span>
+              </div>
+              {/* MOROSIDAD incrustada (KPIs + toggles + AL DÍA) */}
+              <MorosidadCartola idadmon={ficha.idadmon} inline />
+              {/* TOTAL — a la derecha */}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Total</span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
               </div>
             </div>
-          </div>
-
-          {/* MOROSIDAD — comportamiento de pago a partir de la cartola */}
-          <div style={{ marginBottom: 10 }}>
-            <MorosidadCartola idadmon={ficha.idadmon} />
           </div>
 
           {/* MOVIMIENTOS · el proporcional del primer mes va a la derecha, en la misma línea */}
