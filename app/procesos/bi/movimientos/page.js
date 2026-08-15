@@ -1,3 +1,7 @@
+// VERSION: v36 · 2026-08-15 · RENDIMIENTO del filtro de cabecera (iba lento / se "enganchaba"): (1) las opciones de
+//   cada columna se MEMOIZAN una vez por carga (antes valoresUnicos() recorría las 7040 filas con localeCompare para
+//   TODAS las columnas en cada render); (2) dentro del desplegable, la forma normalizada de cada opción se precalcula
+//   una vez y no en cada tecla. El filtrado al teclear pasa a ser inmediato. Sin cambios de datos. Hereda v35.
 // VERSION: v35 · 2026-08-15 · Vista "RUT → IDADMON": cada bloque añade una 4ª columna con la ÚLTIMA CANTIDAD pagada
 //   (el abono del pago más reciente, no la suma), junto a la fecha del último pago. Hereda v34.
 // VERSION: v34 · 2026-08-15 · Se SUPRIME el toggle "Ver todo / Ver recientes" (era confuso): la tabla muestra
@@ -248,9 +252,13 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
     setOpen(true)
   }
   const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  // Precalcula la forma normalizada de cada opci\u00f3n UNA vez (no en cada tecla). `opciones` llega ya
+  // memoizado desde el padre \u2192 este useMemo solo se rehace si cambian los datos, no al teclear.
+  const opcNorm = useMemo(() => (opciones || []).map(o => [o, norm(o)]), [opciones])
   const rangoActivo = numeric && value && typeof value === 'object' && !Array.isArray(value) && (value.min != null || value.max != null || value.igual != null)
   const activo = (!numeric && value && value.length > 0) || rangoActivo || (!numeric && sortCol === col) || (chips && catFiltro && catFiltro !== 'todos')
-  const visibles = (opciones || []).filter(o => !buscar || norm(o).includes(norm(buscar)))
+  const nb = norm(buscar)
+  const visibles = !buscar ? (opciones || []) : opcNorm.filter(x => x[1].includes(nb)).map(x => x[0])
   const p = pending || new Set()
   const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
   const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
@@ -469,6 +477,18 @@ export default function BiVista() {
     rows.forEach(r => s.add(valorCelda(r, key)))
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'es'))
   }
+  // Opciones de filtro por columna, MEMOIZADAS: se calculan UNA vez por carga de datos (no en cada
+  // render ni al teclear). Antes valoresUnicos() se ejecutaba para TODAS las columnas en cada render
+  // (7040 filas × localeCompare por columna) → causa de la lentitud y del "enganche" del filtro.
+  const opcionesPorCol = useMemo(() => {
+    const cols = COLS.filter(c => c.filt && !c.money)
+    const sets = {}
+    for (const c of cols) sets[c.key] = new Set()
+    for (const r of rows) for (const c of cols) sets[c.key].add(valorCelda(r, c.key))
+    const out = {}
+    for (const c of cols) out[c.key] = Array.from(sets[c.key]).sort((a, b) => a.localeCompare(b, 'es'))
+    return out
+  }, [rows])
   // Categoría de la fila para los chips de color (misma lógica que colorFila / la leyenda).
   const categoriaFila = (r) => {
     const ab = num(r.abonos), ca = num(r.cargos)
@@ -1199,7 +1219,7 @@ export default function BiVista() {
                       <ColFilterExcel
                         label={c.h} col={c.key} align={c.align === 'right' ? 'right' : 'left'}
                         sortCol={sortCol} sortDir={sortDir} onSort={onSort}
-                        opciones={valoresUnicos(c.key)} value={filtros[c.key] || (c.money ? { min: null, max: null } : [])} onApply={onApply}
+                        opciones={c.money ? [] : (opcionesPorCol[c.key] || [])} value={filtros[c.key] || (c.money ? { min: null, max: null } : [])} onApply={onApply}
                         numeric={!!c.money}
                         tree={c.key === 'fecha'}
                         chips={c.key === 'unique_concept' ? CHIPS_CAT : null}
