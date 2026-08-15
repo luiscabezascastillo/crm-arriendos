@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v23 · 2026-08-15 · Cartola por IDADMON: botón "⭳ Exportar Excel" en la barra sticky (junto a "Añadir
+//   línea") — descarga los movimientos de la cuenta mostrada a .xlsx, con el mismo método (import('xlsx') +
+//   json_to_sheet + writeFile) que las demás vistas (BI, Cobranza, Descuentos). Hereda v22.
 // VERSION: v22 · 2026-08-15 · Cartola por IDADMON, mejor aprovechamiento del espacio: (1) CABECERA (ficha) más
 //   compacta (≈mitad de alto): menos padding, saldo total en una línea, etiquetas más cortas ("Quién tiene la
 //   garantía"→"Quién"). (2) El bloque PROPORCIONAL del primer mes deja de ocupar su propia franja y pasa a la
@@ -846,6 +849,30 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
 
   const onKey = (e) => { if (e.key === 'Enter') buscar() }
 
+  // Exporta los movimientos de la cuenta mostrada a Excel (mismo método que BI/Cobranza/Descuentos).
+  async function exportarExcel() {
+    if (!movs.length) return
+    const XLSX = await import('xlsx')
+    const idad = ficha?.idadmon || idInput.trim().toUpperCase()
+    const salida = movs.map(m => ({
+      IDADMON: idad,
+      Fecha: m.fecha ?? '',
+      Concepto: m.concepto ?? '',
+      Cargo: cargoEfectivo(m) || '',
+      Abono: num(m.abono) || '',
+      Saldo: m._saldo == null ? '' : m._saldo,
+      Comentarios: m.comentarios ?? '',
+      Calif: m.calif ?? '',
+      Justificantes: m.justificantes ?? '',
+      Marca: m.anulado ? 'ANULADO' : (m.manual ? 'MANUAL' : ''),
+    }))
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(salida)
+    XLSX.utils.book_append_sheet(wb, ws, 'Cartola')
+    const hoy = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `Cartola_${idad}_${hoy}.xlsx`)
+  }
+
   // Si se llega desde el buscador de la vista Tabla (initialId), precargar y buscar ese IDADMON
   // de una vez, para no mostrar la pantalla en blanco. Se ejecuta una sola vez al montar la vista.
   useEffect(() => {
@@ -1035,6 +1062,12 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
           <button onClick={abrirAlta} title="Añadir una línea manual (cargo o abono) a esta cuenta — Dirección y Karina, queda registrado quién y cuándo"
             style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1D9E75', background: '#EAF7F1', color: '#0F6D4E', cursor: 'pointer' }}>
             ➕ Añadir línea
+          </button>
+        )}
+        {ficha && movs.length > 0 && (
+          <button onClick={exportarExcel} title="Exportar los movimientos de esta cartola a Excel (.xlsx)"
+            style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #B4B2A9', background: '#fff', color: '#0F6D4E', cursor: 'pointer' }}>
+            ⭳ Exportar Excel ({movs.length})
           </button>
         )}
       </div>

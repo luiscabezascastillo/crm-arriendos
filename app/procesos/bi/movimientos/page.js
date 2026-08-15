@@ -1,3 +1,5 @@
+// VERSION: v35 · 2026-08-15 · Vista "RUT → IDADMON": cada bloque añade una 4ª columna con la ÚLTIMA CANTIDAD pagada
+//   (el abono del pago más reciente, no la suma), junto a la fecha del último pago. Hereda v34.
 // VERSION: v34 · 2026-08-15 · Se SUPRIME el toggle "Ver todo / Ver recientes" (era confuso): la tabla muestra
 //   siempre todas las filas que casen con los filtros de cabecera. Para acotar se usan esos filtros (árbol de
 //   fechas, buscar Reg, etc.) y el botón "✕ Quitar filtros". Hereda v33.
@@ -607,11 +609,12 @@ export default function BiVista() {
       if (!rut) continue
       if (!mapa.has(rut)) mapa.set(rut, new Map())
       const mi = mapa.get(rut)
-      const cur = mi.get(uc) || { idadmon: uc, pagos: 0, key: '', ultima: '', monto: 0 }
+      const cur = mi.get(uc) || { idadmon: uc, pagos: 0, key: '', ultima: '', monto: 0, montoUlt: 0 }
       cur.pagos += 1
       cur.monto += num(r.abonos)
       const k = keyF(r.fecha)
-      if (k && k > cur.key) { cur.key = k; cur.ultima = r.fecha }
+      // montoUlt = importe del pago MÁS RECIENTE (el de la última fecha), no la suma.
+      if (k && k > cur.key) { cur.key = k; cur.ultima = r.fecha; cur.montoUlt = num(r.abonos) }
       mi.set(uc, cur)
     }
     const out = []
@@ -1346,7 +1349,7 @@ export default function BiVista() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800 }}>RUT → IDADMON · a quién paga cada RUT</div>
-                <div style={{ fontSize: 12, color: '#5F5E5A' }}>Por cada RUT, un bloque <b>IDADMON · Nº pagos · Últ. pago</b> por cada IDADMON que le hayamos cobrado en BI (de más a menos pagos).</div>
+                <div style={{ fontSize: 12, color: '#5F5E5A' }}>Por cada RUT, un bloque <b>IDADMON · Nº pagos · Últ. fecha · Últ. cantidad</b> por cada IDADMON que le hayamos cobrado en BI (de más a menos pagos).</div>
               </div>
               <button onClick={() => setRutViewOpen(false)} style={{ border: 'none', background: '#F1EFE8', borderRadius: 8, padding: '5px 11px', cursor: 'pointer', fontWeight: 700, color: '#5F5E5A' }}>Cerrar</button>
             </div>
@@ -1369,18 +1372,19 @@ export default function BiVista() {
                   </div>
                   <div style={{ display: 'flex', gap: 6, padding: 6 }}>
                     {x.grupos.map((g, i) => (
-                      <div key={g.idadmon} title={`${g.pagos} pago(s) · último ${g.ultima || '—'}`}
+                      <div key={g.idadmon} title={`${g.pagos} pago(s) · último ${g.ultima || '—'} · ${g.montoUlt ? '$' + Number(g.montoUlt).toLocaleString('es-CL') : '—'}`}
                         style={{ display: 'flex', border: '1px solid ' + (i === 0 ? '#9BD7C2' : '#D8D5CC'), borderRadius: 8, overflow: 'hidden', background: i === 0 ? '#F0FAF6' : '#fff', flexShrink: 0 }}>
                         <span style={{ padding: '6px 8px', fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 12, color: '#085041', borderRight: '1px solid #E7E4DB', minWidth: 62, textAlign: 'center' }}>{g.idadmon}</span>
                         <span style={{ padding: '6px 8px', fontSize: 12, fontWeight: 600, borderRight: '1px solid #E7E4DB', minWidth: 34, textAlign: 'center' }}>{g.pagos}</span>
-                        <span style={{ padding: '6px 8px', fontSize: 11, color: '#5F5E5A', minWidth: 74, textAlign: 'center' }}>{g.ultima || '—'}</span>
+                        <span style={{ padding: '6px 8px', fontSize: 11, color: '#5F5E5A', borderRight: '1px solid #E7E4DB', minWidth: 74, textAlign: 'center' }}>{g.ultima || '—'}</span>
+                        <span style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, color: '#085041', minWidth: 78, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{g.montoUlt ? Number(g.montoUlt).toLocaleString('es-CL') : '—'}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: '#8A8780', marginTop: 6 }}>El primer bloque (verde) es el IDADMON con más pagos de ese RUT. Cada bloque tiene tres columnas: IDADMON · Nº de pagos · fecha del último pago.</div>
+            <div style={{ fontSize: 11, color: '#8A8780', marginTop: 6 }}>El primer bloque (verde) es el IDADMON con más pagos de ese RUT. Cada bloque tiene cuatro columnas: IDADMON · Nº de pagos · fecha del último pago · importe del último pago.</div>
           </div>
         </>
       )}
