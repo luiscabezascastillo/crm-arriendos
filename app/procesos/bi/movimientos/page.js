@@ -1,3 +1,7 @@
+// VERSION: v32 · 2026-08-15 · FILTROS DE CABECERA: (1) el desplegable ahora se dibuja por PORTAL a document.body, así
+//   que sale SIEMPRE por delante de la cabecera sticky (antes quedaba atrapado en su stacking-context y lo tapaban
+//   las columnas de al lado); (2) la columna Fecha usa un ÁRBOL Año → Mes → Día con casillas tri-estado y
+//   desplegar/plegar (como el filtro de Descuentos), en vez de la lista plana de todas las fechas. Hereda v31.
 // VERSION: v31 · 2026-08-15 · Nuevo botón "RUT ↔ IDADMON": abre una vista pivote (en cliente, sobre las filas ya
 //   cargadas) donde, por cada RUT, se muestran tantos bloques de tres columnas (IDADMON · Nº de pagos · fecha del
 //   último pago) como IDADMON distintos le hayamos cobrado en BI, ordenados de más a menos pagos. Con buscador
@@ -77,6 +81,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import TopNav from '@/app/components/ui/TopNav'
 
 // ── Permisos de ESCRITURA del BI ──────────────────────────────────────────
@@ -190,20 +195,37 @@ function bgCelda(ci, r) {
 
 // ── Filtro de cabecera estilo LOG: ordenar A→Z/Z→A + casillas Excel + buscador ──
 // Opcional: `chips` renderiza una fila de botones de categoría arriba (para UNIQUE CONCEPT).
-function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat, numeric = false }) {
+function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value, onApply, align = 'left', chips, catFiltro, onCat, numeric = false, tree = false }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ left: 0, top: 0 })   // coords del dropdown (fixed)
   const [buscar, setBuscar] = useState('')
   const [pending, setPending] = useState(null)
   const [rango, setRango] = useState({ min: '', max: '', igual: '' })   // filtro por cantidad (columnas numéricas): rango o valor exacto
+  const [expanded, setExpanded] = useState(() => new Set())   // años/meses desplegados en el árbol de fechas
   const ref = useRef(null)
   const btnRef = useRef(null)
+  const popRef = useRef(null)   // el desplegable va por PORTAL a document.body, así que necesita su propio ref
   useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function handle(e) {
+      const inWrap = ref.current && ref.current.contains(e.target)
+      const inPop = popRef.current && popRef.current.contains(e.target)
+      if (!inWrap && !inPop) setOpen(false)
+    }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
-  useEffect(() => { if (open) { setBuscar(''); if (numeric) setRango({ min: value?.min ?? '', max: value?.max ?? '', igual: value?.igual ?? '' }); else setPending(new Set(value || [])) } }, [open]) // eslint-disable-line
+  useEffect(() => {
+    if (open) {
+      setBuscar('')
+      if (numeric) setRango({ min: value?.min ?? '', max: value?.max ?? '', igual: value?.igual ?? '' })
+      else setPending(new Set(value || []))
+      if (tree) {   // al abrir, deja desplegado el año más reciente
+        const ys = [...new Set((opciones || []).map(o => { const m = /\/(\d{4})$/.exec(String(o)); return m ? m[1] : null }).filter(Boolean))].sort()
+        const last = ys[ys.length - 1]
+        setExpanded(new Set(last ? ['Y:' + last] : []))
+      }
+    }
+  }, [open]) // eslint-disable-line
   // Abre el dropdown calculando su posición fija (respecto a la pantalla, no a la tabla con scroll).
   const abrir = () => {
     if (open) { setOpen(false); return }
@@ -224,6 +246,20 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
   const todasVisiblesMarcadas = visibles.length > 0 && visibles.every(o => p.has(o))
   const toggle = o => { const n = new Set(p); n.has(o) ? n.delete(o) : n.add(o); setPending(n) }
   const toggleTodas = () => { const n = new Set(p); todasVisiblesMarcadas ? visibles.forEach(o => n.delete(o)) : visibles.forEach(o => n.add(o)); setPending(n) }
+  // ── Árbol de fechas (Año → Mes → Día) para la columna Fecha ──
+  const MESES = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  const toggleExp = (k) => setExpanded(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const tri = (hojas) => (hojas.length && hojas.every(l => p.has(l))) ? 'yes' : hojas.some(l => p.has(l)) ? 'mid' : 'no'
+  const toggleHojas = (hojas, on) => { const n = new Set(p); hojas.forEach(l => on ? n.add(l) : n.delete(l)); setPending(n) }
+  // Agrupa las fechas VISIBLES (respeta el buscador) en { año: { mes: [dd/mm/aaaa...] } }.
+  const treeData = {}
+  if (tree && !numeric) for (const o of visibles) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(o))
+    const yy = m ? m[3] : '(sin fecha)'; const mm = m ? m[2] : '-'
+    if (!treeData[yy]) treeData[yy] = {}
+    if (!treeData[yy][mm]) treeData[yy][mm] = []
+    treeData[yy][mm].push(o)
+  }
   const toNum = (s) => { const t = String(s ?? '').trim(); if (t === '') return null; const n = Number(t.replace(/[^\d.-]/g, '')); return isNaN(n) ? null : n }
   const aplicar = () => {
     if (numeric) {
@@ -245,8 +281,8 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
           {numeric ? (rangoActivo ? ' ⧩' : ' ⯬') : (value && value.length ? ' ⧩' : sortCol === col && sortDir === 'asc' ? ' ↑' : sortCol === col && sortDir === 'desc' ? ' ↓' : ' ⯬')}
         </span>
       </button>
-      {open && (
-        <div style={{ position: 'fixed', left: pos.left, top: pos.top, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 250, maxHeight: `calc(100vh - ${pos.top + 12}px)`, display: 'flex', flexDirection: 'column', zIndex: 300, padding: 8, boxSizing: 'border-box' }}>
+      {open && typeof document !== 'undefined' && createPortal(
+        <div ref={popRef} style={{ position: 'fixed', left: pos.left, top: pos.top, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', width: 250, maxHeight: `calc(100vh - ${pos.top + 12}px)`, display: 'flex', flexDirection: 'column', zIndex: 4000, padding: 8, boxSizing: 'border-box' }}>
           {chips && (
             <>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase' }}>Categoría</div>
@@ -304,14 +340,54 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
                 (Seleccionar todo){buscar ? ' (lo visible)' : ''}
               </label>
               <div style={{ flex: 1, minHeight: 40, overflowY: 'auto', margin: '2px 0 8px' }}>
-                {visibles.length === 0
-                  ? <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
-                  : visibles.map(o => (
+                {visibles.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 4px' }}>Sin coincidencias</div>
+                ) : tree ? (
+                  Object.keys(treeData).sort((a, b) => b.localeCompare(a)).map(yy => {
+                    const meses = treeData[yy]
+                    const hojasY = Object.values(meses).flat()
+                    const stY = tri(hojasY)
+                    const abiertoY = !!buscar || expanded.has('Y:' + yy)
+                    return (
+                      <div key={yy}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 2px' }}>
+                          <span onClick={() => toggleExp('Y:' + yy)} style={{ cursor: 'pointer', width: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 10, userSelect: 'none' }}>{abiertoY ? '▾' : '▸'}</span>
+                          <input type="checkbox" ref={el => { if (el) el.indeterminate = stY === 'mid' }} checked={stY === 'yes'} onChange={() => toggleHojas(hojasY, stY !== 'yes')} style={{ margin: 0 }} />
+                          <span style={{ fontWeight: 700, fontSize: 12 }}>{yy}</span>
+                          <span style={{ fontSize: 10, color: '#B4B2A9' }}>({hojasY.length})</span>
+                        </div>
+                        {abiertoY && Object.keys(meses).sort((a, b) => b.localeCompare(a)).map(mm => {
+                          const dias = meses[mm]
+                          const stM = tri(dias)
+                          const abiertoM = !!buscar || expanded.has('M:' + yy + mm)
+                          return (
+                            <div key={mm} style={{ marginLeft: 16 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 2px' }}>
+                                <span onClick={() => toggleExp('M:' + yy + mm)} style={{ cursor: 'pointer', width: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 10, userSelect: 'none' }}>{abiertoM ? '▾' : '▸'}</span>
+                                <input type="checkbox" ref={el => { if (el) el.indeterminate = stM === 'mid' }} checked={stM === 'yes'} onChange={() => toggleHojas(dias, stM !== 'yes')} style={{ margin: 0 }} />
+                                <span style={{ fontSize: 12, textTransform: 'capitalize' }}>{MESES[parseInt(mm, 10)] || mm}</span>
+                                <span style={{ fontSize: 10, color: '#B4B2A9' }}>({dias.length})</span>
+                              </div>
+                              {abiertoM && dias.slice().sort((a, b) => b.localeCompare(a)).map(d => (
+                                <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px', marginLeft: 16, fontSize: 12, cursor: 'pointer', color: '#374151' }}>
+                                  <input type="checkbox" checked={p.has(d)} onChange={() => toggle(d)} style={{ margin: 0, flexShrink: 0 }} />
+                                  <span>{d}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                ) : (
+                  visibles.map(o => (
                     <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
                       <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
                     </label>
-                  ))}
+                  ))
+                )}
               </div>
             </>
           )}
@@ -319,7 +395,8 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
             <button onClick={limpiar} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>Limpiar</button>
             <button onClick={aplicar} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#1a56db', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>{numeric ? 'Aplicar' : ([...p].length ? `Aplicar (${[...p].length})` : 'Ver todos')}</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -1105,6 +1182,7 @@ export default function BiVista() {
                         sortCol={sortCol} sortDir={sortDir} onSort={onSort}
                         opciones={valoresUnicos(c.key)} value={filtros[c.key] || (c.money ? { min: null, max: null } : [])} onApply={onApply}
                         numeric={!!c.money}
+                        tree={c.key === 'fecha'}
                         chips={c.key === 'unique_concept' ? CHIPS_CAT : null}
                         catFiltro={catFiltro} onCat={setCatFiltro}
                       />
