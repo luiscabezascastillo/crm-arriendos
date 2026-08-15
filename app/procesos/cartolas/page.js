@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v21 · 2026-08-15 · Vista Tabla, dos ajustes de espacio/uso: (1) BUSCADOR de IDADMON incrustado en la
+//   barra sticky superior (junto a las pestañas). "Ver cuenta" salta directo a la Cartola por IDADMON YA cargada,
+//   sin pasar por la página en blanco. (2) Se elimina el bloque central redundante (título "Cuentas (CARTOLAS)" +
+//   subtítulo "recientes abajo…") y los botones "Duplicados"/"Refrescar" se suben a la barra sticky (derecha), para
+//   recuperar espacio vertical. El estado del IDADMON a abrir se eleva al componente padre. Hereda v20.
 // VERSION: v20 · 2026-08-15 · Cartola por IDADMON: las 3 líneas de arriba (pestañas + título + buscador) se
 //   unifican en UNA sola barra sticky bajo el TopNav (top:52): [pestañas Tabla/Cartola por IDADMON] + input +
 //   "Ver cuenta" + "Añadir línea". Se quita el título redundante y el botón "Añadir línea" duplicado de la
@@ -128,13 +133,20 @@ class Salvavidas extends Component {
 
 export default function CartolasPage() {
   const [vista, setVista] = useState('tabla')   // 'tabla' | 'idadmon'
+  const [idadmonReq, setIdadmonReq] = useState('')   // IDADMON a abrir desde el buscador de la vista Tabla
+  // Desde la barra de la Tabla: fija el IDADMON pedido y salta a la vista de cartola (que lo carga sola).
+  const abrirCartola = (id) => {
+    const v = String(id || '').trim().toUpperCase()
+    if (!v) return
+    setIdadmonReq(v); setVista('idadmon')
+  }
   return (
     <>
       <TopNav />
       <Salvavidas key={vista}>
         {vista === 'tabla'
-          ? <TablaVista vista={vista} setVista={setVista} />
-          : <CartolaIdadmonVista vista={vista} setVista={setVista} />}
+          ? <TablaVista vista={vista} setVista={setVista} abrirCartola={abrirCartola} />
+          : <CartolaIdadmonVista vista={vista} setVista={setVista} initialId={idadmonReq} onConsumed={() => setIdadmonReq('')} />}
       </Salvavidas>
     </>
   )
@@ -159,9 +171,10 @@ function TabsCartola({ vista, setVista }) {
   )
 }
 
-function TablaVista({ vista, setVista }) {
+function TablaVista({ vista, setVista, abrirCartola }) {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const [idBusca, setIdBusca] = useState('')   // IDADMON tecleado en la barra para abrir su cartola
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -448,18 +461,20 @@ function TablaVista({ vista, setVista }) {
   return (
     <>
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
-        <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 12px', padding: '8px 20px', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
+        <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 12px', padding: '8px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
           <TabsCartola vista={vista} setVista={setVista} />
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ textAlign: 'center' }}>
-            <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Cuentas (CARTOLAS)</h1>
-            <div style={{ fontSize: 12, color: '#888780' }}>
-              recientes abajo · sube para cargar más{hayFiltros ? ' · filtrado' : ''}
-              {!puedeEditar && ' · solo lectura'}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
+          <span style={{ width: 1, height: 24, background: '#D3D1C7' }} />
+          <input value={idBusca} onChange={e => setIdBusca(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') abrirCartola(idBusca) }}
+            placeholder="IDADMON (ej. A00857)"
+            style={{ fontSize: 13, padding: '7px 11px', border: '0.5px solid #B4B2A9', borderRadius: 8, width: 180, textTransform: 'uppercase' }} />
+          <button onClick={() => abrirCartola(idBusca)}
+            title="Abrir la cartola de este IDADMON"
+            style={{ fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
+            Ver cuenta
+          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            {!puedeEditar && <span style={{ fontSize: 11, color: '#888780' }}>solo lectura</span>}
             <button onClick={abrirDuplicados}
               title="Buscar filas duplicadas en CUENTAS (por rango de fechas)"
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>
@@ -699,7 +714,7 @@ function calcProporcional(f, ufMesInicio) {
   }
 }
 
-function CartolaIdadmonVista({ vista, setVista }) {
+function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [idInput, setIdInput] = useState('')
@@ -753,8 +768,8 @@ function CartolaIdadmonVista({ vista, setVista }) {
     return () => { de.style.overflowX = pde; b.style.overflowX = pb }
   }, [])
 
-  const buscar = async () => {
-    const id = idInput.trim().toUpperCase()
+  const buscar = async (idOverride) => {
+    const id = String(idOverride ?? idInput).trim().toUpperCase()
     if (!id || buscando) return
     setBuscando(true); setError(null); setAviso(null); setConsultado(true)
     setFicha(null); setMovs([]); setUfMesInicio(null)
@@ -825,6 +840,15 @@ function CartolaIdadmonVista({ vista, setVista }) {
   }
 
   const onKey = (e) => { if (e.key === 'Enter') buscar() }
+
+  // Si se llega desde el buscador de la vista Tabla (initialId), precargar y buscar ese IDADMON
+  // de una vez, para no mostrar la pantalla en blanco. Se ejecuta una sola vez al montar la vista.
+  useEffect(() => {
+    const id0 = String(initialId || '').trim().toUpperCase()
+    if (id0) { setIdInput(id0); buscar(id0) }
+    if (onConsumed) onConsumed()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
@@ -998,7 +1022,7 @@ function CartolaIdadmonVista({ vista, setVista }) {
         <input value={idInput} onChange={e => setIdInput(e.target.value)} onKeyDown={onKey}
           placeholder="IDADMON (ej. A00857)" autoFocus
           style={{ fontSize: 14, padding: '8px 12px', border: '0.5px solid #B4B2A9', borderRadius: 8, width: 200, textTransform: 'uppercase' }} />
-        <button onClick={buscar} disabled={buscando}
+        <button onClick={() => buscar()} disabled={buscando}
           style={{ fontSize: 13, fontWeight: 600, padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>
           {buscando ? 'Buscando…' : 'Ver cuenta'}
         </button>
