@@ -1,3 +1,10 @@
+// VERSION: v34 · 2026-08-15 · Se SUPRIME el toggle "Ver todo / Ver recientes" (era confuso): la tabla muestra
+//   siempre todas las filas que casen con los filtros de cabecera. Para acotar se usan esos filtros (árbol de
+//   fechas, buscar Reg, etc.) y el botón "✕ Quitar filtros". Hereda v33.
+// VERSION: v33 · 2026-08-15 · FILTROS más ágiles: (1) la lista de opciones se CAPA a 300 (columnas como Reg/N°Doc
+//   tenían miles y el desplegable se atascaba al escribir — ahora va fluido y el buscador afina); (2) foco automático
+//   en el buscador al abrir; (3) botón "✕ Quitar filtros" en la barra (visible solo si hay filtro/orden activo) para
+//   no quedarte atascado con un filtro de otra columna (p. ej. Fecha=2026 escondiendo un Reg de 2025). Hereda v32.
 // VERSION: v32 · 2026-08-15 · FILTROS DE CABECERA: (1) el desplegable ahora se dibuja por PORTAL a document.body, así
 //   que sale SIEMPRE por delante de la cabecera sticky (antes quedaba atrapado en su stacking-context y lo tapaban
 //   las columnas de al lado); (2) la columna Fecha usa un ÁRBOL Año → Mes → Día con casillas tri-estado y
@@ -334,7 +341,7 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
               </div>
               <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase' }}>Filtrar</div>
               <div style={{ fontSize: 10.5, color: '#94A3B8', marginBottom: 6 }}>Marca los que quieres ver (vacío = todos).</div>
-              <input placeholder={`Buscar ${String(label).toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
+              <input autoFocus placeholder={`Buscar ${String(label).toLowerCase()}...`} value={buscar} onChange={e => setBuscar(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 12, boxSizing: 'border-box', marginBottom: 6 }} />
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', borderBottom: '1px solid #F3F4F6' }}>
                 <input type="checkbox" checked={todasVisiblesMarcadas} onChange={toggleTodas} style={{ margin: 0 }} />
                 (Seleccionar todo){buscar ? ' (lo visible)' : ''}
@@ -381,12 +388,17 @@ function ColFilterExcel({ label, col, sortCol, sortDir, onSort, opciones, value,
                     )
                   })
                 ) : (
-                  visibles.map(o => (
-                    <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
-                      <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
-                    </label>
-                  ))
+                  <>
+                    {visibles.slice(0, 300).map(o => (
+                      <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
+                        <input type="checkbox" checked={p.has(o)} onChange={() => toggle(o)} style={{ margin: 0, flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o}>{o}</span>
+                      </label>
+                    ))}
+                    {visibles.length > 300 && (
+                      <div style={{ fontSize: 11, color: '#9CA3AF', padding: '6px 4px' }}>Mostrando 300 de {visibles.length}. Escribe arriba para afinar (o marca «Seleccionar todo» sobre lo buscado).</div>
+                    )}
+                  </>
                 )}
               </div>
             </>
@@ -572,9 +584,9 @@ export default function BiVista() {
   // Qué filas se PINTAN. check1 se calcula sobre TODA la secuencia (arriba), pero por defecto
   // solo mostramos las recientes para no volcar miles de inputs. "Ver todo" las pinta todas.
   // (En la Parte 2, con filtro activo se mostrarán todas las que casen.)
-  const visibles = useMemo(() => {
-    return (verTodos || hayFiltroActivo) ? filas : filas.slice(-TOPE_DEFECTO)
-  }, [filas, verTodos, hayFiltroActivo])
+  // Se muestran SIEMPRE todas las filas filtradas (se quitó el toggle "Ver todo/Ver recientes").
+  // Para acotar, usa los filtros de cabecera (árbol de fechas, buscar Reg, etc.).
+  const visibles = filas
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const [ayudaOpen, setAyudaOpen] = useState(false)
@@ -1151,12 +1163,6 @@ export default function BiVista() {
           <button onClick={() => setAyudaOpen(true)} title="¿Qué hace cada botón y cuándo usar +RUT?"
             style={{ fontSize: 13, fontWeight: 800, width: 26, height: 26, borderRadius: '50%', border: '1px solid #C8C5BC', background: '#fff', color: '#6B4423', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>?</button>
           <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
-          <button onClick={() => setVerTodos(v => !v)}
-            title={verTodos ? 'Mostrar solo las más recientes' : 'Mostrar las 6.7k filas (puede ir más lento)'}
-            style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: verTodos ? '#8A5A2B' : '#fff', color: verTodos ? '#fff' : '#6B4423', cursor: 'pointer' }}>
-            {verTodos ? `Ver recientes (${TOPE_DEFECTO})` : `Ver todo (${filas.length})`}
-          </button>
-          <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
           <button onClick={exportarExcel} disabled={filas.length === 0}
             title="Exporta a Excel exactamente lo filtrado, con las columnas visibles"
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #1c7d3f', background: filas.length === 0 ? '#eee' : '#EAF7EF', color: filas.length === 0 ? '#aaa' : '#1c7d3f', cursor: filas.length === 0 ? 'default' : 'pointer' }}>
@@ -1168,6 +1174,16 @@ export default function BiVista() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #6B4423', background: '#fff', color: '#6B4423', cursor: 'pointer' }}>
             RUT ↔ IDADMON
           </button>
+          {hayFiltroActivo && (
+            <>
+              <span style={{ width: 1, height: 22, background: '#D3D1C7', margin: '0 4px' }} />
+              <button onClick={() => { setFiltros({}); setCatFiltro('todos'); setSortCol(null) }}
+                title="Quitar todos los filtros y la ordenación de las columnas"
+                style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 8, border: '1px solid #C0392B', background: '#FDECEA', color: '#B93A2B', cursor: 'pointer' }}>
+                ✕ Quitar filtros
+              </button>
+            </>
+          )}
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', maxHeight: '72vh', border: '0.5px solid #D3D1C7', borderRadius: 8 }}>
@@ -1194,8 +1210,7 @@ export default function BiVista() {
               </tr>
             </thead>
             <tbody>
-              {!verTodos && filas.length > TOPE_DEFECTO && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— mostrando las {TOPE_DEFECTO} más recientes de {filas.length} · «Ver todo» arriba —</td></tr>}
-              {(verTodos || filas.length <= TOPE_DEFECTO) && filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— inicio de la tabla —</td></tr>}
+              {filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— {filas.length} fila(s) · usa los filtros de cabecera para acotar —</td></tr>}
               {visibles.map((r) => (
                 <tr key={r.id}>
                   {COLS.map((c, ci) => {
