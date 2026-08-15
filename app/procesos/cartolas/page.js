@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v26 · 2026-08-15 · FIX saldo tras EDITAR un cargo: el recálculo en caliente de `guardarCargo` no excluía
+//   las líneas ANULADAS, así que al editar cualquier cargo la línea anulada volvía a sumarse al saldo corrido (el
+//   cálculo inicial de buscar() sí las excluye). Ahora el recálculo tras editar salta las anuladas igual. Hereda v25.
 // VERSION: v25 · 2026-08-15 · Cartola por IDADMON, cabecera en UN solo frame denso: (1) el aviso de estado (Q/N/P)
 //   pasa del banner a un chip en la barra sticky superior; (2) "Quién tiene la garantía" va en línea (etiqueta: valor)
 //   en la propia cabecera; (3) los KPIs de morosidad se INCRUSTAN en la cabecera (MorosidadCartola modo inline, "MOR"),
@@ -914,8 +917,14 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       if (!res.ok) { setCargoErr(d.error || 'No se pudo guardar.'); setSavingCargo(false); return }
       setMovs(prev => {
         const upd = prev.map(m => m.id === editRow.id ? { ...m, cargo_manual: cargoNuevo, cargo_editado_por: d.cargo_editado_por, cargo_editado_motivo: d.cargo_editado_motivo, cargo_editado_en: d.cargo_editado_en } : m)
+        // Recalcular el saldo corrido EXCLUYENDO las líneas anuladas (igual que el cálculo inicial de buscar()).
+        // Antes este recálculo tras editar no saltaba las anuladas → la línea anulada volvía a sumarse al saldo.
         let sAc = 0
-        return upd.map(m => { sAc = sAc + cargoEfectivo(m) - num(m.abono); return { ...m, _saldo: sAc } })
+        return upd.map(m => {
+          if (m.anulado) return { ...m, _saldo: null }
+          sAc = sAc + cargoEfectivo(m) - num(m.abono)
+          return { ...m, _saldo: sAc }
+        })
       })
       setEditRow(null); setSavingCargo(false)
     } catch { setCargoErr('Error de conexión'); setSavingCargo(false) }
