@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v20 · 2026-08-15 · Cartola por IDADMON: las 3 líneas de arriba (pestañas + título + buscador) se
+//   unifican en UNA sola barra sticky bajo el TopNav (top:52): [pestañas Tabla/Cartola por IDADMON] + input +
+//   "Ver cuenta" + "Añadir línea". Se quita el título redundante y el botón "Añadir línea" duplicado de la
+//   sección Movimientos. Las cabeceras de las tablas siguen sticky en su scroll. Hereda v19.
 // VERSION: v19 · 2026-08-13 · Colores de fila diferenciados: CAMBIO MANUAL → rojo SUAVE (#FDEBEA); "no cuadra
 //   con la liquidación" → rojo FUERTE (#F5B7B1, prioritario). Hereda v18.
 // VERSION: v18 · 2026-08-13 · Movimientos: las filas con CAMBIO MANUAL (línea añadida a mano, cargo editado o
@@ -127,24 +131,10 @@ export default function CartolasPage() {
   return (
     <>
       <TopNav />
-      <div style={{ maxWidth: 1760, margin: '0 auto', padding: '14px 20px 0' }}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
-          {[['tabla', 'Tabla'], ['idadmon', 'Cartola por IDADMON']].map(([k, label]) => (
-            <button key={k} onClick={() => setVista(k)}
-              style={{
-                fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: '8px 8px 0 0',
-                border: '0.5px solid #D3D1C7', borderBottom: vista === k ? '2px solid #fff' : '0.5px solid #D3D1C7',
-                marginBottom: vista === k ? -1 : 0,
-                background: vista === k ? '#fff' : '#F1EFE8',
-                color: vista === k ? '#2C2C2A' : '#888780', cursor: 'pointer',
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
       <Salvavidas key={vista}>
-        {vista === 'tabla' ? <TablaVista /> : <CartolaIdadmonVista />}
+        {vista === 'tabla'
+          ? <TablaVista vista={vista} setVista={setVista} />
+          : <CartolaIdadmonVista vista={vista} setVista={setVista} />}
       </Salvavidas>
     </>
   )
@@ -153,7 +143,23 @@ export default function CartolasPage() {
 /* ============================================================
    VISTA 1 — TABLA (espejo de cuentas, scroll infinito + filtros)
    ============================================================ */
-function TablaVista() {
+// Selector de vista compacto (segmentado), para vivir dentro de la barra sticky de cada vista.
+function TabsCartola({ vista, setVista }) {
+  return (
+    <div style={{ display: 'inline-flex', background: '#ECEAE3', borderRadius: 10, padding: 3, gap: 3, flexShrink: 0 }}>
+      {[['tabla', 'Tabla'], ['idadmon', 'Cartola por IDADMON']].map(([k, label]) => (
+        <button key={k} onClick={() => setVista(k)}
+          style={{ fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: vista === k ? '#fff' : 'transparent', color: vista === k ? '#2C2C2A' : '#7A7870',
+            boxShadow: vista === k ? '0 1px 2px rgba(0,0,0,0.10)' : 'none' }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function TablaVista({ vista, setVista }) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [rows, setRows] = useState([])
@@ -442,6 +448,9 @@ function TablaVista() {
   return (
     <>
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
+        <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 12px', padding: '8px 20px', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
+          <TabsCartola vista={vista} setVista={setVista} />
+        </div>
         <div style={{ marginBottom: 10 }}>
           <div style={{ textAlign: 'center' }}>
             <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Cuentas (CARTOLAS)</h1>
@@ -690,7 +699,7 @@ function calcProporcional(f, ufMesInicio) {
   }
 }
 
-function CartolaIdadmonVista() {
+function CartolaIdadmonVista({ vista, setVista }) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [idInput, setIdInput] = useState('')
@@ -982,10 +991,10 @@ function CartolaIdadmonVista() {
   return (
     <>
     <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px', overflowX: 'clip' }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 10px', color: '#2C2C2A' }}>Cartola por IDADMON</h1>
-
-      {/* BUSCADOR */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+      {/* BARRA ÚNICA STICKY: pestañas + buscador + añadir (bajo el TopNav) */}
+      <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 14px', padding: '8px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
+        <TabsCartola vista={vista} setVista={setVista} />
+        <span style={{ width: 1, height: 24, background: '#D3D1C7' }} />
         <input value={idInput} onChange={e => setIdInput(e.target.value)} onKeyDown={onKey}
           placeholder="IDADMON (ej. A00857)" autoFocus
           style={{ fontSize: 14, padding: '8px 12px', border: '0.5px solid #B4B2A9', borderRadius: 8, width: 200, textTransform: 'uppercase' }} />
@@ -1096,14 +1105,8 @@ function CartolaIdadmonVista() {
           )}
 
           {/* MOVIMIENTOS */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '4px 0 8px', flexWrap: 'wrap' }}>
+          <div style={{ margin: '4px 0 8px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
-            {puedeAnadir && (
-              <button onClick={abrirAlta} title="Añadir una línea manual (cargo o abono) a esta cuenta — Dirección y Karina, queda registrado quién y cuándo"
-                style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1D9E75', background: '#EAF7F1', color: '#0F6D4E', cursor: 'pointer' }}>
-                ➕ Añadir línea (cargo o abono)
-              </button>
-            )}
           </div>
           {/* RECAP bajo Movimientos: repite IDADMON+Estado, Propietario e Inmueble para saber siempre qué se mira al hacer scroll */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px', padding: '6px 10px', border: '0.5px solid #E3E1D8', borderRadius: 8, background: '#FBFAF6', fontSize: 12 }}>
