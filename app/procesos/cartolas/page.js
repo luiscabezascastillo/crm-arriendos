@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v27 · 2026-08-15 · El "editar" de una línea de CARGO ahora permite cambiar TAMBIÉN el concepto (texto),
+//   además del importe — y solo esos dos campos (ni fecha ni abono). Útil para corregir el proporcional de INICIO
+//   dejando la misma línea con el texto e importe correctos, sin anular ni añadir manual. Requiere editar-cargo v3.
+//   Hereda v26.
 // VERSION: v26 · 2026-08-15 · FIX saldo tras EDITAR un cargo: el recálculo en caliente de `guardarCargo` no excluía
 //   las líneas ANULADAS, así que al editar cualquier cargo la línea anulada volvía a sumarse al saldo corrido (el
 //   cálculo inicial de buscar() sí las excluye). Ahora el recálculo tras editar salta las anuladas igual. Hereda v25.
@@ -747,6 +751,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   const [liqMap, setLiqMap] = useState({})               // AAMM -> a_cobrar (liquidacion_idadmon)
   const [editRow, setEditRow] = useState(null)
   const [editVal, setEditVal] = useState('')
+  const [editConcepto, setEditConcepto] = useState('')   // texto de la línea de cargo (editable junto al importe)
   const [editMotivo, setEditMotivo] = useState('')
   const [savingCargo, setSavingCargo] = useState(false)
   const [cargoErr, setCargoErr] = useState(null)
@@ -904,19 +909,21 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
     if (a == null) return 'sin_liq'
     return Math.abs(cargoEfectivo(m) - Math.round(num(a))) <= 1 ? 'ok' : 'no_cuadra'
   }
-  const abrirEdicion = (m) => { setEditRow(m); setEditVal(String(cargoEfectivo(m) || '')); setEditMotivo(''); setCargoErr(null) }
+  const abrirEdicion = (m) => { setEditRow(m); setEditVal(String(cargoEfectivo(m) || '')); setEditConcepto(String(m.concepto || '')); setEditMotivo(''); setCargoErr(null) }
   const guardarCargo = async () => {
     if (!editRow) return
     const cargoNuevo = Math.round(num(editVal))
+    const conceptoNuevo = String(editConcepto || '').trim()
     const motivo = editMotivo.trim()
     if (motivo.length < 3) { setCargoErr('El motivo es obligatorio (mínimo 3 caracteres).'); return }
+    if (!conceptoNuevo) { setCargoErr('El concepto no puede quedar vacío.'); return }
     setSavingCargo(true); setCargoErr(null)
     try {
-      const res = await fetch('/api/cartolas/editar-cargo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editRow.id, cargo: cargoNuevo, motivo }) })
+      const res = await fetch('/api/cartolas/editar-cargo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editRow.id, cargo: cargoNuevo, concepto: conceptoNuevo, motivo }) })
       const d = await res.json()
       if (!res.ok) { setCargoErr(d.error || 'No se pudo guardar.'); setSavingCargo(false); return }
       setMovs(prev => {
-        const upd = prev.map(m => m.id === editRow.id ? { ...m, cargo_manual: cargoNuevo, cargo_editado_por: d.cargo_editado_por, cargo_editado_motivo: d.cargo_editado_motivo, cargo_editado_en: d.cargo_editado_en } : m)
+        const upd = prev.map(m => m.id === editRow.id ? { ...m, cargo_manual: cargoNuevo, concepto: conceptoNuevo, cargo_editado_por: d.cargo_editado_por, cargo_editado_motivo: d.cargo_editado_motivo, cargo_editado_en: d.cargo_editado_en } : m)
         // Recalcular el saldo corrido EXCLUYENDO las líneas anuladas (igual que el cálculo inicial de buscar()).
         // Antes este recálculo tras editar no saltaba las anuladas → la línea anulada volvía a sumarse al saldo.
         let sAc = 0
@@ -1250,16 +1257,20 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       <>
         <div onClick={() => !savingCargo && setEditRow(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000 }} />
         <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(460px, 94vw)', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', zIndex: 9001, padding: 18 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>Editar cargo (excepcional)</div>
-          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{editRow.fecha} · {editRow.concepto}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#2C2C2A', marginBottom: 4 }}>Editar línea de cargo (excepcional)</div>
+          <div style={{ fontSize: 12, color: '#888780', marginBottom: 12 }}>{editRow.fecha} · solo se pueden cambiar el <b>concepto</b> y el <b>importe</b> (no la fecha ni el abono).</div>
           <div style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 12, background: '#F7F5EF', padding: '8px 10px', borderRadius: 8 }}>
             Cargo original: <b style={{ fontFamily: MONO }}>{fmt(editRow.cargo) || '0'}</b>
             {(() => { const mesEd = mesDeFila(editRow.fecha); const a = mesEd != null ? liqMap[mesEd] : undefined; return a != null
               ? <> · En la liquidación (a_cobrar) de este mes: <b style={{ fontFamily: MONO }}>{num(a).toLocaleString('es-CL')}</b></>
               : <> · Sin línea en la liquidación de este mes para comparar</> })()}
           </div>
+          <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Concepto (texto)
+            <input value={editConcepto} onChange={e => setEditConcepto(e.target.value)} autoFocus
+              style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box' }} />
+          </label>
           <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 10 }}>Nuevo cargo
-            <input value={editVal} onChange={e => setEditVal(e.target.value)} inputMode="numeric" autoFocus
+            <input value={editVal} onChange={e => setEditVal(e.target.value)} inputMode="numeric"
               style={{ width: '100%', marginTop: 4, fontSize: 14, padding: '8px 10px', border: '0.5px solid #B4B2A9', borderRadius: 8, boxSizing: 'border-box', fontFamily: MONO }} />
           </label>
           <label style={{ fontSize: 12, color: '#888780', display: 'block', marginBottom: 8 }}>Motivo (obligatorio)
