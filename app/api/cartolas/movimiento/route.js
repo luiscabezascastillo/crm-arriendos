@@ -1,3 +1,8 @@
+// VERSION: v5 · 2026-08-16 · FIX bitácora silenciosa. `cuentas_bitacora` NO tiene columna `fecha` (usa
+//   created_at default now()), pero `anotar` le añadía `fecha` → el INSERT fallaba EN SILENCIO y NINGÚN
+//   alta/edición/anulación quedaba registrado (quién/por qué se perdía). Ahora se insertan solo las columnas
+//   reales, si algo falla se avisa (console.error, ya no es silencioso) y la respuesta incluye `bitacora:'ok'|'error'`.
+//   El cambio ya guardado no se bloquea aunque la bitácora falle. Hereda v4.
 // VERSION: v4 · 2026-08-12 · ALTA (añadir líneas cargo/abono): Dirección Y Karina (antes solo Dirección). Cada acción
 //   deja en cuentas_bitacora el usuario (email de la sesión) y la fecha/hora. Edición completa sigue solo en MANUALES;
 //   anulación/reactivación sigue abierta a líneas de cargo (Dirección + editores). Hereda v3.
@@ -27,10 +32,18 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 const money = (v) => Math.round(Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const okFecha = (s) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(s || '').trim())
 
+// v5: la tabla `cuentas_bitacora` NO tiene columna `fecha` (el "cuándo" es `created_at` con default now()).
+// Antes se le añadía `fecha` y el INSERT fallaba en silencio. Ahora: se quita cualquier `fecha` que venga,
+// se comprueba el error y se avisa (no bloquea el cambio ya guardado, pero deja de ser silencioso).
 async function anotar(rows) {
-  if (!rows || !rows.length) return
-  const cuando = new Date().toISOString()   // "cuándo" explícito, además de cualquier default de la tabla
-  await admin.from('cuentas_bitacora').insert(rows.map(r => ('fecha' in r ? r : { ...r, fecha: cuando })))
+  if (!rows || !rows.length) return { ok: true }
+  const limpias = rows.map(({ fecha, ...r }) => r)   // created_at lo pone la BD
+  const { error } = await admin.from('cuentas_bitacora').insert(limpias)
+  if (error) {
+    console.error('[cuentas_bitacora] no se pudo registrar el movimiento:', error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
 }
 
 export async function POST(req) {
@@ -73,11 +86,11 @@ export async function POST(req) {
     }
     const { data, error } = await admin.from('cuentas').insert(insert).select('*').single()
     if (error) return Response.json({ error: error.message }, { status: 500 })
-    await anotar([{
+    const bit = await anotar([{
       cuenta_id: data.id, idadmon, accion: 'alta', campo: null, valor_anterior: null,
       valor_nuevo: `${tipo.toUpperCase()} ${monto} · ${concepto}`, motivo, usuario: email,
     }])
-    return Response.json({ ok: true, fila: data })
+    return Response.json({ ok: true, fila: data, bitacora: bit?.ok ? 'ok' : 'error' })
   }
 
   // ─────────────────────── EDICIÓN ───────────────────────
@@ -117,8 +130,8 @@ export async function POST(req) {
     if (rows.length === 0) return Response.json({ ok: true, fila, sinCambios: true })
     const { data, error } = await admin.from('cuentas').update(nuevo).eq('id', id).select('*').single()
     if (error) return Response.json({ error: error.message }, { status: 500 })
-    await anotar(rows)
-    return Response.json({ ok: true, fila: data })
+    const bit = await anotar(rows)
+    return Response.json({ ok: true, fila: data, bitacora: bit?.ok ? 'ok' : 'error' })
   }
 
   // ─────────────────────── ANULACIÓN / REACTIVACIÓN ───────────────────────
@@ -135,11 +148,11 @@ export async function POST(req) {
     const nuevoEstado = !fila.anulado
     const { data, error } = await admin.from('cuentas').update({ anulado: nuevoEstado }).eq('id', id).select('*').single()
     if (error) return Response.json({ error: error.message }, { status: 500 })
-    await anotar([{
+    const bit = await anotar([{
       cuenta_id: id, idadmon: fila.idadmon, accion: nuevoEstado ? 'anulacion' : 'reactivacion', campo: 'anulado',
       valor_anterior: String(fila.anulado), valor_nuevo: String(nuevoEstado), motivo, usuario: email,
     }])
-    return Response.json({ ok: true, fila: data })
+    return Response.json({ ok: true, fila: data, bitacora: bit?.ok ? 'ok' : 'error' })
   }
 
   return Response.json({ error: 'Acción no reconocida (alta | edicion | anulacion)' }, { status: 400 })
