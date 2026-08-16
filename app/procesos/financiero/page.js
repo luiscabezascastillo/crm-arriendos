@@ -1,4 +1,7 @@
 'use client'
+// RUTA: app/procesos/financiero/page.js
+// VERSION: v6 · 2026-08-16 · Añadida la ficha "Alberto" (cuenta corriente del propietario,
+//   /procesos/financiero/alberto) al menú Financiero, con cadencia "continuo".
 // VERSION: v5 · 2026-07-25 · Activada la tarjeta CONTAB (pantalla en /procesos/financiero/contab).
 // v4 · Activada la tarjeta DJ 1835.
 
@@ -18,12 +21,14 @@ const SUBPROCESOS = [
   { icon: '🌐', titulo: 'Global',         desc: 'Movimientos de la cuenta Global 66 con CCB',                      cadencia: 'mensual', href: '/procesos/financiero/global66' },
   { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: '/procesos/financiero/dj1835' },
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: '/procesos/financiero/contab' },
+  { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
 ]
 
 const CAD_BADGE = {
-  mensual: { bg: '#E6F1FB', color: '#0C447C' },
-  semanal: { bg: '#E1F5EE', color: '#085041' },
-  anual:   { bg: '#FAEEDA', color: '#633806' },
+  mensual:  { bg: '#E6F1FB', color: '#0C447C' },
+  semanal:  { bg: '#E1F5EE', color: '#085041' },
+  anual:    { bg: '#FAEEDA', color: '#633806' },
+  continuo: { bg: '#EFECF7', color: '#4A3B77' },
 }
 
 function SubCard({ sub, onClick, isMobile }) {
