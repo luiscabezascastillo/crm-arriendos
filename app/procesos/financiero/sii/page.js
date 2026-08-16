@@ -1,4 +1,6 @@
 // RUTA: app/procesos/financiero/sii/page.js
+// VERSION: v2 · 2026-08-16 · SII · F29: vista TABLA (todos los meses juntos) + columna Comentario
+//   editable (se guarda en observacion vía PATCH). Se alterna con la vista Lista+detalle.
 // VERSION: v1 · 2026-08-16 · Módulo SII · F29. Arrastra (o sube) el PDF del F29 y se registra solo:
 //   el lector (lib/parseF29) saca los códigos, cuadra 089+062+151=091 y lo guarda. Lista por período,
 //   marca la vigente (rectificatoria sobre primitiva) y muestra el asiento contable sugerido.
@@ -30,7 +32,17 @@ export default function SiiF29Page() {
   const [subiendo, setSubiendo] = useState(false)
   const [msg, setMsg] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  const [vista, setVista] = useState('lista')   // 'lista' | 'tabla'
+  const [coments, setComents] = useState({})    // id -> texto del comentario (edición en la tabla)
   const fileRef = useRef(null)
+
+  useEffect(() => { const m = {}; for (const f of lista) m[f.id] = f.observacion || ''; setComents(m) }, [lista])
+  async function guardarComent(id) {
+    try {
+      await fetch('/api/financiero/sii', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, observacion: coments[id] ?? '' }) })
+      setLista(ls => ls.map(f => f.id === id ? { ...f, observacion: coments[id] ?? '' } : f))
+    } catch { /* silencioso */ }
+  }
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -130,6 +142,68 @@ export default function SiiF29Page() {
           </div>
         )}
 
+        {/* Selector de vista */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {[['lista', 'Lista + detalle'], ['tabla', 'Tabla (todos)']].map(([v, lbl]) => (
+            <button key={v} onClick={() => setVista(v)}
+              style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', cursor: 'pointer', background: vista === v ? '#1D9E75' : '#fff', color: vista === v ? '#fff' : '#2C2C2A' }}>{lbl}</button>
+          ))}
+        </div>
+
+        {vista === 'tabla' && (
+          <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'auto', background: '#fff' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, minWidth: 1000 }}>
+              <thead>
+                <tr style={{ background: '#F1EFE9', color: '#888780', textAlign: 'right' }}>
+                  {['Período', 'Tipo', 'Folio', 'Fecha', 'IVA a pagar', 'PPM', 'Retención', 'Total a pagar', 'Comentario'].map((h, i) => (
+                    <th key={h} style={{ padding: '9px 10px', fontWeight: 600, textAlign: i < 4 || i === 8 ? 'left' : 'right', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cargando ? <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Cargando…</td></tr>
+                  : lista.length === 0 ? <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Aún no hay F29. Arrastra los PDF.</td></tr>
+                    : lista.map(f => (
+                      <tr key={f.id} style={{ borderTop: '0.5px solid #F0EFEA', background: f.vigente ? '#fff' : '#FAFAF7', opacity: f.vigente ? 1 : 0.62 }}>
+                        <td style={{ padding: '7px 10px', fontWeight: 600, color: '#0C447C', whiteSpace: 'nowrap' }}>{perLabel(f.periodo)}</td>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: f.tipo_declaracion === 'primitiva' ? '#EEF3F8' : '#FDF6E3', color: f.tipo_declaracion === 'primitiva' ? '#0C447C' : '#9A6E00' }}>{TIPO_LABEL[f.tipo_declaracion] || f.tipo_declaracion}</span>
+                          {!f.vigente && <span style={{ marginLeft: 5, fontSize: 10, color: '#B4B2A9' }}>reemplazada</span>}
+                        </td>
+                        <td style={{ padding: '7px 10px', color: '#888780', whiteSpace: 'nowrap' }}>{f.folio}</td>
+                        <td style={{ padding: '7px 10px', color: '#888780', whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha_presentacion)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(f.iva_a_pagar)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(f.ppm)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(f.retencion_honorarios)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{clp(f.total_a_pagar)}</td>
+                        <td style={{ padding: '5px 10px', minWidth: 220 }}>
+                          <input value={coments[f.id] ?? ''} disabled={!canEdit}
+                            onChange={e => setComents(c => ({ ...c, [f.id]: e.target.value }))}
+                            onBlur={() => guardarComent(f.id)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+                            placeholder={canEdit ? 'comentario…' : ''}
+                            style={{ width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 6, border: '0.5px solid #E0DED6', boxSizing: 'border-box', background: canEdit ? '#fff' : '#F7F6F2' }} />
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+              {lista.length > 0 && (
+                <tfoot>
+                  <tr style={{ borderTop: '1px solid #E0DED6', background: '#F7F6F2', fontWeight: 700 }}>
+                    <td style={{ padding: '8px 10px' }} colSpan={4}>Total (declaraciones vigentes)</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(lista.filter(f => f.vigente).reduce((a, f) => a + (Number(f.iva_a_pagar) || 0), 0))}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(lista.filter(f => f.vigente).reduce((a, f) => a + (Number(f.ppm) || 0), 0))}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(lista.filter(f => f.vigente).reduce((a, f) => a + (Number(f.retencion_honorarios) || 0), 0))}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(lista.filter(f => f.vigente).reduce((a, f) => a + (Number(f.total_a_pagar) || 0), 0))}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+
+        {vista === 'lista' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
           {/* Lista */}
           <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
@@ -210,6 +284,7 @@ export default function SiiF29Page() {
               </>)}
           </div>
         </div>
+        )}
       </div>
     </>
   )

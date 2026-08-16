@@ -1,8 +1,9 @@
 // RUTA: app/api/financiero/sii/route.js
-// VERSION: v1 · 2026-08-16 · Endpoint del módulo SII (F29).
+// VERSION: v2 · 2026-08-16 · Endpoint del módulo SII (F29).
 //   GET  → lista de F29 (cabeceras) por período, o detalle (líneas) de uno.
 //   POST → guarda un F29 ya parseado en el navegador (parseF29). Upsert por folio; marca vigente
 //          la última del período (la rectificatoria manda sobre la primitiva).
+//   PATCH → edita el comentario (observacion) de un F29 por id.
 //   Escritura restringida a Dirección + Alberto/Luis/Karina (dato sensible).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
@@ -100,4 +101,19 @@ export async function POST(req) {
   await admin.from('sii_f29').update({ vigente: true }).eq('id', f29Id)
 
   return Response.json({ ok: true, id: f29Id, periodo: cab.periodo, folio: cab.folio, tipo: cab.tipo_declaracion })
+}
+
+// PATCH: edita el comentario (observacion) de un F29.
+export async function PATCH(req) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!puedeEscribir(session)) return Response.json({ error: 'Solo Dirección puede editar.' }, { status: 403 })
+  let body
+  try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
+  if (!body?.id) return Response.json({ error: 'Falta id' }, { status: 400 })
+  const patch = { updated_at: new Date().toISOString() }
+  if (Object.prototype.hasOwnProperty.call(body, 'observacion')) patch.observacion = String(body.observacion || '').trim() || null
+  const { error } = await admin.from('sii_f29').update(patch).eq('id', body.id)
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ok: true })
 }
