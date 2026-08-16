@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v47 · 2026-08-16 · "Cambiar estado" AHORA embebido en el propio Término (no sale a CC1): panel con los
+//   estados que cuelgan del actual (Q → Q-Auditado / Q-Reclamado / N / N-DICOM; y alternar entre los sub-estados),
+//   fecha y comentario opcionales. Reusa el endpoint /api/cc1/cambiar-estado (registra en historico_idadmon, no fuerza
+//   en crudo). Q-Auditado/Q-Reclamado solo Dirección + Karina (capacidades de /api/cc1/pendientes). Al aplicar, recarga
+//   el término. Hereda v46.
 // VERSION: v46 · 2026-08-14 · Ajuste del flujo PDF/EMAIL: el botón abre DIRECTAMENTE el correo (NO abre el PDF en
 //   otra pestaña). El PDF va DENTRO de la vista del correo, clicable en "Ver PDF". Dentro puedes: mandarte una
 //   prueba, editar el texto, añadir destinatario, CC y CCO; al enviar sale la vista previa con el PDF incorporado
@@ -100,6 +105,25 @@ const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fond
 const FINANZAS_EMAILS = ['karina.morales@fondocapital.com']
 // Administración (Adalis y Fabiola): pueden generar el PDF del término y enviar los correos de liquidación.
 const ADMIN_EMAILS = ['adalis@fondocapital.com', 'fabiola.guerra@fondocapital.com']
+
+// ── Cambiar estado embebido en el Término. Transiciones que cuelgan del estado actual (mismo circuito
+//    que la ficha CC1 y el endpoint /api/cc1/cambiar-estado). Claves en MAYÚSCULA normalizada; los
+//    valores son el texto tal cual se guarda en datos_arriendos.estado. ──
+const TRANSICIONES_T = {
+  SQ: ['Q'],
+  Q: ['Q-Auditado', 'Q-Reclamado', 'N', 'N-DICOM'],
+  'Q-AUDITADO': ['Q-Reclamado', 'N', 'N-DICOM'],
+  'Q-RECLAMADO': ['Q-Auditado', 'N', 'N-DICOM'],
+}
+const ESTADO_LABEL_T = {
+  Q: 'Q — Término (llaves)',
+  'Q-Auditado': 'Q-Auditado — Término auditado',
+  'Q-Reclamado': 'Q-Reclamado — Término reclamado',
+  N: 'N — Cierre del término',
+  'N-DICOM': 'N-DICOM — Cierre con DICOM',
+}
+// Sub-estados de auditoría: solo Dirección + Karina (mismo candado que el endpoint).
+const ESTADOS_AUDITORIA_T = ['Q-Auditado', 'Q-Reclamado']
 
 const norm = s => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const up = s => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim()
@@ -305,6 +329,24 @@ export default function TerminosPage() {
   const [completandoWf, setCompletandoWf] = useState(false)
   const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
   const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
+  // Cambiar estado embebido (panel bajo la cabecera)
+  const [cambiarEstadoOpen, setCambiarEstadoOpen] = useState(false)
+  const [nuevoEstadoT, setNuevoEstadoT] = useState('')
+  const [fechaEstadoT, setFechaEstadoT] = useState('')
+  const [comentarioEstadoT, setComentarioEstadoT] = useState('')
+  const [cambiandoT, setCambiandoT] = useState(false)
+  const [capT, setCapT] = useState(null)   // { puedeCambiarEstado, puedeAuditarTermino, ... }
+
+  // Capacidades del usuario (mismo origen que la ficha CC1) para filtrar los estados ofrecidos.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/cc1/pendientes')
+        const d = await r.json()
+        if (r.ok) setCapT(d.capacidades || null)
+      } catch {}
+    })()
+  }, [])
 
   useEffect(() => {
     if (status !== 'authenticated' || !email) return
@@ -680,6 +722,32 @@ export default function TerminosPage() {
 
   // ── Reclamación de saldo pendiente (N18/N21) ──
   // Un solo correo al ex-arrendatario, cc CONDICIONAL al aval. No cambia el estado.
+  // Cambia el estado del término desde aquí mismo, reutilizando el endpoint del circuito
+  // (registra en historico_idadmon, avisa a cambiosdeestado@ y, si toca, crea el P). No fuerza en crudo.
+  async function cambiarEstadoTermino() {
+    if (!idadmonSel) return
+    if (!nuevoEstadoT) { setMsg({ tipo: 'error', txt: 'Elige el nuevo estado.' }); return }
+    if (!window.confirm(`¿Cambiar ${idadmonSel} de "${A?.estado || '—'}" a "${nuevoEstadoT}"?`)) return
+    setCambiandoT(true); setMsg({ tipo: 'ok', txt: 'Procesando cambio de estado…' })
+    try {
+      const res = await fetch('/api/cc1/cambiar-estado', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idadmon: idadmonSel, estadoNuevo: nuevoEstadoT, fecha: fechaEstadoT || undefined, comentario: comentarioEstadoT || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ tipo: 'error', txt: data.error || 'Error al cambiar estado' }); setCambiandoT(false); return }
+      let txt = `✓ ${idadmonSel}: ${data.estadoAnterior || '—'} → ${data.estadoNuevo}.`
+      if (data.nuevoP) txt += ` Creado ${data.nuevoP} en P.`
+      if (data.warning) txt += ` ⚠ ${data.warning}`
+      setMsg({ tipo: 'ok', txt })
+      setCambiarEstadoOpen(false); setNuevoEstadoT(''); setFechaEstadoT(''); setComentarioEstadoT('')
+      await abrir(idadmonSel)   // recargar el término (actualiza A.estado y todo el panel)
+    } catch (e) {
+      setMsg({ tipo: 'error', txt: 'Error de conexión' })
+    }
+    setCambiandoT(false)
+  }
+
   async function abrirReclamacion() {
     setReclamPanel({ loading: true, draft: null, aviso: null })
     try {
@@ -1083,7 +1151,7 @@ export default function TerminosPage() {
               title={puedeTerminoDocs ? 'Abre el correo del PROPIETARIO (editable, con CC/CCO) y el PDF de su liquidación adjunto (excluye las líneas 🚫 y recalcula); púlsalo en "Ver PDF" para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola'}
               style={btn('#0e7490', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF/EMAIL Propietario'}</button>
             <button onClick={abrirReclamacion} style={btn('#dc2626')}>Hacer Reclamación</button>
-            <button onClick={() => router.push('/admin?idadmon=' + idadmonSel + '&volver=termino')} title="Cambiar el estado del término (Q → N / N-Liquidación / N-DICOM; SQ → Q). Abre el LOG con este IDADMON ya cargado, con sus mismas restricciones. Al salir vuelve aquí." style={btn('#0f766e')}>Cambiar estado →</button>
+            <button onClick={() => { setCambiarEstadoOpen(v => !v); setMsg(null) }} title="Cambiar el estado del término aquí mismo (Q → Q-Auditado / Q-Reclamado / N / N-DICOM), sin salir al LOG." style={btn('#0f766e')}>Cambiar estado {cambiarEstadoOpen ? '▲' : '▾'}</button>
             {!editando ? <button onClick={() => { setEditando(true); setMsg(null) }} style={btn('#185FA5')}>✎ Editar</button>
               : <button onClick={guardar} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : '✔ Guardar'}</button>}
             <button onClick={() => setAyudaOpen(true)}
@@ -1096,6 +1164,46 @@ export default function TerminosPage() {
           </div>
         </div>
         {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
+
+        {/* Panel de cambio de estado embebido (reusa el endpoint del circuito). Se abre con el botón "Cambiar estado". */}
+        {cambiarEstadoOpen && (() => {
+          const actualNorm = String(A?.estado || '').toUpperCase().replace(/[ _]/g, '-')
+          const validosT = (TRANSICIONES_T[actualNorm] || []).filter(s =>
+            ESTADOS_AUDITORIA_T.includes(s) ? capT?.puedeAuditarTermino : capT?.puedeCambiarEstado)
+          return (
+            <div style={{ ...card, padding: 12, marginBottom: 12, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#0f766e' }}>CAMBIAR ESTADO</span>
+                <span style={{ fontSize: 12, color: '#666' }}>Actual: <b>{A?.estado || '—'}</b> →</span>
+                {validosT.length === 0 ? (
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
+                    {capT ? 'No hay estados disponibles desde aquí (o sin permiso para auditar/cerrar términos).' : 'Cargando permisos…'}
+                  </span>
+                ) : (
+                  <>
+                    <select value={nuevoEstadoT} onChange={e => setNuevoEstadoT(e.target.value)}
+                      style={{ ...input, width: 260, cursor: 'pointer' }}>
+                      <option value="">elegir nuevo estado…</option>
+                      {validosT.map(s => <option key={s} value={s}>{ESTADO_LABEL_T[s] || s}</option>)}
+                    </select>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>Fecha:</span>
+                    <input type="date" value={fechaEstadoT} onChange={e => setFechaEstadoT(e.target.value)}
+                      style={{ ...input, width: 150 }} />
+                    <input type="text" value={comentarioEstadoT} onChange={e => setComentarioEstadoT(e.target.value)}
+                      placeholder="Comentario (opcional)" style={{ ...input, width: 260 }} />
+                    <button onClick={cambiarEstadoTermino} disabled={cambiandoT || !nuevoEstadoT}
+                      style={btn('#0f766e', cambiandoT || !nuevoEstadoT)}>{cambiandoT ? 'Procesando…' : 'Aplicar'}</button>
+                  </>
+                )}
+                <button onClick={() => setCambiarEstadoOpen(false)}
+                  style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8', marginLeft: 'auto' }}>✕ Cerrar</button>
+              </div>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>
+                Q-Auditado / Q-Reclamado: solo Dirección y Karina. Se registra en el histórico como cualquier cambio de estado (no fuerza en crudo).
+              </div>
+            </div>
+          )
+        })()}
 
         {/* MODAL "?" — guía escueta de las 6 etapas del término (qué hacer + quién) */}
         {ayudaOpen && (
