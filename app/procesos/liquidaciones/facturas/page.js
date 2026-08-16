@@ -1,4 +1,10 @@
 'use client'
+// RUTA: app/procesos/liquidaciones/facturas/page.js
+// VERSION: v15 · 2026-08-16 · NUBOX operativo. Botón "Generar CSV Nubox" (color pleno, el operativo)
+//   ENCIMA del de SimpleFactura, que queda debajo DIFUMINADO, solo para rol 'direccion' y solo boletas
+//   (llama al route con formato:'simple', solo:'boletas'). Nubox llama con formato:'nubox' (1 CSV de 20
+//   col, FOLIO vacío -> Nubox numera) y descarga nubox_ventas_AAMM.csv SIN BOM (formato plantilla Nubox).
+//   Ambos marcan HECHO (emisión real; los HECHO no se re-emiten porque el generador solo toma SI). Hereda v14.
 // VERSION: v14 · 2026-08-10 · COMPLEMENTARIAS a facturar: FACTURAS consulta /api/liquidaciones/complementaria?mes_cobro=AAMM
 //   y lista las complementarias registradas (arriendos morosos ya cobrados) cuya comisión toca facturar este mes, con su
 //   Admon+IVA. El route generar-csv (v4) las añade al CSV y las marca 'facturada'. Aquí es informativo. Hereda v13.
@@ -101,41 +107,57 @@ export default function FacturasPage() {
   const [limite, setLimite] = useState(10)         // >= limite inmuebles -> parte factura en 2
   const [generando, setGenerando] = useState(false)
   const [resumenGen, setResumenGen] = useState(null)
-  const [csvGen, setCsvGen] = useState({ facturas: '', boletas: '' })  // CSV generados, para redescargar
+  const [csvGen, setCsvGen] = useState({ facturas: '', boletas: '', nubox: '' })  // CSV generados, para redescargar
   const [enEsperaExcl, setEnEsperaExcl] = useState(0)   // nº de líneas apartadas por estar EN ESPERA (no se facturan)
   const [complL, setComplL] = useState([])   // complementarias a facturar en este mes de cobro (arriendos morosos ya cobrados)
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
 
-  // Descargar un CSV como archivo
-  function descargarCSV(contenido, nombre) {
+  // Descargar un CSV como archivo. conBom=false para Nubox (la plantilla no lleva BOM).
+  function descargarCSV(contenido, nombre, conBom = true) {
     if (!contenido) return
-    const blob = new Blob(['\ufeff' + contenido], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([conBom ? '\ufeff' + contenido : contenido], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = nombre; a.click()
     URL.revokeObjectURL(url)
   }
 
-  async function generarCSV() {
+  // NUBOX (operativo): un solo CSV de 20 columnas, FOLIO vacío (Nubox numera). Marca HECHO.
+  async function generarNubox() {
     if (generando) return
     setGenerando(true); setError(null); setResumenGen(null)
     try {
       const res = await fetch('/api/liquidaciones/generar-csv', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, limite }),
+        body: JSON.stringify({ mes, limite, formato: 'nubox' }),
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
-      // guardar los CSV para poder redescargar con botones si el navegador bloquea alguno
-      setCsvGen({ facturas: d.facturas_csv || '', boletas: d.boletas_csv || '' })
-      // descargar los dos, con un pequeño retardo entre ambos (Chrome bloquea descargas dobles simultáneas)
-      if (d.facturas_csv) descargarCSV(d.facturas_csv, `facturas_33_${mes}.csv`)
-      if (d.boletas_csv) {
-        setTimeout(() => descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`), 800)
-      }
+      setCsvGen(prev => ({ ...prev, nubox: d.nubox_csv || '' }))
+      if (d.nubox_csv) descargarCSV(d.nubox_csv, `nubox_ventas_${mes}.csv`, false)
+      setResumenGen({ ...(d.resumen || {}), _nubox: true })
+      cargar(mes)   // recargar para ver los HECHO actualizados
+    } catch (err) {
+      setError(String(err?.message || err))
+    }
+    setGenerando(false)
+  }
+
+  // SimpleFactura EN RETIRADA: solo Dirección, solo boletas. Marca HECHO igual.
+  async function generarSimpleBoletas() {
+    if (generando) return
+    setGenerando(true); setError(null); setResumenGen(null)
+    try {
+      const res = await fetch('/api/liquidaciones/generar-csv', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, limite, formato: 'simple', solo: 'boletas' }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
+      setCsvGen(prev => ({ ...prev, boletas: d.boletas_csv || '' }))
+      if (d.boletas_csv) descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`)
       setResumenGen(d.resumen)
-      // recargar para ver los HECHO actualizados
       cargar(mes)
     } catch (err) {
       setError(String(err?.message || err))
@@ -376,23 +398,33 @@ export default function FacturasPage() {
         <label style={{ fontSize: 13, color: '#666' }} title="Si un propietario tiene este nº de inmuebles o más, su factura se parte en dos">Máx líneas/doc:</label>
         <input type="number" value={limite} min={2} onChange={e => setLimite(Number(e.target.value) || 10)}
           style={{ fontSize: 14, padding: '7px 8px', borderRadius: 8, border: '1px solid #D3D1C7', width: 60 }} />
-        <button onClick={generarCSV} disabled={generando}
-          style={{ fontSize: 14, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', cursor: generando ? 'default' : 'pointer', opacity: generando ? 0.6 : 1 }}>
-          {generando ? '⏳ Generando…' : '⬇ Generar CSV SimpleFactura'}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+          <button onClick={generarNubox} disabled={generando}
+            title="Genera el CSV de Nubox (Cargar Ventas desde Archivo). Nubox asigna los folios."
+            style={{ fontSize: 14, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', cursor: generando ? 'default' : 'pointer', opacity: generando ? 0.6 : 1 }}>
+            {generando ? '⏳ Generando…' : '⬇ Generar CSV Nubox'}
+          </button>
+          <button onClick={generarSimpleBoletas} disabled={generando || rol !== 'direccion'}
+            title={rol === 'direccion' ? 'SimpleFactura en retirada · solo boletas' : 'SimpleFactura: solo Dirección, solo boletas'}
+            style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid #E5DEF5', background: '#F5F3FF', color: '#B4A7D6', cursor: (generando || rol !== 'direccion') ? 'default' : 'pointer', opacity: rol === 'direccion' ? 0.9 : 0.45 }}>
+            ⬇ Boletas SimpleFactura <span style={{ fontSize: 10, fontWeight: 400 }}>(en retirada)</span>
+          </button>
+        </div>
       </div>
       </div>{/* fin zona sticky */}
 
       {resumenGen && (
         <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#5B21B6' }}>
-          <b>CSV generados.</b>{' '}
+          <b>{resumenGen._nubox ? 'CSV Nubox generado.' : 'CSV generados.'}</b>{' '}
           Facturas (33): {resumenGen.facturas?.propietarios || 0} propietarios · {resumenGen.facturas?.docs || 0} docs · {resumenGen.facturas?.lineas || 0} líneas.{' '}
           Boletas (39): {resumenGen.boletas?.propietarios || 0} propietarios · {resumenGen.boletas?.docs || 0} docs · {resumenGen.boletas?.lineas || 0} líneas.
+          {resumenGen._nubox && <span> · Nubox asigna los folios al importar.</span>}
           {resumenGen.partidos?.length > 0 && <div style={{ marginTop: 4 }}>Partidos en 2: {resumenGen.partidos.map(x => `${x.propietario} (${x.inmuebles})`).join(', ')}.</div>}
           {resumenGen.aviso && <div>{resumenGen.aviso}</div>}
-          {(csvGen.facturas || csvGen.boletas) && (
+          {(csvGen.nubox || csvGen.facturas || csvGen.boletas) && (
             <div style={{ marginTop: 8, display: 'flex', gap: 10 }}>
               <span style={{ color: '#6B7280', fontSize: 12 }}>¿No se descargó algún archivo? Descárgalo aquí:</span>
+              {csvGen.nubox && <span onClick={() => descargarCSV(csvGen.nubox, `nubox_ventas_${mes}.csv`, false)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 700, fontSize: 12, textDecoration: 'underline' }}>⬇ nubox_ventas</span>}
               {csvGen.facturas && <span onClick={() => descargarCSV(csvGen.facturas, `facturas_33_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ facturas_33</span>}
               {csvGen.boletas && <span onClick={() => descargarCSV(csvGen.boletas, `boletas_39_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ boletas_39</span>}
             </div>

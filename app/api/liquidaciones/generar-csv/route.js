@@ -1,3 +1,12 @@
+// RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v5 · 2026-08-16 · NUBOX. formato='nubox' genera UN CSV de 20 columnas (Cargar Ventas
+//   desde Archivo) con FOLIO vacio -> Nubox numera (opcion "Folios automatico"). Factura (33) a
+//   precio NETO; boleta (39) a precio BRUTO (Admon+IVA, tomado de la propia liquidacion). Periodo
+//   del servicio = mes de la liquidacion (01 -> fin de mes). TIPOSERVICIO=1 en boletas, vacio en
+//   facturas. Email siempre. Sin acentos (mismo sinAcentos). Marca HECHO igual que SimpleFactura
+//   (emision real): el generador solo toma facturar='SI', asi los HECHO nunca se re-emiten.
+//   Ademas param solo='boletas' (para el SimpleFactura en retirada): procesa solo tipo 39/41.
+//   El camino SimpleFactura (2 CSV de 38 col) queda intacto. Hereda v4.
 // app/api/liquidaciones/generar-csv/route.js
 // VERSION: v4 · 2026-08-10 · COMPLEMENTARIAS al CSV: se añaden las líneas de comisión de las complementarias registradas
 //   con mes_cobro = este mes (arriendos morosos ya cobrados), a la factura de su propietario (aunque el propietario no
@@ -74,6 +83,20 @@ function filaCSV(obj) {
   return COLUMNAS.map(c => obj[c] != null ? String(obj[c]) : '').join(';')
 }
 
+// 20 columnas del CSV de Nubox (Cargar Ventas desde Archivo), en orden.
+// FOLIO va vacio a proposito: en Nubox se carga con "Folios automatico" y el numera.
+const NUBOX_COLS = ['TIPO', 'FOLIO', 'SECUENCIA', 'FECHA', 'RUT', 'RAZONSOCIAL', 'GIRO', 'COMUNA', 'DIRECCION', 'AFECTO', 'PRODUCTO', 'DESCRIPCION', 'CANTIDAD', 'PRECIO', 'PORCENTDSCTO', 'EMAIL', 'TIPOSERVICIO', 'PERIODODESDE', 'PERIODOHASTA', 'FECHAVENCIMIENTO']
+function filaNubox(obj) {
+  return NUBOX_COLS.map(c => obj[c] != null ? String(obj[c]) : '').join(';')
+}
+// 'AAMM' -> ['01/MM/AAAA', 'DD/MM/AAAA' (ultimo dia del mes)]
+function periodoMes(mes) {
+  const yyyy = 2000 + Number(mes.slice(0, 2)), m = Number(mes.slice(2))
+  const fin = new Date(yyyy, m, 0).getDate()
+  const p = n => String(n).padStart(2, '0')
+  return [`01/${p(m)}/${yyyy}`, `${p(fin)}/${p(m)}/${yyyy}`]
+}
+
 export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -88,6 +111,8 @@ export async function POST(req) {
   const mes = String(body.mes || '').trim()
   if (!/^\d{4}$/.test(mes)) return Response.json({ error: 'Mes invalido (AAMM).' }, { status: 400 })
   const limite = Math.max(2, Number(body.limite) || 10)   // >= limite -> parte en 2
+  const formato = String(body.formato || 'simple').toLowerCase()   // 'simple' (2 CSV) | 'nubox' (1 CSV)
+  const solo = String(body.solo || '').toLowerCase()               // '' | 'boletas' (SimpleFactura en retirada)
 
   const sb = svc()
 
@@ -121,7 +146,7 @@ export async function POST(req) {
   let lineas = []
   if (esCongelado) {
     const { data: lins, error: eLin } = await sb.from('liquidacion_idadmon')
-      .select('idadmon, idprop, propietario, inmueble, comision, estado')
+      .select('idadmon, idprop, propietario, inmueble, comision, iva, estado')
       .eq('mes', mes).in('idprop', idpropsSI)
     if (eLin) return Response.json({ error: 'lineas: ' + eLin.message }, { status: 500 })
     lineas = (lins || []).filter(l => (l.estado || '').toUpperCase() !== 'P' && numOf(l.comision) > 0)
@@ -138,7 +163,7 @@ export async function POST(req) {
     }
     lineas = rows.map(r => ({
       idadmon: r.idadmon, idprop: r.idprop, propietario: r.propietario,
-      inmueble: r.inmueble, comision: r.comision, estado: estadoDe[r.idadmon] || '',
+      inmueble: r.inmueble, comision: r.comision, iva: r.iva_comision, estado: estadoDe[r.idadmon] || '',
     })).filter(l => l.estado !== 'P' && numOf(l.comision) > 0)
   }
 
@@ -174,8 +199,10 @@ export async function POST(req) {
   }
 
   const fecha = fechaHoy()
+  const [periodoDesde, periodoHasta] = periodoMes(mes)   // mes de la liquidacion, para Nubox
   const filasFactura = []   // TipoDte 33
   const filasBoleta = []    // TipoDte 39/41
+  const filasNubox = []     // formato Nubox (20 col, 1 CSV)
   let idFactura = 0, idBoleta = 0
   const resumen = { facturas: { propietarios: 0, docs: 0, lineas: 0 }, boletas: { propietarios: 0, docs: 0, lineas: 0 }, partidos: [] }
   const idpropsFacturados = []
@@ -188,6 +215,7 @@ export async function POST(req) {
     const p = propDe[idprop] || {}
     const tipo = tipoDe[idprop] || (propDe[idprop]?.tipo_factura || '').trim() || '39'
     const esFactura = tipo === '33'
+    if (solo === 'boletas' && esFactura) continue   // SimpleFactura en retirada: solo boletas
     const inmuebles = porProp[idprop]
 
     // ¿parte en 2? (>= limite inmuebles)
@@ -220,8 +248,12 @@ export async function POST(req) {
     for (let g = 0; g < nGrupos; g++) {
       const id = esFactura ? (++idFactura) : (++idBoleta)
       const grupo = inmuebles.slice(idx, idx + tam[g]); idx += tam[g]
+      let seq = 0
       for (const l of grupo) {
         const monto = numOf(l.comision)
+        const ivaMonto = (l.iva != null && l.iva !== '') ? numOf(l.iva) : Math.round(monto * 0.19)
+        seq++
+        // SimpleFactura (2 CSV de 38 col) — sin cambios
         const fila = filaCSV({
           ...cliente,
           Id: String(id),
@@ -231,6 +263,17 @@ export async function POST(req) {
           TotalProducto: String(monto),
         })
         if (esFactura) filasFactura.push(fila); else filasBoleta.push(fila)
+        // Nubox (1 CSV de 20 col): factura precio NETO; boleta precio BRUTO (Admon+IVA).
+        filasNubox.push(filaNubox({
+          TIPO: tipo, FOLIO: '', SECUENCIA: seq, FECHA: fecha,
+          RUT: p.rut || '', RAZONSOCIAL: sinAcentos(`${idprop}-${p.propietario}`),
+          GIRO: 'PROPIETARIO INMUEBLE', COMUNA: sinAcentos(p.comuna), DIRECCION: sinAcentos(p.direccion),
+          AFECTO: 'SI', PRODUCTO: 'COMISION ADMINISTRACION',
+          DESCRIPCION: sinAcentos(`${l.idadmon}-${l.inmueble}`),
+          CANTIDAD: '1', PRECIO: String(esFactura ? monto : (monto + ivaMonto)), PORCENTDSCTO: '0',
+          EMAIL: p.mail1 || p.email_2 || '', TIPOSERVICIO: esFactura ? '' : '1',
+          PERIODODESDE: periodoDesde, PERIODOHASTA: periodoHasta, FECHAVENCIMIENTO: fecha,
+        }))
       }
       if (esFactura) resumen.facturas.docs++; else resumen.boletas.docs++
     }
@@ -242,6 +285,7 @@ export async function POST(req) {
   const cab = COLUMNAS.join(';')
   const facturas_csv = filasFactura.length ? [cab, ...filasFactura].join('\r\n') : ''
   const boletas_csv = filasBoleta.length ? [cab, ...filasBoleta].join('\r\n') : ''
+  const nubox_csv = filasNubox.length ? [NUBOX_COLS.join(';'), ...filasNubox].join('\r\n') : ''
 
   // 5) Marcar HECHO + fecha_emision SOLO a los propietarios con facturar=SI (no a los que entran solo por complementaria).
   const nowIso = new Date().toISOString()
@@ -264,5 +308,6 @@ export async function POST(req) {
   if (complIncluidas.length > 0) avisos.push(`${complIncluidas.length} complementaria(s) incluida(s) y marcada(s) como facturadas`)
   if (avisos.length) resumen.aviso = avisos.join('. ') + '.'
 
-  return Response.json({ ok: true, mes, facturas_csv, boletas_csv, resumen })
+  resumen.formato = formato
+  return Response.json({ ok: true, mes, formato, facturas_csv, boletas_csv, nubox_csv, resumen })
 }
