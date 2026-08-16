@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v49 · 2026-08-16 · Panel "Urgentes · término hace ≤ 45 días" fijo en la lista de Términos: reúne los Q /
+//   Q-Auditado / Q-Reclamado entregados hace ≤45 días, ordenados por antigüedad, con días, resultado, garantía (quién),
+//   avisos aval/propietario (de cobranza_gestiones) y la próxima acción. Clic en la fila abre el término. La lista de
+//   Términos ahora también incluye Q-Auditado/Q-Reclamado. Hereda v48.
 // VERSION: v48 · 2026-08-16 · El panel "Cambiar estado" queda DENTRO de la cabecera fija (sticky): la cabecera pasa
 //   a columna (fila título+botones y debajo el panel), así el panel ya no se oculta al hacer scroll. Hereda v47.
 // VERSION: v47 · 2026-08-16 · "Cambiar estado" AHORA embebido en el propio Término (no sale a CC1): panel con los
@@ -301,6 +305,7 @@ export default function TerminosPage() {
   const [modo, setModo] = useState('lista')
   const [listaIds, setListaIds] = useState([])
   const [listaCargada, setListaCargada] = useState(false)
+  const [urgGest, setUrgGest] = useState({})   // idadmon -> { n, aval, prop } para el panel Urgentes
   const [busca, setBusca] = useState('')
   const [filtros, setFiltros] = useState({ idadmon: '', fecha_entrega: '', propietario: '', arrendatario: '', inmueble: '', estado: 'Q' })
   const [sortCol, setSortCol] = useState('idadmon')
@@ -359,6 +364,35 @@ export default function TerminosPage() {
   useEffect(() => { if (accesoOk === false) router.replace('/') }, [accesoOk, router])
   useEffect(() => { if (accesoOk === true) { cargarLista(); cargarNodos() } }, [accesoOk])
 
+  // Avisos (aval/propietario) de los términos urgentes (entrega ≤ 45 días), para el panel de la lista.
+  useEffect(() => {
+    if (!listaCargada) return
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+    const dias = f => { if (!f) return null; const d = new Date(String(f).slice(0, 10)); return isNaN(d) ? null : Math.floor((hoy - d) / 86400000) }
+    const ids = listaIds
+      .filter(r => ['Q', 'Q-Auditado', 'Q-Reclamado'].includes(String(r.estado)))
+      .filter(r => { const n = dias(r.fecha_entrega); return n != null && n >= 0 && n <= 45 })
+      .map(r => r.idadmon)
+    if (!ids.length) { setUrgGest({}); return }
+    let vivo = true
+    ;(async () => {
+      try {
+        const m = {}
+        for (let i = 0; i < ids.length; i += 300) {
+          const { data } = await supabase.from('cobranza_gestiones').select('idadmon, destinatario').in('idadmon', ids.slice(i, i + 300))
+          for (const g of data || []) {
+            const k = String(g.idadmon || '').trim()
+            const o = m[k] || { n: 0, aval: false, prop: false }
+            o.n++; if (g.destinatario === 'aval') o.aval = true; if (g.destinatario === 'propietario') o.prop = true
+            m[k] = o
+          }
+        }
+        if (vivo) setUrgGest(m)
+      } catch { if (vivo) setUrgGest({}) }
+    })()
+    return () => { vivo = false }
+  }, [listaCargada, listaIds])
+
   async function completarPaso(nodo) {
     if (!nodo) return
     if (!panel?.instanceId) { setMsg('Este término no tiene instancia de workflow.'); return }
@@ -397,7 +431,7 @@ export default function TerminosPage() {
     // y los cierres N / N-Liquidacion para poder ver el HISTÓRICO de términos ya cerrados.
     // NOTA: el valor canónico del circuito es 'N-DICOM' (con guion). La base se normalizó
     // desde las grafías históricas ('N DICOM', 'N_DICOM') a 'N-DICOM'.
-    const ESTADOS_TERMINO = ['Q', 'N', 'N-DICOM', 'N-Liquidacion']
+    const ESTADOS_TERMINO = ['Q', 'Q-Auditado', 'Q-Reclamado', 'N', 'N-DICOM', 'N-Liquidacion']
     const { data: da } = await supabase
       .from('datos_arriendos')
       .select('idadmon, arrendatario, inmueble, estado, propietario, termino_actual')
@@ -857,6 +891,21 @@ export default function TerminosPage() {
       const sello = new Date().toISOString().slice(0, 10)
       XLSX.writeFile(wb, `Terminos-${sello}.xlsx`)
     }
+    // ── Urgentes: términos con entrega ≤ 45 días, ordenados por antigüedad (el reloj legal corre desde la entrega) ──
+    const HOY_U = new Date(); HOY_U.setHours(0, 0, 0, 0)
+    const diasEntrega = f => { if (!f) return null; const d = new Date(String(f).slice(0, 10)); return isNaN(d) ? null : Math.floor((HOY_U - d) / 86400000) }
+    const fmtM = n => (n == null || n === '') ? '—' : '$' + Math.round(Number(n)).toLocaleString('es-CL')
+    const proxAccion = r => {
+      const est = String(r.estado); const def = r.resultado != null && Number(r.resultado) < 0
+      if (est === 'Q') return def ? 'Auditar (Karina) · DÉFICIT' : 'Auditar (Karina)'
+      if (est === 'Q-Auditado') return 'Liquidar garantía / cerrar'
+      if (est === 'Q-Reclamado') return 'Reclamación en curso'
+      return '—'
+    }
+    const urgentes = listaIds
+      .map(r => ({ ...r, _dias: diasEntrega(r.fecha_entrega) }))
+      .filter(r => ['Q', 'Q-Auditado', 'Q-Reclamado'].includes(String(r.estado)) && r._dias != null && r._dias >= 0 && r._dias <= 45)
+      .sort((a, b) => b._dias - a._dias)
     return (
       <>
         <TopNav />
@@ -866,6 +915,51 @@ export default function TerminosPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Búsqueda rápida…" style={{ ...input, marginBottom: 14, maxWidth: 520 }} />
           {!listaCargada ? <div style={{ color: '#888' }}>Cargando…</div> : (
             <>
+              {urgentes.length > 0 && (
+                <div style={{ border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+                  <div style={{ background: '#FFFBEB', padding: '10px 14px', borderBottom: '1px solid #FDE68A', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#92400E' }}>⏱ Urgentes · término hace ≤ 45 días</span>
+                    <span style={{ fontSize: 12, color: '#B45309' }}>{urgentes.length} término{urgentes.length === 1 ? '' : 's'} · el reloj legal corre desde la entrega. Orden: auditar (Karina) → reclamar aval si queda deuda → avisar propietario → liquidar garantía → cerrar.</span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1100, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {['IDADMON', 'Inmueble', 'Arrendatario', 'Entrega', 'Días', 'Resultado', 'Garantía', 'Avisos', 'Próxima acción'].map((h, i) => (
+                            <th key={h} style={{ textAlign: (i >= 4 && i <= 5) ? 'right' : 'left', padding: '8px 10px', borderBottom: '1px solid #F0EEE8', color: '#92400E', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {urgentes.map(r => {
+                          const g = urgGest[r.idadmon] || { aval: false, prop: false }
+                          const def = r.resultado != null && Number(r.resultado) < 0
+                          const critico = r._dias >= 40
+                          return (
+                            <tr key={r.idadmon} onClick={() => abrir(r.idadmon)} style={{ cursor: 'pointer', background: def ? '#FEF2F2' : '#fff' }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#FFFDF6'}
+                              onMouseLeave={e => e.currentTarget.style.background = def ? '#FEF2F2' : '#fff'}>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', fontWeight: 700 }}>{r.idadmon}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555' }}>{r.inmueble || '—'}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555' }}>{r.arrendatario || '—'}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtFecha(r.fecha_entrega)}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', fontWeight: 700, color: critico ? '#B91C1C' : '#B45309' }}>{r._dias}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: def ? '#B91C1C' : '#065F46' }}>{fmtM(r.resultado)}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555', whiteSpace: 'nowrap' }}>{r.quien || '—'}{r.garantia != null ? ' · ' + fmtM(r.garantia) : ''}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', whiteSpace: 'nowrap' }}>
+                                <span title="Aval avisado" style={{ color: g.aval ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{g.aval ? '✓ aval' : '✗ aval'}</span>
+                                <span style={{ color: '#ccc' }}> · </span>
+                                <span title="Propietario avisado" style={{ color: g.prop ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{g.prop ? '✓ prop.' : '✗ prop.'}</span>
+                              </td>
+                              <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', fontWeight: 700, color: def ? '#B91C1C' : '#7c2d12' }}>{proxAccion(r)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
                 <div style={{ fontSize: 12, color: '#888' }}>{rows.length} resultado{rows.length === 1 ? '' : 's'} · estado: <b>{estadoLbl}</b></div>
                 <button onClick={exportar} disabled={!rows.length} title="Exporta a Excel lo que ves filtrado"

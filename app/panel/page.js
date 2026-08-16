@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v10 · 2026-08-16 · (1) Los importes de las tarjetas CC dejan de ir en compacto ($76,7M) y se muestran en
+//   NÚMERO COMPLETO con separador de miles y sin símbolo (76.700.000). (2) Cada tarjeta lleva debajo, dentro del
+//   cuadro, un mini-gráfico de líneas con la EVOLUCIÓN del año (paleta validada, con leyenda). Hereda v9.
 // VERSION: v9 · 2026-08-16 · OPERACIÓN a lo ancho: CC1/CC2/CC3 dejan de ir en tres columnas y se APILAN, cada una
 //   ocupando el ancho de la página, para mostrar un AÑO completo. La ventana de meses pasa de 3 a 12 (rodante:
 //   avanza sola el día 23). Fix CC1: los meses viejos sin liquidación congelada ya no heredan el estimado "en vivo"
@@ -44,6 +47,62 @@ const compact = n => {
   return '$' + Math.round(v)
 }
 
+// Número completo con separador de miles, sin símbolo (76.700.000 · -2.600.000).
+const miles = n => Math.round(Number(n) || 0).toLocaleString('es-CL')
+
+// Mini-gráfico de líneas: evolución del año dentro de cada tarjeta. Paleta categórica validada
+// (blue/orange/aqua/yellow), 2px, con leyenda y etiquetas de eje (secondary encoding). Ignora meses sin dato.
+function MiniChart({ series, labels }) {
+  const VW = 900, VH = 148, PL = 92, PR = 14, PT = 10, PB = 22
+  const pw = VW - PL - PR, ph = VH - PT - PB, n = labels.length
+  const nums = series.flatMap(s => s.data).filter(v => v != null && Number.isFinite(v))
+  if (!nums.length) return null
+  let lo = Math.min(...nums), hi = Math.max(...nums)
+  const hasNeg = lo < 0
+  if (hasNeg) { lo = Math.min(lo, 0); hi = Math.max(hi, 0) }
+  if (lo === hi) hi = lo + Math.max(1, Math.abs(lo) * 0.1)
+  const pad = (hi - lo) * 0.12, yLo = lo - pad, yHi = hi + pad
+  const X = i => PL + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw)
+  const Y = v => PT + (1 - (v - yLo) / (yHi - yLo)) * ph
+  const ticks = [yLo, (yLo + yHi) / 2, yHi]
+  const path = data => {
+    let d = '', pen = false
+    data.forEach((v, i) => {
+      if (v == null || !Number.isFinite(v)) { pen = false; return }
+      d += (pen ? ' L ' : ' M ') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); pen = true
+    })
+    return d
+  }
+  const AX = '#e6e4dc', TXT = '#8a8880'
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '2px 2px 4px' }}>
+        {series.map(s => (
+          <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'var(--gray-600)' }}>
+            <span style={{ width: 14, height: 3, borderRadius: 2, background: s.color }} />{s.label}
+          </span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
+        {ticks.map((t, i) => (
+          <g key={'t' + i}>
+            <line x1={PL} y1={Y(t)} x2={VW - PR} y2={Y(t)} stroke={AX} strokeWidth="1" />
+            <text x={PL - 6} y={Y(t) + 3} textAnchor="end" fontSize="9" fill={TXT}>{miles(t)}</text>
+          </g>
+        ))}
+        {hasNeg && <line x1={PL} y1={Y(0)} x2={VW - PR} y2={Y(0)} stroke="#c9c6bd" strokeWidth="1.2" />}
+        {labels.map((l, i) => (i % 2 === 0) ? <text key={'x' + i} x={X(i)} y={VH - 6} textAnchor="middle" fontSize="9" fill={TXT}>{String(l).slice(0, 3)}</text> : null)}
+        {series.map(s => (
+          <g key={s.label}>
+            <path d={path(s.data)} fill="none" stroke={s.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            {s.data.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={i} cx={X(i)} cy={Y(v)} r="2.4" fill={s.color} /> : null)}
+          </g>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
 // Ventana móvil de 12 meses de liquidación (un año). Avanza uno el día 23 (cuando se cierra el mes),
 // de modo que el año se va corriendo solo mes a mes.
 const MABR = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
@@ -73,7 +132,7 @@ function CC1Row({ label, vals, strong, color }) {
     <tr>
       <td style={{ textAlign: 'left', fontSize: 11.5, color: 'var(--gray-600)', padding: '5px 4px', whiteSpace: 'nowrap' }}>{label}</td>
       {vals.map((v, i) => (
-        <td key={i} style={{ textAlign: 'right', fontSize: 12, fontWeight: strong ? 700 : 500, color: color || 'var(--gray-800)', padding: '5px 4px', fontVariantNumeric: 'tabular-nums' }}>{v}</td>
+        <td key={i} style={{ textAlign: 'right', fontSize: 11, fontWeight: strong ? 700 : 500, color: color || 'var(--gray-800)', padding: '4px 5px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{v}</td>
       ))}
     </tr>
   )
@@ -334,15 +393,21 @@ export default function PanelPage() {
                 </tr></thead>
                 <tbody>
                   <CC1Row label="Propiedades arrendadas" vals={cc1.map(c => c.arrendadas != null ? c.arrendadas : '—')} />
-                  <CC1Row label="Total Dueños"           vals={cc1.map(c => c.total_duenos != null ? compact(c.total_duenos) : '—')} strong />
-                  <CC1Row label="Admon de FCR"           vals={cc1.map(c => c.admon_fcr != null ? compact(c.admon_fcr) : '—')} strong color="#0F6E56" />
-                  <CC1Row label="Costes a verificar"     vals={cc1.map(c => c.costes != null ? compact(c.costes) : '—')} color="#B45309" />
+                  <CC1Row label="Total Dueños"           vals={cc1.map(c => c.total_duenos != null ? miles(c.total_duenos) : '—')} strong />
+                  <CC1Row label="Admon de FCR"           vals={cc1.map(c => c.admon_fcr != null ? miles(c.admon_fcr) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Costes a verificar"     vals={cc1.map(c => c.costes != null ? miles(c.costes) : '—')} color="#B45309" />
                 </tbody>
               </table>
               {cc1.some(c => c.vivo) && (
                 <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso: estimado en vivo (sin reajuste IPC); se fija al congelar</div>
               )}
               <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Costes = mes cerrado anterior · parcial (nóminas + honorarios; falta Fabiola y aportes)</div>
+            </div>
+            <div style={{ padding: '4px 14px 8px', borderTop: '1px solid var(--border-subtle)' }}>
+              <MiniChart labels={meses.map(m => m.lbl)} series={[
+                { label: 'Admon de FCR', color: '#1baf7a', data: cc1.map(c => c.admon_fcr ?? null) },
+                { label: 'Costes',       color: '#eb6834', data: cc1.map(c => c.costes ?? null) },
+              ]} />
             </div>
             <div style={{ padding: '2px 18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border-subtle)' }}>
@@ -369,14 +434,20 @@ export default function PanelPage() {
                 </tr></thead>
                 <tbody>
                   <CC1Row label="Cerrados"           vals={cc2.map(c => c.cerrados != null ? c.cerrados : '—')} strong />
-                  <CC1Row label="Ingresos"           vals={cc2.map(c => c.ingresos != null ? compact(c.ingresos) : '—')} strong color="#0F6E56" />
-                  <CC1Row label="Costes a verificar" vals={cc2.map(c => c.costes != null ? compact(c.costes) : '—')} color="#B45309" />
+                  <CC1Row label="Ingresos"           vals={cc2.map(c => c.ingresos != null ? miles(c.ingresos) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Costes a verificar" vals={cc2.map(c => c.costes != null ? miles(c.costes) : '—')} color="#B45309" />
                 </tbody>
               </table>
               {meses.some(mm => mm.aamm === nowAamm) && (
                 <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso (aún no cerrado)</div>
               )}
               <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Costes = mes cerrado anterior · Neika + honorarios Ángela + $1M Alberto</div>
+            </div>
+            <div style={{ padding: '4px 14px 8px', borderTop: '1px solid var(--border-subtle)' }}>
+              <MiniChart labels={meses.map(m => m.lbl)} series={[
+                { label: 'Ingresos', color: '#1baf7a', data: cc2.map(c => c.ingresos ?? null) },
+                { label: 'Costes',   color: '#eb6834', data: cc2.map(c => c.costes ?? null) },
+              ]} />
             </div>
             <div style={{ padding: '2px 18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border-subtle)' }}>
@@ -412,16 +483,24 @@ export default function PanelPage() {
                   {meses.map(mm => <th key={mm.aamm} style={{ textAlign: 'right', fontSize: 10, color: mm.aamm === nowAamm ? '#c2410c' : 'var(--gray-500)', fontWeight: 700, padding: '2px 4px', letterSpacing: '.02em' }}>{mm.lbl}{mm.aamm === nowAamm ? ' *' : ''}</th>)}
                 </tr></thead>
                 <tbody>
-                  <CC1Row label="Facturación"       vals={cc3.map(c => c.facturacion != null ? compact(c.facturacion) : '—')} strong color="#0F6E56" />
-                  <CC1Row label="Compras CC3"        vals={cc3.map(c => c.compras != null ? compact(c.compras) : '—')} color="#B45309" />
-                  <CC1Row label="Otros costes CC3"   vals={cc3.map(c => c.otros != null ? compact(c.otros) : '—')} color="#B45309" />
-                  <CC1Row label="Resultado"          vals={cc3.map(c => c.resultado != null ? compact(c.resultado) : '—')} strong color="#1a1a2e" />
+                  <CC1Row label="Facturación"       vals={cc3.map(c => c.facturacion != null ? miles(c.facturacion) : '—')} strong color="#0F6E56" />
+                  <CC1Row label="Compras CC3"        vals={cc3.map(c => c.compras != null ? miles(c.compras) : '—')} color="#B45309" />
+                  <CC1Row label="Otros costes CC3"   vals={cc3.map(c => c.otros != null ? miles(c.otros) : '—')} color="#B45309" />
+                  <CC1Row label="Resultado"          vals={cc3.map(c => c.resultado != null ? miles(c.resultado) : '—')} strong color="#1a1a2e" />
                 </tbody>
               </table>
               {meses.some(mm => mm.aamm === nowAamm) && (
                 <div style={{ fontSize: 9.5, color: '#c2410c', marginTop: 3, fontStyle: 'italic' }}>* mes en curso (aún no cerrado)</div>
               )}
               <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 2, fontStyle: 'italic' }}>Facturación y compras = mes en curso · Otros = Cristhian (mes anterior) + honorarios + $527.067 Alberto</div>
+            </div>
+            <div style={{ padding: '4px 14px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+              <MiniChart labels={meses.map(m => m.lbl)} series={[
+                { label: 'Facturación', color: '#1baf7a', data: cc3.map(c => c.facturacion ?? null) },
+                { label: 'Compras',     color: '#eb6834', data: cc3.map(c => c.compras ?? null) },
+                { label: 'Otros',       color: '#eda100', data: cc3.map(c => c.otros ?? null) },
+                { label: 'Resultado',   color: '#2a78d6', data: cc3.map(c => c.resultado ?? null) },
+              ]} />
             </div>
           </div>
         </div>
