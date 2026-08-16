@@ -1,3 +1,9 @@
+// VERSION: v39 · 2026-08-16 · RENDIMIENTO tabla: VENTANA DE RENDER (virtualización casera, sin dependencias). Con
+//   ~7.000 filas el freno era el DOM (7.000 <tr> pintados) + re-render de TODAS al teclear una celda. Ahora la tabla
+//   carga entera en memoria (rápida después) pero SOLO pinta las filas visibles (± un margen), con dos filas
+//   "espaciador" que reservan el alto del resto. Alto de fila uniforme (ROW_H) → las columnas de texto largo
+//   (Detalle, Comentarios) pasan a una línea con "…" y el texto completo sigue en el tooltip al pasar el ratón.
+//   Mensaje de carga inicial informando de la espera. Filtros/edición/colores idénticos. Hereda v38.
 // VERSION: v38 · 2026-08-15 · Editar UNIQUE CONCEPT: NO se bloquea (el campo admite texto válido de muchos tipos),
 //   solo se AVISA con las consecuencias y la persona decide. Novedad clave: si se cambia un IDADMON válido por algo
 //   que NO lo es (texto libre o vacío), el aviso muestra el valor anterior y, al confirmar, se QUITA la correspondencia
@@ -137,6 +143,12 @@ const LIMITE = 50
 // Con la carga completa, por defecto se PINTAN solo las N más recientes (para no volcar miles de
 // inputs de golpe). "Ver todo" pinta las 6.7k. El filtrado (Parte 2) mostrará todas las que casen.
 const TOPE_DEFECTO = 300
+// ── Ventana de render (virtualización casera) ─────────────────────────────────
+//   ROW_H: alto fijo de cada fila (px). Todas las filas se fuerzan a este alto y a una sola línea, así el cálculo
+//   de qué filas caen en pantalla es exacto (no hace falta medir cada fila). OVERSCAN: filas de más que se pintan
+//   por arriba y por abajo del hueco visible para que al hacer scroll no se vea el borde en blanco.
+const ROW_H = 30
+const OVERSCAN = 10
 
 // Extrae el RUT (dígitos-guión-verificador) del texto del detalle del movimiento.
 // "Transferencia de otro banco 16111735-8" -> "16111735-8". Sin RUT -> ''.
@@ -470,6 +482,10 @@ export default function BiVista() {
   const scrollRef = useRef(null)
   const anclarAbajo = useRef(false)
   const pendingAdjust = useRef(null)
+  // Ventana de render: posición del scroll y alto visible del contenedor. Con esto calculamos qué franja
+  // de filas pintar. Se actualizan al hacer scroll (y el alto también al montar/redimensionar).
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportH, setViewportH] = useState(600)
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1400) }
 
@@ -575,7 +591,20 @@ export default function BiVista() {
     }
   }, [rows])
 
-  const onScroll = (e) => { if (e.currentTarget.scrollTop <= 40) loadMore() }
+  // Al hacer scroll: recalculamos la franja visible (barato: solo cambian dos números). También refrescamos
+  // el alto del contenedor por si cambió (redimensionar ventana). loadMore quedó como no-op (todo en memoria).
+  const onScroll = (e) => {
+    const el = e.currentTarget
+    setScrollTop(el.scrollTop)
+    if (el.clientHeight && el.clientHeight !== viewportH) setViewportH(el.clientHeight)
+  }
+  // Al montar / cuando llegan las filas: fijar el alto visible real del contenedor (si difiere del estimado).
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el?.clientHeight && el.clientHeight !== viewportH) setViewportH(el.clientHeight)
+  }, [rows])
+  // Al cambiar filtros/orden, la lista se acorta: volvemos arriba para no quedar en una franja vacía.
+  useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = 0; setScrollTop(0) }, [catFiltro, filtros, sortCol, sortDir])
 
   // check1 (saltos/duplicados) sobre la secuencia COMPLETA, siempre — así es correcto.
   const conCheck = useMemo(() => {
@@ -616,7 +645,15 @@ export default function BiVista() {
   // (En la Parte 2, con filtro activo se mostrarán todas las que casen.)
   // Se muestran SIEMPRE todas las filas filtradas (se quitó el toggle "Ver todo/Ver recientes").
   // Para acotar, usa los filtros de cabecera (árbol de fechas, buscar Reg, etc.).
-  const visibles = filas
+  // Ventana de render: de todas las filas filtradas (`filas`) solo pintamos las que caen en pantalla
+  // (± OVERSCAN). `padTop`/`padBottom` son el alto que reservan las filas no pintadas (arriba y abajo),
+  // así la barra de scroll y las posiciones son las de la lista completa.
+  const total = filas.length
+  const winStart = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN)
+  const winEnd = Math.min(total, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN)
+  const visibles = filas.slice(winStart, winEnd)
+  const padTop = winStart * ROW_H
+  const padBottom = Math.max(0, (total - winEnd) * ROW_H)
 
   const onLocal = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r))
   const [ayudaOpen, setAyudaOpen] = useState(false)
@@ -877,7 +914,10 @@ export default function BiVista() {
   }
 
   if (status === 'loading' || loading)
-    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando movimientos…</div></>)
+    return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: '#5F5E5A', marginBottom: 6 }}>Cargando todos los movimientos…</div>
+      <div style={{ fontSize: 12.5, color: '#8A8780', lineHeight: 1.5 }}>Traemos la tabla completa a memoria (unos segundos la primera vez).<br />A partir de ahí el filtrado y el desplazamiento van al instante.</div>
+    </div></>)
 
   const abonos = rows.filter(r => num(r.abonos) > 0).length
   const cargos = rows.filter(r => num(r.cargos) > 0).length
@@ -1217,28 +1257,31 @@ export default function BiVista() {
               </tr>
             </thead>
             <tbody>
-              {filas.length > 0 && <tr><td colSpan={COLS.length} style={{ padding: 6, textAlign: 'center', color: '#B4B2A9', fontSize: 10 }}>— {filas.length} fila(s) · usa los filtros de cabecera para acotar —</td></tr>}
+              {/* Espaciador superior: reserva el alto de las filas que quedan por encima de la franja pintada. */}
+              {padTop > 0 && <tr aria-hidden="true" style={{ height: padTop }}><td colSpan={COLS.length} style={{ padding: 0, border: 0 }} /></tr>}
               {visibles.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} style={{ height: ROW_H }}>
                   {COLS.map((c, ci) => {
                     // Tooltip (burbuja del navegador) con el texto completo de la celda al hacer hover,
                     // para poder leer lo que se corta. Columnas de botón/check no llevan.
                     const tdTitle = c.key.startsWith('_') ? undefined : (c.money ? (fmt(r[c.key]) || undefined) : (String(r[c.key] ?? '').trim() || undefined))
                     return (
-                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: c.wrap ? 'normal' : 'nowrap', background: c.key === '_asociar' ? '#fff' : bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', borderLeft: (ci === 0 && String(r.idadmon_origen ?? '').trim() === 'auto') ? '3px solid #F59E0B' : undefined, maxWidth: c.w + 60, overflow: 'hidden', textOverflow: c.wrap ? 'clip' : 'ellipsis', position: c.key === '_asociar' ? 'sticky' : undefined, right: c.key === '_asociar' ? 0 : undefined, zIndex: c.key === '_asociar' ? 2 : undefined, boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
+                    <td key={ci} title={tdTitle} style={{ padding: c.ro ? '5px 8px' : '2px 4px', textAlign: c.align, whiteSpace: 'nowrap', background: c.key === '_asociar' ? '#fff' : bgCelda(ci, r), color: ci === I_REG ? '#1A1A1A' : '#2C2C2A', fontWeight: ci === I_REG ? 600 : 400, borderBottom: '0.5px solid #EDEBE4', borderLeft: (ci === 0 && String(r.idadmon_origen ?? '').trim() === 'auto') ? '3px solid #F59E0B' : undefined, maxWidth: c.w + 60, overflow: 'hidden', textOverflow: 'ellipsis', position: c.key === '_asociar' ? 'sticky' : undefined, right: c.key === '_asociar' ? 0 : undefined, zIndex: c.key === '_asociar' ? 2 : undefined, boxShadow: c.key === '_asociar' ? '-6px 0 8px -6px rgba(0,0,0,0.15)' : undefined }}>
                       {cell(r, c)}
                     </td>
                     )
                   })}
                 </tr>
               ))}
-              {visibles.length === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
+              {/* Espaciador inferior: reserva el alto de las filas que quedan por debajo de la franja pintada. */}
+              {padBottom > 0 && <tr aria-hidden="true" style={{ height: padBottom }}><td colSpan={COLS.length} style={{ padding: 0, border: 0 }} /></tr>}
+              {total === 0 && <tr><td colSpan={COLS.length} style={{ padding: 24, textAlign: 'center', color: '#888780' }}>Sin resultados con esos filtros.</td></tr>}
             </tbody>
           </table>
         </div>
 
         <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-          {visibles.length} de {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa.
+          {filas.length} fila(s){hayFiltroActivo ? ' (filtradas)' : ''} · carga completa en memoria · se pintan solo las visibles para ir fluido.
         </div>
       </div>
       {/* filtros: ahora en las cabeceras vía ColFilterExcel */}
