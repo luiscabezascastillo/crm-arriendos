@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v9 · 2026-08-16 · OPERACIÓN a lo ancho: CC1/CC2/CC3 dejan de ir en tres columnas y se APILAN, cada una
+//   ocupando el ancho de la página, para mostrar un AÑO completo. La ventana de meses pasa de 3 a 12 (rodante:
+//   avanza sola el día 23). Fix CC1: los meses viejos sin liquidación congelada ya no heredan el estimado "en vivo"
+//   del mes actual (solo el mes en curso lleva el asterisco). Hereda v8.
 // VERSION: v8 · 2026-08-13 · Fila de LOGROS compacta a una sola línea (tarjetas horizontales: número + texto al
 //   lado), en vez de las cajas altas. Hereda v7.
 // VERSION: v7 · 2026-08-13 · Aviso "DATOS NO VERIFICADOS · PANEL EN FASE DE CONSTRUCCIÓN" en la franja de Operación.
@@ -40,14 +44,16 @@ const compact = n => {
   return '$' + Math.round(v)
 }
 
-// Ventana móvil de 3 meses de liquidación. Avanza uno el día 23 (cuando se cierra el mes).
+// Ventana móvil de 12 meses de liquidación (un año). Avanza uno el día 23 (cuando se cierra el mes),
+// de modo que el año se va corriendo solo mes a mes.
 const MABR = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
+const N_MESES = 12
 function mesesVentana() {
   const now = new Date()
   let y = now.getFullYear(), m = now.getMonth()
   if (now.getDate() >= 23) { m += 1; if (m > 11) { m = 0; y += 1 } }
   const out = []
-  for (let k = 2; k >= 0; k--) {
+  for (let k = N_MESES - 1; k >= 0; k--) {
     let mm = m - k, yy = y
     while (mm < 0) { mm += 12; yy -= 1 }
     out.push({ aamm: String(yy % 100).padStart(2, '0') + String(mm + 1).padStart(2, '0'), lbl: MABR[mm] + ' ' + String(yy % 100).padStart(2, '0') })
@@ -207,9 +213,13 @@ export default function PanelPage() {
         const vivo = (cvivo.data && cvivo.data[0]) || null
         const costesMap = {}
         for (const r of ccos.data || []) costesMap[r.aamm] = r.costes
-        // Mes congelado → idadmon; mes en curso (no está en idadmon) → estimado en vivo. Costes = mes anterior.
+        // Mes congelado → idadmon. Solo el mes EN CURSO (el último de la ventana, aún no congelado) usa el
+        // estimado en vivo. Los meses viejos sin dato congelado quedan en blanco (no heredan el estimado actual).
+        const enCurso = meses[meses.length - 1].aamm
         const cc1data = meses.map(x => {
-          const base = byMes[x.aamm] ? { ...x, ...byMes[x.aamm] } : { ...x, ...(vivo || {}), vivo: true }
+          const base = byMes[x.aamm]
+            ? { ...x, ...byMes[x.aamm], vivo: false }
+            : (x.aamm === enCurso ? { ...x, ...(vivo || {}), vivo: true } : { ...x, vivo: false })
           base.costes = costesMap[prevAamm(x.aamm)]
           return base
         })
@@ -308,8 +318,8 @@ export default function PanelPage() {
           <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operación</span>
           <span style={{ flex: 1, padding: '6px 12px', borderRadius: 8, background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', fontSize: 11.5, fontWeight: 800, letterSpacing: '.04em', textAlign: 'center' }}>⚠ DATOS NO VERIFICADOS · PANEL EN FASE DE CONSTRUCCIÓN</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
-          {/* CC1 — DATOS REALES (liquidaciones, 3 meses) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
+          {/* CC1 — DATOS REALES (liquidaciones, año rodante) */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ background: '#1a56db', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#fff', opacity: 0.9, display: 'flex' }}><IcoHome /></span>
