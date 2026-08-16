@@ -1,3 +1,8 @@
+// VERSION: v7 · 2026-08-16 · A COBRAR EN VIVO cuando el mes no está congelado. La foto liquidacion_idadmon solo
+//   existe tras cerrar el mes (día 23); antes está vacía y salían 0 filas con importe. Ahora, si no hay foto del
+//   mes, se calcula con el mismo RPC que CARTAS (calcular_liquidacion → base = A cobrar), filtrando a Paola (P001)
+//   y enriqueciendo arrendatario/RUT desde el LOG. avisos.enVivo indica que el A cobrar es del cálculo en vivo.
+//   Hereda v6.
 // VERSION: v6 · 2026-07-22 · Añade la acción "excel": genera el Control con lib/paolaExcel y lo
 //   guarda en la carpeta de Drive P001 PAOLA con la nomenclatura de la carpeta
 //   ("2026-07-Control Jul 2026.xlsx"), creándolo o sobrescribiéndolo. Recupera el ámbito
@@ -294,15 +299,44 @@ export async function POST(request) {
 
     const { data: log, error: eLog } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, inmueble, arrendatario, fecha_inicio, termino_actual')
+      .select('idadmon, estado, inmueble, arrendatario, rut, fecha_inicio, termino_actual')
       .eq('idprop', IDPROP_PAOLA).in('estado', ESTADOS_LIQUIDABLES)
     if (eLog) throw new Error('LOG: ' + eLog.message)
     const logMap = {}
     for (const r of log || []) logMap[r.idadmon] = r
 
+    // ── Fuente del "A cobrar" ────────────────────────────────────────────────
+    // La foto CONGELADA (liquidacion_idadmon) solo existe cuando el mes se cierra (día 23).
+    // Para el mes en curso (aún sin congelar) esa foto está vacía; entonces calculamos EN VIVO
+    // con el mismo RPC que usa CARTAS (calcular_liquidacion → base = A cobrar), filtrando a Paola.
+    // Así la liquidación de Paola muestra idadmon + inmueble + A cobrar aunque no esté congelada.
+    let fuenteACobrar = 'foto'                 // 'foto' (congelada) | 'rpc' (en vivo)
+    let cartasEfectivo = cartas || []
+    if (cartasEfectivo.length === 0) {
+      const { data: liq, error: eRpc } = await supabase.rpc('calcular_liquidacion', { p_mes: aamm })
+      if (eRpc) throw new Error('RPC calcular_liquidacion: ' + eRpc.message)
+      fuenteACobrar = 'rpc'
+      cartasEfectivo = (liq || [])
+        .filter(r => r.idprop === IDPROP_PAOLA)                                  // solo Paola
+        .filter(r => !String(r.inmueble || '').startsWith('[proporcional'))      // línea normal, no la proporcional
+        .filter(r => logMap[r.idadmon])                                          // solo contratos liquidables del LOG
+        .map(r => {
+          const l = logMap[r.idadmon] || {}
+          return {
+            idadmon: r.idadmon,
+            estado: l.estado ?? null,
+            inmueble: r.inmueble || l.inmueble || '',
+            arrendatario: l.arrendatario || '',
+            rut_arrendatario: l.rut || '',
+            fecha_inicio: l.fecha_inicio || null,
+            a_cobrar: r.base != null ? Number(r.base) : null,
+          }
+        })
+    }
+
     const filas = []
     const enFoto = new Set()
-    for (const c of cartas || []) {
+    for (const c of cartasEfectivo) {
       enFoto.add(c.idadmon)
       const l = logMap[c.idadmon] || {}
       filas.push({
@@ -486,7 +520,14 @@ export async function POST(request) {
       ok: true, mes: aamm, generadoPor: email || null, cartola: infoCartola,
       resultado, sinIdentificar, noEsRenta, movimientos, aprender,
       contratos: liquidables.map(f => ({ idadmon: f.idadmon, propiedad: f.propiedad, arrendatario: f.arrendatario })),
-      avisos: { vacantesNuevas, resincronizarCartas: vacantesNuevas.length > 0 },
+      avisos: {
+        vacantesNuevas,
+        fuenteACobrar,                          // 'foto' (congelada) | 'rpc' (en vivo)
+        enVivo: fuenteACobrar === 'rpc',        // el A cobrar salió del cálculo en vivo (mes sin congelar)
+        // Con el cálculo en vivo no hace falta resincronizar; solo se sugiere cuando el dato sale de la
+        // foto congelada y aún faltan vacantes por reflejar.
+        resincronizarCartas: fuenteACobrar === 'foto' && vacantesNuevas.length > 0,
+      },
       resumen: {
         totalFilas: resultado.length,
         conImporte: resultado.filter(r => r.aCobrar != null).length,

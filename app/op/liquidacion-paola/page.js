@@ -1,3 +1,5 @@
+// VERSION: v8 · 2026-08-16 · Nota "A cobrar calculado en vivo" cuando el mes no está congelado (avisos.enVivo del
+//   route v7): el A cobrar sale del RPC en vivo, no de la foto congelada. Hereda v7.
 // VERSION: v7 · 2026-07-23 · Panel de ayuda desplegable «Cómo se hace», colgado en la propia
 //   pantalla. Distingue lo que hace el CRM de lo que sigue siendo manual, para no mandar a
 //   Administración a botones que aún no existen. Se recuerda plegado/desplegado por sesión.
@@ -360,6 +362,12 @@ export default function LiquidacionPaolaPage() {
               <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#92400e' }}>
                 ⚠ CARTAS no conoce {datos.avisos.vacantesNuevas.join(', ')}. La foto del mes es anterior:
                 conviene <strong>Resincronizar</strong> en CARTAS y volver a procesar.
+              </div>
+            )}
+            {datos.avisos?.enVivo && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#065f46' }}>
+                ✓ <strong>A cobrar calculado en vivo</strong> (el mes aún no está congelado). Los importes salen del
+                mismo motor que CARTAS; al congelar la liquidación (día 23) pasarán a leerse de la foto oficial.
               </div>
             )}
 
