@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v48 · 2026-08-16 · El panel "Cambiar estado" queda DENTRO de la cabecera fija (sticky): la cabecera pasa
+//   a columna (fila título+botones y debajo el panel), así el panel ya no se oculta al hacer scroll. Hereda v47.
 // VERSION: v47 · 2026-08-16 · "Cambiar estado" AHORA embebido en el propio Término (no sale a CC1): panel con los
 //   estados que cuelgan del actual (Q → Q-Auditado / Q-Reclamado / N / N-DICOM; y alternar entre los sub-estados),
 //   fecha y comentario opcionales. Reusa el endpoint /api/cc1/cambiar-estado (registra en historico_idadmon, no fuerza
@@ -1133,8 +1135,10 @@ export default function TerminosPage() {
         input[type=number] { -moz-appearance: textfield; }
       `}</style>
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 18, fontFamily: '"DM Sans", sans-serif' }}>
-        {/* B1 — cabecera fija al hacer scroll (debajo del TopNav, que mide 52px) */}
-        <div style={{ position: 'sticky', top: 52, zIndex: 50, background: '#f4f6f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, padding: '12px 0', borderBottom: '1px solid #E8E6E0' }}>
+        {/* B1 — cabecera fija al hacer scroll (debajo del TopNav, que mide 52px). Es COLUMNA: fila de
+            título+botones y, debajo, el panel "Cambiar estado" — así el panel también queda fijo al scroll. */}
+        <div style={{ position: 'sticky', top: 52, zIndex: 50, background: '#f4f6f9', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14, padding: '12px 0', borderBottom: '1px solid #E8E6E0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .5 }}>Término</span>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>{idadmonSel}</h1>
@@ -1162,16 +1166,15 @@ export default function TerminosPage() {
               style={{ ...input, width: 'auto', cursor: loadingPanel ? 'wait' : 'pointer', background: '#EEF2FF', color: '#3730A3', fontWeight: 700 }}>{loadingPanel ? '…' : '🔄 Recargar'}</button>}
             <button onClick={() => { setModo('lista'); setPanel(null); setEditando(false) }} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#F0EEE8' }}>← Volver</button>
           </div>
-        </div>
-        {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
+          </div>{/* cierra la fila título+botones */}
 
-        {/* Panel de cambio de estado embebido (reusa el endpoint del circuito). Se abre con el botón "Cambiar estado". */}
-        {cambiarEstadoOpen && (() => {
+          {/* Panel de cambio de estado embebido, DENTRO de la cabecera fija para que NO se oculte al hacer scroll. */}
+          {cambiarEstadoOpen && (() => {
           const actualNorm = String(A?.estado || '').toUpperCase().replace(/[ _]/g, '-')
           const validosT = (TRANSICIONES_T[actualNorm] || []).filter(s =>
             ESTADOS_AUDITORIA_T.includes(s) ? capT?.puedeAuditarTermino : capT?.puedeCambiarEstado)
           return (
-            <div style={{ ...card, padding: 12, marginBottom: 12, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
+            <div style={{ ...card, padding: 12, marginBottom: 0, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#0f766e' }}>CAMBIAR ESTADO</span>
                 <span style={{ fontSize: 12, color: '#666' }}>Actual: <b>{A?.estado || '—'}</b> →</span>
@@ -1203,7 +1206,9 @@ export default function TerminosPage() {
               </div>
             </div>
           )
-        })()}
+          })()}
+        </div>{/* cierra la cabecera fija (columna): así el panel de estado queda pegado a la cabecera */}
+        {msg && <div style={{ ...card, padding: 10, marginBottom: 12, background: msg.tipo === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.tipo === 'error' ? '#dc2626' : '#16a34a' }}>{msg.txt}</div>}
 
         {/* MODAL "?" — guía escueta de las 6 etapas del término (qué hacer + quién) */}
         {ayudaOpen && (
