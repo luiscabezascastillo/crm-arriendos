@@ -1,5 +1,7 @@
 'use client'
 // RUTA: app/procesos/financiero/page.js
+// VERSION: v7 · 2026-08-16 · Añadida la ficha "Facturas Int." (facturas internacionales de servicios,
+//   /procesos/financiero/facturas-int).
 // VERSION: v6 · 2026-08-16 · Añadida la ficha "Alberto" (cuenta corriente del propietario,
 //   /procesos/financiero/alberto) al menú Financiero, con cadencia "continuo".
 // VERSION: v5 · 2026-07-25 · Activada la tarjeta CONTAB (pantalla en /procesos/financiero/contab).
@@ -22,6 +24,7 @@ const SUBPROCESOS = [
   { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: '/procesos/financiero/dj1835' },
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: '/procesos/financiero/contab' },
   { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
+  { icon: '🌍', titulo: 'Facturas Int.',  desc: 'Facturas internacionales de servicios (del exterior) con su CCB',    cadencia: 'mensual',  href: '/procesos/financiero/facturas-int' },
 ]
 
 const CAD_BADGE = {
