@@ -1,3 +1,6 @@
+// VERSION: v11 · 2026-08-16 · Estados de término Q-Auditado y Q-Reclamado dados de alta en el LOG (etiqueta en el
+//   filtro, color de badge y de fila, y orden). Y se quita del selector rápido de estado la opción fantasma "O"
+//   (no existe ningún contrato así); en su lugar quedan Q-Auditado y Q-Reclamado. Hereda v10.
 // VERSION: v10 · 2026-08-15 · Nueva columna "Fecha inicio" (fecha_inicio) ANTES de "Término actual" en el listado
 //   de propiedades administradas, con su filtro de cabecera y en el Excel. Hereda v9.
 // VERSION: v9 · 2026-08-05 · Botón "DICOM" en la barra del LOG → /cc1/dicom (hoja de informes DICOM
@@ -42,6 +45,8 @@ const estadoMap = {
   SQ:         { bg: '#f0fdf4', color: '#16a34a' },
   P:          { bg: '#fffbeb', color: '#d97706' },
   Q:          { bg: '#fffbeb', color: '#d97706' },
+  'Q-Auditado':  { bg: '#ecfdf5', color: '#059669' },
+  'Q-Reclamado': { bg: '#fef2f2', color: '#dc2626' },
   N:          { bg: '#f3f4f6', color: '#6b7280' },
   'N-DICOM':  { bg: '#fef2f2', color: '#dc2626' },
 }
@@ -58,6 +63,8 @@ const ESTADO_DESC = {
   'S': 'Vigente',
   'SQ': 'Vigente y notificación de término',
   'Q': 'Término',
+  'Q-AUDITADO': 'Término auditado',
+  'Q-RECLAMADO': 'Término reclamado',
   'P': 'Pendiente (vacío, buscando arrendatario)',
   'N': 'Cerrado / histórico',
   'N-DICOM': 'Histórico, todavía en DICOM',
@@ -182,7 +189,7 @@ function alertaTermino(fecha, estado) {
 
 
 // Orden de los estados de arriba abajo en el LOG (ciclo de vida: activos primero, cerrados al final).
-const ORDEN_ESTADO = { S: 0, SQ: 1, Q: 2, P: 3, N: 4, 'N-DICOM': 5 }
+const ORDEN_ESTADO = { S: 0, SQ: 1, Q: 2, 'Q-AUDITADO': 2.3, 'Q-RECLAMADO': 2.6, P: 3, N: 4, 'N-DICOM': 5 }
 const rankEstado = (e) => {
   const k = estadoNorm(e)
   return (k in ORDEN_ESTADO) ? ORDEN_ESTADO[k] : 99
@@ -193,6 +200,8 @@ const COL_ESTADO = {
   P:  '#EADDC7',   // marrón claro: vacío, buscando arrendatario
   SQ: '#FCF4D6',   // amarillo-ámbar pálido: notificó salida, en transición
   Q:  '#E7E0F0',   // violeta claro: terminado
+  'Q-AUDITADO':  '#DCF3E6',   // verde claro: término auditado (revisado)
+  'Q-RECLAMADO': '#F6DAD6',   // rojizo: término en reclamación
   N:  '#EAEAEA',   // gris: cerrado / histórico
 }
 const COL_NDICOM = '#F5D9D6'  // rojizo: N-DICOM (reclamación)
@@ -444,8 +453,9 @@ export default function CC1Page() {
             <option value="S">S – Activos</option>
             <option value="P">P – Vacíos</option>
             <option value="Q">Q – En término</option>
+            <option value="Q-Auditado">Q-Auditado – Término auditado</option>
+            <option value="Q-Reclamado">Q-Reclamado – Término reclamado</option>
             <option value="SQ">SQ</option>
-            <option value="O">O</option>
           </select>
         </div>
       </div>
