@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v28 · 2026-08-16 · La pestaña "Cartola por IDADMON" deja de ser botón: ahora es solo un texto
+//   "Cartola del Idadmon ⟶" que apunta al buscador. Se conserva "Tabla" como botón (para volver desde la
+//   cartola). Con esto ya no se puede llegar al selector vacío de la vista IDADMON (se entra solo tecleando
+//   un IDADMON y pulsando "Ver cuenta"). Se quita el separador vertical externo de ambas barras. Hereda v27.
 // VERSION: v27 · 2026-08-15 · El "editar" de una línea de CARGO ahora permite cambiar TAMBIÉN el concepto (texto),
 //   además del importe — y solo esos dos campos (ni fecha ni abono). Útil para corregir el proporcional de INICIO
 //   dejando la misma línea con el texto e importe correctos, sin anular ni añadir manual. Requiere editar-cargo v3.
@@ -178,18 +182,22 @@ export default function CartolasPage() {
 /* ============================================================
    VISTA 1 — TABLA (espejo de cuentas, scroll infinito + filtros)
    ============================================================ */
-// Selector de vista compacto (segmentado), para vivir dentro de la barra sticky de cada vista.
+// Barra de modo: botón "Tabla" (para volver a la tabla completa desde la cartola) + un texto que apunta
+// al buscador de IDADMON. "Cartola por IDADMON" ya NO es botón: no se navega a un selector vacío, se abre
+// la cartola tecleando el IDADMON y pulsando "Ver cuenta".
 function TabsCartola({ vista, setVista }) {
   return (
-    <div style={{ display: 'inline-flex', background: '#ECEAE3', borderRadius: 10, padding: 3, gap: 3, flexShrink: 0 }}>
-      {[['tabla', 'Tabla'], ['idadmon', 'Cartola por IDADMON']].map(([k, label]) => (
-        <button key={k} onClick={() => setVista(k)}
-          style={{ fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: vista === k ? '#fff' : 'transparent', color: vista === k ? '#2C2C2A' : '#7A7870',
-            boxShadow: vista === k ? '0 1px 2px rgba(0,0,0,0.10)' : 'none' }}>
-          {label}
-        </button>
-      ))}
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+      <button onClick={() => setVista('tabla')}
+        title="Ver la tabla completa"
+        style={{ fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
+          border: '0.5px solid ' + (vista === 'tabla' ? '#B4B2A9' : '#D3D1C7'),
+          background: vista === 'tabla' ? '#fff' : '#F4F2EC', color: '#2C2C2A',
+          boxShadow: vista === 'tabla' ? '0 1px 2px rgba(0,0,0,0.10)' : 'none' }}>
+        Tabla
+      </button>
+      <span style={{ width: 1, height: 24, background: '#D3D1C7' }} />
+      <span style={{ fontSize: 13, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap' }}>Cartola del Idadmon&nbsp;⟶</span>
     </div>
   )
 }
@@ -486,7 +494,6 @@ function TablaVista({ vista, setVista, abrirCartola }) {
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: '8px 20px 30px' }}>
         <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 12px', padding: '8px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
           <TabsCartola vista={vista} setVista={setVista} />
-          <span style={{ width: 1, height: 24, background: '#D3D1C7' }} />
           <input value={idBusca} onChange={e => setIdBusca(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') abrirCartola(idBusca) }}
             placeholder="IDADMON (ej. A00857)"
@@ -1074,7 +1081,6 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       {/* BARRA ÚNICA STICKY: pestañas + buscador + añadir (bajo el TopNav) */}
       <div style={{ position: 'sticky', top: 52, zIndex: 40, background: '#fff', margin: '0 -20px 14px', padding: '8px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #E3E1D8', boxShadow: '0 4px 10px -8px rgba(0,0,0,0.25)' }}>
         <TabsCartola vista={vista} setVista={setVista} />
-        <span style={{ width: 1, height: 24, background: '#D3D1C7' }} />
         <input value={idInput} onChange={e => setIdInput(e.target.value)} onKeyDown={onKey}
           placeholder="IDADMON (ej. A00857)" autoFocus
           style={{ fontSize: 14, padding: '8px 12px', border: '0.5px solid #B4B2A9', borderRadius: 8, width: 200, textTransform: 'uppercase' }} />
