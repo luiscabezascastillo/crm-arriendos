@@ -1,4 +1,5 @@
-// VERSION: v8 · 2026-08-17 · GUARDAR el mes en el CRM. (1) Acción "guardar": upsert de la liquidación del mes
+// VERSION: v8 · 2026-08-17 · GUARDAR el mes en el CRM (escritura con SERVICE_ROLE para que RLS no la bloquee
+//   en silencio). (1) Acción "guardar": upsert de la liquidación del mes
 //   en liquidacion_paola por (mes, idadmon), con las columnas manuales (multas_deudas, especial, cantidad,
 //   comentarios_1/2) que ahora edita Adalis en la pantalla — así deja el Excel. Guarda también la foto
 //   (a_cobrar/recibido/falta/servicios) para que el mes en curso NO desaparezca. Candado: no escribe un mes
@@ -20,9 +21,14 @@
 //   Eliminado el nivel por importe suelto (repartía ingresos ajenos de Paola).
 //   Nueva acción "confirmar": lo que Adalis/Fabiola apuntan alimenta el buscador.
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../../lib/supabaseClient'
 import { google } from 'googleapis'
 import { generarExcelPaola, nombreArchivo } from '../../../lib/paolaExcel'
+
+// Cliente de servicio (service_role) SOLO para escrituras server-side: evita que RLS bloquee en
+// silencio el guardado del mes (mismo patrón que Global 66 / Tarjeta / SA). Nunca sale al navegador.
+const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 
 const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
 const IDPROP_PAOLA = 'P001'
@@ -285,7 +291,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'No hay filas que guardar: procesa la liquidación primero' }, { status: 400 })
       }
       const mesYM = aYYYYMM(mes)
-      const { data: cierre } = await supabase.from('paola_cierres').select('congelado').eq('mes', mesYM).maybeSingle()
+      const { data: cierre } = await admin.from('paola_cierres').select('congelado').eq('mes', mesYM).maybeSingle()
       if (cierre?.congelado) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede modificar.' }, { status: 409 })
       }
@@ -301,7 +307,7 @@ export async function POST(request) {
         comentarios_1: txtOrNull(f.comentarios1), comentarios_2: txtOrNull(f.comentarios2),
         origen: 'crm', generado_por: email || null, updated_at: new Date().toISOString(),
       }))
-      const { error } = await supabase.from('liquidacion_paola').upsert(rows, { onConflict: 'mes,idadmon' })
+      const { error } = await admin.from('liquidacion_paola').upsert(rows, { onConflict: 'mes,idadmon' })
       if (error) throw new Error(error.message)
       return NextResponse.json({ ok: true, guardadas: rows.length })
     }

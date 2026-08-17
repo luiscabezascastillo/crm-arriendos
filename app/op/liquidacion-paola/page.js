@@ -1,3 +1,8 @@
+// VERSION: v11 · 2026-08-17 · Robustez de la edición del mes: (1) las columnas manuales se teclean en un
+//   BUFFER local (`edits`) — teclear ya NO re-renderiza toda la tabla ni pierde el foco; se guardan al salir
+//   de la celda y con "💾 Guardar mes en el CRM"; el Excel exporta lo tecleado. (2) Servicios (GGCC/Luz/Agua)
+//   se muestran en blanco si no hay dato (nada de "—"). (3) Líneas de cuadrícula entre celdas (salvo 1ª col).
+//   (4) Ayuda "Cómo se trabaja" actualizada: lo manual se rellena AQUÍ, ya no en el Excel. Requiere route v8.
 // VERSION: v10 · 2026-08-17 · Columnas MANUALES editables en la tabla del mes (Multas/Deudas, Especial,
 //   Cantidad, Comentarios 1 y 2) que se GUARDAN en el CRM (liquidacion_paola) + botón "💾 Guardar mes en
 //   el CRM". Con esto Adalis trabaja aquí y deja el Excel (que se sigue exportando con el mismo formato).
@@ -57,6 +62,7 @@ export default function LiquidacionPaolaPage() {
   const [ayuda, setAyuda] = useState(false)
   const [guardandoMes, setGuardandoMes] = useState(false)
   const [avisoGuardado, setAvisoGuardado] = useState(null)
+  const [edits, setEdits] = useState({})   // buffer de las columnas manuales por idadmon (no toca `datos` al teclear)
 
   useEffect(() => {
     const h = new Date()
@@ -79,6 +85,18 @@ export default function LiquidacionPaolaPage() {
       })
       .catch(() => {})
   }, [mes])
+
+  // Al procesar un mes, precargar el buffer de columnas manuales con lo que traiga la liquidación
+  // (lo guardado en liquidacion_paola). Así lo tecleado se conserva y se puede exportar/guardar.
+  useEffect(() => {
+    if (!datos?.resultado) { setEdits({}); return }
+    const e = {}
+    for (const r of datos.resultado) e[r.idadmon] = {
+      multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
+      comentarios1: r.comentarios1 ?? '', comentarios2: r.comentarios2 ?? '',
+    }
+    setEdits(e)
+  }, [datos])
 
   const mesLabel = () => {
     if (!mes) return ''
@@ -147,7 +165,7 @@ export default function LiquidacionPaolaPage() {
     try {
       const res = await fetch('/api/liquidacion-paola', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: datos.resultado }),
+        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: filasConEdits() }),
       })
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo generar el Excel'); setGenerando(false); return }
@@ -172,11 +190,11 @@ export default function LiquidacionPaolaPage() {
     setGenerando(false)
   }
 
-  // Edición de las columnas manuales EN PANTALLA (Adalis deja el Excel). Actualiza lo que se ve
-  // (y por tanto lo que exporta el Excel) y lo guarda en el CRM (liquidacion_paola).
-  function actualizarManual(idadmon, campo, valor) {
-    setDatos(d => d ? { ...d, resultado: d.resultado.map(r => r.idadmon === idadmon ? { ...r, [campo]: valor } : r) } : d)
-  }
+  // Columnas manuales (Adalis deja el Excel): se escriben en un buffer `edits` (teclear NO re-renderiza
+  // toda la tabla) y al guardar se funden con la fila y se persisten en el CRM (liquidacion_paola).
+  const setCampo = (idadmon, campo, valor) => setEdits(x => ({ ...x, [idadmon]: { ...x[idadmon], [campo]: valor } }))
+  const filaConEdits = (r) => ({ ...r, ...(edits[r.idadmon] || {}) })
+  const filasConEdits = () => (datos?.resultado || []).map(filaConEdits)
   async function guardar(filas) {
     if (!filas?.length) return
     setGuardandoMes(true); setError(null); setAvisoGuardado(null)
@@ -188,12 +206,12 @@ export default function LiquidacionPaolaPage() {
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo guardar'); setGuardandoMes(false); return }
       setAvisoGuardado(`Guardado en el CRM (${d.guardadas} fila${d.guardadas === 1 ? '' : 's'})`)
-      setTimeout(() => setAvisoGuardado(null), 2500)
+      setTimeout(() => setAvisoGuardado(null), 3500)
     } catch (e) { setError('Error de conexión al guardar: ' + e.message) }
     setGuardandoMes(false)
   }
-  const guardarMes = () => guardar(datos?.resultado || [])
-  const guardarFila = (r) => guardar([r])
+  const guardarMes = () => guardar(filasConEdits())
+  const guardarFila = (r) => guardar([filaConEdits(r)])
 
   const badge = c => {
     const cfg = COLOR_CONFIANZA[c]
@@ -260,8 +278,8 @@ export default function LiquidacionPaolaPage() {
                   { t: 'Lo seguís haciendo vosotras', c: '#c2410c', bg: '#fff7ed', items: [
                     'Decidir si un importe es correcto',
                     'Confirmar los pagos que no reconoce',
-                    'Multas, Especial, Cantidad y los Comentarios',
-                    'Enviárselo a Paola',
+                    'Rellenar aquí Multas, Especial, Cantidad y los Comentarios (se guardan en el CRM)',
+                    'Guardar el mes y enviárselo a Paola',
                   ] },
                 ].map((b, i) => (
                   <div key={i} style={{ background: b.bg, borderRadius: 10, padding: '12px 14px' }}>
@@ -281,8 +299,8 @@ export default function LiquidacionPaolaPage() {
                 { n: 5, t: 'Resolver «Sin identificar»', d: 'Cada pago trae el motivo por el que no se ha reconocido y un desplegable para asignarlo a un contrato o marcarlo como «No es renta». Al confirmar queda guardado: el mes que viene ese pagador ya sale identificado solo. Y si en la cartola anotáis la propiedad a mano (Dpto 903-A, Est 40), el CRM lo lee y lo asigna sin preguntar.', clave: true },
                 { n: 6, t: 'Mirar «A revisar»', d: 'Son filas donde ha entrado más dinero del que se debía, casi siempre porque se ha asignado un pago ajeno. Pinchad la fila para ver los pagos concretos con su fecha y su glosa.' },
                 { n: 7, t: 'Comprobar tres cosas a mano', d: 'Contratos que terminan a mitad de mes (el CRM cobra el mes entero, el proporcional lo ajustáis vosotras) · arriendos nuevos que Anthony aún no ha dado de alta · y A00810, que sale 263.900 cuando vosotras cobráis 260.000.' },
-                { n: 8, t: 'Generar el Excel', d: 'Descargar Control lo baja al ordenador; Guardar en Drive lo deja en la carpeta de Paola. Sale con el formato de siempre: mismas columnas, vacantes en marrón, totales y la fórmula de FALTA DEL MES.' },
-                { n: 9, t: 'Rellenar lo manual y enviar', d: 'Sobre el Excel descargado: MULTAS/DEUDAS, Especial, Cantidad y COMENTARIOS 1 y 2. Y a Paola por correo, como siempre. Esto es temporal: estamos preparando que esas columnas se escriban aquí y queden guardadas.' },
+                { n: 8, t: 'Rellenar lo manual AQUÍ y guardar', d: 'En la tabla, últimas columnas: MULTAS/DEUDAS, Especial, Cantidad y COMENTARIOS 1 y 2. Se escriben en el CRM y se guardan al salir de cada celda; el botón «💾 Guardar mes en el CRM» guarda todo el mes de golpe (foto incluida) para que no se pierda. Ya no hace falta el Excel para esto.' },
+                { n: 9, t: 'Generar el Excel y enviar', d: 'Descargar Control lo baja al ordenador (con lo que has rellenado); Guardar en Drive lo deja en la carpeta de Paola. Mismo formato de siempre: columnas, vacantes en marrón, totales y la fórmula de FALTA DEL MES. Luego a Paola por correo, como siempre.' },
               ].map(s => (
                 <div key={s.n} style={{ display: 'flex', gap: 12, padding: '9px 0', borderTop: s.n === 1 ? 'none' : '1px solid var(--border-subtle)' }}>
                   <div style={{
@@ -485,7 +503,8 @@ export default function LiquidacionPaolaPage() {
 
             {(tab === 'liquidacion' || tab === 'revisar') && (
               <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1250 }}>
+                <style>{`.tablaMes td, .tablaMes th { border-right: 1px solid var(--border-subtle); } .tablaMes td:first-child, .tablaMes th:first-child { border-right: none; }`}</style>
+                <table className="tablaMes" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1250 }}>
                   <thead>
                     <tr style={{ background: 'var(--gray-50)' }}>
                       {['', 'Est', 'IdAdmon', 'Propiedad', 'Comienzo', 'Termino', 'Arrendatario', 'RUT',
@@ -518,34 +537,34 @@ export default function LiquidacionPaolaPage() {
                             {r.faltaMes == null ? '—' : num(r.faltaMes)}
                           </td>
                           <td style={{ ...td, fontSize: 11 }}>{fecha(r.fechaPago)}</td>
-                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{num(r.deudaGgcc)}</td>
-                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{num(r.deudaLuz)}</td>
-                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{num(r.deudaAgua)}</td>
+                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{r.deudaGgcc == null ? '' : num(r.deudaGgcc)}</td>
+                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{r.deudaLuz == null ? '' : num(r.deudaLuz)}</td>
+                          <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{r.deudaAgua == null ? '' : num(r.deudaAgua)}</td>
                           <td style={td}>{badge(r.confianza)}</td>
-                          {/* Columnas MANUALES — editables aquí y guardadas en el CRM (Adalis deja el Excel) */}
+                          {/* Columnas MANUALES — se teclean en el buffer `edits` y se guardan al salir de la celda */}
                           <td style={td} onClick={e => e.stopPropagation()}>
-                            <input inputMode="numeric" value={r.multasDeudas ?? ''} placeholder="—"
-                              onChange={e => actualizarManual(r.idadmon, 'multasDeudas', e.target.value)}
+                            <input inputMode="numeric" value={edits[r.idadmon]?.multasDeudas ?? ''} placeholder="—"
+                              onChange={e => setCampo(r.idadmon, 'multasDeudas', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 84, textAlign: 'right' }} />
                           </td>
                           <td style={td} onClick={e => e.stopPropagation()}>
-                            <input value={r.especial ?? ''} placeholder="—"
-                              onChange={e => actualizarManual(r.idadmon, 'especial', e.target.value)}
+                            <input value={edits[r.idadmon]?.especial ?? ''} placeholder="—"
+                              onChange={e => setCampo(r.idadmon, 'especial', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 90 }} />
                           </td>
                           <td style={td} onClick={e => e.stopPropagation()}>
-                            <input inputMode="numeric" value={r.cantidad ?? ''} placeholder="—"
-                              onChange={e => actualizarManual(r.idadmon, 'cantidad', e.target.value)}
+                            <input inputMode="numeric" value={edits[r.idadmon]?.cantidad ?? ''} placeholder="—"
+                              onChange={e => setCampo(r.idadmon, 'cantidad', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 84, textAlign: 'right' }} />
                           </td>
                           <td style={td} onClick={e => e.stopPropagation()}>
-                            <input value={r.comentarios1 ?? ''} placeholder="—"
-                              onChange={e => actualizarManual(r.idadmon, 'comentarios1', e.target.value)}
+                            <input value={edits[r.idadmon]?.comentarios1 ?? ''} placeholder="—"
+                              onChange={e => setCampo(r.idadmon, 'comentarios1', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 220 }} />
                           </td>
                           <td style={td} onClick={e => e.stopPropagation()}>
-                            <input value={r.comentarios2 ?? ''} placeholder="—"
-                              onChange={e => actualizarManual(r.idadmon, 'comentarios2', e.target.value)}
+                            <input value={edits[r.idadmon]?.comentarios2 ?? ''} placeholder="—"
+                              onChange={e => setCampo(r.idadmon, 'comentarios2', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 220 }} />
                           </td>
                         </tr>
