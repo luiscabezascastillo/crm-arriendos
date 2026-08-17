@@ -1,3 +1,5 @@
+// VERSION: v9 · 2026-08-16 · Botón "Histórico / hojas" en la cabecera → /op/liquidacion-paola/historico
+//   (matriz A cobrar por idadmon × mes + RUT↔idadmon). Hereda v8.
 // VERSION: v8 · 2026-08-16 · Nota "A cobrar calculado en vivo" cuando el mes no está congelado (avisos.enVivo del
 //   route v7): el A cobrar sale del RPC en vivo, no de la foto congelada. Hereda v7.
 // VERSION: v7 · 2026-07-23 · Panel de ayuda desplegable «Cómo se hace», colgado en la propia
@@ -186,6 +188,11 @@ export default function LiquidacionPaolaPage() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="white" strokeWidth="2" /><polyline points="14 2 14 8 20 8" stroke="white" strokeWidth="2" /></svg>
         </div>
         <h1 style={{ fontSize: 16, fontWeight: 600, color: 'var(--gray-900)', margin: 0 }}>Preparación Liquidación de Paola</h1>
+        <button onClick={() => router.push('/op/liquidacion-paola/historico')}
+          title="Ver todas las liquidaciones de Paola (histórico A cobrar por mes) y la relación RUT ↔ idadmon"
+          style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 600, padding: '7px 13px', borderRadius: 8, border: '1px solid #c2410c', background: '#fff', color: '#c2410c', cursor: 'pointer' }}>
+          📊 Histórico / hojas
+        </button>
       </div>
 
       <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
