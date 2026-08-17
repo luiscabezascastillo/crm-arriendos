@@ -11,6 +11,20 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 )
 
+// GET — lista de correspondencias activas (para el visor "No asociados"). Ordena mostrando primero las que
+//   no tienen idadmon (las que faltan por asociar).
+export async function GET() {
+  const { data, error } = await supabase
+    .from('cf_correspondencias')
+    .select('id, comunidad_cf, inmueble_cf, idadmon, idinmue, estado, propietario, activo')
+    .eq('activo', true)
+    .order('comunidad_cf', { ascending: true })
+    .limit(5000)
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  const filas = (data || []).sort((a, b) => (a.idadmon ? 1 : 0) - (b.idadmon ? 1 : 0))
+  return Response.json({ correspondencias: filas })
+}
+
 export async function POST(req) {
   let body
   try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }

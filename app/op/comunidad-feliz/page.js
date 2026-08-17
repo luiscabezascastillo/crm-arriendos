@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v4 · 2026-08-17 · (1) Pantalla CERRADA POR ROL: solo Administración (Adalis/Fabiola), Karina y
+//   Dirección (Luis/Alberto); el resto se redirige. (2) Dos botones en el bloque de acceso: "No asociados"
+//   (los "Nuevos" del análisis + visor/edición de cf_correspondencias) y "Ver GGCC cargado" (modal con
+//   ggcc_agua_luz del mes). Nuevos GET: /api/comunidad-feliz/correspondencia (lista) y /api/comunidad-feliz/ggcc.
+//   Hereda v3.
 // VERSION: v3 · 2026-08-17 · (1) Bloque "Acceso a Comunidad Feliz": enlaces al portal residentes y app admin,
 //   credenciales tras toggle "Mostrar" con botón copiar, y guía de extracción (paginar de 50 en 50). Solo
 //   recordatorio para personal autorizado; OJO: la pantalla no está cerrada por rol y la contraseña viaja en
@@ -9,8 +14,16 @@
 //   Feliz (bloques de 3, con dedup y validación anti-desalineo) sin pasar por xlsx ni Drive.
 //   Reutiliza el previo/tabla/guardar existentes. La vía de Drive se mantiene intacta.
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 const FOLDER_ID = '1qE47HbwpDg32hkMUJIxRuWTRNA6Uhj47'
+
+// Acceso: Administración (Adalis/Fabiola) + Karina + Dirección (Luis/Alberto). Alias de roles como en TopNav/alertas.
+const ROL_ALIAS = { admin: 'direccion', operaciones: 'administracion', tecnico: 'mantencion' }
+const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '').toLowerCase()
+const ROLES_OK = ['administracion', 'direccion']
+const EMAILS_OK = ['karina.morales@fondocapital.com']  // Karina, aunque su rol no sea administración
 
 function fmtPeso(n) {
   if (n === null || n === undefined || n === '') return '—'
@@ -36,6 +49,18 @@ function getAAMM(date) {
 }
 
 export default function ComunidadFeliz() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const email = session?.user?.email || ''
+  const rol = normRol(session?.user?.role)
+  const puedeVer = ROLES_OK.includes(rol) || EMAILS_OK.includes(email)
+
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!session) { router.replace('/panel'); return }
+    if (!puedeVer) { router.replace('/procesos/mi-portal') }
+  }, [status, session, puedeVer]) // eslint-disable-line
+
   const hoy = new Date()
   const [fecha, setFecha] = useState(hoy)
   const [archivoCF, setArchivoCF] = useState(null)
@@ -100,6 +125,7 @@ export default function ComunidadFeliz() {
         observacion: 'Correspondencia creada · vuelve a Analizar para incluir la deuda',
       } : r)))
       setNuevoRow(null)
+      if (corrList.length) cargarCorrespondencias()   // refresca el visor si estaba cargado
     } catch (e) {
       setCorrMsg(e.message)
     } finally {
@@ -110,6 +136,56 @@ export default function ComunidadFeliz() {
   const mesLabel = getMesLabel(fecha)
   const mesClave = getMesClave(fecha)
   const aamm = getAAMM(fecha)
+
+  // v4 — visor "No asociados" (nuevos del análisis + correspondencias) y visor de ggcc_agua_luz
+  const [verNoAsoc, setVerNoAsoc] = useState(false)
+  const [corrList, setCorrList] = useState([])
+  const [corrCargando, setCorrCargando] = useState(false)
+  const [corrError, setCorrError] = useState('')
+  const [corrBuscar, setCorrBuscar] = useState('')
+  const [verGgcc, setVerGgcc] = useState(false)
+  const [ggccList, setGgccList] = useState([])
+  const [ggccCargando, setGgccCargando] = useState(false)
+  const [ggccError, setGgccError] = useState('')
+
+  async function cargarCorrespondencias() {
+    setCorrCargando(true); setCorrError('')
+    try {
+      const res = await fetch('/api/comunidad-feliz/correspondencia')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error cargando correspondencias')
+      setCorrList(data.correspondencias || [])
+    } catch (e) { setCorrError(e.message) } finally { setCorrCargando(false) }
+  }
+
+  function abrirNoAsoc() { setVerNoAsoc(true); if (!corrList.length) cargarCorrespondencias() }
+
+  // Editar una correspondencia existente reutilizando el modal de alta (upsert por comunidad+inmueble).
+  function abrirEditar(c) {
+    setCorrMsg('')
+    setNuevoForm({ idadmon: c.idadmon || '', idinmue: c.idinmue || '', estado: ['S','P'].includes(c.estado) ? c.estado : 'S', propietario: c.propietario || '' })
+    setNuevoRow({ comunidad_cf: c.comunidad_cf, inmueble_cf: c.inmueble_cf, deuda: null, _editando: true })
+    setVerNoAsoc(false)
+  }
+
+  async function abrirGgcc() {
+    setVerGgcc(true); setGgccCargando(true); setGgccError(''); setGgccList([])
+    try {
+      const res = await fetch(`/api/comunidad-feliz/ggcc?aamm=${aamm}&mes=${mesClave}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error cargando ggcc_agua_luz')
+      setGgccList(data.filas || [])
+    } catch (e) { setGgccError(e.message) } finally { setGgccCargando(false) }
+  }
+
+  const corrFiltradas = corrList.filter(c => {
+    if (!corrBuscar) return true
+    const q = corrBuscar.toLowerCase()
+    return (c.comunidad_cf||'').toLowerCase().includes(q) || (c.inmueble_cf||'').toLowerCase().includes(q) ||
+           (c.idadmon||'').toLowerCase().includes(q) || (c.idinmue||'').toLowerCase().includes(q) ||
+           (c.propietario||'').toLowerCase().includes(q)
+  })
+  const nuevosDelAnalisis = resultado.filter(f => f.nuevo)
 
   // Buscar archivos en Drive
   async function buscarArchivesDrive() {
@@ -229,6 +305,14 @@ export default function ComunidadFeliz() {
     'nuevo':    { bg: '#E6F1FB', color: '#185FA5', label: 'Nuevo' },
   }
 
+  if (status === 'loading' || !session || !puedeVer) {
+    return (
+      <div style={{ padding: '48px 32px', maxWidth: 1200, margin: '0 auto', color: '#6B7280', fontSize: 14 }}>
+        {status === 'loading' ? 'Comprobando acceso…' : 'Acceso restringido — esta pantalla es solo para Administración, Karina y Dirección.'}
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
 
@@ -275,6 +359,8 @@ export default function ComunidadFeliz() {
              style={linkBtn}>🔗 Portal residentes — Propiedades ↗</a>
           <a href="https://app2.comunidadfeliz.com/" target="_blank" rel="noopener noreferrer"
              style={linkBtn}>🔗 App administración ↗</a>
+          <button onClick={abrirNoAsoc} style={accionBtn}>🧩 No asociados</button>
+          <button onClick={abrirGgcc} style={accionBtn}>📄 Ver GGCC cargado</button>
         </div>
 
         <div style={{ marginBottom: 4 }}>
@@ -549,6 +635,140 @@ export default function ComunidadFeliz() {
           </div>
         </div>
       )}
+
+      {/* Modal — No asociados: nuevos del análisis + visor/edición de cf_correspondencias */}
+      {verNoAsoc && (
+        <div onClick={() => setVerNoAsoc(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', display: 'flex',
+                   alignItems: 'center', justifyContent: 'center', zIndex: 40, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: '20px 22px', width: 820, maxWidth: '100%',
+                     maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>Datos no asociados</div>
+              <button onClick={() => setVerNoAsoc(false)} style={{ ...btnSecondaryModal, padding: '5px 12px' }}>Cerrar</button>
+            </div>
+
+            {/* Sección 1 — nuevos del análisis actual */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#854F0B', marginTop: 8 }}>
+              En CF sin correspondencia (análisis actual): {nuevosDelAnalisis.length}
+            </div>
+            {nuevosDelAnalisis.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0 0' }}>
+                Ninguno ahora. Pega el texto del portal y pulsa "Analizar" para detectar los nuevos del mes.
+              </p>
+            ) : (
+              <div style={{ marginTop: 6, border: '1px solid #F1E6D2', borderRadius: 8, overflow: 'hidden' }}>
+                {nuevosDelAnalisis.map((f, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px',
+                                        background: i % 2 ? '#FFFDF8' : '#fff', fontSize: 12 }}>
+                    <div style={{ flex: 1 }}><b>{f.comunidad_cf}</b> · {f.inmueble_cf}</div>
+                    <div style={{ color: '#854F0B' }}>{f.deuda != null ? fmtPeso(f.deuda) : '—'}</div>
+                    <button onClick={() => abrirNuevo(f)} style={{ ...copyBtn, padding: '4px 10px' }}>Asociar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sección 2 — correspondencias existentes */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                Correspondencias existentes{corrList.length ? ` (${corrList.length})` : ''}
+              </div>
+              <input placeholder="Buscar comunidad, IDADMON, propietario…" value={corrBuscar}
+                onChange={e => setCorrBuscar(e.target.value)}
+                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12, width: 260 }} />
+            </div>
+            {corrCargando ? (
+              <p style={{ fontSize: 12, color: '#6B7280', marginTop: 8 }}>Cargando…</p>
+            ) : corrError ? (
+              <p style={{ fontSize: 12, color: '#A32D2D', marginTop: 8 }}>✗ {corrError}</p>
+            ) : (
+              <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#F3F4F6' }}>
+                      {['Comunidad CF','Inmueble CF','IDADMON','IDINMUE','Estado','Propietario',''].map(h => (
+                        <th key={h} style={{ ...thStyle, padding: '6px 10px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {corrFiltradas.slice(0, 400).map((c, i) => {
+                      const falta = !c.idadmon
+                      return (
+                        <tr key={c.id ?? i} style={{ background: falta ? '#FCEBEB' : (i % 2 ? '#F9FAFB' : '#fff') }}>
+                          <td style={{ ...tdStyle, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.comunidad_cf}</td>
+                          <td style={tdStyle}>{c.inmueble_cf}</td>
+                          <td style={tdStyle}><b>{c.idadmon || '—'}</b></td>
+                          <td style={tdStyle}>{c.idinmue || '—'}</td>
+                          <td style={tdStyle}>{c.estado || '—'}</td>
+                          <td style={{ ...tdStyle, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.propietario || '—'}</td>
+                          <td style={tdStyle}><button onClick={() => abrirEditar(c)} style={{ ...copyBtn, padding: '4px 10px' }}>Editar</button></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                {corrFiltradas.length > 400 && (
+                  <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>Mostrando 400 de {corrFiltradas.length}. Filtra con el buscador.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal — ggcc_agua_luz cargado del mes */}
+      {verGgcc && (
+        <div onClick={() => setVerGgcc(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', display: 'flex',
+                   alignItems: 'center', justifyContent: 'center', zIndex: 40, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: '20px 22px', width: 760, maxWidth: '100%',
+                     maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>ggcc_agua_luz — {mesLabel}</div>
+              <button onClick={() => setVerGgcc(false)} style={{ ...btnSecondaryModal, padding: '5px 12px' }}>Cerrar</button>
+            </div>
+            {ggccCargando ? (
+              <p style={{ fontSize: 12, color: '#6B7280' }}>Cargando…</p>
+            ) : ggccError ? (
+              <p style={{ fontSize: 12, color: '#A32D2D' }}>✗ {ggccError}</p>
+            ) : ggccList.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#6B7280' }}>No hay filas cargadas para {mesLabel}.</p>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>{ggccList.length} filas cargadas.</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#F3F4F6' }}>
+                        {['IDADMON','IDINMUE','Estado','Deuda GGCC','Fecha'].map(h => (
+                          <th key={h} style={{ ...thStyle, padding: '6px 10px' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ggccList.map((g, i) => (
+                        <tr key={i} style={{ background: i % 2 ? '#F9FAFB' : '#fff' }}>
+                          <td style={tdStyle}><b>{g.idadmon}</b></td>
+                          <td style={tdStyle}>{g.idinmue || '—'}</td>
+                          <td style={tdStyle}>{g.estado || '—'}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right' }}>
+                            {g.deuda_gastos_comunes != null && g.deuda_gastos_comunes !== '' ? fmtPeso(g.deuda_gastos_comunes) : '—'}
+                          </td>
+                          <td style={tdStyle}>{g.fecha_hecho_ggcc || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -614,6 +834,11 @@ const linkBtn = {
 const credToggle = {
   background: '#fff', border: '1px solid #D1D5DB', color: '#374151',
   borderRadius: 8, padding: '6px 14px', fontSize: 13, cursor: 'pointer'
+}
+const accionBtn = {
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  background: '#F0FDF4', border: '1px solid #A7F3D0', color: '#047857',
+  borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer'
 }
 const credKey = { fontSize: 12, color: '#6B7280', fontWeight: 500 }
 const credVal = { fontSize: 13, color: '#111827', wordBreak: 'break-all' }
