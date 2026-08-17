@@ -1,3 +1,5 @@
+// VERSION: v10 · 2026-08-17 · "cargar_guardado" ahora, en un mes NO congelado, REFRESCA los servicios
+//   (GGCC/agua/luz) con lo último de ggcc_agua_luz, aunque el mes se guardara antes de cargarlos. Hereda v9.
 // VERSION: v9 · 2026-08-17 · (1) Acción "cargar_guardado": abre el mes ya guardado (liquidacion_paola) sin
 //   re-procesar la cartola, para que otra persona (Fabiola) revise/continúe lo de Adalis. (2) FIX servicios:
 //   se elige la fila de ggcc_agua_luz MÁS RECIENTE con clave de período numérica (AAMM/mes) — antes el orden
@@ -345,6 +347,22 @@ export async function POST(request) {
         comentarios1: r.comentarios_1 ?? null, comentarios2: r.comentarios_2 ?? null,
       }))
       resultado.sort((a, b) => ordenNatural(a.propiedad, b.propiedad))
+
+      // Si el mes NO está congelado (p.ej. agosto), refrescamos servicios con lo último de ggcc_agua_luz
+      // aunque se guardara antes de cargarlos. En un mes congelado se respeta la foto guardada.
+      const { data: cierreG } = await admin.from('paola_cierres').select('congelado').eq('mes', aYYYYMM(mes)).maybeSingle()
+      if (!cierreG?.congelado) {
+        const { data: serv } = await admin.from('ggcc_agua_luz')
+          .select('idadmon, mes, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua')
+          .in('idadmon', resultado.map(r => r.idadmon))
+        const sm = {}
+        for (const s of serv || []) { const k = periodoNum(s); if (!sm[s.idadmon] || k >= sm[s.idadmon]._k) sm[s.idadmon] = { ...s, _k: k } }
+        for (const r of resultado) {
+          const s = sm[r.idadmon]
+          if (s) { r.deudaGgcc = aNumero(s.deuda_gastos_comunes); r.deudaLuz = aNumero(s.deuda_vigente_electricidad); r.deudaAgua = aNumero(s.deuda_vigente_agua) }
+        }
+      }
+
       const suma = (k) => resultado.reduce((s, r) => s + (Number(r[k]) || 0), 0)
       return NextResponse.json({
         ok: true, mes: aYYYYMM(mes), cargadoDeGuardado: true, cartola: null,
