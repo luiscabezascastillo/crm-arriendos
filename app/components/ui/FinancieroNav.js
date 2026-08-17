@@ -1,3 +1,5 @@
+// VERSION: v4 · 2026-08-16 · Nuevas pestañas "Tarjeta" (tarjeta de crédito Santander …2494) tras Global,
+//   y "Facturas Int." (que faltaba en la barra) tras Alberto. Hereda v3.
 // VERSION: v3 · 2026-08-15 · Nueva pestaña "Alberto" (cuenta corriente del propietario de la empresa),
 //   antes de CONTAB → /procesos/financiero/alberto. Hereda v2.
 // VERSION: v2 · 2026-07-26 · FinancieroNav: se pega DEBAJO del TopNav (top medido, no 0).
@@ -27,8 +29,10 @@ const MODULOS = [
   { id: 'sa',             icon: '🏦', label: 'B. Santander', href: '/procesos/financiero/sa' },
   { id: 'sii',            icon: '📋', label: 'SII',         href: '/procesos/financiero/sii' },
   { id: 'global66',       icon: '🌐', label: 'Global',      href: '/procesos/financiero/global66' },
+  { id: 'tarjeta',        icon: '💳', label: 'Tarjeta',     href: '/procesos/financiero/tarjeta' },
   { id: 'dj1835',         icon: '🏘️', label: 'DJ 1835',     href: '/procesos/financiero/dj1835' },
   { id: 'alberto',        icon: '💼', label: 'Alberto',     href: '/procesos/financiero/alberto' },
+  { id: 'facturas-int',   icon: '🌍', label: 'Facturas Int.', href: '/procesos/financiero/facturas-int' },
   { id: 'contab',         icon: '📊', label: 'CONTAB',      href: '/procesos/financiero/contab' },
 ]
 

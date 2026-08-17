@@ -1,5 +1,7 @@
 'use client'
 // RUTA: app/procesos/financiero/page.js
+// VERSION: v8 · 2026-08-16 · Añadida la ficha "Tarjeta de crédito" (estado de cuenta Santander …2494,
+//   /procesos/financiero/tarjeta), tras Global.
 // VERSION: v7 · 2026-08-16 · Añadida la ficha "Facturas Int." (facturas internacionales de servicios,
 //   /procesos/financiero/facturas-int).
 // VERSION: v6 · 2026-08-16 · Añadida la ficha "Alberto" (cuenta corriente del propietario,
@@ -21,6 +23,7 @@ const SUBPROCESOS = [
   { icon: '🏦', titulo: 'B. Santander',   desc: 'Movimientos del Banco Santander con CCB',                         cadencia: 'semanal', href: '/procesos/financiero/sa' },
   { icon: '📋', titulo: 'SII',            desc: 'Cargar F29 y declaraciones del SII',                              cadencia: 'mensual', href: '/procesos/financiero/sii' },
   { icon: '🌐', titulo: 'Global',         desc: 'Movimientos de la cuenta Global 66 con CCB',                      cadencia: 'mensual', href: '/procesos/financiero/global66' },
+  { icon: '💳', titulo: 'Tarjeta',        desc: 'Estado de cuenta de la tarjeta de crédito Santander (…2494) con CCB', cadencia: 'mensual', href: '/procesos/financiero/tarjeta' },
   { icon: '🏘️', titulo: 'DJ 1835',        desc: 'Declaración jurada anual de bienes raíces arrendados',            cadencia: 'anual',   href: '/procesos/financiero/dj1835' },
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: '/procesos/financiero/contab' },
   { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
