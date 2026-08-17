@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-17 · El código de gas ya NO se lee de la fila del mes, sino de la fuente única
+//   `servicios_codigos` (por idinmue). Los meses nuevos lo heredan solo. La deuda del mes sigue en ggcc_agua_luz.
+//   Hereda v2.
 // VERSION: v2 · 2026-07-18 · Normaliza el mes a ISO (AAAA-MM) antes de filtrar (campo `mes` unificado).
 //   Acepta "JULIO 2026", "2026-07" o "2607".
 import { createClient } from '@supabase/supabase-js'
@@ -30,16 +33,20 @@ export async function POST(req) {
 
     const { data: registros, error } = await supabase
       .from('ggcc_agua_luz')
-      .select('id, idadmon, codigo_gas, deuda_anterior_gas')
+      .select('id, idadmon, idinmue, deuda_anterior_gas')
       .eq('mes', mesActual)
       .not('idadmon', 'like', '.%')
-      .not('codigo_gas', 'is', null)
 
     if (error) throw new Error(error.message)
 
-    const aConsultar = registros.filter(r =>
-      !EXCLUIR.includes((r.codigo_gas || '').toLowerCase().trim())
-    )
+    // Código de gas desde la fuente única (por idinmue).
+    const { data: cods, error: eC } = await supabase.from('servicios_codigos').select('idinmue, codigo_gas')
+    if (eC) throw new Error(eC.message)
+    const mapGas = new Map((cods || []).map(c => [c.idinmue, c.codigo_gas]))
+
+    const aConsultar = (registros || [])
+      .map(r => ({ ...r, codigo_gas: mapGas.get(r.idinmue) || null }))
+      .filter(r => r.codigo_gas && !EXCLUIR.includes((r.codigo_gas || '').toLowerCase().trim()))
 
     const resultados = []
     let ok = 0, errores = 0, omitidos = 0

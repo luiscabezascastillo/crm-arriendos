@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-17 · El código Enel ya NO se lee de la fila del mes en ggcc_agua_luz, sino de la fuente
+//   única `servicios_codigos` (por idinmue). Así los meses nuevos heredan el código solo (no se pierde al reproducir
+//   el mes). La deuda del mes sigue en ggcc_agua_luz. Hereda v2.
 // VERSION: v2 · 2026-07-18 · Normaliza el mes a ISO (AAAA-MM) antes de filtrar, tras unificar el
 //   campo `mes` de ggcc_agua_luz. Acepta "JULIO 2026", "2026-07" o "2607". Aplica en guardar y en GET.
 // app/api/servicios/luz/route.js
@@ -85,12 +88,11 @@ export async function GET(request) {
     const soloPendientes = searchParams.get('solo_pendientes') === 'true'
     if (!mes) return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
 
+    // Filas del mes (deuda/estado); el CÓDIGO ya no vive aquí.
     let query = supabase
       .from('ggcc_agua_luz')
-      .select('idadmon, idinmue, codigo_ele, deuda_vigente_electricidad, fecha_hecho_luz, edificio_proyecto, inmueble')
+      .select('idadmon, idinmue, deuda_vigente_electricidad, fecha_hecho_luz, edificio_proyecto, inmueble')
       .eq('mes', mes)
-      .not('codigo_ele', 'is', null)
-      .neq('codigo_ele', '')
       .not('idinmue', 'like', '.%')
       .order('idadmon')
 
@@ -101,11 +103,15 @@ export async function GET(request) {
     const { data, error } = await query
     if (error) return Response.json({ error: error.message }, { status: 500 })
 
+    // Código Enel desde la fuente única (por idinmue). Los meses nuevos heredan sin recargar nada.
+    const { data: cods, error: eC } = await supabase.from('servicios_codigos').select('idinmue, codigo_ele')
+    if (eC) return Response.json({ error: eC.message }, { status: 500 })
+    const mapEle = new Map((cods || []).map(c => [c.idinmue, c.codigo_ele]))
+
     // Solo códigos con formato válido (número-DV); descarta bodega/estacionamiento/etc.
-    const filtrado = (data || []).filter((row) => {
-      if (!row.codigo_ele) return false
-      return /^[\d-]+[\dkK]?$/.test(row.codigo_ele.trim())
-    })
+    const filtrado = (data || [])
+      .map(row => ({ ...row, codigo_ele: mapEle.get(row.idinmue) || null }))
+      .filter(row => row.codigo_ele && /^[\d-]+[\dkK]?$/.test(String(row.codigo_ele).trim()))
 
     return Response.json({ codigos: filtrado, total: filtrado.length })
   } catch (e) {

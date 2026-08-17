@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-17 · El código de agua (Aguas Andinas) ya NO se lee de la fila del mes, sino de la fuente
+//   única `servicios_codigos` (por idinmue). Los meses nuevos lo heredan solo. La deuda del mes sigue en
+//   ggcc_agua_luz. Hereda v2.
 // VERSION: v2 · 2026-07-18 · Normaliza el mes a ISO (AAAA-MM) antes de filtrar (campo `mes` unificado).
 //   Acepta "JULIO 2026", "2026-07" o "2607". Aplica en guardar y en GET.
 // app/api/servicios/agua/route.js
@@ -23,7 +26,7 @@ function normalizarMes(m) {
 
 function esCodigoAguaValido(codigo) {
   if (!codigo) return false
-  const texto = codigo.trim().toLowerCase()
+  const texto = String(codigo).trim().toLowerCase()
   // Excluir textos como bodega, estacionamiento, etc.
   if (!/^\d/.test(texto)) return false
   return true
@@ -31,7 +34,7 @@ function esCodigoAguaValido(codigo) {
 
 // Extrae número sin dígito verificador: "2623638-K" → "2623638"
 function normalizarCodigoAgua(codigo) {
-  return codigo.trim().split('-')[0]
+  return String(codigo).trim().split('-')[0]
 }
 
 async function guardar(mes, idadmon, idinmue, deuda, fecha) {
@@ -77,12 +80,11 @@ export async function GET(request) {
 
     if (!mes) return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
 
+    // Filas del mes (deuda/estado); el CÓDIGO ya no vive aquí.
     let query = supabase
       .from('ggcc_agua_luz')
-      .select('idadmon, idinmue, codigo_agua, deuda_vigente_agua, fecha_hecho_agua, edificio_proyecto, inmueble')
+      .select('idadmon, idinmue, deuda_vigente_agua, fecha_hecho_agua, edificio_proyecto, inmueble')
       .eq('mes', mes)
-      .not('codigo_agua', 'is', null)
-      .neq('codigo_agua', '')
       .not('idadmon', 'like', '.%')
       .order('idadmon')
 
@@ -95,13 +97,15 @@ export async function GET(request) {
     const { data, error } = await query
     if (error) return Response.json({ error: error.message }, { status: 500 })
 
-    const filtrado = (data || []).filter(row => {
-      if (!row.codigo_agua) return false
-      return esCodigoAguaValido(row.codigo_agua)
-    }).map(row => ({
-      ...row,
-      codigo_agua_normalizado: normalizarCodigoAgua(row.codigo_agua)
-    }))
+    // Código de agua desde la fuente única (por idinmue).
+    const { data: cods, error: eC } = await supabase.from('servicios_codigos').select('idinmue, codigo_agua')
+    if (eC) return Response.json({ error: eC.message }, { status: 500 })
+    const mapAgua = new Map((cods || []).map(c => [c.idinmue, c.codigo_agua]))
+
+    const filtrado = (data || [])
+      .map(row => ({ ...row, codigo_agua: mapAgua.get(row.idinmue) || null }))
+      .filter(row => esCodigoAguaValido(row.codigo_agua))
+      .map(row => ({ ...row, codigo_agua_normalizado: normalizarCodigoAgua(row.codigo_agua) }))
 
     return Response.json({ codigos: filtrado, total: filtrado.length })
 

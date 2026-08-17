@@ -22,6 +22,9 @@ function totalF(f) {
          (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
+// VERSION: v3 · 2026-08-17 · Los códigos de luz/agua/gas se leen de la fuente única `servicios_codigos` (por
+//   idinmue) y se fusionan sobre las filas del mes: así se muestran también en meses recién reproducidos (antes
+//   quedaban vacíos porque el código no se copiaba del mes anterior). Hereda v2.
 // VERSION: v2 · 2026-07-18 · Meses del desplegable automáticos (mes en curso + 12 atrás) y filtro por
 //   `mes` normalizado a ISO (AAAA-MM), tras unificar el campo `mes` de ggcc_agua_luz.
 const NOMBRES_MES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
@@ -198,10 +201,18 @@ export default function Deudas() {
     setFGGCC(emptyF); setFLuz(emptyF); setFAgua(emptyF); setFGas(emptyF); setFTotal(emptyF)
     setSortCol(null); setSortDir(null)
     supabase.from('ggcc_agua_luz')
-      .select('idadmon,idinmue,estado,aamm,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,codigo_ele,codigo_agua,codigo_gas,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
+      .select('idadmon,idinmue,estado,aamm,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
       .eq('mes', normalizarMes(mes)).limit(500)
-      .then(({data}) => {
-        setFilas((data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.')))
+      .then(async ({data}) => {
+        const base = (data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.'))
+        // Los códigos (luz/agua/gas) viven en servicios_codigos (por idinmue), no en la fila del mes:
+        // así se heredan solos al reproducir un mes nuevo. Se fusionan aquí para mostrarlos.
+        const { data: cods } = await supabase.from('servicios_codigos').select('idinmue,codigo_ele,codigo_agua,codigo_gas')
+        const mc = new Map((cods||[]).map(c => [c.idinmue, c]))
+        setFilas(base.map(f => {
+          const c = mc.get(f.idinmue)
+          return { ...f, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
+        }))
         setLoading(false)
       })
   }, [mes])
