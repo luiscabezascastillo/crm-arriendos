@@ -1,3 +1,5 @@
+// VERSION: v12 · 2026-08-17 · Aviso al RE-PROCESAR: si ya hay una liquidación en pantalla, "Procesar" pide
+//   confirmación porque recalcular desde la cartola pisa lo tecleado sin guardar. Hereda v11.
 // VERSION: v11 · 2026-08-17 · Robustez de la edición del mes: (1) las columnas manuales se teclean en un
 //   BUFFER local (`edits`) — teclear ya NO re-renderiza toda la tabla ni pierde el foco; se guardan al salir
 //   de la celda y con "💾 Guardar mes en el CRM"; el Excel exporta lo tecleado. (2) Servicios (GGCC/Luz/Agua)
@@ -111,6 +113,16 @@ export default function LiquidacionPaolaPage() {
   }
 
   async function procesar() {
+    // Aviso antes de re-procesar: recalcular desde la cartola PISA lo que hay en pantalla, incluidas las
+    // columnas manuales sin guardar. Si ya se pulsó "Guardar mes en el CRM", se recuperan al recargar.
+    if (datos?.resultado?.length) {
+      const ok = window.confirm(
+        'Ya hay una liquidación de este mes cargada.\n\n' +
+        'Si vuelves a procesar, se recalcula TODO desde la cartola y se PIERDEN los cambios manuales que no hayas guardado (Multas/Deudas, Especial, Cantidad, Comentarios).\n\n' +
+        'Si ya pulsaste «💾 Guardar mes en el CRM», se recuperan al recargar.\n\n' +
+        '¿Volver a procesar?')
+      if (!ok) return
+    }
     setProcesando(true); setError(null)
     try {
       const body = { mes }
