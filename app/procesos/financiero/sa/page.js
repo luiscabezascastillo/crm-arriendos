@@ -1,3 +1,7 @@
+// VERSION: v37 · 2026-08-17 · SA: la columna MONTO pasa del filtro por RANGO (mín/máx) al filtro por VALORES estilo Excel
+//   (Menor a mayor / Mayor a menor + casillas de importes + buscador), igual que el resto de columnas. El rango queda
+//   desactivado (dead-code, no rompe la aplicación que aún soporta ambos). Las columnas numéricas muestran "Menor a
+//   mayor / Mayor a menor" en vez de "ascendente/descendente". Hereda v36.
 // VERSION: v36 · 2026-08-14 · SA: nueva columna CHECK (a la derecha de Est.). Muestra SÍ/NO por movimiento y
 //   abre un cajón "COMENTARIOS" con Observación, Acciones y Mejoras propuestas (3 campos libres). Al guardar,
 //   el servidor sella automáticamente "Revisado por" (email de quien revisa) y "Fecha". Persiste en sa_marcas
@@ -515,7 +519,7 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
         <>
           <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
           <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.16)', width: 272, textAlign: 'left', fontWeight: 400, overflow: 'hidden' }}>
-            {col.key === 'monto' ? (
+            {false /* Monto ya usa el filtro de VALORES (captura 2), no el rango. Se conserva el bloque por si se quiere revertir. */ ? (
               <>
                 <div style={{ padding: '10px 10px 4px' }}>
                   <div style={{ fontSize: 11, color: '#888780', fontWeight: 700, marginBottom: 4 }}>Filtrar por importe (con signo)</div>
@@ -538,8 +542,8 @@ function HeaderFilter({ col, movs, state, setState, open, setOpen, orden, setOrd
               <>
 
             <div style={{ padding: '6px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
-              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>↑ Orden ascendente</button>
-              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'desc' }); setOpen(null) }}>↓ Orden descendente</button>
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'asc' }); setOpen(null) }}>{col.tipo === 'num' ? '↑ Menor a mayor' : '↑ Orden ascendente'}</button>
+              <button style={itemMenu} onClick={() => { setOrden({ key: col.key, dir: 'desc' }); setOpen(null) }}>{col.tipo === 'num' ? '↓ Mayor a menor' : '↓ Orden descendente'}</button>
               {orden?.key && <button style={{ ...itemMenu, color: '#888780' }} onClick={() => { setOrden(null); setOpen(null) }}>↔ Quitar orden</button>}
             </div>
 
