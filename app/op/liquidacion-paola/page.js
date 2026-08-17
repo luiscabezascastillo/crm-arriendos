@@ -1,3 +1,7 @@
+// VERSION: v10 · 2026-08-17 · Columnas MANUALES editables en la tabla del mes (Multas/Deudas, Especial,
+//   Cantidad, Comentarios 1 y 2) que se GUARDAN en el CRM (liquidacion_paola) + botón "💾 Guardar mes en
+//   el CRM". Con esto Adalis trabaja aquí y deja el Excel (que se sigue exportando con el mismo formato).
+//   Lo editado se refleja en pantalla y en el Excel. Requiere route v8. Hereda v9.
 // VERSION: v9 · 2026-08-16 · Botón "Histórico / hojas" en la cabecera → /op/liquidacion-paola/historico
 //   (matriz A cobrar por idadmon × mes + RUT↔idadmon). Hereda v8.
 // VERSION: v8 · 2026-08-16 · Nota "A cobrar calculado en vivo" cuando el mes no está congelado (avisos.enVivo del
@@ -51,6 +55,8 @@ export default function LiquidacionPaolaPage() {
   const [generando, setGenerando] = useState(false)
   const [avisoExcel, setAvisoExcel] = useState(null)
   const [ayuda, setAyuda] = useState(false)
+  const [guardandoMes, setGuardandoMes] = useState(false)
+  const [avisoGuardado, setAvisoGuardado] = useState(null)
 
   useEffect(() => {
     const h = new Date()
@@ -166,6 +172,29 @@ export default function LiquidacionPaolaPage() {
     setGenerando(false)
   }
 
+  // Edición de las columnas manuales EN PANTALLA (Adalis deja el Excel). Actualiza lo que se ve
+  // (y por tanto lo que exporta el Excel) y lo guarda en el CRM (liquidacion_paola).
+  function actualizarManual(idadmon, campo, valor) {
+    setDatos(d => d ? { ...d, resultado: d.resultado.map(r => r.idadmon === idadmon ? { ...r, [campo]: valor } : r) } : d)
+  }
+  async function guardar(filas) {
+    if (!filas?.length) return
+    setGuardandoMes(true); setError(null); setAvisoGuardado(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'guardar', mes, filas }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setError(d.error || 'No se pudo guardar'); setGuardandoMes(false); return }
+      setAvisoGuardado(`Guardado en el CRM (${d.guardadas} fila${d.guardadas === 1 ? '' : 's'})`)
+      setTimeout(() => setAvisoGuardado(null), 2500)
+    } catch (e) { setError('Error de conexión al guardar: ' + e.message) }
+    setGuardandoMes(false)
+  }
+  const guardarMes = () => guardar(datos?.resultado || [])
+  const guardarFila = (r) => guardar([r])
+
   const badge = c => {
     const cfg = COLOR_CONFIANZA[c]
     if (!cfg) return <span style={{ fontSize: 11, color: 'var(--gray-300)' }}>—</span>
@@ -174,6 +203,7 @@ export default function LiquidacionPaolaPage() {
 
   const th = { padding: '9px 10px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' }
   const td = { padding: '8px 10px', fontSize: 12, color: 'var(--gray-800)', borderBottom: '1px solid var(--border-subtle)' }
+  const inpManual = { width: '100%', minWidth: 90, boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', fontSize: 11, fontFamily: 'inherit', background: '#fff' }
   const hayCartola = !!(archivoLocal || driveId)
   const cartolasDelMes = archivosDrive.filter(f => f.name.includes(`${mes}-Cartola`))
 
@@ -414,7 +444,18 @@ export default function LiquidacionPaolaPage() {
                 }}>
                 {generando ? 'Guardando…' : '☁ Guardar en Drive'}
               </button>
+              <button onClick={guardarMes} disabled={guardandoMes || !datos?.resultado?.length}
+                title="Guarda la liquidación del mes en el CRM (columnas manuales incluidas). Así no se pierde al salir."
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                  color: 'white', border: 'none', borderRadius: 8,
+                  background: guardandoMes ? 'var(--gray-300)' : '#6b4423',
+                  cursor: guardandoMes ? 'default' : 'pointer',
+                }}>
+                {guardandoMes ? 'Guardando…' : '💾 Guardar mes en el CRM'}
+              </button>
               {avisoExcel && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500 }}>✓ {avisoExcel}</span>}
+              {avisoGuardado && <span style={{ fontSize: 11, color: '#6b4423', fontWeight: 600 }}>✓ {avisoGuardado}</span>}
             </div>
 
             {datos.cartola && (
@@ -448,7 +489,8 @@ export default function LiquidacionPaolaPage() {
                   <thead>
                     <tr style={{ background: 'var(--gray-50)' }}>
                       {['', 'Est', 'IdAdmon', 'Propiedad', 'Comienzo', 'Termino', 'Arrendatario', 'RUT',
-                        'A Cobrar', 'Recibido', 'Falta', 'Fecha pago', 'G.Comunes', 'Luz', 'Agua', 'Conf.']
+                        'A Cobrar', 'Recibido', 'Falta', 'Fecha pago', 'G.Comunes', 'Luz', 'Agua', 'Conf.',
+                        'Multas/Deudas', 'Especial', 'Cantidad', 'Comentarios 1', 'Comentarios 2']
                         .map((h, i) => <th key={i} style={th}>{h}</th>)}
                     </tr>
                   </thead>
@@ -480,6 +522,32 @@ export default function LiquidacionPaolaPage() {
                           <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{num(r.deudaLuz)}</td>
                           <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{num(r.deudaAgua)}</td>
                           <td style={td}>{badge(r.confianza)}</td>
+                          {/* Columnas MANUALES — editables aquí y guardadas en el CRM (Adalis deja el Excel) */}
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input inputMode="numeric" value={r.multasDeudas ?? ''} placeholder="—"
+                              onChange={e => actualizarManual(r.idadmon, 'multasDeudas', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 84, textAlign: 'right' }} />
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input value={r.especial ?? ''} placeholder="—"
+                              onChange={e => actualizarManual(r.idadmon, 'especial', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 90 }} />
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input inputMode="numeric" value={r.cantidad ?? ''} placeholder="—"
+                              onChange={e => actualizarManual(r.idadmon, 'cantidad', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 84, textAlign: 'right' }} />
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input value={r.comentarios1 ?? ''} placeholder="—"
+                              onChange={e => actualizarManual(r.idadmon, 'comentarios1', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 220 }} />
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input value={r.comentarios2 ?? ''} placeholder="—"
+                              onChange={e => actualizarManual(r.idadmon, 'comentarios2', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 220 }} />
+                          </td>
                         </tr>
                         {abierta === r.idadmon && r.pagos?.map((p, j) => (
                           <tr key={`${r.idadmon}-${j}`} style={{ background: 'var(--gray-50)' }}>
@@ -490,7 +558,7 @@ export default function LiquidacionPaolaPage() {
                             <td style={{ ...td, fontSize: 11, color: 'var(--gray-400)' }}>{p.metodo}</td>
                             <td style={td}></td>
                             <td style={{ ...td, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>{num(p.monto)}</td>
-                            <td style={td} colSpan={6}></td>
+                            <td style={td} colSpan={11}></td>
                           </tr>
                         ))}
                       </Fragment>

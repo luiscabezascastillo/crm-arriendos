@@ -1,3 +1,10 @@
+// VERSION: v8 · 2026-08-17 · GUARDAR el mes en el CRM. (1) Acción "guardar": upsert de la liquidación del mes
+//   en liquidacion_paola por (mes, idadmon), con las columnas manuales (multas_deudas, especial, cantidad,
+//   comentarios_1/2) que ahora edita Adalis en la pantalla — así deja el Excel. Guarda también la foto
+//   (a_cobrar/recibido/falta/servicios) para que el mes en curso NO desaparezca. Candado: no escribe un mes
+//   congelado (paola_cierres.congelado). (2) FIX de formato de mes: liquidacion_paola y paola_cierres se
+//   guardan como 'AAAA-MM' (p.ej. 2026-08), NO AAMM; el overlay de columnas manuales leía con AAMM y nunca
+//   casaba. Nueva utilidad aYYYYMM(). liquidacion_idadmon sigue en AAMM (correcto). Hereda v7.
 // VERSION: v7 · 2026-08-16 · A COBRAR EN VIVO cuando el mes no está congelado. La foto liquidacion_idadmon solo
 //   existe tras cerrar el mes (día 23); antes está vacía y salían 0 filas con importe. Ahora, si no hay foto del
 //   mes, se calcula con el mismo RPC que CARTAS (calcular_liquidacion → base = A cobrar), filtrando a Paola (P001)
@@ -74,6 +81,16 @@ function aAamm(mes) {
   if (m) return m[1].slice(2) + m[2]
   throw new Error(`Mes no reconocido: "${mes}"`)
 }
+
+// paola_cierres y liquidacion_paola guardan el mes como 'AAAA-MM' (p.ej. 2026-08), NO como AAMM.
+function aYYYYMM(mes) {
+  const s = String(mes || '').trim()
+  if (/^\d{4}-\d{2}$/.test(s)) return s
+  const a = s.match(/^(\d{2})(\d{2})$/)
+  if (a) return '20' + a[1] + '-' + a[2]
+  throw new Error(`Mes no reconocido: "${mes}"`)
+}
+const txtOrNull = (v) => { const s = String(v ?? '').trim(); return s === '' ? null : s }
 
 function aNumero(v) {
   if (v === null || v === undefined || v === '') return null
@@ -256,6 +273,37 @@ export async function POST(request) {
       const { error } = await supabase.from('pagadores_idadmon').insert(fila)
       if (error && !String(error.message).includes('duplicate')) throw new Error(error.message)
       return NextResponse.json({ ok: true, guardado: fila })
+    }
+
+    // ── acción: GUARDAR la liquidación del mes en el CRM (upsert liquidacion_paola) ──
+    //   Persiste la foto del mes + las columnas manuales que edita Adalis, para que deje el Excel.
+    //   Clave única (mes, idadmon). No escribe un mes congelado.
+    if (body.accion === 'guardar') {
+      const { mes, filas, email } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      if (!Array.isArray(filas) || filas.length === 0) {
+        return NextResponse.json({ error: 'No hay filas que guardar: procesa la liquidación primero' }, { status: 400 })
+      }
+      const mesYM = aYYYYMM(mes)
+      const { data: cierre } = await supabase.from('paola_cierres').select('congelado').eq('mes', mesYM).maybeSingle()
+      if (cierre?.congelado) {
+        return NextResponse.json({ error: 'El mes está congelado: no se puede modificar.' }, { status: 409 })
+      }
+      const rows = filas.filter(f => f && f.idadmon).map(f => ({
+        mes: mesYM, idadmon: f.idadmon,
+        propiedad: txtOrNull(f.propiedad), arrendatario: txtOrNull(f.arrendatario), estado: txtOrNull(f.estado),
+        comienzo: f.comienzo || null, termino: f.termino || null, rut: txtOrNull(f.rut),
+        a_cobrar: aNumero(f.aCobrar), recibido: aNumero(f.recibido), falta_mes: aNumero(f.faltaMes),
+        fechas_pago: txtOrNull(f.fechaPago), confianza: txtOrNull(f.confianza),
+        detalle_pagos: Array.isArray(f.pagos) ? f.pagos : null,
+        deuda_ggcc: aNumero(f.deudaGgcc), deuda_luz: aNumero(f.deudaLuz), deuda_agua: aNumero(f.deudaAgua),
+        multas_deudas: aNumero(f.multasDeudas), especial: txtOrNull(f.especial), cantidad: aNumero(f.cantidad),
+        comentarios_1: txtOrNull(f.comentarios1), comentarios_2: txtOrNull(f.comentarios2),
+        origen: 'crm', generado_por: email || null, updated_at: new Date().toISOString(),
+      }))
+      const { error } = await supabase.from('liquidacion_paola').upsert(rows, { onConflict: 'mes,idadmon' })
+      if (error) throw new Error(error.message)
+      return NextResponse.json({ ok: true, guardadas: rows.length })
     }
 
     // ── acción: generar el Excel (y guardarlo en Drive si se pide) ──────────
@@ -486,7 +534,7 @@ export async function POST(request) {
       })
     }
 
-    const { data: guardado } = await supabase.from('liquidacion_paola').select('*').eq('mes', aamm)
+    const { data: guardado } = await supabase.from('liquidacion_paola').select('*').eq('mes', aYYYYMM(mes))
     const manualMap = {}
     for (const g of guardado || []) manualMap[g.idadmon] = g
 
