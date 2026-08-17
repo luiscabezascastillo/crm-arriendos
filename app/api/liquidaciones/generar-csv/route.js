@@ -1,4 +1,9 @@
 // RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v6 · 2026-08-17 · NUBOX FIX: FOLIO ya NO va vacio (Nubox lo exige: "Folio de documento es
+//   obligatorio"). Aunque se cargue con "Folios automatico", ese campo es un CORRELATIVO de documento
+//   dentro del archivo (1,2,3...) que Nubox usa para agrupar lineas; el folio real del SII lo asigna
+//   Nubox. Nuevo contador docNubox por documento (unico en el archivo, mezcle facturas y boletas);
+//   SECUENCIA sigue siendo la linea dentro del documento. Hereda v5.
 // VERSION: v5 · 2026-08-16 · NUBOX. formato='nubox' genera UN CSV de 20 columnas (Cargar Ventas
 //   desde Archivo) con FOLIO vacio -> Nubox numera (opcion "Folios automatico"). Factura (33) a
 //   precio NETO; boleta (39) a precio BRUTO (Admon+IVA, tomado de la propia liquidacion). Periodo
@@ -84,7 +89,8 @@ function filaCSV(obj) {
 }
 
 // 20 columnas del CSV de Nubox (Cargar Ventas desde Archivo), en orden.
-// FOLIO va vacio a proposito: en Nubox se carga con "Folios automatico" y el numera.
+// FOLIO = correlativo de documento (1,2,3...) que Nubox exige para agrupar lineas; con "Folios
+// automatico" Nubox asigna el folio real del SII. NO es el folio del SII ni puede ir vacio.
 const NUBOX_COLS = ['TIPO', 'FOLIO', 'SECUENCIA', 'FECHA', 'RUT', 'RAZONSOCIAL', 'GIRO', 'COMUNA', 'DIRECCION', 'AFECTO', 'PRODUCTO', 'DESCRIPCION', 'CANTIDAD', 'PRECIO', 'PORCENTDSCTO', 'EMAIL', 'TIPOSERVICIO', 'PERIODODESDE', 'PERIODOHASTA', 'FECHAVENCIMIENTO']
 function filaNubox(obj) {
   return NUBOX_COLS.map(c => obj[c] != null ? String(obj[c]) : '').join(';')
@@ -203,7 +209,7 @@ export async function POST(req) {
   const filasFactura = []   // TipoDte 33
   const filasBoleta = []    // TipoDte 39/41
   const filasNubox = []     // formato Nubox (20 col, 1 CSV)
-  let idFactura = 0, idBoleta = 0
+  let idFactura = 0, idBoleta = 0, docNubox = 0   // docNubox = correlativo de documento para el FOLIO de Nubox
   const resumen = { facturas: { propietarios: 0, docs: 0, lineas: 0 }, boletas: { propietarios: 0, docs: 0, lineas: 0 }, partidos: [] }
   const idpropsFacturados = []
 
@@ -247,6 +253,7 @@ export async function POST(req) {
     let idx = 0
     for (let g = 0; g < nGrupos; g++) {
       const id = esFactura ? (++idFactura) : (++idBoleta)
+      const folioNubox = ++docNubox   // un correlativo por documento, unico en el archivo
       const grupo = inmuebles.slice(idx, idx + tam[g]); idx += tam[g]
       let seq = 0
       for (const l of grupo) {
@@ -265,7 +272,7 @@ export async function POST(req) {
         if (esFactura) filasFactura.push(fila); else filasBoleta.push(fila)
         // Nubox (1 CSV de 20 col): factura precio NETO; boleta precio BRUTO (Admon+IVA).
         filasNubox.push(filaNubox({
-          TIPO: tipo, FOLIO: '', SECUENCIA: seq, FECHA: fecha,
+          TIPO: tipo, FOLIO: String(folioNubox), SECUENCIA: seq, FECHA: fecha,
           RUT: p.rut || '', RAZONSOCIAL: sinAcentos(`${idprop}-${p.propietario}`),
           GIRO: 'PROPIETARIO INMUEBLE', COMUNA: sinAcentos(p.comuna), DIRECCION: sinAcentos(p.direccion),
           AFECTO: 'SI', PRODUCTO: 'COMISION ADMINISTRACION',
