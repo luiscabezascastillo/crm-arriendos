@@ -1,3 +1,7 @@
+// VERSION: v9 · 2026-08-17 · (1) Acción "cargar_guardado": abre el mes ya guardado (liquidacion_paola) sin
+//   re-procesar la cartola, para que otra persona (Fabiola) revise/continúe lo de Adalis. (2) FIX servicios:
+//   se elige la fila de ggcc_agua_luz MÁS RECIENTE con clave de período numérica (AAMM/mes) — antes el orden
+//   por texto mezclaba '2608' y '2026-08' y podía coger una fila vieja sin GGCC → salía en blanco. Hereda v8.
 // VERSION: v8 · 2026-08-17 · GUARDAR el mes en el CRM (escritura con SERVICE_ROLE para que RLS no la bloquee
 //   en silencio). (1) Acción "guardar": upsert de la liquidación del mes
 //   en liquidacion_paola por (mes, idadmon), con las columnas manuales (multas_deudas, especial, cantidad,
@@ -97,6 +101,15 @@ function aYYYYMM(mes) {
   throw new Error(`Mes no reconocido: "${mes}"`)
 }
 const txtOrNull = (v) => { const s = String(v ?? '').trim(); return s === '' ? null : s }
+
+// Período de una fila de ggcc_agua_luz como número AAAAMM (para elegir la más reciente sin mezclar formatos).
+function periodoNum(s) {
+  const a = String(s?.aamm ?? '').replace(/[^\d]/g, '')
+  if (/^\d{4}$/.test(a)) return parseInt('20' + a, 10)            // '2608' -> 202608
+  const m = String(s?.mes ?? '').match(/^(\d{4})-?(\d{2})$/)
+  if (m) return parseInt(m[1] + m[2], 10)                          // '2026-08' -> 202608
+  return 0
+}
 
 function aNumero(v) {
   if (v === null || v === undefined || v === '') return null
@@ -312,6 +325,39 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, guardadas: rows.length })
     }
 
+    // ── acción: ABRIR el mes ya GUARDADO (sin re-procesar la cartola) ────────────
+    //   Para que otra persona (p.ej. Fabiola) entre a revisar/continuar lo que dejó Adalis.
+    if (body.accion === 'cargar_guardado') {
+      const { mes } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      const { data: g, error } = await admin.from('liquidacion_paola').select('*').eq('mes', aYYYYMM(mes))
+      if (error) throw new Error(error.message)
+      if (!g || !g.length) return NextResponse.json({ ok: true, vacio: true, mes: aYYYYMM(mes) })
+      const num = (v) => (v == null || v === '' ? null : Number(v))
+      const resultado = g.map(r => ({
+        idadmon: r.idadmon, estado: r.estado, propiedad: r.propiedad || '', comienzo: r.comienzo, termino: r.termino,
+        arrendatario: r.arrendatario || '', rut: r.rut || '', aCobrar: num(r.a_cobrar),
+        vacante: r.estado === 'P' || (!r.arrendatario && r.a_cobrar == null),
+        recibido: num(r.recibido), faltaMes: num(r.falta_mes), fechaPago: r.fechas_pago || null,
+        confianza: r.confianza || null, pagos: Array.isArray(r.detalle_pagos) ? r.detalle_pagos : [],
+        deudaGgcc: num(r.deuda_ggcc), deudaLuz: num(r.deuda_luz), deudaAgua: num(r.deuda_agua),
+        multasDeudas: num(r.multas_deudas), especial: r.especial ?? null, cantidad: num(r.cantidad),
+        comentarios1: r.comentarios_1 ?? null, comentarios2: r.comentarios_2 ?? null,
+      }))
+      resultado.sort((a, b) => ordenNatural(a.propiedad, b.propiedad))
+      const suma = (k) => resultado.reduce((s, r) => s + (Number(r[k]) || 0), 0)
+      return NextResponse.json({
+        ok: true, mes: aYYYYMM(mes), cargadoDeGuardado: true, cartola: null,
+        resultado, sinIdentificar: [], noEsRenta: [], movimientos: [], aprender: [], contratos: [],
+        resumen: {
+          totalFilas: resultado.length, conImporte: resultado.filter(r => r.aCobrar != null).length,
+          revisar: 0, sinIdentificar: 0, noEsRenta: 0,
+          totalACobrar: suma('aCobrar'), totalRecibido: suma('recibido'), totalNoEsRenta: 0,
+        },
+        avisos: { enVivo: false, guardado: true },
+      })
+    }
+
     // ── acción: generar el Excel (y guardarlo en Drive si se pide) ──────────
     if (body.accion === 'excel') {
       const { mes, filas, guardarEnDrive, sufijo, email } = body
@@ -422,10 +468,13 @@ export async function POST(request) {
       .from('ggcc_agua_luz')
       .select('idadmon, mes, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua')
       .in('idadmon', filas.map(f => f.idadmon))
+    // Nos quedamos con la fila de servicios MÁS RECIENTE de cada contrato. Clave de período NUMÉRICA
+    // (AAMM '2608' o mes '2026-08' → 202608) para no mezclar formatos: antes el orden por texto podía
+    // elegir una fila vieja sin GGCC y salía en blanco.
     const servMap = {}
     for (const s of serv || []) {
-      const clave = String(s.aamm || s.mes || '')
-      if (!servMap[s.idadmon] || clave > servMap[s.idadmon]._clave) servMap[s.idadmon] = { ...s, _clave: clave }
+      const k = periodoNum(s)
+      if (!servMap[s.idadmon] || k >= servMap[s.idadmon]._k) servMap[s.idadmon] = { ...s, _k: k }
     }
 
     // Cartola

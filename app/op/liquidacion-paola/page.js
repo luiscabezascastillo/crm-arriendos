@@ -1,3 +1,5 @@
+// VERSION: v13 · 2026-08-17 · Botón "📂 Abrir lo guardado" en la ventana inicial: carga el mes ya guardado
+//   (lo que dejó otra persona) sin re-procesar, para que Fabiola revise/continúe lo de Adalis. Requiere route v9.
 // VERSION: v12 · 2026-08-17 · Aviso al RE-PROCESAR: si ya hay una liquidación en pantalla, "Procesar" pide
 //   confirmación porque recalcular desde la cartola pisa lo tecleado sin guardar. Hereda v11.
 // VERSION: v11 · 2026-08-17 · Robustez de la edición del mes: (1) las columnas manuales se teclean en un
@@ -225,6 +227,23 @@ export default function LiquidacionPaolaPage() {
   const guardarMes = () => guardar(filasConEdits())
   const guardarFila = (r) => guardar([filaConEdits(r)])
 
+  // Abrir el mes YA GUARDADO (lo que dejó otra persona) sin re-procesar la cartola.
+  async function cargarGuardado() {
+    if (!mes) return
+    setProcesando(true); setError(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'cargar_guardado', mes }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setError(d.error || 'No se pudo abrir lo guardado') }
+      else if (d.vacio) { setError('No hay nada guardado de este mes todavía. Procesa la liquidación y pulsa «Guardar mes en el CRM».') }
+      else { setDatos(d); setTab('liquidacion'); setAbierta(null) }
+    } catch (e) { setError('Error de conexión: ' + e.message) }
+    setProcesando(false)
+  }
+
   const badge = c => {
     const cfg = COLOR_CONFIANZA[c]
     if (!cfg) return <span style={{ fontSize: 11, color: 'var(--gray-300)' }}>—</span>
@@ -417,6 +436,15 @@ export default function LiquidacionPaolaPage() {
                 border: 'none', borderRadius: 8, cursor: (!mes || procesando) ? 'default' : 'pointer', fontFamily: 'inherit',
               }}>
               {procesando ? 'Procesando…' : '⚡ Procesar liquidación'}
+            </button>
+            <button onClick={cargarGuardado} disabled={!mes || procesando}
+              title="Abrir lo que ya está guardado de este mes (lo que dejó preparado otra persona), sin recalcular la cartola"
+              style={{
+                padding: '10px 18px', fontSize: 13, fontWeight: 600, color: '#6b4423',
+                background: '#fff', border: '1px solid #6b4423', borderRadius: 8,
+                cursor: (!mes || procesando) ? 'default' : 'pointer', fontFamily: 'inherit', opacity: (!mes || procesando) ? 0.5 : 1,
+              }}>
+              📂 Abrir lo guardado
             </button>
             {!hayCartola && <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>Sin cartola se genera igual, pero sin la columna Recibido.</span>}
             {error && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 500 }}>❌ {error}</span>}
