@@ -1,4 +1,7 @@
 // RUTA: app/procesos/financiero/tarjeta/page.js
+// VERSION: v2 · 2026-08-17 · Filtros tipo Excel en TODAS las columnas (mismo componente que BI, en app/lib/filtroBI):
+//   texto (orden A→Z/Z→A + casillas por valor + buscador), numérico en "Cargo del mes" (rango/valor exacto) y árbol de
+//   fechas (Año › Mes › Día) en Fecha. Filtra y ordena en memoria; los totales del pie reflejan lo filtrado. Hereda v1.
 // VERSION: v1 · 2026-08-16 · Tarjeta de crédito Santander (…2494, cuenta 2105-18 propuesta). Arrastra
 //   el PDF del estado de cuenta mensual y se cargan los movimientos (dedup por id_transaccion, así una
 //   compra en cuotas no se duplica entre meses). Tabla con CCB, Cuenta contable y Comentario editables
@@ -12,6 +15,7 @@ import { useEffect, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import { parseTarjetaCredito } from '@/app/lib/parseTarjetaCredito'
+import { ColFilterExcel } from '@/app/lib/filtroBI'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB = ['', 'CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -33,6 +37,10 @@ export default function TarjetaPage() {
   const [resumen, setResumen] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef(null)
+  // Filtros tipo Excel (mismo motor que BI)
+  const [sortCol, setSortCol] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
+  const [filtros, setFiltros] = useState({})   // colKey -> array (texto/fecha) | { min,max,igual } (num)
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -80,8 +88,63 @@ export default function TarjetaPage() {
 
   if (status === 'loading') return (<><TopNav /><div style={{ padding: 60, textAlign: 'center', color: '#888' }}>Cargando…</div></>)
   const inp = { fontSize: 12, padding: '5px 7px', borderRadius: 6, border: '0.5px solid #E0DED6', boxSizing: 'border-box', width: '100%', background: canEdit ? '#fff' : '#F7F6F2' }
-  const compras = rows.reduce((a, m) => a + (Number(m.monto) > 0 ? Number(m.monto) : 0), 0)
-  const pagos = rows.reduce((a, m) => a + (Number(m.monto) < 0 ? Number(m.monto) : 0), 0)
+
+  // ── Filtros tipo Excel: modelo de columnas + derivación en memoria ──
+  const COLS = [
+    { key: 'periodo', label: 'Período', tipo: 'texto', align: 'left', txt: m => fmtPeriodo(m.periodo) },
+    { key: 'fecha', label: 'Fecha', tipo: 'fecha', align: 'left', txt: m => fmtFecha(m.fecha), sortv: m => String(m.fecha || '') },
+    { key: 'lugar', label: 'Lugar', tipo: 'texto', align: 'left', txt: m => m.lugar || '' },
+    { key: 'descripcion', label: 'Comercio', tipo: 'texto', align: 'left', txt: m => m.descripcion || '' },
+    { key: 'n_cuota', label: 'Cuota', tipo: 'texto', align: 'center', txt: m => String(m.n_cuota || '') },
+    { key: 'moneda', label: 'Moneda', tipo: 'texto', align: 'left', txt: m => m.moneda || '' },
+    { key: 'monto', label: 'Cargo del mes', tipo: 'num', align: 'right', num: m => Number(m.monto) || 0 },
+    { key: 'ccb', label: 'CCB', tipo: 'texto', align: 'left', txt: m => m.ccb || '' },
+    { key: 'cuenta_contable', label: 'Cuenta contable', tipo: 'texto', align: 'left', txt: m => m.cuenta_contable || '' },
+    { key: 'comentario', label: 'Comentario', tipo: 'texto', align: 'left', txt: m => m.comentario || '' },
+  ]
+  const opcionesDe = (c) => {
+    if (c.tipo === 'num') return undefined
+    const arr = [...new Set(rows.map(m => c.txt(m)))]
+    if (c.tipo === 'fecha') return arr.filter(Boolean)   // el árbol agrupa por dd/mm/aaaa
+    return arr.sort((a, b) => String(a).localeCompare(String(b), 'es'))
+  }
+  const pasaFiltro = (m, c, val) => {
+    if (val == null) return true
+    if (c.tipo === 'num') {
+      const n = c.num(m)
+      if (val.igual != null) return n === val.igual
+      if (val.min != null && n < val.min) return false
+      if (val.max != null && n > val.max) return false
+      return true
+    }
+    if (Array.isArray(val) && val.length) return val.includes(c.txt(m))
+    return true
+  }
+  const onSort = (colKey, dir) => { setSortCol(colKey); setSortDir(dir) }
+  const onApply = (colKey, val) => setFiltros(f => {
+    const n = { ...f }
+    const vacio = val == null
+      || (Array.isArray(val) && val.length === 0)
+      || (typeof val === 'object' && !Array.isArray(val) && val.igual == null && val.min == null && val.max == null)
+    if (vacio) delete n[colKey]; else n[colKey] = val
+    return n
+  })
+  const limpiarFiltros = () => { setFiltros({}); setSortCol(null) }
+  let visibles = rows.filter(m => COLS.every(c => pasaFiltro(m, c, filtros[c.key])))
+  if (sortCol) {
+    const c = COLS.find(x => x.key === sortCol)
+    if (c) {
+      const dir = sortDir === 'desc' ? -1 : 1
+      visibles = [...visibles].sort((a, b) => {
+        if (c.tipo === 'num') return (c.num(a) - c.num(b)) * dir
+        const va = c.sortv ? c.sortv(a) : c.txt(a); const vb = c.sortv ? c.sortv(b) : c.txt(b)
+        return String(va).localeCompare(String(vb), 'es') * dir
+      })
+    }
+  }
+  const hayFiltro = !!sortCol || Object.keys(filtros).length > 0
+  const compras = visibles.reduce((a, m) => a + (Number(m.monto) > 0 ? Number(m.monto) : 0), 0)
+  const pagos = visibles.reduce((a, m) => a + (Number(m.monto) < 0 ? Number(m.monto) : 0), 0)
 
   return (
     <>
@@ -128,15 +191,24 @@ export default function TarjetaPage() {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, minWidth: 1180 }}>
             <thead>
               <tr style={{ background: '#F1EFE9', color: '#888780' }}>
-                {['Período', 'Fecha', 'Lugar', 'Comercio', 'Cuota', 'Moneda', 'Cargo del mes', 'CCB', 'Cuenta contable', 'Comentario'].map((h, i) => (
-                  <th key={i} style={{ padding: '9px 10px', fontWeight: 600, textAlign: i === 6 ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                {COLS.map(c => (
+                  <th key={c.key} style={{ padding: '9px 10px', fontWeight: 600, textAlign: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'), whiteSpace: 'nowrap' }}>
+                    <ColFilterExcel
+                      label={c.label} col={c.key}
+                      sortCol={sortCol} sortDir={sortDir} onSort={onSort}
+                      value={filtros[c.key]} onApply={onApply}
+                      opciones={opcionesDe(c)}
+                      numeric={c.tipo === 'num'} tree={c.tipo === 'fecha'}
+                      align={c.align === 'right' ? 'right' : 'left'} />
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {cargando ? <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Cargando…</td></tr>
                 : rows.length === 0 ? <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Aún no hay movimientos. Arrastra el PDF del estado de cuenta.</td></tr>
-                  : rows.map(m => (
+                  : visibles.length === 0 ? <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Sin resultados con los filtros aplicados.</td></tr>
+                  : visibles.map(m => (
                     <tr key={m.id} style={{ borderTop: '0.5px solid #F0EFEA' }}>
                       <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#888780' }}>{fmtPeriodo(m.periodo)}</td>
                       <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#5A5954' }}>{fmtFecha(m.fecha)}</td>
@@ -170,7 +242,7 @@ export default function TarjetaPage() {
             {rows.length > 0 && (
               <tfoot>
                 <tr style={{ borderTop: '1px solid #E0DED6', background: '#F7F6F2', fontWeight: 700 }}>
-                  <td colSpan={6} style={{ padding: '8px 10px' }}>Total ({rows.length} mov.) · compras {clp(compras)} · pagos/NC {clp(pagos)}</td>
+                  <td colSpan={6} style={{ padding: '8px 10px' }}>Total ({visibles.length}{hayFiltro ? ' de ' + rows.length : ''} mov.) · compras {clp(compras)} · pagos/NC {clp(pagos)}{hayFiltro ? <button onClick={limpiarFiltros} style={{ marginLeft: 12, fontSize: 11, padding: '3px 9px', borderRadius: 6, border: '1px solid #E0DED6', background: '#fff', color: '#8a6d3b', cursor: 'pointer', fontWeight: 600 }}>✕ Limpiar filtros</button> : null}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(compras + pagos)}</td>
                   <td colSpan={3} />
                 </tr>
