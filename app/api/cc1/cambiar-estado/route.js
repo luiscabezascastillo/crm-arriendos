@@ -1,3 +1,6 @@
+// VERSION: v8 · 2026-08-17 · Al crear el expediente de término (S→Q) se SIEMBRAN también las 6 tareas del workflow
+//   desde la plantilla workflow_nodes (T1 ACTIVO + T2..T6 PENDIENTE, responsable = area_responsable). Antes el
+//   circuito creaba la instancia pero no las tareas, y esos términos salían "sin expediente". Hereda v7.
 // VERSION: v7 · 2026-08-14 · Nuevos sub-estados de término Q-Auditado y Q-Reclamado (Q → Q-Auditado / Q-Reclamado).
 //   Acción SENSIBLE: solo Dirección + Karina (cap.puedeAuditarTermino), sin exigir rol en Gestión LOG. Solo desde
 //   un término en Q (o alternando entre los dos sub-estados). Escribe en datos_arriendos.estado y registra en
@@ -317,7 +320,43 @@ export async function POST(req) {
           }])
           .select('id')
           .single()
-        if (!eInst && inst) workflowCreado = inst.id
+        if (!eInst && inst) {
+          workflowCreado = inst.id
+          // ── Sembrar las 6 tareas del expediente desde la plantilla workflow_nodes ──
+          // Mismo molde que ya existía: la primera etapa (menor orden_visual) queda ACTIVO con
+          // fecha_inicio y fecha_limite (+2 días); el resto PENDIENTE. responsable = area_responsable.
+          // Antes el circuito creaba la instancia pero NO las tareas, y esos términos salían "sin
+          // expediente". Con esto queda completo de una sola vez.
+          try {
+            const { data: nodos } = await supabaseAdmin
+              .from('workflow_nodes')
+              .select('codigo, area_responsable, orden_visual')
+              .eq('workflow_codigo', 'TERMINO')
+              .order('orden_visual', { ascending: true })
+            if (nodos && nodos.length) {
+              const minOv = Math.min(...nodos.map(n => Number(n.orden_visual)))
+              const ahora = new Date().toISOString()
+              const limite = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+              const tareas = nodos.map(n => {
+                const activa = Number(n.orden_visual) === minOv
+                return {
+                  workflow_instance_id: inst.id,
+                  node_codigo: n.codigo,
+                  estado: activa ? 'ACTIVO' : 'PENDIENTE',
+                  responsable: n.area_responsable,
+                  fecha_inicio: activa ? ahora : null,
+                  fecha_limite: activa ? limite : null,
+                  fecha_cierre: null,
+                  comentarios: null,
+                  created_at: ahora,
+                }
+              })
+              await supabaseAdmin.from('workflow_tasks').insert(tareas)
+            }
+          } catch (e2) {
+            // No abortamos el cambio de estado: la instancia queda creada y las tareas se pueden sembrar luego.
+          }
+        }
       }
     } catch (err) {
       // No abortamos: el expediente puede crearse luego. Se reporta abajo.
