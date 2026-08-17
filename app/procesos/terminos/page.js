@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v51 · 2026-08-16 · El panel "Urgentes ≤45 días" se puede OCULTAR/mostrar (clic en su cabecera): abierto por
+//   defecto, colapsable tras leerlo. Incluye además el freeze de presupuesto de v50. Hereda v50.
+// VERSION: v50 · 2026-08-16 · FREEZE del envío de presupuesto: si el presupuesto de este término está pendiente de que
+//   Karina acepte el markup (presupuestos.aprobacion_estado='pendiente' y en_termino), el botón "Enviar Presupuesto" se
+//   bloquea para todos (incl. Adalis/Fabiola). Se desbloquea al aceptar el markup en Presupuestos. Hereda v49.
 // VERSION: v49 · 2026-08-16 · Panel "Urgentes · término hace ≤ 45 días" fijo en la lista de Términos: reúne los Q /
 //   Q-Auditado / Q-Reclamado entregados hace ≤45 días, ordenados por antigüedad, con días, resultado, garantía (quién),
 //   avisos aval/propietario (de cobranza_gestiones) y la próxima acción. Clic en la fila abre el término. La lista de
@@ -331,6 +336,8 @@ export default function TerminosPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
+  const [presuPendiente, setPresuPendiente] = useState(false)   // presupuesto de término pendiente de que Karina acepte el markup
+  const [urgAbierto, setUrgAbierto] = useState(true)   // panel "Urgentes": abierto por defecto, se puede ocultar tras leerlo
   const [pdfTermGen, setPdfTermGen] = useState(false)   // generando el PDF profesional del término
   const [testTo, setTestTo] = useState('')              // dirección para envíos de PRUEBA (por defecto, la del usuario)
   const [completandoWf, setCompletandoWf] = useState(false)
@@ -475,7 +482,7 @@ export default function TerminosPage() {
     const [arrRes, descRes, presRes, termRes, linRes, instRes, ggccRes, cuentasRes, cargoRes] = await Promise.all([
       supabase.from('datos_arriendos').select('*').eq('idadmon', idadmon).limit(1),
       supabase.from('descuentos').select('id, num, fecha, tipo, repercutir_a, monto_a_imputar, texto_explicativo_para_carta_a_propietario').eq('idadmon', idadmon).like('repercutir_a', 'T-%'),
-      supabase.from('presupuestos').select('id, numero, fecha, neto, iva, total, descripcion').eq('id_admon_new', idadmon),
+      supabase.from('presupuestos').select('id, numero, fecha, neto, iva, total, descripcion, en_termino, aprobacion_estado').eq('id_admon_new', idadmon),
       supabase.from('terminos').select('*').eq('idadmon', idadmon).limit(1),
       supabase.from('termino_lineas').select('*').eq('idadmon', idadmon).order('orden'),
       supabase.from('workflow_instances').select('id').eq('idadmon', idadmon).eq('workflow_codigo', 'TERMINO').limit(1),
@@ -485,6 +492,9 @@ export default function TerminosPage() {
       // descuentos con idadmon_relacionado = este término y repercutir_a = PROPIETARIO.
       supabase.from('descuentos').select('num, mes_a_imputar, monto_a_imputar, idadmon, tipo, texto_explicativo_para_carta_a_propietario').eq('idadmon_relacionado', idadmon).eq('repercutir_a', 'PROPIETARIO'),
     ])
+    // ¿Hay un presupuesto de ESTE término pendiente de que Karina acepte el markup? → congela el envío.
+    const _presu = (presRes && presRes.data) || []
+    setPresuPendiente(_presu.some(x => x.en_termino === true && String(x.aprobacion_estado) === 'pendiente'))
     const cargosProp = ((cargoRes && cargoRes.data) || [])
       .filter(r => String(r.mes_a_imputar || '') !== '----MES')
       .map(r => ({ num: r.num, monto: n0(r.monto_a_imputar), idadmon: r.idadmon, mes: r.mes_a_imputar, tipo: r.tipo, texto: r.texto_explicativo_para_carta_a_propietario || '' }))
@@ -688,6 +698,11 @@ export default function TerminosPage() {
   // Gate real en el endpoint (solo Karina + Dirección); aquí se refuerza con puedeVerMarkup.
   async function generarYEnviarPresupuesto() {
     if (!puedeTerminoDocs) return
+    // FREEZE: si el presupuesto del término está pendiente de que Karina acepte el markup, no se envía.
+    if (presuPendiente) {
+      setMsg({ tipo: 'error', txt: 'El presupuesto de este término está pendiente de que Karina acepte el markup. No se puede enviar al propietario hasta entonces (revísalo en Presupuestos).' })
+      return
+    }
     setPresuGen(true); setMsg(null)
     try {
       const res = await fetch('/api/terminos/generar-presupuesto-pdf', {
@@ -917,11 +932,15 @@ export default function TerminosPage() {
             <>
               {urgentes.length > 0 && (
                 <div style={{ border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-                  <div style={{ background: '#FFFBEB', padding: '10px 14px', borderBottom: '1px solid #FDE68A', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                  <div onClick={() => setUrgAbierto(v => !v)}
+                    title={urgAbierto ? 'Ocultar el panel' : 'Mostrar el panel'}
+                    style={{ background: '#FFFBEB', padding: '10px 14px', borderBottom: urgAbierto ? '1px solid #FDE68A' : 'none', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: '#92400E' }}>{urgAbierto ? '▾' : '▸'}</span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: '#92400E' }}>⏱ Urgentes · término hace ≤ 45 días</span>
-                    <span style={{ fontSize: 12, color: '#B45309' }}>{urgentes.length} término{urgentes.length === 1 ? '' : 's'} · el reloj legal corre desde la entrega. Orden: auditar (Karina) → reclamar aval si queda deuda → avisar propietario → liquidar garantía → cerrar.</span>
+                    <span style={{ fontSize: 12, color: '#B45309' }}>{urgentes.length} término{urgentes.length === 1 ? '' : 's'}{urgAbierto ? ' · el reloj legal corre desde la entrega. Orden: auditar (Karina) → reclamar aval si queda deuda → avisar propietario → liquidar garantía → cerrar.' : ''}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 11, color: '#B45309', textDecoration: 'underline' }}>{urgAbierto ? 'ocultar' : 'mostrar'}</span>
                   </div>
-                  <div style={{ overflowX: 'auto' }}>
+                  {urgAbierto && (<div style={{ overflowX: 'auto' }}>
                     <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1100, fontSize: 12 }}>
                       <thead>
                         <tr>
@@ -957,7 +976,7 @@ export default function TerminosPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </div>)}
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
@@ -1239,9 +1258,9 @@ export default function TerminosPage() {
             <span style={{ fontSize: 13, color: '#666' }}>{A?.inmueble || '—'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen}
-              title={puedeTerminoDocs ? 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo' : 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos'}
-              style={btn('#7c3aed', !puedeTerminoDocs || presuGen)}>{presuGen ? 'Generando…' : 'Enviar Presupuesto'}</button>
+            <button onClick={puedeTerminoDocs ? generarYEnviarPresupuesto : undefined} disabled={!puedeTerminoDocs || presuGen || presuPendiente}
+              title={!puedeTerminoDocs ? 'Solo Dirección, Karina, Adalis y Fabiola pueden generar/enviar presupuestos' : (presuPendiente ? 'Bloqueado: el presupuesto está pendiente de que Karina acepte el markup' : 'Genera el PDF del presupuesto (descargable) y abre el email para enviarlo')}
+              style={btn('#7c3aed', !puedeTerminoDocs || presuGen || presuPendiente)}>{presuGen ? 'Generando…' : (presuPendiente ? 'Presupuesto pendiente ⛔' : 'Enviar Presupuesto')}</button>
             <button onClick={puedeTerminoDocs ? () => abrirPdfYEmail('arrendatario') : undefined} disabled={!puedeTerminoDocs || pdfTermGen}
               title={puedeTerminoDocs ? 'Abre el correo del ARRENDATARIO (editable, con CC/CCO) y el PDF de su liquidación adjunto; púlsalo en "Ver PDF" para revisarlo antes de enviar' : 'Solo Dirección, Karina, Adalis y Fabiola'}
               style={btn('#0891b2', !puedeTerminoDocs || pdfTermGen)}>{pdfTermGen ? '…' : '🧾 PDF/EMAIL Arrendatario'}</button>
