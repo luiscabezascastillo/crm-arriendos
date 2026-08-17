@@ -1,4 +1,9 @@
 // app/api/bi/movimientos/route.js
+// VERSION: v5 · 2026-08-17 · Se AÑADE `comentarios` a la lista blanca de columnas editables: la celda COMENTARIOS
+//   se pintaba editable en la pantalla pero el PATCH la rechazaba ("Columna no editable: comentarios"), así que
+//   Karina tecleaba y NO se guardaba. Regla acordada: de REG hacia la derecha (UNIQUE CONCEPT, COMENTARIOS,
+//   LIQ. MES2) todo editable por Dirección/Karina; REG y lo de su izquierda (importes, saldo, fecha) siguen
+//   solo-lectura. Hereda v4.
 // VERSION: v4 · 2026-08-15 · El PATCH de UNIQUE_CONCEPT gestiona también el caso "se PIERDE el IDADMON": si el valor
 //   pasa de un IDADMON válido a texto libre o vacío, se ELIMINA la línea réplica en `cuentas` (helper quitarDeCuentas:
 //   borra la fila calif=reg con comentarios='BI'). Esa línea de cuentas es solo una réplica del BI bajo un contrato:
@@ -25,6 +30,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 // no reabre por la puerta de atrás lo que RLS cierra (no se puede tocar cargos, saldos, fecha…).
 const COLUMNAS_EDITABLES = new Set([
   'unique_concept',
+  'comentarios',          // v5: de REG a la derecha, Karina/Dirección rellenan los huecos (obligación de identificación)
   'idadmon2',
   'discriminador',
   'check2_pasar_a_cartola',
