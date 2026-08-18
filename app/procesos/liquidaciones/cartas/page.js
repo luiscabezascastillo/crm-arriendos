@@ -1,3 +1,7 @@
+// VERSION: v17 · 2026-08-18 · El banner "NUEVO ABONO RECIBIDO" ahora lo alimenta el endpoint /retener (avisosAbono):
+//   se mantiene desde que entra el pago, SOBREVIVE al "Liberar", y se apaga cuando se envía la carta DESPUÉS de
+//   liberar (post-morosidad). Chips por propietario. Se añade en cabecera el registro "N propietarios con morosos
+//   por cobrar" (morososPorCobrar). Hereda v16.
 // VERSION: v16 · 2026-08-18 · AVISO SUPERIOR de abonos de morosos: cuando una línea EN ESPERA ya recibió el pago
 //   (mismo criterio que pone verde la línea abajo: desvío < umbral), se muestra arriba de la hoja un banner verde
 //   FLASHEANTE "NUEVO ABONO RECIBIDO" con los propietarios afectados (clic = salta a su bloque). No cambia la
@@ -149,6 +153,8 @@ export default function CartasPage() {
   const [saldoBusy, setSaldoBusy] = useState(null)
   const [retenidos, setRetenidos] = useState({})   // idadmon -> true (línea en espera este mes)
   const [retBusy, setRetBusy] = useState(null)
+  const [avisosAbono, setAvisosAbono] = useState([])   // morosos ya cobrados pendientes de carta (banner superior)
+  const [morososPorCobrar, setMorososPorCobrar] = useState(0)   // nº propietarios con morosos aún sin cobrar
   const [compl, setCompl] = useState({})           // idadmon -> candidato de complementaria (del endpoint)
   const [complBusy, setComplBusy] = useState(null)
   const [editCap, setEditCap] = useState(null)     // idadmon cuyo texto de captación (P) se está editando
@@ -206,6 +212,8 @@ export default function CartasPage() {
       const map = {}
       for (const s of (d.retenidos || [])) if (s.idadmon) map[s.idadmon] = true
       setRetenidos(map)
+      setAvisosAbono(Array.isArray(d.avisosAbono) ? d.avisosAbono : [])
+      setMorososPorCobrar(n0(d.morososPorCobrar))
     } catch { /* silencioso */ }
   }
 
@@ -651,21 +659,11 @@ export default function CartasPage() {
   const nNoEnviadas = bloques.filter(b => !estaEnviada(b)).length
   const visibles = soloNoEnviadas ? bloques.filter(b => !estaEnviada(b)) : bloques
 
-  // Aviso superior "NUEVO ABONO RECIBIDO": líneas EN ESPERA cuyo arrendatario YA pagó (desvío < umbral).
-  // Mismo criterio que pone verde la línea abajo (💰 ya se recibió el pago — listo para transferir).
-  // Se calcula sobre TODOS los bloques (no solo los visibles) para que el aviso no dependa del filtro.
-  const abonosNuevos = []
-  for (const b of bloques) {
-    if (b.idprop === IDPROP_PAOLA) continue
-    for (const x of (b.inmuebles || [])) {
-      if (x.esP || x.esProp) continue
-      if (String(x.por || 'FCR').trim().toUpperCase() !== 'FCR') continue
-      if (!retenidos[x.idadmon]) continue
-      const renta = n0(x.aCobrar)
-      const falta = Math.max(0, renta - n0(x.recibido))
-      if (renta > 0 && falta < UMBRAL_MOROSO) abonosNuevos.push({ idprop: b.idprop, propietario: b.propietario, idadmon: x.idadmon, inmueble: x.inmueble })
-    }
-  }
+  // Aviso superior "NUEVO ABONO RECIBIDO": lo calcula el endpoint /retener (avisosAbono). Incluye morosos EN ESPERA
+  // ya cobrados Y morosos ya LIBERADOS cuya carta post-morosidad aún no se ha enviado. Se mantiene hasta enviar la
+  // carta tras liberar. Chips únicos por propietario (puede haber más de un arriendo por propietario).
+  const abonosNuevos = avisosAbono
+  const abonosProps = [...new Map((avisosAbono || []).map(a => [a.idprop, a])).values()]
 
   return (
     <>
@@ -731,6 +729,12 @@ export default function CartasPage() {
               {cargaLoading ? 'Preparando…' : '📥 Cargar cargos del mes a Cuentas'}
             </button>
           )}
+          {morososPorCobrar > 0 && (
+            <span title="Propietarios con al menos un arriendo en espera cuyo arrendatario todavía no ha pagado"
+              style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, border: '1px solid #FCD34D', background: '#FEF3C7', color: '#92400E', whiteSpace: 'nowrap' }}>
+              ⏳ {morososPorCobrar} propietario(s) con morosos por cobrar
+            </span>
+          )}
         </div>
 
         {abonosNuevos.length > 0 && (
@@ -741,14 +745,14 @@ export default function CartasPage() {
               <span style={{ fontWeight: 800, color: '#166534', fontSize: 14, letterSpacing: '0.03em' }}>NUEVO ABONO RECIBIDO</span>
               <span style={{ fontSize: 13, color: '#166534' }}>
                 {abonosNuevos.length === 1
-                  ? '1 arriendo en espera ya se cobró y está listo para transferir:'
-                  : `${abonosNuevos.length} arriendos en espera ya se cobraron y están listos para transferir:`}
+                  ? '1 arriendo de un moroso ya se cobró — pendiente de liberar/transferir y enviar la carta:'
+                  : `${abonosNuevos.length} arriendos de morosos ya se cobraron — pendientes de liberar/transferir y enviar la carta:`}
               </span>
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {abonosNuevos.map(a => (
-                  <button key={a.idadmon}
+                {abonosProps.map(a => (
+                  <button key={a.idprop || a.idadmon}
                     onClick={() => { const el = typeof document !== 'undefined' && document.getElementById('liq-' + a.idprop); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
-                    title={`Ir a ${a.propietario || a.idprop} · ${a.inmueble || a.idadmon}`}
+                    title={`Ir a ${a.propietario || a.idprop}`}
                     style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, border: '1px solid #16A34A', background: '#fff', color: '#166534', cursor: 'pointer' }}>
                     {(a.propietario ? String(a.propietario).split(',')[0] : a.idadmon)} ↦
                   </button>

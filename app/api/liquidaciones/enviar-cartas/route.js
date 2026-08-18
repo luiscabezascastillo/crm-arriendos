@@ -1,3 +1,7 @@
+// VERSION: v5 · 2026-08-18 · ARCHIVO POST-MOROSIDAD. Si el propietario tiene un moroso LIBERADO y ya cobrado este mes,
+//   la carta enviada se archiva en Drive con el sufijo "-POST MOROSIDAD" (no machaca la antigua ni la deja como "-2").
+//   Detección automática vía calcular_liquidacion(mes) + liquidacion_retenidos (liberado_at, dinero dentro). El correo
+//   al propietario mantiene el nombre estándar; solo cambia el nombre archivado. Hereda v4.
 // VERSION: v4 · 2026-08-07 · CANDADO ANTI-REENVÍO REAL. Una carta que YA tiene fecha_envio este mes se OMITE (no se
 //   reenvía) salvo que su idprop venga en el array `reenviar` (reenvío explícito y confirmado desde la pantalla). Antes
 //   el candado era solo informativo y, si la carta quedaba seleccionada (p. ej. tras un timeout 504), se reenviaba y
@@ -70,6 +74,28 @@ export async function POST(req) {
   const fechaTxt = fecha || new Date().toLocaleDateString('es-CL')
   const results = []
 
+  // ── Detección POST-MOROSIDAD (para el nombre archivado en Drive) ──────────────────
+  // idadmones con un moroso LIBERADO este mes cuyo dinero YA entró (renta − recibido < 50.000).
+  // Los justificados como incobrables NO cuentan (no están "cobrados"). Se calcula una sola vez.
+  const UMBRAL_MOROSO = 50000
+  const liberadosCobrados = new Set()
+  try {
+    const motor = {}
+    const { data: mrows } = await admin.rpc('calcular_liquidacion', { p_mes: mes })
+    for (const r of (mrows || [])) {
+      const id = String(r.idadmon || '').trim(); if (!id) continue
+      const p = motor[id] || { renta: 0, recibido: 0 }
+      p.renta += Number(r.base) || 0; p.recibido += Number(r.recibido_banco) || 0
+      motor[id] = p
+    }
+    const { data: lrows } = await admin.from('liquidacion_retenidos').select('idadmon, retenido, liberado_at').eq('mes', mes)
+    for (const lr of (lrows || [])) {
+      if (lr.retenido || !lr.liberado_at) continue
+      const id = String(lr.idadmon || '').trim(); const m = motor[id]
+      if (m && m.renta > 0 && (m.renta - m.recibido) < UMBRAL_MOROSO) liberadosCobrados.add(id)
+    }
+  } catch { /* si falla la detección, se archiva con el nombre estándar */ }
+
   for (const e of envios) {
     const idprop = e?.idprop
     const bloque = e?.bloque
@@ -134,7 +160,11 @@ ${(despedida || 'Desde Fondo Capital Rent SpA le deseamos un feliz mes. Atentame
       // (mismo nombre que el convenio; reenvíos -> -2, -3). No bloquea el envío si falla.
       let driveInfo = { fileId: null, url: null }
       try {
-        const nombreBase = `LIQUIDACION-${mes}-${idprop}-${nombre}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+        // POST-MOROSIDAD: si el propietario tiene un moroso liberado y cobrado este mes, distingue el archivo.
+        const bloqueIds = (bloque?.inmuebles || []).map(x => String(x?.idadmon || '').trim()).filter(Boolean)
+        const postMorosidad = bloqueIds.some(id => liberadosCobrados.has(id))
+        const sufijo = postMorosidad ? '-POST MOROSIDAD' : ''
+        const nombreBase = `LIQUIDACION-${mes}-${idprop}-${nombre}${sufijo}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
         driveInfo = await archivarCartaEnDrive({ aamm: mes, nombreBase, pdfBytes })
       } catch (eDrive) {
         driveInfo = { fileId: null, url: null, error: (eDrive?.message || 'drive_error').slice(0, 200) }

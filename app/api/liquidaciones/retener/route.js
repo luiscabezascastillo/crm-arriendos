@@ -1,3 +1,7 @@
+// VERSION: v3 · 2026-08-18 · GET devuelve además `avisosAbono` (banner "NUEVO ABONO RECIBIDO": morosos en espera ya
+//   cobrados + morosos ya LIBERADOS cuya carta post-morosidad aún no se ha enviado — se compara fecha_envio del mes
+//   con liberado_at) y `morososPorCobrar` (nº de propietarios con morosos aún sin cobrar, para la cabecera). No
+//   cambia el POST ni la semántica de retener/liberar/justificar. Hereda v2.
 // VERSION: v2 · 2026-08-07 · app/api/liquidaciones/retener/route.js · "cobrado" con umbral 50.000 + acción 'justificar'.
 // VERSION: v1 · 2026-08-07 · app/api/liquidaciones/retener/route.js
 //   "Dejar en espera" un IDADMON dentro de la liquidación de un propietario: cuando el arrendatario de ESE inmueble
@@ -58,15 +62,17 @@ export async function GET(req) {
   if (!/^\d{4}$/.test(mes)) return Response.json({ error: 'Mes inválido (AAMM)' }, { status: 400 })
   const sb = svc()
 
-  const { data: rows } = await sb
+  // Todas las filas del mes (retenidas Y ya liberadas) para poder clasificar el ciclo del moroso.
+  const { data: allRows } = await sb
     .from('liquidacion_retenidos')
-    .select('idadmon, motivo, usuario, creado_at')
-    .eq('mes', mes).eq('retenido', true)
-  const ret = rows || []
-  if (!ret.length) return Response.json({ ok: true, retenidos: [] })
+    .select('idadmon, retenido, liberado_at, motivo, usuario, creado_at')
+    .eq('mes', mes)
+  if (!allRows || !allRows.length) return Response.json({ ok: true, retenidos: [], avisosAbono: [], morososPorCobrar: 0 })
 
   const { map } = await motorDelMes(sb, mes)
-  const retenidos = ret.map(r => {
+
+  // Líneas EN ESPERA (retenido=true) enriquecidas — igual que antes.
+  const retenidos = allRows.filter(r => r.retenido).map(r => {
     const id = String(r.idadmon || '').trim()
     const m = map[id] || { idprop: '', propietario: '', renta: 0, recibido: 0, neto: 0 }
     return {
@@ -76,7 +82,33 @@ export async function GET(req) {
       motivo: r.motivo || '', usuario: r.usuario || '',
     }
   })
-  return Response.json({ ok: true, retenidos })
+
+  // Cartas ya enviadas este mes → para saber si la carta POST-MOROSIDAD ya salió DESPUÉS de liberar.
+  const { data: envRows } = await sb.from('liquidacion_envios').select('idprop, fecha_envio').eq('mes', mes)
+  const envByProp = {}
+  for (const e of (envRows || [])) if (e.idprop) envByProp[e.idprop] = e.fecha_envio || null
+
+  // Avisos de abono (banner) + registro de morosos aún por cobrar.
+  const avisosAbono = []
+  const propsPorCobrar = new Set()
+  for (const r of allRows) {
+    const id = String(r.idadmon || '').trim()
+    const m = map[id]; if (!m) continue
+    const cobrado = m.renta > 0 && (m.renta - m.recibido) < UMBRAL
+    if (r.retenido) {
+      // Sigue en espera: si YA llegó el dinero → aviso; si no → moroso por cobrar.
+      if (cobrado) avisosAbono.push({ idadmon: id, idprop: m.idprop, propietario: m.propietario, tipo: 'cobrado_espera' })
+      else if (m.idprop) propsPorCobrar.add(m.idprop)
+    } else if (r.liberado_at && cobrado) {
+      // Ya liberado y con el dinero dentro (excluye incobrables justificados: esos no están "cobrados").
+      // El aviso se mantiene HASTA que se envíe una carta DESPUÉS de liberar (fecha_envio > liberado_at).
+      const fe = envByProp[m.idprop]
+      const cartaTrasLiberar = !!fe && new Date(fe).getTime() > new Date(r.liberado_at).getTime()
+      if (!cartaTrasLiberar) avisosAbono.push({ idadmon: id, idprop: m.idprop, propietario: m.propietario, tipo: 'liberado_sin_carta' })
+    }
+  }
+
+  return Response.json({ ok: true, retenidos, avisosAbono, morososPorCobrar: propsPorCobrar.size })
 }
 
 export async function POST(req) {
