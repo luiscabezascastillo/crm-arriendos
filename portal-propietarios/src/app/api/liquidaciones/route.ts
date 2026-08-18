@@ -97,6 +97,8 @@ export async function GET() {
     return NextResponse.json({ esDueno: false, archivos })
   } catch (err) {
     console.error('liquidaciones error:', err)
-    return NextResponse.json({ error: 'Error al conectar con Drive' }, { status: 500 })
+    // DEBUG temporal: devolvemos el mensaje real para diagnosticar.
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: 'Error al conectar con Drive: ' + msg }, { status: 500 })
   }
 }
