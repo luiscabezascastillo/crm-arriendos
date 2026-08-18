@@ -22,6 +22,13 @@ function totalF(f) {
          (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
+// VERSION: v7 · 2026-08-18 · (1) El ESTADO se toma de datos_arriendos (estado real del contrato) con respaldo al
+//   de la foto del mes; se cargan TODOS los contratos (no solo S/P) para que salgan propietario/inmueble/estado
+//   también en contratos ya terminados. (2) Propietario, Inmueble y Comunidad se recortan con "…" (ellipsis) y
+//   muestran el texto completo en tooltip (title) al pasar el ratón, para evitar el scroll horizontal. Hereda v6.
+// VERSION: v6 · 2026-08-18 · Añade columna "Comunidad" (edificio/proyecto, desde ggcc_agua_luz.edificio_proyecto)
+//   con su propio filtro/orden de cabecera, entre Inmueble y Est. Ya salía en el Excel; ahora también en pantalla.
+//   Hereda v5.
 // VERSION: v5 · 2026-08-17 · Separa "Propietario / Inmueble" en DOS columnas independientes (Propietario e
 //   Inmueble), cada una con su filtro/orden, para poder filtrar por inmueble. Hereda v4.
 // VERSION: v4 · 2026-08-17 · Vista MULTI-MES: la tabla muestra TODOS los meses recientes a la vez (una fila por
@@ -190,6 +197,7 @@ export default function Deudas() {
   const [fIdadmon, setFIdadmon] = useState(emptyF)
   const [fProp, setFProp] = useState(emptyF)
   const [fInmueble, setFInmueble] = useState(emptyF)
+  const [fComuni, setFComuni] = useState(emptyF)
   const [fEstado, setFEstado] = useState(emptyF)
   const [fGGCC, setFGGCC] = useState(emptyF)
   const [fLuz, setFLuz] = useState(emptyF)
@@ -200,7 +208,7 @@ export default function Deudas() {
   const [sortDir, setSortDir] = useState(null)
 
   useEffect(() => {
-    supabase.from('datos_arriendos').select('idadmon,propietario,inmueble').in('estado',['S','P'])
+    supabase.from('datos_arriendos').select('idadmon,propietario,inmueble,estado')
       .then(({data}) => {
         const map = {}
         if (data) data.forEach(c => { map[c.idadmon]=c })
@@ -319,11 +327,14 @@ export default function Deudas() {
     if (newVal.sort) { setSortCol(f); setSortDir(newVal.sort) }
   }
 
+  // Estado: prioriza el de datos_arriendos (real del contrato); respaldo al de la foto del mes (ggcc_agua_luz).
+  const estadoDe = (f) => contratos[f.idadmon]?.estado || f.estado || ''
   const optsAamm = [...new Set(filas.map(f => f.aamm).filter(Boolean))].sort((a, b) => String(b).localeCompare(String(a)))
   const optsIdadmon = [...new Set(filas.map(f => f.idadmon))].sort()
   const optsProp = [...new Set(filas.map(f => contratos[f.idadmon]?.propietario||'—'))].sort()
   const optsInmueble = [...new Set(filas.map(f => contratos[f.idadmon]?.inmueble || f.idinmue || '—'))].sort()
-  const optsEstado = [...new Set(filas.map(f => f.estado).filter(Boolean))].sort()
+  const optsComuni = [...new Set(filas.map(f => f.edificio_proyecto || '—'))].sort()
+  const optsEstado = [...new Set(filas.map(f => estadoDe(f)).filter(Boolean))].sort()
 
   function inRange(val, f) {
     const v = fmt(val)||0
@@ -342,7 +353,8 @@ export default function Deudas() {
     if (!inSelected(f.idadmon, fIdadmon)) return false
     if (!inSelected(c.propietario||'—', fProp)) return false
     if (!inSelected(c.inmueble||f.idinmue||'—', fInmueble)) return false
-    if (!inSelected(f.estado, fEstado)) return false
+    if (!inSelected(f.edificio_proyecto||'—', fComuni)) return false
+    if (!inSelected(estadoDe(f), fEstado)) return false
     if (!inRange(f.deuda_gastos_comunes, fGGCC)) return false
     if (!inRange(f.deuda_vigente_electricidad, fLuz)) return false
     if (!inRange(f.deuda_vigente_agua, fAgua)) return false
@@ -351,9 +363,9 @@ export default function Deudas() {
     return true
   })
 
-  const activeSortCol = sortCol || (fAamm.sort?'aamm':fIdadmon.sort?'idadmon':fProp.sort?'prop':fInmueble.sort?'inmueble':fEstado.sort?'estado':
+  const activeSortCol = sortCol || (fAamm.sort?'aamm':fIdadmon.sort?'idadmon':fProp.sort?'prop':fInmueble.sort?'inmueble':fComuni.sort?'comuni':fEstado.sort?'estado':
     fGGCC.sort?'ggcc':fLuz.sort?'luz':fAgua.sort?'agua':fGas.sort?'gas':fTotal.sort?'total':null)
-  const activeSortDir = sortDir || fAamm.sort||fIdadmon.sort||fProp.sort||fInmueble.sort||fEstado.sort||fGGCC.sort||fLuz.sort||fAgua.sort||fGas.sort||fTotal.sort
+  const activeSortDir = sortDir || fAamm.sort||fIdadmon.sort||fProp.sort||fInmueble.sort||fComuni.sort||fEstado.sort||fGGCC.sort||fLuz.sort||fAgua.sort||fGas.sort||fTotal.sort
 
   if (activeSortCol) {
     datos = [...datos].sort((a,b) => {
@@ -363,7 +375,8 @@ export default function Deudas() {
       else if (activeSortCol==='idadmon') { va=a.idadmon; vb=b.idadmon }
       else if (activeSortCol==='prop') { va=c1.propietario||''; vb=c2.propietario||'' }
       else if (activeSortCol==='inmueble') { va=c1.inmueble||a.idinmue||''; vb=c2.inmueble||b.idinmue||'' }
-      else if (activeSortCol==='estado') { va=a.estado||''; vb=b.estado||'' }
+      else if (activeSortCol==='comuni') { va=a.edificio_proyecto||''; vb=b.edificio_proyecto||'' }
+      else if (activeSortCol==='estado') { va=c1.estado||a.estado||''; vb=c2.estado||b.estado||'' }
       else if (activeSortCol==='ggcc') { va=fmt(a.deuda_gastos_comunes)||0; vb=fmt(b.deuda_gastos_comunes)||0 }
       else if (activeSortCol==='luz') { va=fmt(a.deuda_vigente_electricidad)||0; vb=fmt(b.deuda_vigente_electricidad)||0 }
       else if (activeSortCol==='agua') { va=fmt(a.deuda_vigente_agua)||0; vb=fmt(b.deuda_vigente_agua)||0 }
@@ -374,7 +387,7 @@ export default function Deudas() {
     })
   }
 
-  const hayFiltros = fAamm.selected.length||fIdadmon.selected.length||fProp.selected.length||fInmueble.selected.length||fEstado.selected.length||
+  const hayFiltros = fAamm.selected.length||fIdadmon.selected.length||fProp.selected.length||fInmueble.selected.length||fComuni.selected.length||fEstado.selected.length||
     fGGCC.min!==''||fGGCC.max!==''||fLuz.min!==''||fLuz.max!==''||
     fAgua.min!==''||fAgua.max!==''||fGas.min!==''||fGas.max!==''||
     fTotal.min!==''||fTotal.max!==''
@@ -389,7 +402,7 @@ export default function Deudas() {
         'Propietario': c.propietario || '',
         'Inmueble': c.inmueble || f.idinmue || '',
         'Arrendatario': f.arrendatario || '',
-        'Estado': f.estado || '',
+        'Estado': c.estado || f.estado || '',
         'AAMM': f.aamm || '',
         'Cód. Luz': f.codigo_ele || '',
         'Cód. Agua': f.codigo_agua || '',
@@ -422,7 +435,7 @@ export default function Deudas() {
     XLSX.writeFile(wb, 'deudas_servicios.xlsx')
   }
   function limpiarTodo() {
-    setFAamm(emptyF);setFIdadmon(emptyF);setFProp(emptyF);setFInmueble(emptyF);setFEstado(emptyF)
+    setFAamm(emptyF);setFIdadmon(emptyF);setFProp(emptyF);setFInmueble(emptyF);setFComuni(emptyF);setFEstado(emptyF)
     setFGGCC(emptyF);setFLuz(emptyF);setFAgua(emptyF);setFGas(emptyF);setFTotal(emptyF)
     setSortCol(null);setSortDir(null)
   }
@@ -506,6 +519,9 @@ export default function Deudas() {
                     <ExcelFilter label="Inmueble" type="text" options={optsInmueble} value={fInmueble} onApply={v=>{setFInmueble(v);if(v.sort){setSortCol('inmueble');setSortDir(v.sort)}}} />
                   </th>
                   <th style={thS}>
+                    <ExcelFilter label="Comunidad" type="text" options={optsComuni} value={fComuni} onApply={v=>{setFComuni(v);if(v.sort){setSortCol('comuni');setSortDir(v.sort)}}} />
+                  </th>
+                  <th style={thS}>
                     <ExcelFilter label="Est." type="text" options={optsEstado} value={fEstado} onApply={v=>{setFEstado(v);if(v.sort){setSortCol('estado');setSortDir(v.sort)}}} />
                   </th>
                   <th style={thS}>Servicios</th>
@@ -530,17 +546,22 @@ export default function Deudas() {
                 {datos.map((f,i)=>{
                   const c=contratos[f.idadmon]||{}
                   const tot=totalF(f)
+                  const est=c.estado||f.estado||'—'
+                  const propTxt=c.propietario||'—'
+                  const inmuTxt=c.inmueble||f.idinmue||'—'
+                  const comuTxt=f.edificio_proyecto||'—'
                   return (
                     <tr key={f.idadmon+i} onClick={()=>abrirDrawer(f)}
                       style={{background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA',cursor:'pointer'}}>
                       <td style={tdS}><span style={{fontWeight:600,color:'#185FA5'}}>{f.aamm}</span></td>
                       <td style={tdS}><span style={{fontWeight:500}}>{f.idadmon}</span></td>
-                      <td style={tdS}>{c.propietario||'—'}</td>
-                      <td style={{...tdS,fontSize:12,color:'#6B7280'}}>{c.inmueble||f.idinmue||'—'}</td>
+                      <td style={tdS}><div style={trunc(170)} title={propTxt}>{propTxt}</div></td>
+                      <td style={{...tdS,color:'#6B7280'}}><div style={{...trunc(170),fontSize:12}} title={inmuTxt}>{inmuTxt}</div></td>
+                      <td style={{...tdS,color:'#6B7280'}}><div style={{...trunc(150),fontSize:12}} title={comuTxt}>{comuTxt}</div></td>
                       <td style={tdS}>
-                        <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,fontWeight:500,
-                          background:f.estado==='S'?'#EAF3DE':'#FAEEDA',color:f.estado==='S'?'#3B6D11':'#854F0B'}}>
-                          {f.estado}
+                        <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,fontWeight:500,whiteSpace:'nowrap',
+                          background:est==='S'?'#EAF3DE':'#FAEEDA',color:est==='S'?'#3B6D11':'#854F0B'}}>
+                          {est}
                         </span>
                       </td>
                       <td style={tdS}>
@@ -562,7 +583,7 @@ export default function Deudas() {
                   )
                 })}
                 <tr style={{background:'#F3F4F6'}}>
-                  <td colSpan={6} style={{padding:'8px 12px',fontSize:12,color:'#6B7280',fontWeight:500}}>
+                  <td colSpan={7} style={{padding:'8px 12px',fontSize:12,color:'#6B7280',fontWeight:500}}>
                     {datos.length} de {filas.length} filas
                   </td>
                   {['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas'].map((col,i)=>(
@@ -790,3 +811,5 @@ export default function Deudas() {
 
 const thS={padding:'8px 12px',textAlign:'left',fontSize:11,fontWeight:500,color:'#6B7280',borderBottom:'1px solid #E5E7EB',whiteSpace:'nowrap',position:'sticky',top:0,zIndex:10,background:'#F9FAFB'}
 const tdS={padding:'8px 12px',borderBottom:'0.5px solid #F3F4F6'}
+// Recorta el texto a un ancho máximo con "…" (el texto completo se ve en el tooltip `title`). Evita scroll horizontal.
+const trunc=(max)=>({maxWidth:max,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'})
