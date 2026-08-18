@@ -59,7 +59,7 @@ export async function GET() {
     const encontrados: Fila[] = []
     let pageToken: string | undefined = undefined
     do {
-      const res: Awaited<ReturnType<typeof drive.files.list>> = await drive.files.list({
+      const res = await drive.files.list({
         q: `name contains 'LIQUIDACION' and mimeType = 'application/pdf' and trashed = false`,
         corpora: 'drive', driveId,
         includeItemsFromAllDrives: true, supportsAllDrives: true,
