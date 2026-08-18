@@ -1,4 +1,6 @@
-﻿'use client'
+﻿// VERSION: v2 · 2026-08-18 · esDueno (Paola/P001): banner "cobro directo", oculta Morosidad e Ingresos recibidos
+//   (vienen de `cuentas`, que no aplica cuando FCR no recauda). // RUTA: portal-propietarios/src/app/(portal)/dashboard/DashboardClient.tsx
+'use client'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 function fmtPeso(v: number): string {
@@ -18,6 +20,7 @@ type AlertaVenc    = { idadmon: string; inmueble: string; termino: string }
 
 interface Props {
   nombreCorto: string; tratamiento: string; idprop: string
+  esDueno: boolean
   totalS: number; totalSQ: number; totalQ: number; totalP: number
   ingresoMensual: number; totalMorosidad: number
   totalGGCC: number; totalLuz: number; totalAgua: number
@@ -42,7 +45,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function DashboardClient({
-  nombreCorto, tratamiento, idprop,
+  nombreCorto, tratamiento, idprop, esDueno,
   totalS, totalSQ, totalQ, totalP,
   ingresoMensual, totalMorosidad,
   totalGGCC, totalLuz, totalAgua,
@@ -51,7 +54,9 @@ export default function DashboardClient({
 }: Props) {
 
   const dataConLabel = graficoData.map(d => ({ ...d, label: mesToLabel(d.mes) }))
-  const hayAlertas = alertasMorosos.length > 0 || alertasVencimiento.length > 0
+  // Para "cobra el dueno": morosos vienen de `cuentas` (FCR), que no aplica. Solo mostramos vencimientos.
+  const morososVisibles = esDueno ? [] : alertasMorosos
+  const hayAlertas = morososVisibles.length > 0 || alertasVencimiento.length > 0
 
   return (
     <div className="dash-wrap">
@@ -61,6 +66,16 @@ export default function DashboardClient({
           {idprop} · {new Date().toLocaleDateString('es-CL', { month:'long', year:'numeric' })}
         </div>
       </div>
+
+      {esDueno && (
+        <div style={{ display:'flex', alignItems:'flex-start', gap:10, background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:10, padding:'12px 16px', marginBottom:'1.25rem' }}>
+          <i className="ti ti-info-circle" style={{ fontSize:18, color:'#2B6CB8', marginTop:1 }} aria-hidden="true" />
+          <div style={{ fontSize:12.5, color:'#1E40AF', lineHeight:1.5 }}>
+            <b>Cobro directo.</b> Tú gestionas el cobro de la renta directamente con tus arrendatarios, por lo que
+            aquí no se muestran morosidad ni ingresos recibidos. Tu liquidación mensual la coordinas con la administración.
+          </div>
+        </div>
+      )}
 
       {/* KPIs estados */}
       <div className="kpi-grid" style={{ marginBottom:'1rem' }}>
@@ -84,15 +99,23 @@ export default function DashboardClient({
           <div style={{ fontSize:22, fontWeight:600, color:'#fff', fontFamily:'DM Mono, monospace' }}>{fmtPeso(ingresoMensual)}</div>
           <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', marginTop:4 }}>{totalS + totalSQ} contratos activos</div>
         </div>
-        <div style={{ background:morososCount > 0 ? '#FEF2F2' : '#ECFDF5', border:`1px solid ${morososCount > 0 ? '#FCA5A5' : '#6EE7B7'}`, borderRadius:10, padding:'16px 20px' }}>
-          <div style={{ fontSize:10, fontWeight:700, color:morososCount > 0 ? '#DC2626' : '#059669', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>
-            {morososCount > 0 ? 'Morosidad detectada' : 'Sin morosidad'}
+        {esDueno ? (
+          <div style={{ background:'#F9FAFB', border:'1px solid #E5E7EB', borderRadius:10, padding:'16px 20px' }}>
+            <div style={{ fontSize:10, fontWeight:700, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Cobro</div>
+            <div style={{ fontSize:15, fontWeight:600, color:'#374151' }}>Cobro directo</div>
+            <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>Gestionado por ti con tus arrendatarios</div>
           </div>
-          <div style={{ fontSize:22, fontWeight:600, color:morososCount > 0 ? '#DC2626' : '#059669', fontFamily:'DM Mono, monospace' }}>{fmtPeso(totalMorosidad)}</div>
-          <div style={{ fontSize:11, color:morososCount > 0 ? '#EF4444' : '#059669', marginTop:4 }}>
-            {morososCount > 0 ? `${morososCount} contratos con deuda` : 'Todos al día'}
+        ) : (
+          <div style={{ background:morososCount > 0 ? '#FEF2F2' : '#ECFDF5', border:`1px solid ${morososCount > 0 ? '#FCA5A5' : '#6EE7B7'}`, borderRadius:10, padding:'16px 20px' }}>
+            <div style={{ fontSize:10, fontWeight:700, color:morososCount > 0 ? '#DC2626' : '#059669', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>
+              {morososCount > 0 ? 'Morosidad detectada' : 'Sin morosidad'}
+            </div>
+            <div style={{ fontSize:22, fontWeight:600, color:morososCount > 0 ? '#DC2626' : '#059669', fontFamily:'DM Mono, monospace' }}>{fmtPeso(totalMorosidad)}</div>
+            <div style={{ fontSize:11, color:morososCount > 0 ? '#EF4444' : '#059669', marginTop:4 }}>
+              {morososCount > 0 ? `${morososCount} contratos con deuda` : 'Todos al día'}
+            </div>
           </div>
-        </div>
+        )}
         <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:10, padding:'16px 20px' }}>
           <div style={{ fontSize:10, fontWeight:700, color:'#6B7280', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8 }}>Servicios pendientes</div>
           {[
@@ -113,7 +136,7 @@ export default function DashboardClient({
       {/* Gráfico */}
       <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:12, padding:'1.2rem 1.5rem', marginBottom:'1.5rem' }}>
         <div style={{ fontSize:13, fontWeight:600, color:'#111827', marginBottom:'1.2rem' }}>
-          Evolución mensual — Ingresos recibidos y Gastos Comunes
+          {esDueno ? 'Evolución mensual — Gastos Comunes' : 'Evolución mensual — Ingresos recibidos y Gastos Comunes'}
         </div>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={dataConLabel} margin={{ top:10, right:20, left:10, bottom:5 }}>
@@ -136,15 +159,17 @@ export default function DashboardClient({
               wrapperStyle={{ fontSize:12, paddingTop:12 }}
               formatter={value => value === 'ingresos' ? 'Ingresos recibidos' : 'Gastos comunes'}
             />
-            <Line
-              type="monotone"
-              dataKey="ingresos"
-              stroke="#2B6CB8"
-              strokeWidth={2}
-              dot={{ r:3, fill:'#2B6CB8' }}
-              activeDot={{ r:5 }}
-              name="ingresos"
-            />
+            {!esDueno && (
+              <Line
+                type="monotone"
+                dataKey="ingresos"
+                stroke="#2B6CB8"
+                strokeWidth={2}
+                dot={{ r:3, fill:'#2B6CB8' }}
+                activeDot={{ r:5 }}
+                name="ingresos"
+              />
+            )}
             <Line
               type="monotone"
               dataKey="ggcc"
@@ -164,7 +189,7 @@ export default function DashboardClient({
         <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:12, padding:'1.2rem 1.5rem' }}>
           <div style={{ fontSize:13, fontWeight:600, color:'#111827', marginBottom:'1rem' }}>Alertas</div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {alertasMorosos.slice(0, 5).map(a => (
+            {morososVisibles.slice(0, 5).map(a => (
               <div key={a.idadmon} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#FEF2F2', borderRadius:8, border:'1px solid #FCA5A5' }}>
                 <span style={{ fontSize:16 }}>🔴</span>
                 <div style={{ flex:1 }}>
@@ -176,9 +201,9 @@ export default function DashboardClient({
                 </div>
               </div>
             ))}
-            {alertasMorosos.length > 5 && (
+            {morososVisibles.length > 5 && (
               <div style={{ fontSize:12, color:'#DC2626', textAlign:'center', padding:'4px 0' }}>
-                + {alertasMorosos.length - 5} contratos más con deuda
+                + {morososVisibles.length - 5} contratos más con deuda
               </div>
             )}
             {alertasVencimiento.map(a => (

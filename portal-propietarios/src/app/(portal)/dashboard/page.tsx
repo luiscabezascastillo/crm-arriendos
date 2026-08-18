@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-18 · FIX gas: la columna real es deuda_vigente_gas (deuda_vigente no existe y rompia
+//   el select de servicios). + esDueno (quien_cobra=DUENO, caso Paola/P001): FCR no recauda, no se muestran
+//   morosidad/ingresos-recibidos desde `cuentas`. // RUTA: portal-propietarios/src/app/(portal)/dashboard/page.tsx
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
@@ -31,7 +34,7 @@ export default async function DashboardPage() {
   const [{ data: propietario }, { data: contratos }] = await Promise.all([
     supabaseAdmin.from('propietarios').select('nombre, genero').eq('idprop', session.idprop).single(),
     supabaseAdmin.from('datos_arriendos')
-      .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, termino_actual')
+      .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, termino_actual, quien_cobra')
       .eq('idprop', session.idprop)
       .in('estado', ['S', 'SQ', 'Q', 'P']),
   ])
@@ -39,11 +42,17 @@ export default async function DashboardPage() {
   const todos = (contratos || []) as Record<string, unknown>[]
   const idadmons = todos.map(c => c.idadmon as string)
 
+  // "Cobra el dueno" (caso Paola/P001): todos sus contratos con quien_cobra=DUENO.
+  // FCR no recauda su renta => los importes desde `cuentas` (morosidad/ingresos recibidos) no aplican.
+  const esDueno = todos.length > 0 && todos.every(
+    c => String(c.quien_cobra ?? '').trim().toUpperCase() === 'DUEÑO'
+  )
+
   // Query 2: movimientos y servicios
   const [{ data: movimientos }, { data: ggccData }] = await Promise.all([
     supabaseAdmin.from('cuentas').select('idadmon, cargo, abono, fecha').in('idadmon', idadmons),
     supabaseAdmin.from('ggcc_agua_luz')
-      .select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente, aamm')
+      .select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas, aamm')
       .in('idadmon', idadmons)
       .order('aamm', { ascending: false }),
   ])
@@ -77,7 +86,7 @@ export default async function DashboardPage() {
 
   const totalMorosidad = alertasMorosos.reduce((s, a) => s + a.saldo, 0)
 
-  // Servicios m�s recientes
+  // Servicios mas recientes
   const svcMap = new Map<string, Record<string, unknown>>()
   for (const s of (ggccData || [])) {
     if (!svcMap.has(s.idadmon as string)) svcMap.set(s.idadmon as string, s as Record<string, unknown>)
@@ -86,7 +95,7 @@ export default async function DashboardPage() {
   const totalLuz  = idadmons.reduce((s, id) => s + (parseFloat(String(svcMap.get(id)?.deuda_vigente_electricidad ?? 0)) || 0), 0)
   const totalAgua = idadmons.reduce((s, id) => s + (parseFloat(String(svcMap.get(id)?.deuda_vigente_agua ?? 0)) || 0), 0)
 
-  // Ingresos por mes (�ltimos 12)
+  // Ingresos por mes (ultimos 12)
   const ingresosMap = new Map<string, number>()
   for (const m of (movimientos || [])) {
     if (!m.fecha || !m.abono) continue
@@ -121,7 +130,7 @@ export default async function DashboardPage() {
     ggcc: ggccMesMap.get(mes) || 0,
   }))
 
-  // Contratos por vencer en 90 d�as
+  // Contratos por vencer en 90 dias
   const hoy = new Date()
   const en90 = new Date(hoy.getTime() + 90 * 24 * 60 * 60 * 1000)
   const alertasVencimiento = todos
@@ -141,6 +150,7 @@ export default async function DashboardPage() {
       nombreCorto={propietario?.nombre || session.propietario}
       tratamiento={propietario?.genero === 'M' ? 'Bienvenida' : 'Bienvenido'}
       idprop={session.idprop}
+      esDueno={esDueno}
       totalS={totalS}
       totalSQ={totalSQ}
       totalQ={totalQ}

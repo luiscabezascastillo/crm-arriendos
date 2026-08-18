@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-18 · FIX gas: columna real deuda_vigente_gas (deuda_vigente no existe). + esDueno
+//   (quien_cobra=DUENO, Paola/P001): banner de cobro directo y sin Pago/Saldo (vienen de `cuentas`, no aplica).
+//   RUTA: portal-propietarios/src/app/(portal)/propiedades/page.tsx
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
@@ -47,7 +50,7 @@ export default async function PropiedadesPage() {
 
   const { data: contratos } = await supabaseAdmin
     .from('datos_arriendos')
-    .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_inicio, termino_actual, garantia_pedida, quien_tiene_garantia, arrendatario')
+    .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_inicio, termino_actual, garantia_pedida, quien_tiene_garantia, arrendatario, quien_cobra')
     .eq('idprop', session.idprop)
     .in('estado', ['S', 'SQ', 'Q', 'P'])
     .order('inmueble')
@@ -55,10 +58,15 @@ export default async function PropiedadesPage() {
   const todos = (contratos || []) as Record<string, unknown>[]
   const idadmons = todos.map(c => c.idadmon as string)
 
+  // "Cobra el dueno" (Paola/P001): FCR no recauda => Pago/Saldo (de `cuentas`) no aplican.
+  const esDueno = todos.length > 0 && todos.every(
+    c => String(c.quien_cobra ?? '').trim().toUpperCase() === 'DUEÑO'
+  )
+
   const [{ data: saldos }, { data: servicios }] = await Promise.all([
     supabaseAdmin.from('cuentas').select('idadmon, cargo, abono').in('idadmon', idadmons),
     supabaseAdmin.from('ggcc_agua_luz')
-      .select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente')
+      .select('idadmon, aamm, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas')
       .in('idadmon', idadmons)
       .order('aamm', { ascending: false }),
   ])
@@ -128,12 +136,12 @@ export default async function PropiedadesPage() {
               const est = ESTADOS[c.estado as string] || { label: String(c.estado), color: '#6B7280', bg: '#F3F4F6' }
               const precio = calcularPrecio(c)
               const saldo = saldoMap.get(c.idadmon as string) || 0
-              const moroso = saldo > 0
+              const moroso = !esDueno && saldo > 0
               const svc = svcMap.get(c.idadmon as string)
               const ggcc = parseFloat(String(svc?.deuda_gastos_comunes ?? 0)) || 0
               const luz  = parseFloat(String(svc?.deuda_vigente_electricidad ?? 0)) || 0
               const agua = parseFloat(String(svc?.deuda_vigente_agua ?? 0)) || 0
-              const gas  = parseFloat(String(svc?.deuda_vigente ?? 0)) || 0
+              const gas  = parseFloat(String(svc?.deuda_vigente_gas ?? 0)) || 0
               const garantia = parseFloat(String(c.garantia_pedida ?? 0)) || 0
               return (
                 <tr key={c.idadmon as string}>
@@ -149,10 +157,10 @@ export default async function PropiedadesPage() {
                   </td>
                   <td style={tdMono}>{precio > 0 ? fmtPeso(precio) : '—'}</td>
                   <td style={{ ...tdBase, textAlign: 'center' }}>
-                    <span style={{ fontSize: 16 }}>{moroso ? '🔴' : '🟢'}</span>
+                    <span style={{ fontSize: 16 }}>{esDueno ? '—' : (moroso ? '🔴' : '🟢')}</span>
                   </td>
                   <td style={{ ...tdMono, color: moroso ? '#DC2626' : '#059669', fontWeight: moroso ? 700 : 400 }}>
-                    {saldo !== 0 ? fmtPeso(saldo) : '—'}
+                    {esDueno ? '—' : (saldo !== 0 ? fmtPeso(saldo) : '—')}
                   </td>
                   <td style={{ ...tdMono, color: ggcc > 0 ? '#D97706' : '#6B7280' }}>{ggcc > 0 ? fmtPeso(ggcc) : '—'}</td>
                   <td style={{ ...tdMono, color: luz  > 0 ? '#D97706' : '#6B7280' }}>{luz  > 0 ? fmtPeso(luz)  : '—'}</td>
@@ -197,8 +205,8 @@ export default async function PropiedadesPage() {
                 <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 8 }}>{(c.arrendatario as string) || '—'}</div>
                 <div className="card-row">
                   <div><div className="card-label">Renta</div><div className="card-val mono">{fmtPeso(precio)}</div></div>
-                  <div><div className="card-label">Pago</div><div style={{ fontSize: 18 }}>{moroso ? '🔴' : '🟢'}</div></div>
-                  <div><div className="card-label">Saldo</div><div className="card-val mono" style={{ color: moroso ? '#DC2626' : '#059669' }}>{fmtPeso(Math.abs(saldo))}</div></div>
+                  <div><div className="card-label">Pago</div><div style={{ fontSize: 18 }}>{esDueno ? '—' : (moroso ? '🔴' : '🟢')}</div></div>
+                  <div><div className="card-label">Saldo</div><div className="card-val mono" style={{ color: moroso ? '#DC2626' : '#059669' }}>{esDueno ? '—' : fmtPeso(Math.abs(saldo))}</div></div>
                 </div>
                 {ggcc > 0 && <div style={{ marginTop: 6, fontSize: 11, color: '#D97706' }}>GGCC pendiente: {fmtPeso(ggcc)}</div>}
                 <div className="card-row" style={{ marginTop: 6 }}>
@@ -219,6 +227,15 @@ export default async function PropiedadesPage() {
         <div style={{ fontSize: 22, fontWeight: 600, color: '#111827' }}>Mis propiedades</div>
         <div style={{ fontSize: 13, color: '#6B7280', marginTop: 3 }}>{session.idprop} · {todos.length} contratos activos</div>
       </div>
+      {esDueno && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '12px 16px', marginBottom: '1.25rem' }}>
+          <i className="ti ti-info-circle" style={{ fontSize: 18, color: '#2B6CB8', marginTop: 1 }} aria-hidden="true" />
+          <div style={{ fontSize: 12.5, color: '#1E40AF', lineHeight: 1.5 }}>
+            <b>Cobro directo.</b> Como el cobro de la renta lo gestionas tú con tus arrendatarios, las columnas
+            de <b>Pago</b> y <b>Saldo</b> no aplican y aparecen como “—”.
+          </div>
+        </div>
+      )}
       <TablaContratos lista={activos} titulo="Contratos activos" totalRenta={ingresoActivos} totalGarantia={garantiaActivos} colorTotal="#059669" />
       {terminos.length > 0 && (
         <TablaContratos lista={terminos} titulo="En proceso de término" totalRenta={ingresoTerminos} totalGarantia={garantiaTerminos} colorTotal="#EA580C" />
