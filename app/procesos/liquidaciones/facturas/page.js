@@ -2,7 +2,8 @@
 // RUTA: app/procesos/liquidaciones/facturas/page.js
 // VERSION: v16 · 2026-08-18 · Estado PARCIAL (ámbar): el generador lo pone cuando se facturó parte y queda un moroso
 //   en espera; al recuperarlo y re-generar, solo se emite lo que faltaba y pasa a HECHO. Se añade a la leyenda y al
-//   selector. Hereda v15.
+//   selector. Además: aviso superior FLASHEANTE "FACTURACIÓN PARCIAL" con los propietarios afectados (clic = salta a
+//   su fila), tipo el de CARTAS. Hereda v15.
 // VERSION: v15 · 2026-08-16 · NUBOX operativo. Botón "Generar CSV Nubox" (color pleno, el operativo)
 //   ENCIMA del de SimpleFactura, que queda debajo DIFUMINADO, solo para rol 'direccion' y solo boletas
 //   (llama al route con formato:'simple', solo:'boletas'). Nubox llama con formato:'nubox' (1 CSV de 20
@@ -365,6 +366,13 @@ export default function FacturasPage() {
   const nFactura = idpropsVis.filter(ip => propMap[ip]?.tipo_factura === '33').length
   const nBoleta = idpropsVis.filter(ip => ['39', '41'].includes(propMap[ip]?.tipo_factura)).length
 
+  // Propietarios con facturación PARCIAL (se facturó lo cobrado; falta emitir el moroso cuando pague).
+  // Se calcula sobre TODOS los propietarios (no solo los filtrados) para que el aviso no dependa del filtro.
+  const nombreProp = {}; for (const l of lineas) if (l.idprop && !nombreProp[l.idprop]) nombreProp[l.idprop] = l.propietario
+  const parciales = Object.keys(propMap)
+    .filter(ip => String(propMap[ip]?.facturar || '').toUpperCase() === 'PARCIAL')
+    .map(ip => ({ idprop: ip, propietario: nombreProp[ip] || propMap[ip]?.nombre || ip }))
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
       onClick={() => setFiltroAbierto(null)}>
@@ -444,6 +452,31 @@ export default function FacturasPage() {
         </div>
       )}
 
+      {parciales.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <style dangerouslySetInnerHTML={{ __html: '@keyframes fcrParcial{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.45);background:#FEF3C7}50%{box-shadow:0 0 0 6px rgba(217,119,6,0);background:#FDE68A}}' }} />
+          <div style={{ animation: 'fcrParcial 1.2s ease-in-out infinite', border: '2px solid #D97706', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 18 }}>🧾</span>
+            <span style={{ fontWeight: 800, color: '#92400E', fontSize: 14, letterSpacing: '0.02em' }}>FACTURACIÓN PARCIAL</span>
+            <span style={{ fontSize: 13, color: '#92400E' }}>
+              {parciales.length === 1
+                ? '1 propietario facturado a medias (un moroso quedó fuera). Cuando pague, vuelve a generar y saldrá solo lo que faltaba:'
+                : `${parciales.length} propietarios facturados a medias (algún moroso quedó fuera). Cuando paguen, vuelve a generar y saldrá solo lo que faltaba:`}
+            </span>
+            <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {parciales.map(a => (
+                <button key={a.idprop}
+                  onClick={() => { const el = typeof document !== 'undefined' && document.getElementById('fact-' + a.idprop); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+                  title={`Ir a ${a.propietario || a.idprop}`}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, border: '1px solid #D97706', background: '#fff', color: '#92400E', cursor: 'pointer' }}>
+                  {(a.propietario ? String(a.propietario).split(',')[0] : a.idprop)} ↦
+                </button>
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
+
       {complL.length > 0 && (
         <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#5B21B6', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
           🧩 <b>{complL.length} complementaria(s) a facturar este mes</b> (arriendos morosos ya cobrados) · Admon <b>${fmtPesos(totComplComision)}</b> + IVA ${fmtPesos(totComplIva)}. Se incluyen en el CSV al pulsar “Generar CSV”.
@@ -508,7 +541,7 @@ export default function FacturasPage() {
               const enviada = p.enviada_at
               const obs = p._obs || ''
               return ([
-                <tr key={f.idadmon + '_' + i} style={{ borderTop: nuevoProp ? '2px solid #DDD6FE' : '1px solid #F0EEE8', background: nuevoProp ? '#FBFAFF' : '#fff' }}>
+                <tr key={f.idadmon + '_' + i} id={nuevoProp ? ('fact-' + f.idprop) : undefined} style={{ scrollMarginTop: 90, borderTop: nuevoProp ? '2px solid #DDD6FE' : '1px solid #F0EEE8', background: nuevoProp ? '#FBFAFF' : '#fff' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1a1a2e' }}>{f.idadmon}</td>
                   <td style={{ padding: '8px 10px', fontWeight: nuevoProp ? 600 : 400, color: '#1a1a2e', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${f.idprop} — ${f.propietario}`}>{nuevoProp ? `${f.idprop} — ${f.propietario}` : ''}</td>
                   <td style={{ padding: '8px 10px', color: '#444', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.inmueble}>{f.inmueble}</td>
