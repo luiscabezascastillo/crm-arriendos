@@ -22,6 +22,9 @@ function totalF(f) {
          (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
+// VERSION: v8 · 2026-08-18 · La Comunidad (edificio/proyecto) se rellena desde la fuente única `servicios_codigos`
+//   (por idinmue) cuando la foto del mes viene vacía (p. ej. 2608): es propia del inmueble y se hereda igual que
+//   los códigos de luz/agua/gas. Prioriza el valor del mes si existe; si no, el de servicios_codigos. Hereda v7.
 // VERSION: v7 · 2026-08-18 · (1) El ESTADO se toma de datos_arriendos (estado real del contrato) con respaldo al
 //   de la foto del mes; se cargan TODOS los contratos (no solo S/P) para que salgan propietario/inmueble/estado
 //   también en contratos ya terminados. (2) Propietario, Inmueble y Comunidad se recortan con "…" (ellipsis) y
@@ -235,12 +238,14 @@ export default function Deudas() {
       }
       const base = all.filter(f => f.idadmon && !String(f.idadmon).startsWith('.'))
       // Los códigos (luz/agua/gas) viven en servicios_codigos (por idinmue). Se fusionan para el drawer/export.
-      const { data: cods } = await supabase.from('servicios_codigos').select('idinmue,codigo_ele,codigo_agua,codigo_gas')
+      const { data: cods } = await supabase.from('servicios_codigos').select('idinmue,codigo_ele,codigo_agua,codigo_gas,edificio_proyecto')
       const mc = new Map((cods || []).map(c => [c.idinmue, c]))
       if (cancel) return
       setFilas(base.map(f => {
         const c = mc.get(f.idinmue)
-        return { ...f, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
+        // Comunidad: usa la del mes si viene; si está vacía, hereda de servicios_codigos (propia del inmueble).
+        const comunidad = (f.edificio_proyecto && String(f.edificio_proyecto).trim()) ? f.edificio_proyecto : (c?.edificio_proyecto ?? null)
+        return { ...f, edificio_proyecto: comunidad, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
       }))
       setLoading(false)
     })()

@@ -246,7 +246,7 @@ export default async function PropiedadesPage() {
         <TablaContratos lista={enTermino} titulo="En proceso de término" totalRenta={sumRenta(enTermino)} totalGarantia={sumGarantia(enTermino)} colorTotal="#EA580C" />
       )}
       {vacantes.length > 0 && (
-        <TablaContratos lista={vacantes} titulo="Vacantes" totalRenta={sumRenta(vacantes)} totalGarantia={sumGarantia(vacantes)} colorTotal="#DC2626" />
+        <TablaContratos lista={vacantes} titulo="En busca de nuevo arrendatario (vacantes y próxima terminación)" totalRenta={sumRenta(vacantes)} totalGarantia={sumGarantia(vacantes)} colorTotal="#DC2626" />
       )}
     </div>
   )

@@ -1,3 +1,7 @@
+// VERSION: v16 · 2026-08-18 · AVISO SUPERIOR de abonos de morosos: cuando una línea EN ESPERA ya recibió el pago
+//   (mismo criterio que pone verde la línea abajo: desvío < umbral), se muestra arriba de la hoja un banner verde
+//   FLASHEANTE "NUEVO ABONO RECIBIDO" con los propietarios afectados (clic = salta a su bloque). No cambia la
+//   lógica de espera/liberar/complementaria; solo hace visible el disparo sin tener que buscar la línea. Hereda v15.
 // VERSION: v15 · 2026-08-12 · CARTAS: el MES de la liquidación (p. ej. AGOSTO 2026) se muestra CENTRADO en la franja de
 //   cada propietario (grande y en negrita); se quita el mes pequeño de la derecha para no duplicar. Hereda v14.
 // VERSION: v14 · 2026-08-10 · COMPLEMENTARIAS (paso 1 UI): CARTAS consulta /api/liquidaciones/complementaria y, en la línea
@@ -647,6 +651,22 @@ export default function CartasPage() {
   const nNoEnviadas = bloques.filter(b => !estaEnviada(b)).length
   const visibles = soloNoEnviadas ? bloques.filter(b => !estaEnviada(b)) : bloques
 
+  // Aviso superior "NUEVO ABONO RECIBIDO": líneas EN ESPERA cuyo arrendatario YA pagó (desvío < umbral).
+  // Mismo criterio que pone verde la línea abajo (💰 ya se recibió el pago — listo para transferir).
+  // Se calcula sobre TODOS los bloques (no solo los visibles) para que el aviso no dependa del filtro.
+  const abonosNuevos = []
+  for (const b of bloques) {
+    if (b.idprop === IDPROP_PAOLA) continue
+    for (const x of (b.inmuebles || [])) {
+      if (x.esP || x.esProp) continue
+      if (String(x.por || 'FCR').trim().toUpperCase() !== 'FCR') continue
+      if (!retenidos[x.idadmon]) continue
+      const renta = n0(x.aCobrar)
+      const falta = Math.max(0, renta - n0(x.recibido))
+      if (renta > 0 && falta < UMBRAL_MOROSO) abonosNuevos.push({ idprop: b.idprop, propietario: b.propietario, idadmon: x.idadmon, inmueble: x.inmueble })
+    }
+  }
+
   return (
     <>
       <TopNav />
@@ -712,6 +732,31 @@ export default function CartasPage() {
             </button>
           )}
         </div>
+
+        {abonosNuevos.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <style dangerouslySetInnerHTML={{ __html: '@keyframes fcrAbono{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.5);background:#DCFCE7}50%{box-shadow:0 0 0 7px rgba(22,163,74,0);background:#BBF7D0}}' }} />
+            <div style={{ animation: 'fcrAbono 1.1s ease-in-out infinite', border: '2px solid #16A34A', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 18 }}>💰</span>
+              <span style={{ fontWeight: 800, color: '#166534', fontSize: 14, letterSpacing: '0.03em' }}>NUEVO ABONO RECIBIDO</span>
+              <span style={{ fontSize: 13, color: '#166534' }}>
+                {abonosNuevos.length === 1
+                  ? '1 arriendo en espera ya se cobró y está listo para transferir:'
+                  : `${abonosNuevos.length} arriendos en espera ya se cobraron y están listos para transferir:`}
+              </span>
+              <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {abonosNuevos.map(a => (
+                  <button key={a.idadmon}
+                    onClick={() => { const el = typeof document !== 'undefined' && document.getElementById('liq-' + a.idprop); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+                    title={`Ir a ${a.propietario || a.idprop} · ${a.inmueble || a.idadmon}`}
+                    style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, border: '1px solid #16A34A', background: '#fff', color: '#166534', cursor: 'pointer' }}>
+                    {(a.propietario ? String(a.propietario).split(',')[0] : a.idadmon)} ↦
+                  </button>
+                ))}
+              </span>
+            </div>
+          </div>
+        )}
 
         {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', fontSize: 13, padding: '10px 14px', borderRadius: 8, marginBottom: 12 }}>Error: {error}</div>}
         {cargando && <div style={{ color: '#888', padding: 20 }}>Calculando…</div>}

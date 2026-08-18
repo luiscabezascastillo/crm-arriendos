@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-18 · La fuente única `servicios_codigos` guarda también la comunidad (edificio_proyecto)
+//   por idinmue, alimentada igual que los códigos (fusión sin borrar: un valor en blanco NO pisa el que ya había).
+//   Así los meses nuevos heredan la comunidad aunque venga vacía en el Excel del mes. Hereda v2.
 // VERSION: v2 · 2026-08-17 · Además de cargar en ggcc_agua_luz, alimenta la fuente única `servicios_codigos`
 //   (códigos luz/agua/gas por idinmue): fusión sin borrar (un código en blanco en el Excel NO pisa el que ya
 //   había). Así los meses nuevos heredan los códigos aunque cambien los contratos. Hereda v1.
@@ -145,13 +148,14 @@ export async function POST(req) {
         if (r.codigo_agua) prev.codigo_agua = r.codigo_agua
         if (r.codigo_gas)  prev.codigo_gas  = r.codigo_gas
         if (r.inmueble)    prev.inmueble    = r.inmueble
+        if (r.edificio_proyecto) prev.edificio_proyecto = r.edificio_proyecto
         porInmueble.set(idinmue, prev)
       }
       const idinmues = [...porInmueble.keys()]
       if (idinmues.length) {
         const { data: existentes } = await supabase
           .from('servicios_codigos')
-          .select('idinmue, codigo_ele, codigo_agua, codigo_gas, inmueble')
+          .select('idinmue, codigo_ele, codigo_agua, codigo_gas, inmueble, edificio_proyecto')
           .in('idinmue', idinmues)
         const ex = new Map((existentes || []).map(c => [c.idinmue, c]))
         const upserts = []
@@ -163,10 +167,11 @@ export async function POST(req) {
             codigo_agua: nuevo.codigo_agua ?? p.codigo_agua ?? null,
             codigo_gas:  nuevo.codigo_gas  ?? p.codigo_gas  ?? null,
             inmueble:    nuevo.inmueble    ?? p.inmueble    ?? null,
+            edificio_proyecto: nuevo.edificio_proyecto ?? p.edificio_proyecto ?? null,
             updated_at:  new Date().toISOString(),
           }
-          // Solo si aporta algún código (no crear filas vacías).
-          if (fila.codigo_ele || fila.codigo_agua || fila.codigo_gas) upserts.push(fila)
+          // Solo si aporta algún dato útil (código o comunidad); no crear filas vacías.
+          if (fila.codigo_ele || fila.codigo_agua || fila.codigo_gas || fila.edificio_proyecto) upserts.push(fila)
         }
         for (let i = 0; i < upserts.length; i += 100) {
           await supabase.from('servicios_codigos').upsert(upserts.slice(i, i + 100), { onConflict: 'idinmue' })
