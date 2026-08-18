@@ -1,3 +1,6 @@
+// VERSION: v14 · 2026-08-18 · Estado de pago por contrato (columnas manuales): selector PAGADO / Pago atrasado /
+//   No pagó + Nota, que marca Administración. Aclara los "pagos que parecen del mes pero son atrasados". Se
+//   guarda en liquidacion_paola y sale en el Excel de Paola. Requiere route v11. Hereda v13.
 // VERSION: v13 · 2026-08-17 · Botón "📂 Abrir lo guardado" en la ventana inicial: carga el mes ya guardado
 //   (lo que dejó otra persona) sin re-procesar, para que Fabiola revise/continúe lo de Adalis. Requiere route v9.
 // VERSION: v12 · 2026-08-17 · Aviso al RE-PROCESAR: si ya hay una liquidación en pantalla, "Procesar" pide
@@ -98,6 +101,7 @@ export default function LiquidacionPaolaPage() {
     for (const r of datos.resultado) e[r.idadmon] = {
       multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
       comentarios1: r.comentarios1 ?? '', comentarios2: r.comentarios2 ?? '',
+      estadoPago: r.estadoPago ?? '', notaPago: r.notaPago ?? '',
     }
     setEdits(e)
   }, [datos])
@@ -549,7 +553,8 @@ export default function LiquidacionPaolaPage() {
                     <tr style={{ background: 'var(--gray-50)' }}>
                       {['', 'Est', 'IdAdmon', 'Propiedad', 'Comienzo', 'Termino', 'Arrendatario', 'RUT',
                         'A Cobrar', 'Recibido', 'Falta', 'Fecha pago', 'G.Comunes', 'Luz', 'Agua', 'Conf.',
-                        'Multas/Deudas', 'Especial', 'Cantidad', 'Comentarios 1', 'Comentarios 2']
+                        'Multas/Deudas', 'Especial', 'Cantidad', 'Comentarios 1', 'Comentarios 2',
+                        'Estado pago', 'Nota pago']
                         .map((h, i) => <th key={i} style={th}>{h}</th>)}
                     </tr>
                   </thead>
@@ -606,6 +611,21 @@ export default function LiquidacionPaolaPage() {
                             <input value={edits[r.idadmon]?.comentarios2 ?? ''} placeholder="—"
                               onChange={e => setCampo(r.idadmon, 'comentarios2', e.target.value)}
                               onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 220 }} />
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <select value={edits[r.idadmon]?.estadoPago ?? ''}
+                              onChange={e => setCampo(r.idadmon, 'estadoPago', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 128 }}>
+                              <option value="">—</option>
+                              <option value="PAGADO">Pagado</option>
+                              <option value="ATRASADO">Pago atrasado</option>
+                              <option value="NO_PAGADO">No pagó</option>
+                            </select>
+                          </td>
+                          <td style={td} onClick={e => e.stopPropagation()}>
+                            <input value={edits[r.idadmon]?.notaPago ?? ''} placeholder="p. ej. el pago del 31/07 es de julio"
+                              onChange={e => setCampo(r.idadmon, 'notaPago', e.target.value)}
+                              onBlur={() => guardarFila(r)} style={{ ...inpManual, minWidth: 240 }} />
                           </td>
                         </tr>
                         {abierta === r.idadmon && r.pagos?.map((p, j) => (

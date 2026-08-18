@@ -1,3 +1,6 @@
+// VERSION: v11 · 2026-08-18 · Estado de pago por contrato (columnas manuales estado_pago + nota_pago en
+//   liquidacion_paola): Administración marca PAGADO / ATRASADO (el abono visto es de un mes anterior) /
+//   NO_PAGADO, con una nota. Se persiste, se relee al recargar/cargar-guardado y sale en el Excel. Hereda v10.
 // VERSION: v10 · 2026-08-17 · "cargar_guardado" ahora, en un mes NO congelado, REFRESCA los servicios
 //   (GGCC/agua/luz) con lo último de ggcc_agua_luz, aunque el mes se guardara antes de cargarlos. Hereda v9.
 // VERSION: v9 · 2026-08-17 · (1) Acción "cargar_guardado": abre el mes ya guardado (liquidacion_paola) sin
@@ -320,6 +323,7 @@ export async function POST(request) {
         deuda_ggcc: aNumero(f.deudaGgcc), deuda_luz: aNumero(f.deudaLuz), deuda_agua: aNumero(f.deudaAgua),
         multas_deudas: aNumero(f.multasDeudas), especial: txtOrNull(f.especial), cantidad: aNumero(f.cantidad),
         comentarios_1: txtOrNull(f.comentarios1), comentarios_2: txtOrNull(f.comentarios2),
+        estado_pago: txtOrNull(f.estadoPago), nota_pago: txtOrNull(f.notaPago),
         origen: 'crm', generado_por: email || null, updated_at: new Date().toISOString(),
       }))
       const { error } = await admin.from('liquidacion_paola').upsert(rows, { onConflict: 'mes,idadmon' })
@@ -345,6 +349,7 @@ export async function POST(request) {
         deudaGgcc: num(r.deuda_ggcc), deudaLuz: num(r.deuda_luz), deudaAgua: num(r.deuda_agua),
         multasDeudas: num(r.multas_deudas), especial: r.especial ?? null, cantidad: num(r.cantidad),
         comentarios1: r.comentarios_1 ?? null, comentarios2: r.comentarios_2 ?? null,
+        estadoPago: r.estado_pago ?? null, notaPago: r.nota_pago ?? null,
       }))
       resultado.sort((a, b) => ordenNatural(a.propiedad, b.propiedad))
 
@@ -634,6 +639,7 @@ export async function POST(request) {
         multasDeudas: m.multas_deudas ?? null, especial: m.especial ?? null,
         cantidad: m.cantidad ?? null,
         comentarios1: m.comentarios_1 ?? null, comentarios2: m.comentarios_2 ?? null,
+        estadoPago: m.estado_pago ?? null, notaPago: m.nota_pago ?? null,
       }
     })
 
