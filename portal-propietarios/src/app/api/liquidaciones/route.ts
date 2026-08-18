@@ -27,6 +27,11 @@ function driveClient() {
 
 type Fila = { fileId: string; nombre: string; aamm: string; anio: string; mesNum: string; modificado: string }
 
+// Tipo minimo de la respuesta de Drive que usamos (evita depender de los tipos de googleapis,
+// que rompen la inferencia dentro del do/while por el pageToken).
+type DriveFile = { id?: string | null; name?: string | null; modifiedTime?: string | null }
+type DriveListResp = { data: { files?: DriveFile[]; nextPageToken?: string | null } }
+
 export async function GET() {
   try {
     const cookieStore = await cookies()
@@ -66,7 +71,7 @@ export async function GET() {
         fields: 'nextPageToken, files(id, name, modifiedTime)',
         pageSize: 1000,
         pageToken,
-      })
+      }) as unknown as DriveListResp
       for (const f of (res.data.files || [])) {
         const m = re.exec(f.name || '')
         if (m) {
