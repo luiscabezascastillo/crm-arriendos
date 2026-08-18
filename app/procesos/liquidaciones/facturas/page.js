@@ -1,5 +1,8 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/facturas/page.js
+// VERSION: v16 · 2026-08-18 · Estado PARCIAL (ámbar): el generador lo pone cuando se facturó parte y queda un moroso
+//   en espera; al recuperarlo y re-generar, solo se emite lo que faltaba y pasa a HECHO. Se añade a la leyenda y al
+//   selector. Hereda v15.
 // VERSION: v15 · 2026-08-16 · NUBOX operativo. Botón "Generar CSV Nubox" (color pleno, el operativo)
 //   ENCIMA del de SimpleFactura, que queda debajo DIFUMINADO, solo para rol 'direccion' y solo boletas
 //   (llama al route con formato:'simple', solo:'boletas'). Nubox llama con formato:'nubox' (1 CSV de 20
@@ -40,8 +43,8 @@ const fmtPesos = n => (n == null || n === '') ? '—' : Number(n).toLocaleString
 const TIPO_DOC = { '33': 'Factura', '39': 'Boleta', '41': 'Boleta exenta' }
 const tipoColor = t => t === '33' ? { bg: '#EEF2FF', fg: '#3730A3' } : (t === '39' || t === '41') ? { bg: '#ECFDF5', fg: '#065F46' } : { bg: '#F3F4F6', fg: '#6B7280' }
 
-const FACT_OPCIONES = ['SI', 'NO', 'DESPUES', 'HECHO']
-const factColor = f => f === 'SI' ? { bg: '#DCFCE7', fg: '#166534' } : f === 'HECHO' ? { bg: '#E0E7FF', fg: '#3730A3' } : f === 'DESPUES' ? { bg: '#FEF9C3', fg: '#854D0E' } : { bg: '#FEE2E2', fg: '#991B1B' }
+const FACT_OPCIONES = ['SI', 'NO', 'DESPUES', 'HECHO', 'PARCIAL']
+const factColor = f => f === 'SI' ? { bg: '#DCFCE7', fg: '#166534' } : f === 'HECHO' ? { bg: '#E0E7FF', fg: '#3730A3' } : f === 'PARCIAL' ? { bg: '#FEF3C7', fg: '#92400E' } : f === 'DESPUES' ? { bg: '#FEF9C3', fg: '#854D0E' } : { bg: '#FEE2E2', fg: '#991B1B' }
 
 // ── Autofiltro tipo Excel: flechita ▼ que abre desplegable con checkboxes ──
 function FiltroExcel({ col, valores, sel, onChange, abierto, setAbierto }) {
@@ -382,7 +385,8 @@ export default function FacturasPage() {
           style={{ fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 10, background: congelado ? '#E0E7FF' : '#FEF9C3', color: congelado ? '#3730A3' : '#854D0E' }}>
           {congelado ? '🔒 congelado' : '🟢 en vivo (sin congelar)'}
         </span>{' '}
-        El estado <b>SI/NO/DESPUÉS/HECHO</b> y el comentario son por propietario (se aplican a todos sus inmuebles).
+        El estado <b>SI/NO/DESPUÉS/HECHO/PARCIAL</b> y el comentario son por propietario (se aplican a todos sus inmuebles).
+        <b style={{ color: '#92400E' }}> PARCIAL</b> = ya se facturó lo cobrado y queda un moroso en espera; al recuperarlo y volver a generar, solo se emite lo que faltaba y pasa a HECHO.
         {actualizado && <> Actualizado el <b>{actualizado.toLocaleString('es-CL')}</b>.</>}
       </div>
 

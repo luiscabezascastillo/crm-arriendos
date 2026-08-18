@@ -1,4 +1,7 @@
 // app/api/liquidaciones/facturar/route.js
+// VERSION: v3 · 2026-08-18 · Acepta el estado 'PARCIAL' (facturación parcial: ya se emitió parte, falta el moroso).
+//   Al poner un propietario en 'SI' manualmente (re-emisión total intencionada), se LIMPIA su registro de líneas ya
+//   facturadas del mes (liquidacion_facturado) para que la próxima generación vuelva a emitir todo. Hereda v2.
 // VERSION: v2 · 2026-08-10 · UPSERT: si la fila del propietario para el mes NO existe (mes aún no preparado/congelado),
 //   se CREA con lo mínimo (mes, idprop) + nombre y tipo_factura tomados de `propietarios`, para poder facturar EN VIVO
 //   antes de "Preparar mes". Si ya existe y no está cerrada, se actualiza como siempre. Cerrada -> 409. Hereda v1.
@@ -18,7 +21,7 @@ const EMAILS_OK = [
   'luis.cabezas@fondocapital.com',
   'karina.morales@fondocapital.com',
 ]
-const FACTURAR_VALIDOS = ['SI', 'NO', 'DESPUES', 'HECHO']
+const FACTURAR_VALIDOS = ['SI', 'NO', 'DESPUES', 'HECHO', 'PARCIAL']
 
 function svc() {
   return createClient(
@@ -57,7 +60,7 @@ export async function POST(req) {
   const patch = { updated_at: now }
   if (body.facturar !== undefined) {
     const f = String(body.facturar).toUpperCase().trim()
-    if (!FACTURAR_VALIDOS.includes(f)) return Response.json({ error: 'facturar debe ser SI/NO/DESPUES/HECHO' }, { status: 400 })
+    if (!FACTURAR_VALIDOS.includes(f)) return Response.json({ error: 'facturar debe ser SI/NO/DESPUES/HECHO/PARCIAL' }, { status: 400 })
     patch.facturar = f
   }
   if (body.comentario !== undefined) {
@@ -85,6 +88,7 @@ export async function POST(req) {
     }
     const { error: eIns } = await sb.from('liquidacion_idprop').insert(nueva)
     if (eIns) return Response.json({ error: 'insert: ' + eIns.message }, { status: 500 })
+    if (patch.facturar === 'SI') { try { await sb.from('liquidacion_facturado').delete().eq('mes', mes).eq('idprop', idprop) } catch {} }
     return Response.json({ ok: true, creada: true, mes, idprop, ...nueva })
   }
 
@@ -92,6 +96,10 @@ export async function POST(req) {
   const { error: eUpd } = await sb
     .from('liquidacion_idprop').update(patch).eq('mes', mes).eq('idprop', idprop)
   if (eUpd) return Response.json({ error: 'update: ' + eUpd.message }, { status: 500 })
+
+  // Re-emisión total intencionada: al volver a 'SI', se limpia el registro de líneas ya facturadas del mes,
+  // para que la próxima generación vuelva a emitir TODO el propietario (no solo lo pendiente).
+  if (patch.facturar === 'SI') { try { await sb.from('liquidacion_facturado').delete().eq('mes', mes).eq('idprop', idprop) } catch {} }
 
   return Response.json({ ok: true, mes, idprop, ...patch })
 }

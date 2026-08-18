@@ -1,4 +1,10 @@
 // RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v7 · 2026-08-18 · FACTURACION PARCIAL. Procesa facturar IN ('SI','PARCIAL') y emite SOLO las lineas que NO
+//   estan ya en `liquidacion_facturado` (registro por idadmon del mes) y que no estan en espera. Registra lo emitido
+//   en esa tabla. Estado final por propietario: si le queda alguna linea EN ESPERA -> 'PARCIAL' (ya se hizo pero
+//   falta el moroso); si no le queda nada en espera y se le facturo algo -> 'HECHO'; si no se facturo nada -> se deja
+//   igual. Asi, al recuperar el moroso y re-facturar, solo sale lo que faltaba. La complementaria queda intacta.
+//   Hereda v6.
 // VERSION: v6 · 2026-08-17 · NUBOX FIX: FOLIO ya NO va vacio (Nubox lo exige: "Folio de documento es
 //   obligatorio"). Aunque se cargue con "Folios automatico", ese campo es un CORRELATIVO de documento
 //   dentro del archivo (1,2,3...) que Nubox usa para agrupar lineas; el folio real del SII lo asigna
@@ -122,10 +128,10 @@ export async function POST(req) {
 
   const sb = svc()
 
-  // 1) Cabeceras: SOLO facturar='SI', no cerradas
+  // 1) Cabeceras: facturar='SI' o 'PARCIAL' (re-facturación de lo que faltaba), no cerradas
   const { data: cabs, error: eCab } = await sb.from('liquidacion_idprop')
     .select('idprop, facturar, tipo_factura, cerrado')
-    .eq('mes', mes).eq('facturar', 'SI')
+    .eq('mes', mes).in('facturar', ['SI', 'PARCIAL'])
   if (eCab) return Response.json({ error: 'cabeceras: ' + eCab.message }, { status: 500 })
   const idpropsSI = (cabs || []).filter(c => c.idprop !== PAOLA && !c.cerrado).map(c => c.idprop)
   const tipoDe = {}; for (const c of cabs || []) tipoDe[c.idprop] = (c.tipo_factura || '').trim()
@@ -138,7 +144,7 @@ export async function POST(req) {
   const complProps = [...new Set(compl.map(c => c.idprop))]
 
   if (idpropsSI.length === 0 && compl.length === 0) {
-    return Response.json({ ok: true, facturas_csv: '', boletas_csv: '', resumen: { aviso: 'No hay propietarios con facturar=SI ni complementarias.' } })
+    return Response.json({ ok: true, facturas_csv: '', boletas_csv: '', resumen: { aviso: 'No hay propietarios con facturar SI/PARCIAL ni complementarias.' } })
   }
 
   // 2) Lineas (inmuebles) de esos propietarios, sin estado P.
@@ -173,8 +179,12 @@ export async function POST(req) {
     })).filter(l => l.estado !== 'P' && numOf(l.comision) > 0)
   }
 
-  // 2b) EN ESPERA: quitar los idadmon retenidos (arrendatario moroso). Su comisión NO se factura
-  //     hasta cobrar (se hará en la complementaria). Fuente: liquidacion_retenidos (mismo que CARTAS/EMAILS).
+  // 2a) Facturables TOTALES por propietario (con y sin espera) — para decidir el estado final PARCIAL/HECHO.
+  const facturablesPorProp = {}
+  for (const l of lineas) (facturablesPorProp[l.idprop] = facturablesPorProp[l.idprop] || new Set()).add(l.idadmon)
+
+  // 2b) EN ESPERA: quitar los idadmon retenidos (arrendatario moroso). Su comisión NO se factura hasta cobrar.
+  //     Fuente: liquidacion_retenidos (mismo que CARTAS/EMAILS).
   const { data: retData } = await sb.from('liquidacion_retenidos')
     .select('idadmon').eq('mes', mes).eq('retenido', true).is('liberado_at', null)
   const retSet = new Set((retData || []).map(r => r.idadmon))
@@ -184,6 +194,12 @@ export async function POST(req) {
     lineas = lineas.filter(l => !retSet.has(l.idadmon))
     nEnEspera = antes - lineas.length
   }
+
+  // 2c) YA FACTURADO este mes (parciales previos): no se re-emite. Registro por idadmon en liquidacion_facturado.
+  const { data: yaFactRows } = await sb.from('liquidacion_facturado').select('idadmon, idprop').eq('mes', mes)
+  const yaFactSet = new Set((yaFactRows || []).map(r => r.idadmon))
+  const yaFactPropSet = new Set((yaFactRows || []).map(r => r.idprop).filter(Boolean))
+  if (yaFactSet.size) lineas = lineas.filter(l => !yaFactSet.has(l.idadmon))
 
   // 3) Datos de propietarios (cliente) — SI + los que tienen complementaria
   const idpropsAll = [...new Set([...idpropsSI, ...complProps])]
@@ -212,6 +228,7 @@ export async function POST(req) {
   let idFactura = 0, idBoleta = 0, docNubox = 0   // docNubox = correlativo de documento para el FOLIO de Nubox
   const resumen = { facturas: { propietarios: 0, docs: 0, lineas: 0 }, boletas: { propietarios: 0, docs: 0, lineas: 0 }, partidos: [] }
   const idpropsFacturados = []
+  const emitidasRegistro = []   // líneas realmente emitidas (para el registro liquidacion_facturado; excluye complementarias)
 
   // orden por nombre para salida estable (SI + complementarias)
   const idpropsOrden = idpropsAll.filter(ip => porProp[ip]?.length)
@@ -270,6 +287,8 @@ export async function POST(req) {
           TotalProducto: String(monto),
         })
         if (esFactura) filasFactura.push(fila); else filasBoleta.push(fila)
+        // Registro de línea realmente emitida (no complementarias). Clave para la facturación PARCIAL.
+        if (!l._complId) emitidasRegistro.push({ idadmon: l.idadmon, idprop, monto, tipo })
         // Nubox (1 CSV de 20 col): factura precio NETO; boleta precio BRUTO (Admon+IVA).
         filasNubox.push(filaNubox({
           TIPO: tipo, FOLIO: String(folioNubox), SECUENCIA: seq, FECHA: fecha,
@@ -294,14 +313,32 @@ export async function POST(req) {
   const boletas_csv = filasBoleta.length ? [cab, ...filasBoleta].join('\r\n') : ''
   const nubox_csv = filasNubox.length ? [NUBOX_COLS.join(';'), ...filasNubox].join('\r\n') : ''
 
-  // 5) Marcar HECHO + fecha_emision SOLO a los propietarios con facturar=SI (no a los que entran solo por complementaria).
+  // 5) Registro de lo emitido (por idadmon) + estado por propietario (PARCIAL si queda algo en espera; si no, HECHO).
   const nowIso = new Date().toISOString()
-  const setSIfinal = new Set(idpropsSI)
-  for (const idprop of idpropsFacturados) {
-    if (!setSIfinal.has(idprop)) continue
-    await sb.from('liquidacion_idprop').update({ facturar: 'HECHO', fecha_emision: nowIso, updated_at: nowIso })
-      .eq('mes', mes).eq('idprop', idprop)
+  const setSIfinal = new Set(idpropsSI)   // propietarios con facturar SI/PARCIAL (no Paola, no cerrados)
+
+  // 5a) Registrar en liquidacion_facturado las líneas realmente emitidas (idempotente por mes+idadmon).
+  if (emitidasRegistro.length) {
+    const rows = emitidasRegistro.map(l => ({ mes, idadmon: l.idadmon, idprop: l.idprop, monto: numOf(l.monto), tipo: l.tipo, fecha_emision: nowIso }))
+    try { await sb.from('liquidacion_facturado').upsert(rows, { onConflict: 'mes,idadmon' }) } catch (e) { resumen.registroError = (e?.message || 'registro').slice(0, 200) }
   }
+
+  // 5b) Estado por propietario. "algo facturado" = ya lo estaba (registro) o se emitió ahora.
+  //     Queda PARCIAL si a ese propietario le sigue quedando alguna línea EN ESPERA; si no, HECHO.
+  const emitidosAhora = new Set(idpropsFacturados)
+  let nParciales = 0, nHechos = 0
+  for (const idprop of setSIfinal) {
+    const algoFacturado = yaFactPropSet.has(idprop) || emitidosAhora.has(idprop)
+    if (!algoFacturado) continue   // nada emitido aún (p. ej. todo en espera): se deja como estaba (SI)
+    const facturables = facturablesPorProp[idprop] || new Set()
+    const quedaEnEspera = [...facturables].some(id => retSet.has(id))
+    const nuevoEstado = quedaEnEspera ? 'PARCIAL' : 'HECHO'
+    await sb.from('liquidacion_idprop').update({ facturar: nuevoEstado, fecha_emision: nowIso, updated_at: nowIso })
+      .eq('mes', mes).eq('idprop', idprop)
+    if (quedaEnEspera) nParciales++; else nHechos++
+  }
+  resumen.parciales = nParciales
+  resumen.hechos = nHechos
   // Marcar las complementarias incluidas como facturadas (no se vuelven a facturar).
   if (complIncluidas.length) {
     await sb.from('liquidacion_complementaria')
