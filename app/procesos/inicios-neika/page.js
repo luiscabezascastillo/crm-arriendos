@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v2 · 2026-08-18 · Renombrado a "Pagos Iniciales - Neika" (h1). Añadida leyenda "DATOS CARGADOS DE
+//   ARRIENDOS REALIZADOS DESDE JUNIO 2026" en un recuadro junto al título. Quitados los placeholder "opcional"
+//   de RUT y Comentarios. Hereda v1.
 // VERSION: v1 · 2026-08-17 · Proceso "Inicios Neika": Neika registra los primeros pagos de cada inicio.
 //   Escriben Neika + Dirección; consultan (solo ver) Adalis, Fabiola, Karina y Anthony; el resto no entra.
 //   Campos: IDADMON, fecha del pago, cantidad, RUT, descripción, comentarios. Lista filtrable por IDADMON.
@@ -106,11 +109,16 @@ export default function IniciosNeika() {
     <>
       <TopNav />
       <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ marginBottom: 6 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Inicios Neika</h1>
-          <p style={{ color: '#6B7280', fontSize: 13, marginTop: 4 }}>
-            Registro de los primeros pagos de cada inicio. {puedeEscribir ? 'Puedes añadir, editar y borrar.' : 'Solo consulta.'}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 6 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Pagos Iniciales - Neika</h1>
+            <p style={{ color: '#6B7280', fontSize: 13, marginTop: 4 }}>
+              Registro de los primeros pagos de cada inicio. {puedeEscribir ? 'Puedes añadir, editar y borrar.' : 'Solo consulta.'}
+            </p>
+          </div>
+          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#92400E', textAlign: 'center', lineHeight: 1.35, whiteSpace: 'nowrap' }}>
+            DATOS CARGADOS DE ARRIENDOS<br />REALIZADOS DESDE JUNIO 2026
+          </div>
         </div>
 
         {puedeEscribir && (
@@ -127,14 +135,14 @@ export default function IniciosNeika() {
                 <input value={form.cantidad} onChange={e => setForm(s => ({ ...s, cantidad: e.target.value }))} placeholder="0" style={{ ...inp, textAlign: 'right' }} />
               </label>
               <label style={lbl}>RUT
-                <input value={form.rut} onChange={e => setForm(s => ({ ...s, rut: e.target.value }))} placeholder="opcional" style={inp} />
+                <input value={form.rut} onChange={e => setForm(s => ({ ...s, rut: e.target.value }))} style={inp} />
               </label>
               <label style={lbl}>Descripción del pago
                 <input value={form.descripcion} onChange={e => setForm(s => ({ ...s, descripcion: e.target.value }))} placeholder="p. ej. garantía + primer mes" style={inp} />
               </label>
             </div>
             <label style={{ ...lbl, marginTop: 10, display: 'block' }}>Comentarios
-              <input value={form.comentarios} onChange={e => setForm(s => ({ ...s, comentarios: e.target.value }))} placeholder="opcional" style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
+              <input value={form.comentarios} onChange={e => setForm(s => ({ ...s, comentarios: e.target.value }))} style={{ ...inp, width: '100%', boxSizing: 'border-box' }} />
             </label>
             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
               <button onClick={guardar} disabled={guardando} style={btnPrimary}>{guardando ? 'Guardando…' : (editId ? '💾 Guardar cambios' : '＋ Registrar pago')}</button>

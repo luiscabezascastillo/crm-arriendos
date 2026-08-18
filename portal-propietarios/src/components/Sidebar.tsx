@@ -1,14 +1,44 @@
-﻿'use client'
+// VERSION: v2 · 2026-08-18 · Marca "Beta" en las secciones en desarrollo (Liquidaciones/Facturas/DJ 1835). Hereda v1.
+// RUTA: portal-propietarios/src/components/Sidebar.tsx
+'use client'
 import { usePathname } from 'next/navigation'
 
-const NAV = [
+type NavItem = { href: string; icon: string; label: string; dev?: boolean }
+
+const NAV: NavItem[] = [
   { href: '/dashboard',     icon: 'ti-layout-dashboard', label: 'Dashboard' },
   { href: '/propiedades',   icon: 'ti-building',         label: 'Mis propiedades' },
-  { href: '/liquidaciones', icon: 'ti-file-invoice',     label: 'Liquidaciones' },
+  { href: '/liquidaciones', icon: 'ti-file-invoice',     label: 'Liquidaciones', dev: true },
   { href: '/contratos',     icon: 'ti-file-text',        label: 'Contratos' },
-  { href: '/facturas',      icon: 'ti-receipt',          label: 'Facturas' },
-  { href: '/dj1835',        icon: 'ti-chart-bar',        label: 'DJ 1835 · SII' },
+  { href: '/facturas',      icon: 'ti-receipt',          label: 'Facturas', dev: true },
+  { href: '/dj1835',        icon: 'ti-chart-bar',        label: 'DJ 1835 · SII', dev: true },
 ]
+
+const grpStyle: React.CSSProperties = {
+  fontSize: 9, fontWeight: 600, letterSpacing: 1.5, color: 'rgba(255,255,255,0.25)',
+  textTransform: 'uppercase', padding: '0.8rem 0.5rem 0.4rem',
+}
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <a href={item.href} style={{
+      display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 7,
+      fontSize: 12, fontWeight: 500, textDecoration: 'none', marginBottom: 1,
+      background: active ? 'rgba(43,108,184,0.25)' : 'transparent',
+      color: active ? '#fff' : 'rgba(255,255,255,0.55)',
+    }}>
+      <i className={`ti ${item.icon}`} style={{ fontSize: 16, color: active ? '#2B6CB8' : 'inherit' }} aria-hidden="true" />
+      <span style={{ flex: 1 }}>{item.label}</span>
+      {item.dev && (
+        <span style={{
+          fontSize: 8, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase',
+          color: '#FCD34D', background: 'rgba(252,211,77,0.12)', border: '1px solid rgba(252,211,77,0.3)',
+          borderRadius: 4, padding: '1px 5px',
+        }}>Beta</span>
+      )}
+    </a>
+  )
+}
 
 export default function Sidebar({ idprop, nombre }: { idprop: string; nombre: string }) {
   const pathname = usePathname()
@@ -32,44 +62,14 @@ export default function Sidebar({ idprop, nombre }: { idprop: string; nombre: st
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '0 0.8rem' }}>
-        <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.5, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', padding: '0.8rem 0.5rem 0.4rem' }}>Principal</div>
-        {NAV.slice(0, 2).map(item => (
-          <a key={item.href} href={item.href} style={{
-            display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 7,
-            fontSize: 12, fontWeight: 500, textDecoration: 'none', marginBottom: 1,
-            background: pathname === item.href ? 'rgba(43,108,184,0.25)' : 'transparent',
-            color: pathname === item.href ? '#fff' : 'rgba(255,255,255,0.55)',
-          }}>
-            <i className={`ti ${item.icon}`} style={{ fontSize: 16, color: pathname === item.href ? '#2B6CB8' : 'inherit' }} aria-hidden="true"/>
-            {item.label}
-          </a>
-        ))}
+        <div style={grpStyle}>Principal</div>
+        {NAV.slice(0, 2).map(item => <NavLink key={item.href} item={item} active={pathname === item.href} />)}
 
-        <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.5, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', padding: '0.8rem 0.5rem 0.4rem' }}>Documentos</div>
-        {NAV.slice(2, 5).map(item => (
-          <a key={item.href} href={item.href} style={{
-            display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 7,
-            fontSize: 12, fontWeight: 500, textDecoration: 'none', marginBottom: 1,
-            background: pathname === item.href ? 'rgba(43,108,184,0.25)' : 'transparent',
-            color: pathname === item.href ? '#fff' : 'rgba(255,255,255,0.55)',
-          }}>
-            <i className={`ti ${item.icon}`} style={{ fontSize: 16, color: pathname === item.href ? '#2B6CB8' : 'inherit' }} aria-hidden="true"/>
-            {item.label}
-          </a>
-        ))}
+        <div style={grpStyle}>Documentos</div>
+        {NAV.slice(2, 5).map(item => <NavLink key={item.href} item={item} active={pathname === item.href} />)}
 
-        <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.5, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', padding: '0.8rem 0.5rem 0.4rem' }}>Fiscal</div>
-        {NAV.slice(5).map(item => (
-          <a key={item.href} href={item.href} style={{
-            display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 7,
-            fontSize: 12, fontWeight: 500, textDecoration: 'none', marginBottom: 1,
-            background: pathname === item.href ? 'rgba(43,108,184,0.25)' : 'transparent',
-            color: pathname === item.href ? '#fff' : 'rgba(255,255,255,0.55)',
-          }}>
-            <i className={`ti ${item.icon}`} style={{ fontSize: 16, color: pathname === item.href ? '#2B6CB8' : 'inherit' }} aria-hidden="true"/>
-            {item.label}
-          </a>
-        ))}
+        <div style={grpStyle}>Fiscal</div>
+        {NAV.slice(5).map(item => <NavLink key={item.href} item={item} active={pathname === item.href} />)}
       </nav>
 
       {/* Logout */}
@@ -78,11 +78,10 @@ export default function Sidebar({ idprop, nombre }: { idprop: string; nombre: st
           display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 7,
           fontSize: 12, color: 'rgba(255,255,255,0.3)', textDecoration: 'none',
         }}>
-          <i className="ti ti-logout" style={{ fontSize: 15 }} aria-hidden="true"/>
+          <i className="ti ti-logout" style={{ fontSize: 15 }} aria-hidden="true" />
           Cerrar sesión
         </a>
       </div>
     </aside>
   )
 }
-
