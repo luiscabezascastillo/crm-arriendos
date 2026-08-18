@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-08-17 · Nueva pestaña "Pagos" (recordatorios de pagos recurrentes) antes de CONTAB. Hereda v4.
 // VERSION: v4 · 2026-08-16 · Nuevas pestañas "Tarjeta" (tarjeta de crédito Santander …2494) tras Global,
 //   y "Facturas Int." (que faltaba en la barra) tras Alberto. Hereda v3.
 // VERSION: v3 · 2026-08-15 · Nueva pestaña "Alberto" (cuenta corriente del propietario de la empresa),
@@ -33,6 +34,7 @@ const MODULOS = [
   { id: 'dj1835',         icon: '🏘️', label: 'DJ 1835',     href: '/procesos/financiero/dj1835' },
   { id: 'alberto',        icon: '💼', label: 'Alberto',     href: '/procesos/financiero/alberto' },
   { id: 'facturas-int',   icon: '🌍', label: 'Facturas Int.', href: '/procesos/financiero/facturas-int' },
+  { id: 'pagos',          icon: '🔔', label: 'Pagos',       href: '/procesos/financiero/pagos' },
   { id: 'contab',         icon: '📊', label: 'CONTAB',      href: '/procesos/financiero/contab' },
 ]
 

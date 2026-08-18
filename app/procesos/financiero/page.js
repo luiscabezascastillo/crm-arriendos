@@ -1,5 +1,7 @@
 'use client'
 // RUTA: app/procesos/financiero/page.js
+// VERSION: v9 · 2026-08-17 · Añadida la ficha "Pagos" (recordatorios de pagos recurrentes / vencimientos,
+//   /procesos/financiero/pagos).
 // VERSION: v8 · 2026-08-16 · Añadida la ficha "Tarjeta de crédito" (estado de cuenta Santander …2494,
 //   /procesos/financiero/tarjeta), tras Global.
 // VERSION: v7 · 2026-08-16 · Añadida la ficha "Facturas Int." (facturas internacionales de servicios,
@@ -28,6 +30,7 @@ const SUBPROCESOS = [
   { icon: '📊', titulo: 'CONTAB',         desc: 'Carga contable',                                                  cadencia: 'mensual', href: '/procesos/financiero/contab' },
   { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
   { icon: '🌍', titulo: 'Facturas Int.',  desc: 'Facturas internacionales de servicios (del exterior) con su CCB',    cadencia: 'mensual',  href: '/procesos/financiero/facturas-int' },
+  { icon: '🔔', titulo: 'Pagos',          desc: 'Recordatorios de pagos recurrentes y vencimientos (avisa a Alberto)', cadencia: 'continuo', href: '/procesos/financiero/pagos' },
 ]
 
 const CAD_BADGE = {

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import Link from 'next/link'
 import TopNav from '../components/ui/TopNav'
+import AvisoPagos from '../components/ui/AvisoPagos'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com']
 
@@ -79,6 +80,7 @@ export default function DireccionPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
+      <AvisoPagos />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         {[

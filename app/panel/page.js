@@ -35,6 +35,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import TopNav from '../components/ui/TopNav'
+import AvisoPagos from '../components/ui/AvisoPagos'
 import { supabase } from '../../lib/supabaseClient'
 
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
@@ -353,6 +354,7 @@ export default function PanelPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
+      <AvisoPagos />
 
       {/* KPI bar global (demo — pendiente de cablear) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
