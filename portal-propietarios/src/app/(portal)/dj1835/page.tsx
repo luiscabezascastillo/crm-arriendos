@@ -1,4 +1,5 @@
-// VERSION: v2 · 2026-08-18 · DJ 1835 REAL: rentas de arrendamiento por año y propiedad (vista vw_dj1835).
+// VERSION: v3 · 2026-08-18 · + columna "Meses (E->D)" con AAAA···· (como el DJ 1835 del CRM). Hereda v2.
+//   DJ 1835 REAL: rentas de arrendamiento por año y propiedad (vista vw_dj1835).
 //   Selector de año, tabla por propiedad (rol, arrendatario, meses, monto anual) y total.
 // RUTA: portal-propietarios/src/app/(portal)/dj1835/page.tsx
 'use client'
@@ -9,6 +10,16 @@ type Linea = {
   idadmon: string; anio: number; rol: string | null; comuna_nombre: string | null
   rut_arrendatario: string | null; arrendatario: string | null; inmueble: string | null
   monto_anual: number | null; meses_arrendados: number | null
+  ene?: number | null; feb?: number | null; mar?: number | null; abr?: number | null
+  may?: number | null; jun?: number | null; jul?: number | null; ago?: number | null
+  sep?: number | null; oct?: number | null; nov?: number | null; dic?: number | null
+}
+
+const MES_KEYS: (keyof Linea)[] = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+// Devuelve "AAAA····" (A = mes arrendado, · = mes sin arriendo), como en el CRM.
+function mesesStr(l: Linea): string {
+  return MES_KEYS.map(k => (Number(l[k]) || 0) > 0 ? 'A' : '·').join('')
 }
 
 function fmtPeso(v: number): string {
@@ -112,7 +123,7 @@ export default function DJ1835Page() {
                     <th style={th}>Comuna</th>
                     <th style={th}>Arrendatario</th>
                     <th style={th}>RUT arrendatario</th>
-                    <th style={{ ...th, textAlign: 'center' }}>Meses</th>
+                    <th style={{ ...th, textAlign: 'center' }} title="A = mes arrendado · = sin arriendo">Meses (E→D)</th>
                     <th style={{ ...th, textAlign: 'right' }}>Renta anual</th>
                   </tr>
                 </thead>
@@ -127,7 +138,7 @@ export default function DJ1835Page() {
                       <td style={{ ...td, fontSize: 11, color: '#6B7280' }}>{l.comuna_nombre || '—'}</td>
                       <td style={{ ...td, fontSize: 11, color: '#6B7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.arrendatario || '—'}</td>
                       <td style={{ ...td, fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#6B7280' }}>{l.rut_arrendatario || '—'}</td>
-                      <td style={{ ...td, textAlign: 'center' }}>{l.meses_arrendados ?? '—'}</td>
+                      <td style={{ ...td, textAlign: 'center', fontFamily: 'DM Mono, monospace', letterSpacing: 2, color: '#2B6CB8' }} title={`${l.meses_arrendados ?? 0} meses arrendados`}>{mesesStr(l)}</td>
                       <td style={tdMono}>{fmtPeso(Number(l.monto_anual) || 0)}</td>
                     </tr>
                   ))}

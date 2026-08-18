@@ -12,7 +12,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const COLS = 'idadmon, anio, rol, comuna_nombre, rut_arrendatario, arrendatario, inmueble, monto_anual, meses_arrendados'
+const COLS = 'idadmon, anio, rol, comuna_nombre, rut_arrendatario, arrendatario, inmueble, monto_anual, meses_arrendados, ene, feb, mar, abr, may, jun, jul, ago, sep, oct, nov, dic'
 
 export async function GET() {
   try {

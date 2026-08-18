@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-08-18 · "En proceso termino" ahora cuenta Q + Q-Auditado + Q-Reclamado (antes solo Q).
 // VERSION: v2 · 2026-08-18 · FIX gas: la columna real es deuda_vigente_gas (deuda_vigente no existe y rompia
 //   el select de servicios). + esDueno (quien_cobra=DUENO, caso Paola/P001): FCR no recauda, no se muestran
 //   morosidad/ingresos-recibidos desde `cuentas`. // RUTA: portal-propietarios/src/app/(portal)/dashboard/page.tsx
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
     supabaseAdmin.from('datos_arriendos')
       .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, termino_actual, quien_cobra')
       .eq('idprop', session.idprop)
-      .in('estado', ['S', 'SQ', 'Q', 'P']),
+      .in('estado', ['S', 'SQ', 'Q', 'Q-Auditado', 'Q-Reclamado', 'P']),
   ])
 
   const todos = (contratos || []) as Record<string, unknown>[]
@@ -60,7 +61,7 @@ export default async function DashboardPage() {
   // KPIs estados
   const totalS  = todos.filter(c => c.estado === 'S').length
   const totalSQ = todos.filter(c => c.estado === 'SQ').length
-  const totalQ  = todos.filter(c => c.estado === 'Q').length
+  const totalQ  = todos.filter(c => ['Q', 'Q-Auditado', 'Q-Reclamado'].includes(c.estado as string)).length
   const totalP  = todos.filter(c => c.estado === 'P').length
   const activos = todos.filter(c => ['S', 'SQ'].includes(c.estado as string))
   const ingresoMensual = activos.reduce((s, c) => s + calcularPrecio(c), 0)

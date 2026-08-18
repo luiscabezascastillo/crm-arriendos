@@ -1,5 +1,5 @@
-// VERSION: v2 · 2026-08-18 · FIX gas: columna real deuda_vigente_gas (deuda_vigente no existe). + esDueno
-//   (quien_cobra=DUENO, Paola/P001): banner de cobro directo y sin Pago/Saldo (vienen de `cuentas`, no aplica).
+// VERSION: v3 · 2026-08-18 · 3 grupos: Arrendados (S,SQ) · En termino (Q,Q-Auditado,Q-Reclamado) · Vacantes (P).
+//   Se incluyen Q-Auditado/Q-Reclamado (antes se excluian del select y no aparecian). Hereda v2 (gas + esDueno).
 //   RUTA: portal-propietarios/src/app/(portal)/propiedades/page.tsx
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
@@ -12,11 +12,17 @@ const supabaseAdmin = createClient(
 )
 
 const ESTADOS: Record<string, { label: string; color: string; bg: string }> = {
-  S:  { label: 'Arrendado al día',      color: '#059669', bg: '#ECFDF5' },
-  SQ: { label: 'Aviso de término',      color: '#D97706', bg: '#FFFBEB' },
-  Q:  { label: 'En proceso de término', color: '#EA580C', bg: '#FFF7ED' },
-  P:  { label: 'Vacante',               color: '#DC2626', bg: '#FEF2F2' },
+  S:             { label: 'Arrendado al día',      color: '#059669', bg: '#ECFDF5' },
+  SQ:            { label: 'Aviso de término',      color: '#D97706', bg: '#FFFBEB' },
+  Q:             { label: 'En proceso de término', color: '#EA580C', bg: '#FFF7ED' },
+  'Q-Auditado':  { label: 'Término · auditado',    color: '#EA580C', bg: '#FFF7ED' },
+  'Q-Reclamado': { label: 'Término · reclamado',   color: '#EA580C', bg: '#FFF7ED' },
+  P:             { label: 'Vacante',               color: '#DC2626', bg: '#FEF2F2' },
 }
+
+const EST_ARRENDADO = ['S', 'SQ']
+const EST_TERMINO   = ['Q', 'Q-Auditado', 'Q-Reclamado']
+const EST_VACANTE   = ['P']
 
 function calcularPrecio(c: Record<string, unknown>): number {
   const cuota = parseFloat(String(c.cuota ?? 0)) || 0
@@ -52,7 +58,7 @@ export default async function PropiedadesPage() {
     .from('datos_arriendos')
     .select('idadmon, estado, inmueble, cuota, unid, uf_peso_factor, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_inicio, termino_actual, garantia_pedida, quien_tiene_garantia, arrendatario, quien_cobra')
     .eq('idprop', session.idprop)
-    .in('estado', ['S', 'SQ', 'Q', 'P'])
+    .in('estado', ['S', 'SQ', 'Q', 'Q-Auditado', 'Q-Reclamado', 'P'])
     .order('inmueble')
 
   const todos = (contratos || []) as Record<string, unknown>[]
@@ -82,13 +88,12 @@ export default async function PropiedadesPage() {
     if (!svcMap.has(s.idadmon as string)) svcMap.set(s.idadmon as string, s as Record<string, unknown>)
   }
 
-  const activos  = todos.filter(c => ['S', 'SQ'].includes(c.estado as string))
-  const terminos = todos.filter(c => ['Q', 'P'].includes(c.estado as string))
+  const arrendados = todos.filter(c => EST_ARRENDADO.includes(c.estado as string))
+  const enTermino  = todos.filter(c => EST_TERMINO.includes(c.estado as string))
+  const vacantes   = todos.filter(c => EST_VACANTE.includes(c.estado as string))
 
-  const ingresoActivos   = activos.reduce((s, c) => s + calcularPrecio(c), 0)
-  const ingresoTerminos  = terminos.reduce((s, c) => s + calcularPrecio(c), 0)
-  const garantiaActivos  = activos.reduce((s, c) => s + (parseFloat(String(c.garantia_pedida ?? 0)) || 0), 0)
-  const garantiaTerminos = terminos.reduce((s, c) => s + (parseFloat(String(c.garantia_pedida ?? 0)) || 0), 0)
+  const sumRenta    = (l: Record<string, unknown>[]) => l.reduce((s, c) => s + calcularPrecio(c), 0)
+  const sumGarantia = (l: Record<string, unknown>[]) => l.reduce((s, c) => s + (parseFloat(String(c.garantia_pedida ?? 0)) || 0), 0)
 
   const thStyle: React.CSSProperties = {
     fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase',
@@ -225,7 +230,7 @@ export default async function PropiedadesPage() {
     <div className="dash-wrap">
       <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ fontSize: 22, fontWeight: 600, color: '#111827' }}>Mis propiedades</div>
-        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 3 }}>{session.idprop} · {todos.length} contratos activos</div>
+        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 3 }}>{session.idprop} · {todos.length} propiedades</div>
       </div>
       {esDueno && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '12px 16px', marginBottom: '1.25rem' }}>
@@ -236,9 +241,12 @@ export default async function PropiedadesPage() {
           </div>
         </div>
       )}
-      <TablaContratos lista={activos} titulo="Contratos activos" totalRenta={ingresoActivos} totalGarantia={garantiaActivos} colorTotal="#059669" />
-      {terminos.length > 0 && (
-        <TablaContratos lista={terminos} titulo="En proceso de término" totalRenta={ingresoTerminos} totalGarantia={garantiaTerminos} colorTotal="#EA580C" />
+      <TablaContratos lista={arrendados} titulo="Arrendados" totalRenta={sumRenta(arrendados)} totalGarantia={sumGarantia(arrendados)} colorTotal="#059669" />
+      {enTermino.length > 0 && (
+        <TablaContratos lista={enTermino} titulo="En proceso de término" totalRenta={sumRenta(enTermino)} totalGarantia={sumGarantia(enTermino)} colorTotal="#EA580C" />
+      )}
+      {vacantes.length > 0 && (
+        <TablaContratos lista={vacantes} titulo="Vacantes" totalRenta={sumRenta(vacantes)} totalGarantia={sumGarantia(vacantes)} colorTotal="#DC2626" />
       )}
     </div>
   )
