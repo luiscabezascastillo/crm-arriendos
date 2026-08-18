@@ -1,5 +1,8 @@
 'use client'
 // RUTA: app/procesos/liquidaciones/facturas/page.js
+// VERSION: v17 · 2026-08-18 · Distingue facturado UNA vez ("total") de DOS veces ("×2 parcial+resto"): cuenta las
+//   emisiones distintas por propietario en liquidacion_facturado (nº de fechas de emisión). Badge bajo el estado
+//   Facturar. Hereda v16.
 // VERSION: v16 · 2026-08-18 · Estado PARCIAL (ámbar): el generador lo pone cuando se facturó parte y queda un moroso
 //   en espera; al recuperarlo y re-generar, solo se emite lo que faltaba y pasa a HECHO. Se añade a la leyenda y al
 //   selector. Además: aviso superior FLASHEANTE "FACTURACIÓN PARCIAL" con los propietarios afectados (clic = salta a
@@ -113,6 +116,7 @@ export default function FacturasPage() {
   const [resumenGen, setResumenGen] = useState(null)
   const [csvGen, setCsvGen] = useState({ facturas: '', boletas: '', nubox: '' })  // CSV generados, para redescargar
   const [enEsperaExcl, setEnEsperaExcl] = useState(0)   // nº de líneas apartadas por estar EN ESPERA (no se facturan)
+  const [emisionesProp, setEmisionesProp] = useState({})   // idprop -> nº de emisiones distintas (1 = total, 2 = parcial+resto)
   const [complL, setComplL] = useState([])   // complementarias a facturar en este mes de cobro (arriendos morosos ya cobrados)
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
@@ -270,6 +274,20 @@ export default function FacturasPage() {
         const dd = await rr.json()
         for (const s of (dd.retenidos || [])) if (s.idadmon) retSet.add(s.idadmon)
       } catch { /* silencioso: sin exclusión si falla */ }
+
+      // Emisiones registradas por propietario (para distinguir facturado 1 vez [total] vs 2 veces [parcial + resto]).
+      const emisProp = {}
+      try {
+        const { data: fr } = await supabase.from('liquidacion_facturado').select('idprop, fecha_emision').eq('mes', m)
+        const byProp = {}
+        for (const r of (fr || [])) {
+          if (!r.idprop) continue
+          const dia = String(r.fecha_emision || '').slice(0, 10)
+          ;(byProp[r.idprop] = byProp[r.idprop] || new Set()).add(dia)
+        }
+        for (const ip in byProp) emisProp[ip] = byProp[ip].size
+      } catch { /* silencioso */ }
+      setEmisionesProp(emisProp)
 
       // Filtrar: fuera Paola (P001), fuera estado P (desocupados) y fuera EN ESPERA (no se factura lo no cobrado)
       const facturable = (rawLineas || []).filter(l => l.idprop !== PAOLA && (l.estado || '').toUpperCase() !== 'P')
@@ -553,11 +571,19 @@ export default function FacturasPage() {
                   {/* Facturar: editable, aplica a TODO el propietario. Solo en la primera fila del grupo. */}
                   <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                     {nuevoProp ? (
-                      <select value={fact} disabled={cerrado || guardando === f.idprop}
-                        onChange={e => cambiarFacturar(f.idprop, fact, e.target.value)}
-                        style={{ fontSize: 12, fontWeight: 700, padding: '3px 6px', borderRadius: 8, border: 'none', background: fc.bg, color: fc.fg, cursor: cerrado ? 'default' : 'pointer' }}>
-                        {FACT_OPCIONES.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                        <select value={fact} disabled={cerrado || guardando === f.idprop}
+                          onChange={e => cambiarFacturar(f.idprop, fact, e.target.value)}
+                          style={{ fontSize: 12, fontWeight: 700, padding: '3px 6px', borderRadius: 8, border: 'none', background: fc.bg, color: fc.fg, cursor: cerrado ? 'default' : 'pointer' }}>
+                          {FACT_OPCIONES.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        {fact === 'HECHO' && (emisionesProp[f.idprop] || 0) >= 2 && (
+                          <span title="Facturado en DOS veces: la parcial + el resto del moroso recuperado" style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 8, background: '#E0E7FF', color: '#3730A3', whiteSpace: 'nowrap' }}>×2 parcial+resto</span>
+                        )}
+                        {fact === 'HECHO' && (emisionesProp[f.idprop] || 0) <= 1 && (
+                          <span title="Facturado por la totalidad en una sola emisión" style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#F1F5F9', color: '#64748B', whiteSpace: 'nowrap' }}>total</span>
+                        )}
+                      </div>
                     ) : <span style={{ fontSize: 11, color: '#C7C4BC' }}>↑</span>}
                   </td>
                   {/* Fecha emisión: solo lectura (se rellena al generar el archivo) */}

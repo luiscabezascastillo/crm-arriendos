@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-18 · GET devuelve además `cartasMoroso` (idprop -> 'pendiente'|'enviada'): estado de la
+//   carta POST-MOROSO por propietario (moroso liberado; 'enviada' si ya salió carta tras liberar, 'pendiente' si no).
+//   Para mostrar en CARTAS "Carta normal ✓ / Carta post-moroso ✓/pendiente". Hereda v3.
 // VERSION: v3 · 2026-08-18 · GET devuelve además `avisosAbono` (banner "NUEVO ABONO RECIBIDO": morosos en espera ya
 //   cobrados + morosos ya LIBERADOS cuya carta post-morosidad aún no se ha enviado — se compara fecha_envio del mes
 //   con liberado_at) y `morososPorCobrar` (nº de propietarios con morosos aún sin cobrar, para la cabecera). No
@@ -88,9 +91,10 @@ export async function GET(req) {
   const envByProp = {}
   for (const e of (envRows || [])) if (e.idprop) envByProp[e.idprop] = e.fecha_envio || null
 
-  // Avisos de abono (banner) + registro de morosos aún por cobrar.
+  // Avisos de abono (banner) + registro de morosos aún por cobrar + estado de la carta post-moroso por propietario.
   const avisosAbono = []
   const propsPorCobrar = new Set()
+  const liberadosCobradosProp = new Set()   // idprops con ≥1 moroso liberado y ya cobrado este mes
   for (const r of allRows) {
     const id = String(r.idadmon || '').trim()
     const m = map[id]; if (!m) continue
@@ -101,6 +105,7 @@ export async function GET(req) {
       else if (m.idprop) propsPorCobrar.add(m.idprop)
     } else if (r.liberado_at && cobrado) {
       // Ya liberado y con el dinero dentro (excluye incobrables justificados: esos no están "cobrados").
+      if (m.idprop) liberadosCobradosProp.add(m.idprop)
       // El aviso se mantiene HASTA que se envíe una carta DESPUÉS de liberar (fecha_envio > liberado_at).
       const fe = envByProp[m.idprop]
       const cartaTrasLiberar = !!fe && new Date(fe).getTime() > new Date(r.liberado_at).getTime()
@@ -108,7 +113,12 @@ export async function GET(req) {
     }
   }
 
-  return Response.json({ ok: true, retenidos, avisosAbono, morososPorCobrar: propsPorCobrar.size })
+  // Carta POST-MOROSO por propietario: 'pendiente' (moroso liberado, aún sin carta tras liberar) o 'enviada'.
+  const pendienteProp = new Set(avisosAbono.filter(a => a.tipo === 'liberado_sin_carta').map(a => a.idprop))
+  const cartasMoroso = {}
+  for (const idprop of liberadosCobradosProp) cartasMoroso[idprop] = pendienteProp.has(idprop) ? 'pendiente' : 'enviada'
+
+  return Response.json({ ok: true, retenidos, avisosAbono, morososPorCobrar: propsPorCobrar.size, cartasMoroso })
 }
 
 export async function POST(req) {

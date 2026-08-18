@@ -1,3 +1,6 @@
+// VERSION: v18 · 2026-08-18 · En la cabecera de cada propietario se distinguen las DOS cartas: "Carta normal ✓ (fecha)"
+//   y, si tiene moroso recuperado, "Carta post-moroso ✓" (ya reenviada) o "⏳ Carta post-moroso pendiente". Lo alimenta
+//   /retener (cartasMoroso). Hereda v17.
 // VERSION: v17 · 2026-08-18 · El banner "NUEVO ABONO RECIBIDO" ahora lo alimenta el endpoint /retener (avisosAbono):
 //   se mantiene desde que entra el pago, SOBREVIVE al "Liberar", y se apaga cuando se envía la carta DESPUÉS de
 //   liberar (post-morosidad). Chips por propietario. Se añade en cabecera el registro "N propietarios con morosos
@@ -155,6 +158,7 @@ export default function CartasPage() {
   const [retBusy, setRetBusy] = useState(null)
   const [avisosAbono, setAvisosAbono] = useState([])   // morosos ya cobrados pendientes de carta (banner superior)
   const [morososPorCobrar, setMorososPorCobrar] = useState(0)   // nº propietarios con morosos aún sin cobrar
+  const [cartasMoroso, setCartasMoroso] = useState({})   // idprop -> 'pendiente' | 'enviada' (carta post-moroso)
   const [compl, setCompl] = useState({})           // idadmon -> candidato de complementaria (del endpoint)
   const [complBusy, setComplBusy] = useState(null)
   const [editCap, setEditCap] = useState(null)     // idadmon cuyo texto de captación (P) se está editando
@@ -214,6 +218,7 @@ export default function CartasPage() {
       setRetenidos(map)
       setAvisosAbono(Array.isArray(d.avisosAbono) ? d.avisosAbono : [])
       setMorososPorCobrar(n0(d.morososPorCobrar))
+      setCartasMoroso(d.cartasMoroso && typeof d.cartasMoroso === 'object' ? d.cartasMoroso : {})
     } catch { /* silencioso */ }
   }
 
@@ -783,8 +788,10 @@ export default function CartasPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a' }}>{b.idprop} — {b.propietario}</div>
                   {envios[b.idprop]?.fecha_envio
-                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }}>✓ Enviada {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
+                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534' }} title="Carta de liquidación normal enviada">✓ {cartasMoroso[b.idprop] ? 'Carta normal' : 'Enviada'} {new Date(envios[b.idprop].fecha_envio).toLocaleDateString('es-CL')}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#64748B' }}>Pendiente</span>}
+                  {cartasMoroso[b.idprop] === 'enviada' && <span title="Carta POST-MOROSO enviada (tras cobrar y liberar al moroso)" style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>✓ Carta post-moroso</span>}
+                  {cartasMoroso[b.idprop] === 'pendiente' && <span title="Falta enviar la carta POST-MOROSO: el moroso ya pagó y se liberó, pero aún no se ha reenviado la carta con el arriendo incluido" style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>⏳ Carta post-moroso pendiente</span>}
                   {tieneObs && <span title="Este propietario tiene una observación de Alberto" style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>📝 Observación</span>}
                   {tieneOvr && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>⚠ AJUSTADA</span>}
                 </div>
