@@ -22,6 +22,10 @@ function totalF(f) {
          (fmt(f.deuda_vigente_agua)||0)+(fmt(f.deuda_vigente_gas)||0)
 }
 
+// VERSION: v4 · 2026-08-17 · Vista MULTI-MES: la tabla muestra TODOS los meses recientes a la vez (una fila por
+//   idadmon×mes), con columna AAMM (2608 arriba, luego 2607, 2606…), filtros de cabecera en todas las columnas
+//   (incl. AAMM) y cabecera FIJA (sticky) al hacer scroll. Se quita el desplegable de mes (el filtro AAMM lo
+//   sustituye) y las tarjetas de resumen se calculan sobre lo filtrado. Hereda v3.
 // VERSION: v3 · 2026-08-17 · Los códigos de luz/agua/gas se leen de la fuente única `servicios_codigos` (por
 //   idinmue) y se fusionan sobre las filas del mes: así se muestran también en meses recién reproducidos (antes
 //   quedaban vacíos porque el código no se copiaba del mes anterior). Hereda v2.
@@ -49,6 +53,13 @@ function normalizarMes(m) {
   return s
 }
 const MESES = generarMeses(12)
+// v4: meses recientes en ISO 'AAAA-MM' para cargar TODOS los meses de una vez (vista multi-mes).
+function mesesISO(n = 12) {
+  const hoy = new Date(); const l = []
+  for (let i = 0; i <= n; i++) { const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1); l.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`) }
+  return l
+}
+const MESES_ISO = mesesISO(12)
 
 function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
   const [open, setOpen] = useState(false)
@@ -163,7 +174,6 @@ function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
 const emptyF = { selected:[], sort:null, min:'', max:'' }
 
 export default function Deudas() {
-  const [mes, setMes] = useState(MESES[0])
   const [filas, setFilas] = useState([])
   const [contratos, setContratos] = useState({})
   const [loading, setLoading] = useState(true)
@@ -174,6 +184,7 @@ export default function Deudas() {
   const [guardando, setGuardando] = useState(false)
   const [guardadoOk, setGuardadoOk] = useState(false)
 
+  const [fAamm, setFAamm] = useState(emptyF)
   const [fIdadmon, setFIdadmon] = useState(emptyF)
   const [fProp, setFProp] = useState(emptyF)
   const [fEstado, setFEstado] = useState(emptyF)
@@ -195,27 +206,35 @@ export default function Deudas() {
   }, [])
 
   useEffect(() => {
-    setLoading(true)
-    setFilas([])
-    setFIdadmon(emptyF); setFProp(emptyF); setFEstado(emptyF)
-    setFGGCC(emptyF); setFLuz(emptyF); setFAgua(emptyF); setFGas(emptyF); setFTotal(emptyF)
-    setSortCol(null); setSortDir(null)
-    supabase.from('ggcc_agua_luz')
-      .select('idadmon,idinmue,estado,aamm,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
-      .eq('mes', normalizarMes(mes)).limit(500)
-      .then(async ({data}) => {
-        const base = (data||[]).filter(f => f.idadmon && !f.idadmon.startsWith('.'))
-        // Los códigos (luz/agua/gas) viven en servicios_codigos (por idinmue), no en la fila del mes:
-        // así se heredan solos al reproducir un mes nuevo. Se fusionan aquí para mostrarlos.
-        const { data: cods } = await supabase.from('servicios_codigos').select('idinmue,codigo_ele,codigo_agua,codigo_gas')
-        const mc = new Map((cods||[]).map(c => [c.idinmue, c]))
-        setFilas(base.map(f => {
-          const c = mc.get(f.idinmue)
-          return { ...f, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
-        }))
-        setLoading(false)
-      })
-  }, [mes])
+    let cancel = false
+    setLoading(true); setFilas([])
+    ;(async () => {
+      // Vista multi-mes: cargar TODOS los meses recientes (una fila por idadmon×mes), paginando.
+      let all = []; let from = 0; const PAGE = 1000
+      for (;;) {
+        const { data, error } = await supabase.from('ggcc_agua_luz')
+          .select('idadmon,idinmue,estado,aamm,mes,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
+          .in('mes', MESES_ISO)
+          .order('aamm', { ascending: false }).order('idadmon', { ascending: true })
+          .range(from, from + PAGE - 1)
+        if (error) break
+        all = all.concat(data || [])
+        if (!data || data.length < PAGE) break
+        from += PAGE
+      }
+      const base = all.filter(f => f.idadmon && !String(f.idadmon).startsWith('.'))
+      // Los códigos (luz/agua/gas) viven en servicios_codigos (por idinmue). Se fusionan para el drawer/export.
+      const { data: cods } = await supabase.from('servicios_codigos').select('idinmue,codigo_ele,codigo_agua,codigo_gas')
+      const mc = new Map((cods || []).map(c => [c.idinmue, c]))
+      if (cancel) return
+      setFilas(base.map(f => {
+        const c = mc.get(f.idinmue)
+        return { ...f, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
+      }))
+      setLoading(false)
+    })()
+    return () => { cancel = true }
+  }, [])
 
   function abrirDrawer(f) {
     setDrawer(f); setHistorial(null); setEditando(false); setGuardadoOk(false)
@@ -262,7 +281,7 @@ export default function Deudas() {
           fecha_hecho_gas: editData.fecha_hecho_gas,
           updated_at: new Date().toISOString(),
         })
-        .eq('mes', normalizarMes(mes))
+        .eq('mes', drawer.mes)
         .eq('idadmon', drawer.idadmon)
         .eq('idinmue', drawer.idinmue)
       if (error) throw error
@@ -282,7 +301,7 @@ export default function Deudas() {
       }
       setDrawer(updatedDrawer)
       setFilas(prev => prev.map(f =>
-        f.idadmon === drawer.idadmon && f.idinmue === drawer.idinmue ? updatedDrawer : f
+        f.idadmon === drawer.idadmon && f.idinmue === drawer.idinmue && f.mes === drawer.mes ? updatedDrawer : f
       ))
       setGuardadoOk(true)
       setEditando(false)
@@ -297,6 +316,7 @@ export default function Deudas() {
     if (newVal.sort) { setSortCol(f); setSortDir(newVal.sort) }
   }
 
+  const optsAamm = [...new Set(filas.map(f => f.aamm).filter(Boolean))].sort((a, b) => String(b).localeCompare(String(a)))
   const optsIdadmon = [...new Set(filas.map(f => f.idadmon))].sort()
   const optsProp = [...new Set(filas.map(f => contratos[f.idadmon]?.propietario||'—'))].sort()
   const optsEstado = [...new Set(filas.map(f => f.estado).filter(Boolean))].sort()
@@ -314,6 +334,7 @@ export default function Deudas() {
 
   let datos = filas.filter(f => {
     const c = contratos[f.idadmon]||{}
+    if (!inSelected(f.aamm, fAamm)) return false
     if (!inSelected(f.idadmon, fIdadmon)) return false
     if (!inSelected(c.propietario||'—', fProp)) return false
     if (!inSelected(f.estado, fEstado)) return false
@@ -325,15 +346,16 @@ export default function Deudas() {
     return true
   })
 
-  const activeSortCol = sortCol || (fIdadmon.sort?'idadmon':fProp.sort?'prop':fEstado.sort?'estado':
+  const activeSortCol = sortCol || (fAamm.sort?'aamm':fIdadmon.sort?'idadmon':fProp.sort?'prop':fEstado.sort?'estado':
     fGGCC.sort?'ggcc':fLuz.sort?'luz':fAgua.sort?'agua':fGas.sort?'gas':fTotal.sort?'total':null)
-  const activeSortDir = sortDir || fIdadmon.sort||fProp.sort||fEstado.sort||fGGCC.sort||fLuz.sort||fAgua.sort||fGas.sort||fTotal.sort
+  const activeSortDir = sortDir || fAamm.sort||fIdadmon.sort||fProp.sort||fEstado.sort||fGGCC.sort||fLuz.sort||fAgua.sort||fGas.sort||fTotal.sort
 
   if (activeSortCol) {
     datos = [...datos].sort((a,b) => {
       const c1=contratos[a.idadmon]||{}, c2=contratos[b.idadmon]||{}
       let va, vb
-      if (activeSortCol==='idadmon') { va=a.idadmon; vb=b.idadmon }
+      if (activeSortCol==='aamm') { va=a.aamm||''; vb=b.aamm||'' }
+      else if (activeSortCol==='idadmon') { va=a.idadmon; vb=b.idadmon }
       else if (activeSortCol==='prop') { va=c1.propietario||''; vb=c2.propietario||'' }
       else if (activeSortCol==='estado') { va=a.estado||''; vb=b.estado||'' }
       else if (activeSortCol==='ggcc') { va=fmt(a.deuda_gastos_comunes)||0; vb=fmt(b.deuda_gastos_comunes)||0 }
@@ -346,7 +368,7 @@ export default function Deudas() {
     })
   }
 
-  const hayFiltros = fIdadmon.selected.length||fProp.selected.length||fEstado.selected.length||
+  const hayFiltros = fAamm.selected.length||fIdadmon.selected.length||fProp.selected.length||fEstado.selected.length||
     fGGCC.min!==''||fGGCC.max!==''||fLuz.min!==''||fLuz.max!==''||
     fAgua.min!==''||fAgua.max!==''||fGas.min!==''||fGas.max!==''||
     fTotal.min!==''||fTotal.max!==''
@@ -391,17 +413,18 @@ export default function Deudas() {
     }))
     ws['!cols'] = colWidths
 
-    XLSX.writeFile(wb, 'deudas_' + mes.replace(' ', '_') + '.xlsx')
+    XLSX.writeFile(wb, 'deudas_servicios.xlsx')
   }
   function limpiarTodo() {
-    setFIdadmon(emptyF);setFProp(emptyF);setFEstado(emptyF)
+    setFAamm(emptyF);setFIdadmon(emptyF);setFProp(emptyF);setFEstado(emptyF)
     setFGGCC(emptyF);setFLuz(emptyF);setFAgua(emptyF);setFGas(emptyF);setFTotal(emptyF)
     setSortCol(null);setSortDir(null)
   }
 
-  const conDeuda = filas.filter(f=>totalF(f)>0).length
-  const sinDeuda = filas.filter(f=>totalF(f)===0).length
-  const totDeuda = filas.reduce((s,f)=>s+totalF(f),0)
+  const conDeuda = datos.filter(f=>totalF(f)>0).length
+  const sinDeuda = datos.filter(f=>totalF(f)===0).length
+  const totDeuda = datos.reduce((s,f)=>s+totalF(f),0)
+  const nMeses = new Set(datos.map(f=>f.aamm)).size
 
   return (
     <div style={{padding:'24px 32px',maxWidth:1400,margin:'0 auto',fontFamily:'var(--font-sans,sans-serif)'}}>
@@ -430,10 +453,6 @@ export default function Deudas() {
             color:'#374151',fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
             ⬇ Excel (.xlsx)
           </button>
-          <select value={mes} onChange={e=>setMes(e.target.value)}
-            style={{padding:'6px 12px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:14}}>
-            {MESES.map(m=><option key={m} value={m}>{m}</option>)}
-          </select>
         </div>
       </div>
 
@@ -447,7 +466,7 @@ export default function Deudas() {
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:20}}>
         {[
-          {label:'Contratos',val:filas.length,sub:datos.length!==filas.length?`${datos.length} filtrados`:null,color:'#185FA5'},
+          {label:'Filas',val:datos.length,sub:`${nMeses} mes(es)`+(datos.length!==filas.length?` · de ${filas.length}`:''),color:'#185FA5'},
           {label:'Con deuda',val:conDeuda,color:'#A32D2D'},
           {label:'Sin deuda',val:sinDeuda,color:'#3B6D11'},
           {label:'Deuda total',val:'$'+Math.round(totDeuda/1000)+'k',color:'#A32D2D'},
@@ -460,14 +479,17 @@ export default function Deudas() {
         ))}
       </div>
 
-      <div style={{background:'#fff',border:'0.5px solid #E5E7EB',borderRadius:10,overflow:'hidden'}}>
+      <div style={{background:'#fff',border:'0.5px solid #E5E7EB',borderRadius:10,overflow:'visible'}}>
         {loading ? (
           <div style={{padding:'2rem',textAlign:'center',color:'#9CA3AF'}}>Cargando...</div>
         ) : (
-          <div style={{overflowX:'auto'}}>
+          <div>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead>
                 <tr style={{background:'#F9FAFB'}}>
+                  <th style={thS}>
+                    <ExcelFilter label="AAMM" type="text" options={optsAamm} value={fAamm} onApply={v=>{setFAamm(v);if(v.sort){setSortCol('aamm');setSortDir(v.sort)}}} />
+                  </th>
                   <th style={thS}>
                     <ExcelFilter label="IDADMON" type="text" options={optsIdadmon} value={fIdadmon} onApply={v=>{setFIdadmon(v);if(v.sort){setSortCol('idadmon');setSortDir(v.sort)}}} />
                   </th>
@@ -502,6 +524,7 @@ export default function Deudas() {
                   return (
                     <tr key={f.idadmon+i} onClick={()=>abrirDrawer(f)}
                       style={{background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA',cursor:'pointer'}}>
+                      <td style={tdS}><span style={{fontWeight:600,color:'#185FA5'}}>{f.aamm}</span></td>
                       <td style={tdS}><span style={{fontWeight:500}}>{f.idadmon}</span></td>
                       <td style={tdS}>
                         <div>{c.propietario||'—'}</div>
@@ -532,8 +555,8 @@ export default function Deudas() {
                   )
                 })}
                 <tr style={{background:'#F3F4F6'}}>
-                  <td colSpan={4} style={{padding:'8px 12px',fontSize:12,color:'#6B7280',fontWeight:500}}>
-                    {datos.length} de {filas.length} contratos
+                  <td colSpan={5} style={{padding:'8px 12px',fontSize:12,color:'#6B7280',fontWeight:500}}>
+                    {datos.length} de {filas.length} filas
                   </td>
                   {['deuda_gastos_comunes','deuda_vigente_electricidad','deuda_vigente_agua','deuda_vigente_gas'].map((col,i)=>(
                     <td key={i} style={{padding:'8px 12px',textAlign:'right',fontWeight:600,fontSize:12,color:'#A32D2D'}}>
@@ -758,5 +781,5 @@ export default function Deudas() {
   )
 }
 
-const thS={padding:'8px 12px',textAlign:'left',fontSize:11,fontWeight:500,color:'#6B7280',borderBottom:'1px solid #E5E7EB',whiteSpace:'nowrap'}
+const thS={padding:'8px 12px',textAlign:'left',fontSize:11,fontWeight:500,color:'#6B7280',borderBottom:'1px solid #E5E7EB',whiteSpace:'nowrap',position:'sticky',top:0,zIndex:10,background:'#F9FAFB'}
 const tdS={padding:'8px 12px',borderBottom:'0.5px solid #F3F4F6'}
