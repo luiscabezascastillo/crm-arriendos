@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v53 · 2026-08-19 · Nuevo campo "Fecha de notificación" (terminos.fecha_notificacion) en el cuadro del
+//   término, entre Fecha de entrega y Valoración legal; Cont. Agua/Luz pasan a apilarse. Editable y se guarda. Hereda v52.
 // VERSION: v52 · 2026-08-19 · El panel "Urgentes ≤45 días" incluye al final dos desplegables MÁS (cerrados por
 //   defecto): "45–90 días" y "más de 90 días", para profundizar sin saturar la vista. Misma tabla, tres tramos.
 //   Hereda v51.
@@ -208,7 +210,7 @@ const AYUDA_ETAPAS = [
   { n: 4, nombre: 'Cobro/Devolución y paso a Auditado', quien: 'Karina', critico: true, que: 'Cobrar el déficit o devolver la garantía según el resultado, y pasar el término a Auditado.' },
   { n: 5, nombre: 'Reclamaciones legales / Dicom', quien: 'Anthony', que: 'Gestionar las reclamaciones legales y, si queda deuda, derivar a DICOM. Cierre.' },
 ]
-const FORM_T = { fecha_entrega: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '',
+const FORM_T = { fecha_entrega: '', fecha_notificacion: '', valoracion_legal: '', decision_actuacion: '', lectura_agua: '', lectura_luz: '', markup_fcr: '', comentarios_arrendatario: '', comentarios_internos: '', notas_finanzas_1: '', notas_finanzas_2: '', notas_finanzas_3: '', notas_finanzas_4: '',
   // Aprobación bilateral del presupuesto (Etapa 4). Columnas ya existentes en `terminos`.
   aprob_arrendatario_fecha: '', aprob_arrendatario_via: '', aprob_propietario_fecha: '', aprob_propietario_via: '' }
 
@@ -534,6 +536,7 @@ export default function TerminosPage() {
     const g = (k, d = '') => (t && t[k] != null ? t[k] : d)
     setForm({
       fecha_entrega: t?.fecha_entrega ? String(t.fecha_entrega).slice(0, 10) : (arriendo?.termino_actual ? String(arriendo.termino_actual).slice(0, 10) : ''),
+      fecha_notificacion: t?.fecha_notificacion ? String(t.fecha_notificacion).slice(0, 10) : '',
       valoracion_legal: g('valoracion_legal'), decision_actuacion: g('decision_actuacion'),
       lectura_agua: g('lectura_agua'), lectura_luz: g('lectura_luz'), markup_fcr: g('markup_fcr'),
       comentarios_arrendatario: g('comentarios_arrendatario'), comentarios_internos: g('comentarios_internos'),
@@ -678,6 +681,7 @@ export default function TerminosPage() {
     const txt = k => form[k] || null
     const payload = {
       idadmon: idadmonSel, fecha_entrega: form.fecha_entrega || null,
+      fecha_notificacion: form.fecha_notificacion || null,
       valoracion_legal: txt('valoracion_legal'), decision_actuacion: txt('decision_actuacion'),
       lectura_agua: txt('lectura_agua'), lectura_luz: txt('lectura_luz'), markup_fcr: num('markup_fcr'),
       comentarios_arrendatario: txt('comentarios_arrendatario'), comentarios_internos: txt('comentarios_internos'),
@@ -1573,9 +1577,10 @@ export default function TerminosPage() {
                   <div><div style={lbl}>Propietario</div><div style={val}>{A.propietario || '—'}</div></div>
                   <div><div style={lbl}>Estado (LOG)</div><div style={{ ...val, display: 'inline-block', padding: '2px 10px', borderRadius: 6, fontWeight: 700, background: '#EEF2FF', color: '#3730a3', border: '1px solid #C7D2FE' }}>{A.estado || '—'}</div></div>
                   <div><div style={lbl}>Fecha de entrega</div>{editando ? <input type="date" style={inEd} value={form.fecha_entrega} onChange={e => setF('fecha_entrega', e.target.value)} /> : <div style={val}>{fmtFecha(form.fecha_entrega)}</div>}</div>
+                  <div><div style={lbl}>Fecha de notificación</div>{editando ? <input type="date" style={inEd} value={form.fecha_notificacion} onChange={e => setF('fecha_notificacion', e.target.value)} /> : <div style={val}>{form.fecha_notificacion ? fmtFecha(form.fecha_notificacion) : '—'}</div>}</div>
                   <div><div style={lbl}>Valoración legal</div>{editando ? <input style={inEd} value={form.valoracion_legal} onChange={e => setF('valoracion_legal', e.target.value)} /> : <div style={val}>{form.valoracion_legal || '—'}</div>}</div>
                   <div><div style={lbl}>Decisión actuación</div>{editando ? <input style={inEd} value={form.decision_actuacion} onChange={e => setF('decision_actuacion', e.target.value)} /> : <div style={val}>{form.decision_actuacion || '—'}</div>}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div><div style={lbl}>Cont. Agua</div>{editando ? <input style={inEd} value={form.lectura_agua} onChange={e => setF('lectura_agua', e.target.value)} /> : <div style={val}>{form.lectura_agua || '—'}</div>}</div>
                     <div><div style={lbl}>Cont. Luz</div>{editando ? <input style={inEd} value={form.lectura_luz} onChange={e => setF('lectura_luz', e.target.value)} /> : <div style={val}>{form.lectura_luz || '—'}</div>}</div>
                   </div>

@@ -1,3 +1,6 @@
+// VERSION: v10 · 2026-08-19 · El aviso de término (S→SQ / S→Q) SIGUE yendo al buzón general (cambiosdeestado@,
+//   que ven otras personas) y ademas lleva COPIA a anthony.mendoza (valora la NOTIFICACIÓN), administracion@
+//   y karina.morales@. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Aviso de término (S→SQ / S→Q) se envía a anthony.mendoza (valora la NOTIFICACIÓN
 //   del término) con copia a administracion@ y karina.morales@. El resto de transiciones sigue al buzón
 //   general (cambiosdeestado@). Cambio aditivo sobre enviarNotificacion (ya admitía to/cc). Hereda v8.
@@ -295,11 +298,10 @@ export async function POST(req) {
     propietario: contrato.propietario,
     inmueble: contrato.inmueble,
     fecha: fechaEvento,
-    // Aviso de término (S->SQ / S->Q): destinatario Anthony (valora la NOTIFICACIÓN del término),
-    // con copia a Administración y a Karina. El resto de transiciones sigue yendo al buzón general.
+    // Aviso de término (S->SQ / S->Q): sigue yendo al buzón general (cambiosdeestado@, que ven otras
+    // personas) y además copia a Anthony (valora la NOTIFICACIÓN del término), Administración y Karina.
     ...(esAvisoTermino ? {
-      to: 'anthony.mendoza@fondocapital.com',
-      cc: ['administracion@fondocapital.com', 'karina.morales@fondocapital.com'],
+      cc: ['anthony.mendoza@fondocapital.com', 'administracion@fondocapital.com', 'karina.morales@fondocapital.com'],
     } : {}),
   })
   emailsEnviados.push({ subject: subjectCambio, ok: r1.ok })
