@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-19 · Arregla "requires shared drive membership": (1) scope 'drive' completo (como el CRM,
+//   el 'drive.readonly' lo disparaba); (2) el listado reintenta SIN corpora:'allDrives' anclando en el parent
+//   compartido; (3) el error ahora muestra la SA en uso [SA: …] para diagnóstico si aún fallara. Hereda v2.
 // VERSION: v2 · 2026-08-18 · Navega por CARPETAS (no por unidad): la cuenta de servicio NO es miembro de la
 //   unidad 2.SD.ADMON-CONTAB, solo tiene acceso a carpetas compartidas. Recorre 3.AÑOS/{año}/{AAMM}/
 //   4-CartasAutomaticas con corpora:'allDrives' y "'carpeta' in parents" (como lib/driveArchivo.js del CRM),
@@ -28,29 +31,34 @@ function driveClient(): DriveClient {
   const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS!)
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    scopes: ['https://www.googleapis.com/auth/drive'],   // como el CRM (driveArchivo.js). readonly disparaba el error de "shared drive membership".
   })
   return google.drive({ version: 'v3', auth })
 }
 
+// Lista anclando en el parent (que ya está compartido con la Service Account).
+// Intenta primero con corpora:'allDrives'; si Google exige pertenencia a la unidad
+// compartida ("shared drive membership"), reintenta SIN corpora (solo el parent),
+// que no requiere ser miembro de la unidad.
+async function listar(drive: DriveClient, q: string, fields: string): Promise<DriveItem[]> {
+  const base = { q, fields, pageSize: 1000, supportsAllDrives: true, includeItemsFromAllDrives: true }
+  try {
+    const res = await drive.files.list({ ...base, corpora: 'allDrives' }) as unknown as ListResp
+    return res.data.files || []
+  } catch {
+    const res = await drive.files.list(base) as unknown as ListResp
+    return res.data.files || []
+  }
+}
+
 // Lista subcarpetas de un padre (por ID de carpeta, no por unidad).
 async function listarSubcarpetas(drive: DriveClient, parentId: string): Promise<DriveItem[]> {
-  const res = await drive.files.list({
-    q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    corpora: 'allDrives', includeItemsFromAllDrives: true, supportsAllDrives: true,
-    fields: 'files(id, name)', pageSize: 1000,
-  }) as unknown as ListResp
-  return res.data.files || []
+  return listar(drive, `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`, 'files(id, name)')
 }
 
 // Lista PDFs de un padre.
 async function listarPdfs(drive: DriveClient, parentId: string): Promise<DriveItem[]> {
-  const res = await drive.files.list({
-    q: `'${parentId}' in parents and mimeType = 'application/pdf' and trashed = false`,
-    corpora: 'allDrives', includeItemsFromAllDrives: true, supportsAllDrives: true,
-    fields: 'files(id, name, modifiedTime)', pageSize: 1000,
-  }) as unknown as ListResp
-  return res.data.files || []
+  return listar(drive, `'${parentId}' in parents and mimeType = 'application/pdf' and trashed = false`, 'files(id, name, modifiedTime)')
 }
 
 type Fila = { fileId: string; nombre: string; aamm: string; anio: string; mesNum: string; modificado: string }
@@ -122,6 +130,8 @@ export async function GET() {
   } catch (err) {
     console.error('liquidaciones error:', err)
     const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ error: 'Error al conectar con Drive: ' + msg }, { status: 500 })
+    let sa = ''
+    try { sa = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}').client_email || '' } catch {}
+    return NextResponse.json({ error: 'Error al conectar con Drive: ' + msg + (sa ? ' [SA: ' + sa + ']' : ' [SA: sin credenciales]') }, { status: 500 })
   }
 }
