@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v23 · 2026-08-19 · Mensaje de bloqueo explícito: cuando una carta NO es enviable (CHECK/TO SEE, sin desbloqueo),
+//   el cierre muestra "🔒 No se puede enviar a <propietario>: faltan <saldo> por transferir/registrar en el BI…". Es la
+//   causa real (transferencia al propietario, no facturación). Solo texto; no cambia la lógica del candado. Hereda v22.
 // VERSION: v22 · 2026-08-10 · CARTA COMPLEMENTARIA (paso 5). Panel "🧩 Complementarias de <mes>": para cada propietario con
 //   complementaria registrada (mes de cobro = mes visto), un botón "Ver borrador complementaria" que arma un bloque con
 //   todas sus propiedades como referencia (yaLiquidado, en gris) + la línea cobrada con importes, y lo abre como borrador
@@ -912,6 +915,13 @@ export default function CartasPage() {
                 <span style={{ fontSize: 12, color: '#555' }}>Diferencia:
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>
                 </span>
+                {!estaEnviada(b) && !enviable(b) && (
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 8, background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+                    🔒 No se puede enviar a {b.propietario}: {b.estado === 'TO SEE'
+                      ? <>aún no consta ninguna transferencia registrada en el BI (faltan {fmt(b.totales.aTransferir)}).</>
+                      : <>faltan {fmt(b.diff)} por transferir/registrar al propietario en el BI.</>} Regístralo en el BI y cuadra, o desbloquea con justificación.
+                  </span>
+                )}
                 <button onClick={() => setObsAbierta(o => ({ ...o, [b.idprop]: !o[b.idprop] }))}
                   style={{ order: -1, fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 7, border: '1px solid #D3D1C7', background: abierta ? '#EEF2FF' : '#fff', color: '#374151', cursor: 'pointer' }}>
                   {abierta ? '▾ Cerrar observaciones' : '＋ Observaciones de Alberto'}

@@ -1,3 +1,6 @@
+// VERSION: v19 · 2026-08-19 · Mensaje de bloqueo explícito en el cierre: si el propietario está en CHECK/TO SEE, se
+//   muestra "🔒 No se puede enviar a <propietario>: faltan <saldo> por transferir/registrar en el BI…" (causa real:
+//   transferencia al propietario). Solo texto informativo. Hereda v18.
 // VERSION: v18 · 2026-08-18 · En la cabecera de cada propietario se distinguen las DOS cartas: "Carta normal ✓ (fecha)"
 //   y, si tiene moroso recuperado, "Carta post-moroso ✓" (ya reenviada) o "⏳ Carta post-moroso pendiente". Lo alimenta
 //   /retener (cartasMoroso). Hereda v17.
@@ -984,6 +987,13 @@ export default function CartasPage() {
                 <span style={{ fontSize: 12, color: '#555' }}>Diferencia:
                   <b style={{ marginLeft: 6, padding: '3px 10px', borderRadius: 6, background: Math.abs(b.diff) <= 2000 ? '#DCFCE7' : '#FEE2E2', color: Math.abs(b.diff) <= 2000 ? '#166534' : '#991B1B' }}>{fmt(b.diff)}</b>
                 </span>
+                {(b.estado === 'CHECK' || b.estado === 'TO SEE') && (
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 8, background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+                    🔒 No se puede enviar a {b.propietario}: {b.estado === 'TO SEE'
+                      ? <>aún no consta ninguna transferencia registrada en el BI (faltan {fmt(b.totales.aTransferir)}).</>
+                      : <>faltan {fmt(b.diff)} por transferir/registrar al propietario en el BI.</>} Regístralo en el BI y cuadra.
+                  </span>
+                )}
                 <button onClick={() => setObsAbierta(o => ({ ...o, [b.idprop]: !o[b.idprop] }))}
                   style={{ order: -1, fontSize: 12, fontWeight: (tieneObs && !abierta) ? 800 : 600, padding: '5px 12px', borderRadius: 7, border: (tieneObs && !abierta) ? '1px solid #F59E0B' : '1px solid #D3D1C7', background: abierta ? '#EEF2FF' : (tieneObs ? '#FEF3C7' : '#fff'), color: (tieneObs && !abierta) ? '#92400E' : '#374151', cursor: 'pointer' }}>
                   {abierta ? '▾ Cerrar observaciones' : (tieneObs ? '📝 Observación de Alberto' : '＋ Observaciones de Alberto')}

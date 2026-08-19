@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v12 · 2026-08-19 · Botón "🗒 BITÁCORA" (solo Dirección/Karina) que abre /procesos/liquidaciones/bitacora,
+//   el registro append-only de la facturación emitida. Aditivo. Hereda v11.
 // VERSION: v11 · 2026-08-10 · TRANSFER prep COMPLEMENTARIAS (paso 4, aditivo/sin tocar el cálculo): lee las complementarias
 //   REGISTRADAS del mes de cobro (/api/liquidaciones/complementaria?mes_cobro=AAMM) y las muestra como KPI "🧩 Complementarias"
 //   y como chip en la fila del propietario ("🧩 +$neto · arriendo de <mes>"), para saber que a ese propietario hay que
@@ -613,6 +615,13 @@ export default function LiquidacionesPage() {
             style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #DDD6FE', background: '#F5F3FF', color: '#6D28D9', cursor: 'pointer', fontFamily: 'inherit' }}>
             🧾 FACTURAS
           </button>
+          {DIRECCION_EMAILS.includes(email) && (
+            <button onClick={() => router.push('/procesos/liquidaciones/bitacora')}
+              title="BITÁCORA · registro append-only de la facturación emitida (solo Dirección/Karina)"
+              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 7, border: '1px solid #FDBA74', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontFamily: 'inherit' }}>
+              🗒 BITÁCORA
+            </button>
+          )}
           {ultimaAct && <span style={{ fontSize: 11, color: '#94A3B8' }}>Actualizado {ultimaAct.toLocaleTimeString('es-CL')}</span>}
         </div>
 

@@ -1,4 +1,8 @@
 // RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v8 · 2026-08-19 · BITÁCORA de facturación (append-only). Cada línea emitida (regulares y complementarias) se
+//   INSERTA en liquidacion_facturado_log con usuario + hora y NUNCA se borra (sobrevive al DELETE de liquidacion_facturado
+//   al re-'SI'). Además, antes de emitir se avisa si algún idadmon YA figura en la bitácora del mes (resumen.reemitidos):
+//   detecta la posible RE-EMISIÓN / doble cobro. Requiere la tabla liquidacion_facturado_log. Hereda v7.
 // VERSION: v7 · 2026-08-18 · FACTURACION PARCIAL. Procesa facturar IN ('SI','PARCIAL') y emite SOLO las lineas que NO
 //   estan ya en `liquidacion_facturado` (registro por idadmon del mes) y que no estan en espera. Registra lo emitido
 //   en esa tabla. Estado final por propietario: si le queda alguna linea EN ESPERA -> 'PARCIAL' (ya se hizo pero
@@ -201,6 +205,13 @@ export async function POST(req) {
   const yaFactPropSet = new Set((yaFactRows || []).map(r => r.idprop).filter(Boolean))
   if (yaFactSet.size) lineas = lineas.filter(l => !yaFactSet.has(l.idadmon))
 
+  // 2d) BITÁCORA (append-only): idadmon que YA figuran EMITIDOS este mes en liquidacion_facturado_log.
+  //     No bloquea, pero avisa: si `liquidacion_facturado` se limpió (re-'SI') la bitácora conserva la memoria
+  //     y detecta la posible RE-EMISIÓN (doble facturación). Se devuelve en resumen.reemitidos.
+  const { data: logPrevRows } = await sb.from('liquidacion_facturado_log').select('idadmon').eq('mes', mes)
+  const yaEnBitacora = new Set((logPrevRows || []).map(r => r.idadmon))
+  const reemitidos = [...new Set(lineas.filter(l => yaEnBitacora.has(l.idadmon)).map(l => l.idadmon))]
+
   // 3) Datos de propietarios (cliente) — SI + los que tienen complementaria
   const idpropsAll = [...new Set([...idpropsSI, ...complProps])]
   const { data: props } = await sb.from('propietarios')
@@ -229,6 +240,7 @@ export async function POST(req) {
   const resumen = { facturas: { propietarios: 0, docs: 0, lineas: 0 }, boletas: { propietarios: 0, docs: 0, lineas: 0 }, partidos: [] }
   const idpropsFacturados = []
   const emitidasRegistro = []   // líneas realmente emitidas (para el registro liquidacion_facturado; excluye complementarias)
+  const emitidasLog = []        // TODAS las líneas emitidas (incl. complementarias) para la BITÁCORA append-only
 
   // orden por nombre para salida estable (SI + complementarias)
   const idpropsOrden = idpropsAll.filter(ip => porProp[ip]?.length)
@@ -289,6 +301,12 @@ export async function POST(req) {
         if (esFactura) filasFactura.push(fila); else filasBoleta.push(fila)
         // Registro de línea realmente emitida (no complementarias). Clave para la facturación PARCIAL.
         if (!l._complId) emitidasRegistro.push({ idadmon: l.idadmon, idprop, monto, tipo })
+        // BITÁCORA append-only: TODA línea emitida (regulares y complementarias), con quién y cuándo.
+        emitidasLog.push({
+          idadmon: l.idadmon, idprop, propietario: (p.propietario || l.propietario || ''),
+          inmueble: l.inmueble || '', monto, iva: ivaMonto, tipo, documento: String(id),
+          es_complementaria: !!l._complId,
+        })
         // Nubox (1 CSV de 20 col): factura precio NETO; boleta precio BRUTO (Admon+IVA).
         filasNubox.push(filaNubox({
           TIPO: tipo, FOLIO: String(folioNubox), SECUENCIA: seq, FECHA: fecha,
@@ -323,6 +341,17 @@ export async function POST(req) {
     try { await sb.from('liquidacion_facturado').upsert(rows, { onConflict: 'mes,idadmon' }) } catch (e) { resumen.registroError = (e?.message || 'registro').slice(0, 200) }
   }
 
+  // 5a-bis) BITÁCORA append-only: se INSERTA (nunca upsert ni delete) todo lo emitido, con usuario y hora.
+  //         Es la constancia de auditoría de facturación; sobrevive aunque se limpie liquidacion_facturado.
+  if (emitidasLog.length) {
+    const rows = emitidasLog.map(l => ({
+      mes, idadmon: l.idadmon, idprop: l.idprop, propietario: l.propietario, inmueble: l.inmueble,
+      monto: numOf(l.monto), iva: numOf(l.iva), tipo: l.tipo, documento: l.documento,
+      formato, es_complementaria: !!l.es_complementaria, usuario: email, generado_en: nowIso,
+    }))
+    try { await sb.from('liquidacion_facturado_log').insert(rows) } catch (e) { resumen.bitacoraError = (e?.message || 'bitacora').slice(0, 200) }
+  }
+
   // 5b) Estado por propietario. "algo facturado" = ya lo estaba (registro) o se emitió ahora.
   //     Queda PARCIAL si a ese propietario le sigue quedando alguna línea EN ESPERA; si no, HECHO.
   const emitidosAhora = new Set(idpropsFacturados)
@@ -347,9 +376,11 @@ export async function POST(req) {
 
   resumen.enEspera = nEnEspera
   resumen.complementarias = complIncluidas.length
+  resumen.reemitidos = reemitidos   // idadmon que YA estaban en la bitácora de este mes: posible re-emisión (doble cobro)
   const avisos = []
   if (nEnEspera > 0) avisos.push(`${nEnEspera} línea(s) en espera se excluyeron (se facturan en la complementaria al cobrar)`)
   if (complIncluidas.length > 0) avisos.push(`${complIncluidas.length} complementaria(s) incluida(s) y marcada(s) como facturadas`)
+  if (reemitidos.length > 0) avisos.push(`⚠️ ${reemitidos.length} idadmon YA figuran facturados este mes en la bitácora (posible doble cobro): ${reemitidos.join(', ')}`)
   if (avisos.length) resumen.aviso = avisos.join('. ') + '.'
 
   resumen.formato = formato
