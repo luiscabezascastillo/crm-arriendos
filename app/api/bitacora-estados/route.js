@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-08-18 · runtime='nodejs' + dynamic (sin esto getServerSession no leía la sesión → 401 "no acceso").
+//   Hereda v1.
 // VERSION: v1 · 2026-08-18 · Bitácora de cambios de estado de contratos (auditoría). Lee historico_idadmon con
 //   service role. Dos modos: ?idadmon=A00874 (historial completo de un contrato, asc por created_at) o
 //   ?dias=60 (cambios de estado recientes, desc). Enriquece con datos_arriendos (propietario/inmueble/estado actual).
@@ -5,6 +7,9 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 

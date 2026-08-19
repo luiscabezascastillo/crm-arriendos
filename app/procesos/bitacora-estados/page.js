@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-08-18 · Acceso explícito: Dirección SIEMPRE (por email luis/alberto o rol direccion) + roles
+//   operativos (finanzas, administracion) y Karina. Antes solo pedía sesión. Hereda v1.
 // VERSION: v1 · 2026-08-18 · Bitácora de cambios de estado de contratos (auditoría). Dos vistas: cambios recientes
 //   (con filtros por persona y tipo de cambio) y el historial completo de un contrato (busca por IDADMON).
 //   Lee /api/bitacora-estados (historico_idadmon). Solo lectura. Ruta: app/procesos/bitacora-estados/page.js
@@ -6,6 +8,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
+
+// Dirección SIEMPRE tiene acceso (por email). Se gestiona por email, como en el resto del sistema.
+const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com']
+const EMAILS_OK = ['karina.morales@fondocapital.com']
+const ROLES_OK = ['direccion', 'finanzas', 'administracion']
+const ROL_ALIAS = { admin: 'direccion', operaciones: 'administracion', tecnico: 'mantencion' }
+const normRol = (r) => ROL_ALIAS[String(r || '').toLowerCase()] || String(r || '').toLowerCase()
 
 const fmtFechaHora = (s) => {
   if (!s) return '—'
@@ -31,11 +40,14 @@ export default function BitacoraEstados() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const email = session?.user?.email || ''
+  const rol = normRol(session?.user?.role)
+  const puedeVer = DIRECCION_EMAILS.includes(email) || EMAILS_OK.includes(email) || ROLES_OK.includes(rol)
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.replace('/panel')
-  }, [status, session]) // eslint-disable-line
+    if (!session) { router.replace('/panel'); return }
+    if (!puedeVer) router.replace('/procesos/mi-portal')
+  }, [status, session, puedeVer]) // eslint-disable-line
 
   const [dias, setDias] = useState(60)
   const [eventos, setEventos] = useState([])
@@ -66,7 +78,7 @@ export default function BitacoraEstados() {
       setEventos(d.eventos || [])
     } catch (e) { setError(e.message) } finally { setCargando(false) }
   }
-  useEffect(() => { if (status === 'authenticated') cargarRecientes(60) }, [status]) // eslint-disable-line
+  useEffect(() => { if (status === 'authenticated' && puedeVer) cargarRecientes(60) }, [status, puedeVer]) // eslint-disable-line
 
   const optsUsuario = useMemo(() => [...new Set(eventos.map(e => e.usuario_corto).filter(Boolean))].sort(), [eventos])
   const optsTrans = useMemo(() => [...new Set(eventos.map(e => `${e.estado_anterior || '—'}→${e.estado_nuevo || '—'}`))].sort(), [eventos])
@@ -77,8 +89,9 @@ export default function BitacoraEstados() {
     return true
   }), [eventos, fUsuario, fTrans])
 
-  if (status === 'loading' || !session) {
-    return (<><TopNav /><div style={{ padding: '48px 32px', color: '#6B7280', fontSize: 14 }}>Comprobando acceso…</div></>)
+  if (status === 'loading' || !session || !puedeVer) {
+    return (<><TopNav /><div style={{ padding: '48px 32px', color: '#6B7280', fontSize: 14 }}>
+      {status === 'loading' ? 'Comprobando acceso…' : 'Acceso restringido.'}</div></>)
   }
 
   return (
