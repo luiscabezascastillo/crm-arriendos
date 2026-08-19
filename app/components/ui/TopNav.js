@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v14 · 2026-08-18 · "Ventas internas" (Neika): NO ve el menú comercial "Ventas" (Requerimientos/Visitas/
+//   Publicaciones/etc.), aunque conserva acceso a /publicaciones por su proceso. Se controla con VENTAS_INTERNAS
+//   (por email). Hereda v13.
 // VERSION: v13 · 2026-08-15 · Desplegable "Procesos": ahora SOLO lista los procesos a los que la persona tiene
 //   acceso (proceso_permisos). Los que no usa YA NO aparecen (antes salían con candado 🔒). Dirección los ve todos.
 //   Así, quitando el permiso a alguien, el proceso le desaparece del menú (p. ej. Neika: Términos/Cobranza/Notif.).
@@ -42,6 +45,10 @@ const DIRECCION_EMAILS = [
   'luis.cabezas@fondocapital.com',
   // 'tirza.chavez@fondocapital.com',   // fuera para probar el perfil Comercial (espejo de Lorena). Reponer si Tirza debe ser Dirección.
 ];
+
+// "Ventas internas": personas con rol 'ventas' cuya labor es interna (p. ej. Neika registra los primeros pagos).
+// NO deben ver el menú comercial "Ventas", pero conservan acceso a las rutas que usan por sus procesos.
+const VENTAS_INTERNAS = ['neika.duque@fondocapital.com'];
 
 // Quién ve el botón de Alertas (solo Karina + Dirección; el resto tendrá sus propias alertas más adelante).
 const ALERTAS_EMAILS = [
@@ -442,8 +449,8 @@ export default function TopNav() {
       </div>
       )}
 
-      {/* Ventas (interno) — Inventario y Contactos */}
-      {puede('/publicaciones') && (
+      {/* Ventas (interno) — Inventario y Contactos. Las "ventas internas" (Neika) NO ven este menú comercial. */}
+      {puede('/publicaciones') && !VENTAS_INTERNAS.includes(session?.user?.email) && (
       <div ref={ventasRef} style={{ position: 'relative' }}>
         <button style={s.dropBtn(ventasActive)} onClick={() => { setVentasOpen(v => !v); setPropiedadesOpen(false); setProcesosOpen(false); }}>
           Ventas <span style={{ fontSize: 9, opacity: 0.6 }}>v</span>
