@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v5 · 2026-08-18 · FIX candado incoherente: Dirección (rol o email) tiene acceso a TODOS los procesos también
+//   en las FILAS (antes cada fila miraba solo proceso_permisos, así un proceso nuevo salía con 🔒 para Luis/Alberto
+//   aunque el desplegable del TopNav sí les diera acceso). Ahora ambas vistas usan el mismo criterio (esDireccion ||
+//   permiso). Los contadores "disponibles" también cuentan con ese criterio. Hereda v4.
 // VERSION: v4 · 2026-08-18 · Cada fila del Motor pasa a UNA sola línea: título · frecuencia · conexión · descripción/etapas,
 //   ocupando todo el ancho de la hoja y recortando con … si no cabe. Más compacto y de un vistazo. Hereda v3.
 // VERSION: v3 · 2026-08-15 · La lista ("el cuadro") solo muestra los procesos que la persona USA (proceso_permisos);
@@ -204,7 +208,8 @@ export default function ProcesosPage() {
   const rolProc = String(session?.user?.role || '').trim().toLowerCase()
   const esDireccion = rolProc === 'direccion' || DIRECCION_EMAILS.includes(session?.user?.email)
   const visibleProc = (p) => esDireccion || !!permisos[p.key]
-  const totalDisponibles = PROCESOS.filter(p => permisos[p.key]).length
+  const tieneAcceso = (p) => esDireccion || !!permisos[p.key]
+  const totalDisponibles = PROCESOS.filter(tieneAcceso).length
 
   if (status === 'loading' || loading) {
     return (
@@ -229,7 +234,7 @@ export default function ProcesosPage() {
         <ProcesoFila
           key={p.key}
           proceso={p}
-          permiso={permisos[p.key]}
+          permiso={esDireccion || !!permisos[p.key]}
           responsablePersona={responsables[p.key]}
           onClick={handleClick}
           isMobile={isMobile}
@@ -280,7 +285,7 @@ export default function ProcesosPage() {
             {(() => {
               const enProd = PROCESOS.filter(p => p.produccion && visibleProc(p))
               if (!enProd.length) return null
-              const dispProd = enProd.filter(p => permisos[p.key]).length
+              const dispProd = enProd.filter(tieneAcceso).length
               return (
                 <div style={{ marginBottom: 6 }}>
                   {sectionLabel('PROCESOS YA EN PRODUCCIÓN', dispProd, enProd.length, { bg: '#E1F5EE', color: '#085041' })}
@@ -291,7 +296,7 @@ export default function ProcesosPage() {
             {(() => {
               const resto = PROCESOS.filter(p => !p.produccion && visibleProc(p))
               if (!resto.length) return null
-              const dispResto = resto.filter(p => permisos[p.key]).length
+              const dispResto = resto.filter(tieneAcceso).length
               return (
                 <div style={{ marginTop: 14 }}>
                   {sectionLabel('EN PREPARACIÓN', dispResto, resto.length, { bg: '#F1EFE8', color: '#5F5E5A' })}
