@@ -1,9 +1,10 @@
+// VERSION: v2 · 2026-08-19 · Encabezado de tabla sticky, clavado bajo TopNav + FinancieroNav (altura medida). Hereda v1.
 // VERSION: v1 · 2026-08-19 · Vista "Pendiente de clasificar": lo que cae en el puente 1104-98, por unidad, con export a Excel (CSV).
 'use client'
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
@@ -27,8 +28,27 @@ export default function PendientePage() {
   const [items, setItems] = useState([])
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
+  const contentRef = useRef(null)
+  const [stickyTop, setStickyTop] = useState(96)
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/') }, [status, router])
+
+  useEffect(() => {
+    const medir = () => {
+      let alto = 0
+      let el = contentRef.current ? contentRef.current.previousElementSibling : null
+      while (el) {
+        const pos = window.getComputedStyle(el).position
+        if (pos === 'sticky' || pos === 'fixed') alto += Math.round(el.getBoundingClientRect().height)
+        el = el.previousElementSibling
+      }
+      if (alto) setStickyTop(alto)
+    }
+    medir()
+    window.addEventListener('resize', medir)
+    const t = setTimeout(medir, 300)
+    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
+  }, [])
 
   const cargar = async () => {
     setCargando(true); setError(null)
@@ -62,11 +82,13 @@ export default function PendientePage() {
     URL.revokeObjectURL(url)
   }
 
+  const thSticky = { ...th, position: 'sticky', top: stickyTop, zIndex: 5 }
+
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
       <FinancieroNav activo="contab" />
-      <div style={{ maxWidth: 1300, margin: '0 auto', padding: '24px 20px 80px' }}>
+      <div ref={contentRef} style={{ maxWidth: 1300, margin: '0 auto', padding: '24px 20px 80px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 13, color: TENUE, marginBottom: 4 }}>
@@ -100,11 +122,11 @@ export default function PendientePage() {
         {cargando ? (
           <div style={{ padding: 40, color: TENUE }}>Cargando…</div>
         ) : items.length > 0 && (
-          <div style={{ overflowX: 'auto', border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
+          <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
-                <th style={th}>Unidad</th><th style={th}>Periodo</th><th style={th}>Fecha</th><th style={th}>Folio</th>
-                <th style={th}>Glosa</th><th style={th}>CCB</th><th style={{ ...th, textAlign: 'right' }}>Monto</th>
+                <th style={thSticky}>Unidad</th><th style={thSticky}>Periodo</th><th style={thSticky}>Fecha</th><th style={thSticky}>Folio</th>
+                <th style={thSticky}>Glosa</th><th style={thSticky}>CCB</th><th style={{ ...thSticky, textAlign: 'right' }}>Monto</th>
               </tr></thead>
               <tbody>
                 {items.map((it, i) => (
