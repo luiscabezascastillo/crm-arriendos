@@ -1,4 +1,7 @@
 // RUTA: app/api/pagos-recurrentes/route.js
+// VERSION: v2 · 2026-08-18 · El GET solo devuelve los pagos a quien puede verlos (Alberto/Luis/Karina o rol
+//   direccion); al resto le devuelve listas vacías (defensa en profundidad, para que el aviso no lo vea nadie más).
+//   Hereda v1.
 // VERSION: v1 · 2026-08-17 · Recordatorios de pagos recurrentes de Alberto, con constancia para Luis/Karina.
 //   GET  → catálogo + estado del período actual (por_vencer / vencido / pagado / futuro) + lista de PENDIENTES
 //          (lo que hay que avisar hoy). Fecha de "hoy" en horario de Chile.
@@ -56,6 +59,14 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return Response.json({ error: 'No autenticado' }, { status: 401 })
   const hoy = hoyChile()
+
+  // Solo Alberto/Luis/Karina (o rol dirección) reciben los pagos. Al resto, listas vacías (el aviso no debe verse).
+  const emailL = String(session.user.email || '').toLowerCase()
+  const rolL = String(session?.user?.role || '').toLowerCase()
+  const puedeVerPagos = rolL === 'direccion' || EDITORES.map(e => e.toLowerCase()).includes(emailL)
+  if (!puedeVerPagos) {
+    return Response.json({ ok: true, hoy: `${p2(hoy.d)}/${p2(hoy.m)}/${hoy.y}`, items: [], pendientes: [], puedeEscribir: false, email: session.user.email })
+  }
 
   const { data: cat, error: e1 } = await admin.from('pagos_recurrentes').select('*').order('orden', { ascending: true }).order('proveedor', { ascending: true })
   if (e1) return Response.json({ error: e1.message }, { status: 500 })

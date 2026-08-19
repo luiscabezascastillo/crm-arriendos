@@ -1,3 +1,7 @@
+// VERSION: v11 · 2026-08-19 · El asunto del email de aviso de término (S→SQ / S→Q) pasa a "Término o Comunicación
+//   de Término para valoración de cumplimiento de contrato — <código+idadmon+fecha>": frase legible para Anthony
+//   delante, código de buzón detrás. El LOG (historico_idadmon.email_subject) sigue guardando el subject codificado.
+//   Hereda v10.
 // VERSION: v10 · 2026-08-19 · El aviso de término (S→SQ / S→Q) SIGUE yendo al buzón general (cambiosdeestado@,
 //   que ven otras personas) y ademas lleva COPIA a anthony.mendoza (valora la NOTIFICACIÓN), administracion@
 //   y karina.morales@. Hereda v9.
@@ -271,6 +275,12 @@ export async function POST(req) {
     idadmon, estadoNuevo,
     propietario: contrato.propietario, inmueble: contrato.inmueble, fecha: fechaEvento,
   })
+  // En el aviso de término (S->SQ / S->Q) el asunto lleva delante la frase legible para Anthony
+  // ("…valoración de cumplimiento de contrato") y conserva detrás el código+idadmon+fecha para que
+  // el buzón lo siga clasificando igual. En el LOG (historico_idadmon) se guarda el subject codificado.
+  const subjectEmail = esAvisoTermino
+    ? `Término o Comunicación de Término para valoración de cumplimiento de contrato — ${subjectCambio}`
+    : subjectCambio
   // ▼▼▼ BLOQUE 2 · CAMBIO 2 — estampar la doble firma cuando el cierre iba autorizado
   // Si este cierre a N usó una autorización aprobada, grabamos autorizado_por + motivo_cierre
   // (doble firma real: quien autoriza ≠ quien ejecuta). En cierres limpios quedan null.
@@ -290,7 +300,7 @@ export async function POST(req) {
   await supabaseAdmin.from('historico_idadmon').insert([filaHist])
   // ▲▲▲ BLOQUE 2 · CAMBIO 2
   const r1 = await enviarNotificacion({
-    subject: subjectCambio,
+    subject: subjectEmail,
     autor: email,
     idadmon,
     estadoAnterior,

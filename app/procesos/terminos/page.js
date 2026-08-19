@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v55 · 2026-08-19 · "Fecha de notificación" pasa a texto libre (la columna terminos.fecha_notificacion es
+//   ahora text): admite la fecha (dd/mm/aaaa) o un estado ("Indicar fecha para CRM", "No se rellenó en el Excel",
+//   "No encontrado Excel"…). Input type=text, sin recorte ni fmtFecha. Hereda v54.
 // VERSION: v54 · 2026-08-19 · Cont. Agua/Luz vuelven a ir en paralelo (una sola línea) para que el cuadro del término
 //   no crezca de alto al añadir "Fecha de notificación". Hereda v53.
 // VERSION: v53 · 2026-08-19 · Nuevo campo "Fecha de notificación" (terminos.fecha_notificacion) en el cuadro del
@@ -538,7 +541,7 @@ export default function TerminosPage() {
     const g = (k, d = '') => (t && t[k] != null ? t[k] : d)
     setForm({
       fecha_entrega: t?.fecha_entrega ? String(t.fecha_entrega).slice(0, 10) : (arriendo?.termino_actual ? String(arriendo.termino_actual).slice(0, 10) : ''),
-      fecha_notificacion: t?.fecha_notificacion ? String(t.fecha_notificacion).slice(0, 10) : '',
+      fecha_notificacion: t?.fecha_notificacion != null ? String(t.fecha_notificacion) : '',
       valoracion_legal: g('valoracion_legal'), decision_actuacion: g('decision_actuacion'),
       lectura_agua: g('lectura_agua'), lectura_luz: g('lectura_luz'), markup_fcr: g('markup_fcr'),
       comentarios_arrendatario: g('comentarios_arrendatario'), comentarios_internos: g('comentarios_internos'),
@@ -1579,7 +1582,7 @@ export default function TerminosPage() {
                   <div><div style={lbl}>Propietario</div><div style={val}>{A.propietario || '—'}</div></div>
                   <div><div style={lbl}>Estado (LOG)</div><div style={{ ...val, display: 'inline-block', padding: '2px 10px', borderRadius: 6, fontWeight: 700, background: '#EEF2FF', color: '#3730a3', border: '1px solid #C7D2FE' }}>{A.estado || '—'}</div></div>
                   <div><div style={lbl}>Fecha de entrega</div>{editando ? <input type="date" style={inEd} value={form.fecha_entrega} onChange={e => setF('fecha_entrega', e.target.value)} /> : <div style={val}>{fmtFecha(form.fecha_entrega)}</div>}</div>
-                  <div><div style={lbl}>Fecha de notificación</div>{editando ? <input type="date" style={inEd} value={form.fecha_notificacion} onChange={e => setF('fecha_notificacion', e.target.value)} /> : <div style={val}>{form.fecha_notificacion ? fmtFecha(form.fecha_notificacion) : '—'}</div>}</div>
+                  <div><div style={lbl}>Fecha de notificación</div>{editando ? <input style={inEd} placeholder="dd/mm/aaaa o estado" value={form.fecha_notificacion} onChange={e => setF('fecha_notificacion', e.target.value)} /> : <div style={val}>{form.fecha_notificacion || '—'}</div>}</div>
                   <div><div style={lbl}>Valoración legal</div>{editando ? <input style={inEd} value={form.valoracion_legal} onChange={e => setF('valoracion_legal', e.target.value)} /> : <div style={val}>{form.valoracion_legal || '—'}</div>}</div>
                   <div><div style={lbl}>Decisión actuación</div>{editando ? <input style={inEd} value={form.decision_actuacion} onChange={e => setF('decision_actuacion', e.target.value)} /> : <div style={val}>{form.decision_actuacion || '—'}</div>}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

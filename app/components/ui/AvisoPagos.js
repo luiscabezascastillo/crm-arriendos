@@ -1,4 +1,7 @@
 // RUTA: app/components/ui/AvisoPagos.js
+// VERSION: v3 · 2026-08-18 · VISIBILIDAD RESTRINGIDA. El aviso SOLO lo ven Alberto (actúa), Luis y Karina (info).
+//   Antes se mostraba a cualquiera que abriera /panel (p. ej. Anthony lo veía). Ahora, si el usuario no está en la
+//   lista, no se renderiza ni se pide la API. Hereda v2.
 // VERSION: v2 · 2026-08-17 · A quien NO es Alberto (Luis, Karina, resto) el aviso se muestra como "alerta de
 //   Alberto" con la coletilla "MOSTRADA A ALBERTO · DESAPARECE CUANDO PAGUE", para que quede claro de quién es
 //   la acción. A Alberto le sale en primera persona ("Tienes N pagos..."). Hereda v1.
@@ -12,24 +15,29 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 
 const ALBERTO = 'alberto.cabezas@fondocapital.com'
+// Solo estos ven el aviso: Alberto (actúa), Luis y Karina (información). El resto NO lo ve.
+const VISIBLE = [ALBERTO, 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
 export default function AvisoPagos() {
   const router = useRouter()
   const { data: session } = useSession()
-  const esAlberto = (session?.user?.email || '').toLowerCase() === ALBERTO
+  const email = (session?.user?.email || '').toLowerCase()
+  const esAlberto = email === ALBERTO
+  const puedeVer = VISIBLE.includes(email)
   const [pend, setPend] = useState([])
   const [cerrado, setCerrado] = useState(false)
 
   useEffect(() => {
+    if (!puedeVer) return
     let vivo = true
     fetch('/api/pagos-recurrentes')
       .then(r => r.json())
       .then(d => { if (vivo && d?.ok) setPend(d.pendientes || []) })
       .catch(() => {})
     return () => { vivo = false }
-  }, [])
+  }, [puedeVer])
 
-  if (cerrado || !pend.length) return null
+  if (!puedeVer || cerrado || !pend.length) return null
   const vencidos = pend.filter(p => p.estado === 'vencido').length
   return (
     <div style={{ maxWidth: 1400, margin: '10px auto 0', padding: '0 20px' }}>
