@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-19 · Rejilla 2 columnas + fondo propio, 4 cajas nuevas (SII/Tarjeta/Facturas Int/Alberto) en pronto, y boton "Pendiente de clasificar" -> /contab/pendiente. Hereda v5.
 // VERSION: v5 · 2026-08-19 · Honorarios activo (botón Regenerar). Hereda v4.
 // VERSION: v4 · 2026-08-19 · B. Santander activo (botón Regenerar de SA). Hereda v3.
 // VERSION: v3 · 2026-07-25 · Pantalla CONTAB (comprobantes contables).
@@ -27,12 +28,16 @@ const ROJO = '#B23A3A'
 const clp = (n) => (n == null || n === '' ? '' : Number(n).toLocaleString('es-CL'))
 
 const ORIGENES = [
-  { id: 'ventas',     nombre: 'Ventas',       desc: 'Ingresos por CCB (bruto/neto/IVA)', activo: true },
-  { id: 'compras',    nombre: 'Compras',      desc: 'Gastos por naturaleza + IVA crédito', activo: true },
-  { id: 'honorarios', nombre: 'Honorarios',   desc: 'Boletas de honorarios',             activo: true  },
-  { id: 'sa',         nombre: 'B. Santander', desc: 'Movimientos Santander (propio)',    activo: true  },
-  { id: 'caja_chica', nombre: 'Caja Chica',   desc: 'Movimientos de caja chica',         activo: false },
-  { id: 'global',     nombre: 'Global 66',    desc: 'Movimientos Global 66',             activo: false },
+  { id: 'ventas',       nombre: 'Ventas',        desc: 'Ingresos por CCB (bruto/neto/IVA)',     activo: true  },
+  { id: 'compras',      nombre: 'Compras',       desc: 'Gastos por naturaleza + IVA crédito',   activo: true  },
+  { id: 'honorarios',   nombre: 'Honorarios',    desc: 'Boletas de honorarios',                 activo: true  },
+  { id: 'sa',           nombre: 'B. Santander',  desc: 'Movimientos Santander (propio)',        activo: true  },
+  { id: 'sii',          nombre: 'SII',           desc: 'F29 / impuestos SII',                   activo: false },
+  { id: 'tarjeta',      nombre: 'Tarjeta',       desc: 'Tarjeta de crédito Santander (…2494)',  activo: false },
+  { id: 'facturas_int', nombre: 'Facturas Int.', desc: 'Facturas internacionales de servicios', activo: false },
+  { id: 'alberto',      nombre: 'Alberto',       desc: 'Cuenta corriente del propietario',      activo: false },
+  { id: 'caja_chica',   nombre: 'Caja Chica',    desc: 'Movimientos de caja chica',             activo: false },
+  { id: 'global',       nombre: 'Global 66',     desc: 'Movimientos Global 66',                 activo: false },
 ]
 
 const MESES_N = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -186,32 +191,41 @@ export default function ContabPage() {
         {error && <div style={{ padding: 14, borderRadius: 10, background: ROJO_BG, color: ROJO, marginBottom: 16 }}>{error}</div>}
         {aviso && <div style={{ padding: 14, borderRadius: 10, marginBottom: 16, background: aviso.tipo === 'ok' ? VERDE_CLARO : ROJO_BG, color: aviso.tipo === 'ok' ? VERDE : ROJO }}>{aviso.txt}</div>}
 
-        <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff', overflow: 'hidden', marginBottom: 20 }}>
-          {ORIGENES.map((o, i) => {
-            const res = resumenPorOrigen(o.id)
-            const gen = generando === o.id
-            return (
-              <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderTop: i ? `1px solid ${BORDE}` : 'none', background: o.activo ? '#fff' : '#FBFBF9' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: o.activo ? '#1A1A17' : TENUE }}>{o.nombre}</div>
-                  <div style={{ fontSize: 12, color: TENUE }}>{o.desc}</div>
-                </div>
-                {res ? (
-                  <div style={{ fontSize: 13, textAlign: 'right', color: res.todos_cuadran ? VERDE : ROJO }}>
-                    {res.n_comp} comp{res.n_meses > 1 ? ` · ${res.n_meses} meses` : ''} · {clp(res.debe)}<br />
-                    <span style={{ fontSize: 11 }}>{res.todos_cuadran ? 'cuadra ✓' : 'descuadre ✗'}</span>
+        {/* Bloque de generadores por módulo: 2 columnas, fondo propio, + acción Pendiente */}
+        <div style={{ background: '#F1EEE7', border: `1px solid ${BORDE}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1A17' }}>Módulos contables</div>
+            <button onClick={() => router.push('/procesos/financiero/contab/pendiente')}
+              style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#B45309', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Pendiente de clasificar →
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {ORIGENES.map((o) => {
+              const res = resumenPorOrigen(o.id)
+              const gen = generando === o.id
+              return (
+                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDE}`, background: o.activo ? '#fff' : '#FBFBF9' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: o.activo ? '#1A1A17' : TENUE }}>{o.nombre}</div>
+                    <div style={{ fontSize: 11.5, color: TENUE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.desc}</div>
+                    {res && (
+                      <div style={{ fontSize: 11, marginTop: 3, color: res.todos_cuadran ? VERDE : ROJO }}>
+                        {res.n_comp} comp{res.n_meses > 1 ? ` · ${res.n_meses}m` : ''} · {clp(res.debe)} · {res.todos_cuadran ? 'cuadra ✓' : 'descuadre ✗'}
+                      </div>
+                    )}
                   </div>
-                ) : (<div style={{ fontSize: 12, color: TENUE }}>{o.activo ? 'sin generar' : ''}</div>)}
-                {o.activo ? (
-                  puedeEditar && (
-                    <button onClick={() => generar(o.id)} disabled={gen} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 14, fontWeight: 600, cursor: gen ? 'default' : 'pointer', opacity: gen ? 0.6 : 1 }}>
-                      {gen ? 'Generando…' : (res ? 'Regenerar' : 'Generar')}
-                    </button>
-                  )
-                ) : (<span style={{ fontSize: 11, color: '#B4B2A9', padding: '4px 10px' }}>pronto</span>)}
-              </div>
-            )
-          })}
+                  {o.activo ? (
+                    puedeEditar && (
+                      <button onClick={() => generar(o.id)} disabled={gen} style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 13, fontWeight: 600, cursor: gen ? 'default' : 'pointer', opacity: gen ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                        {gen ? '…' : (res ? 'Regenerar' : 'Generar')}
+                      </button>
+                    )
+                  ) : (<span style={{ fontSize: 11, color: '#B4B2A9', padding: '4px 8px', whiteSpace: 'nowrap' }}>pronto</span>)}
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         {comprobantes.length > 0 && (
