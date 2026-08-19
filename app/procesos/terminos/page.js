@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v54 · 2026-08-19 · Cont. Agua/Luz vuelven a ir en paralelo (una sola línea) para que el cuadro del término
+//   no crezca de alto al añadir "Fecha de notificación". Hereda v53.
 // VERSION: v53 · 2026-08-19 · Nuevo campo "Fecha de notificación" (terminos.fecha_notificacion) en el cuadro del
 //   término, entre Fecha de entrega y Valoración legal; Cont. Agua/Luz pasan a apilarse. Editable y se guarda. Hereda v52.
 // VERSION: v52 · 2026-08-19 · El panel "Urgentes ≤45 días" incluye al final dos desplegables MÁS (cerrados por
@@ -1580,7 +1582,7 @@ export default function TerminosPage() {
                   <div><div style={lbl}>Fecha de notificación</div>{editando ? <input type="date" style={inEd} value={form.fecha_notificacion} onChange={e => setF('fecha_notificacion', e.target.value)} /> : <div style={val}>{form.fecha_notificacion ? fmtFecha(form.fecha_notificacion) : '—'}</div>}</div>
                   <div><div style={lbl}>Valoración legal</div>{editando ? <input style={inEd} value={form.valoracion_legal} onChange={e => setF('valoracion_legal', e.target.value)} /> : <div style={val}>{form.valoracion_legal || '—'}</div>}</div>
                   <div><div style={lbl}>Decisión actuación</div>{editando ? <input style={inEd} value={form.decision_actuacion} onChange={e => setF('decision_actuacion', e.target.value)} /> : <div style={val}>{form.decision_actuacion || '—'}</div>}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div><div style={lbl}>Cont. Agua</div>{editando ? <input style={inEd} value={form.lectura_agua} onChange={e => setF('lectura_agua', e.target.value)} /> : <div style={val}>{form.lectura_agua || '—'}</div>}</div>
                     <div><div style={lbl}>Cont. Luz</div>{editando ? <input style={inEd} value={form.lectura_luz} onChange={e => setF('lectura_luz', e.target.value)} /> : <div style={val}>{form.lectura_luz || '—'}</div>}</div>
                   </div>
