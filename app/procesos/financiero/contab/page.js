@@ -1,3 +1,4 @@
+// VERSION: v7 · 2026-08-19 · Caja Chica activa (botón Regenerar). Hereda v6.
 // VERSION: v6 · 2026-08-19 · Rejilla 2 columnas + fondo propio, 4 cajas nuevas (SII/Tarjeta/Facturas Int/Alberto) en pronto, y boton "Pendiente de clasificar" -> /contab/pendiente. Hereda v5.
 // VERSION: v5 · 2026-08-19 · Honorarios activo (botón Regenerar). Hereda v4.
 // VERSION: v4 · 2026-08-19 · B. Santander activo (botón Regenerar de SA). Hereda v3.
@@ -36,7 +37,7 @@ const ORIGENES = [
   { id: 'tarjeta',      nombre: 'Tarjeta',       desc: 'Tarjeta de crédito Santander (…2494)',  activo: false },
   { id: 'facturas_int', nombre: 'Facturas Int.', desc: 'Facturas internacionales de servicios', activo: false },
   { id: 'alberto',      nombre: 'Alberto',       desc: 'Cuenta corriente del propietario',      activo: false },
-  { id: 'caja_chica',   nombre: 'Caja Chica',    desc: 'Movimientos de caja chica',             activo: false },
+  { id: 'caja_chica',   nombre: 'Caja Chica',    desc: 'Movimientos de caja chica',             activo: true  },
   { id: 'global',       nombre: 'Global 66',     desc: 'Movimientos Global 66',                 activo: false },
 ]
 

@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-08-19 · Caja Chica enchufada ('caja_chica' -> contab_generar_caja_chica). Hereda v3.
 // VERSION: v3 · 2026-08-19 · Honorarios enchufado ('honorarios' -> contab_generar_honorarios). Hereda v2.
 // VERSION: v2 · 2026-08-19 · SA enchufado: 'sa' -> contab_generar_sa en GENERADORES (habilita Regenerar de B. Santander). Hereda v1.
 // VERSION: v1 · 2026-07-25 · Endpoint del módulo CONTAB (comprobantes contables).
@@ -26,6 +27,7 @@ const GENERADORES = {
   compras: 'contab_generar_compras',
   honorarios: 'contab_generar_honorarios',
   sa:      'contab_generar_sa',
+  caja_chica: 'contab_generar_caja_chica',
 }
 
 const LIMITE_NUBOX = 5000 // líneas máximas por bloque de importación
