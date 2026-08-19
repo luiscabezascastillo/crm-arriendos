@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-19 · SA enchufado: 'sa' -> contab_generar_sa en GENERADORES (habilita Regenerar de B. Santander). Hereda v1.
 // VERSION: v1 · 2026-07-25 · Endpoint del módulo CONTAB (comprobantes contables).
 //   GET  ?periodo=AAAA-MM  → comprobantes generados del periodo + estado de cuadre por origen
 //   GET  ?export=nubox&periodo=AAAA-MM → filas formato Nubox (A-J), en bloques <5000 líneas
@@ -22,7 +23,7 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 const GENERADORES = {
   ventas: 'contab_generar_ventas',
   compras: 'contab_generar_compras',
-  // sa:      'contab_generar_sa',         (pendiente)
+  sa:      'contab_generar_sa',
 }
 
 const LIMITE_NUBOX = 5000 // líneas máximas por bloque de importación

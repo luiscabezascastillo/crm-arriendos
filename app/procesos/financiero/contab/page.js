@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-08-19 · B. Santander activo (botón Regenerar de SA). Hereda v3.
 // VERSION: v3 · 2026-07-25 · Pantalla CONTAB (comprobantes contables).
 //   · Selector de AÑO + alcance Mes / Todo el año.
 //   · Fila por ORIGEN (Ventas activo) con Generar (idempotente) y estado de cuadre.
@@ -28,7 +29,7 @@ const ORIGENES = [
   { id: 'ventas',     nombre: 'Ventas',       desc: 'Ingresos por CCB (bruto/neto/IVA)', activo: true },
   { id: 'compras',    nombre: 'Compras',      desc: 'Gastos por naturaleza + IVA crédito', activo: true },
   { id: 'honorarios', nombre: 'Honorarios',   desc: 'Boletas de honorarios',             activo: false },
-  { id: 'sa',         nombre: 'B. Santander', desc: 'Movimientos Santander (propio)',    activo: false },
+  { id: 'sa',         nombre: 'B. Santander', desc: 'Movimientos Santander (propio)',    activo: true  },
   { id: 'caja_chica', nombre: 'Caja Chica',   desc: 'Movimientos de caja chica',         activo: false },
   { id: 'global',     nombre: 'Global 66',    desc: 'Movimientos Global 66',             activo: false },
 ]

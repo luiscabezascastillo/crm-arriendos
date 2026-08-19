@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v27 · 2026-08-18 · El desplegable del FOLIO (Núm) se muestra en orden DESCENDENTE (el folio más alto =
+//   más reciente, arriba), vía la marca `ordenDesc` del motor de filtro. Solo en Descuentos. No cambia los datos
+//   (los folios históricos con decimales se quedan como están, pero salen abajo). Hereda v26.
 // VERSION: v26 · 2026-08-18 · FIX filtro por FOLIO (columna Núm): su etiqueta se formateaba como dinero ("4.938"),
 //   así que buscar "4938" no encontraba nada. Ahora el folio se muestra como número plano (sin separador de miles) en
 //   el filtro; los montos siguen en formato dinero. Hereda v25.
@@ -114,6 +117,8 @@ const DCOLS = COLS.map((c) => {
     // buscar "4938" case con "4938". Los montos sí se muestran en formato dinero.
     const esFolio = c.key === 'num';
     return { key: c.key, label: c.label, tipo: 'num',
+      // Solo el Folio: el desplegable se muestra en orden descendente (el folio más alto = más reciente, arriba).
+      ordenDesc: esFolio,
       fkey: (r) => (r[c.key] == null || r[c.key] === '' ? '' : String(r[c.key])),
       flabel: esFolio ? (k) => (k === '' ? '(vacío)' : String(k)) : (k) => (k === '' ? '(vacío)' : money(k)) };
   }
