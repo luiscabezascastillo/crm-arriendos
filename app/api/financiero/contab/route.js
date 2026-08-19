@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-08-19 · Honorarios enchufado ('honorarios' -> contab_generar_honorarios). Hereda v2.
 // VERSION: v2 · 2026-08-19 · SA enchufado: 'sa' -> contab_generar_sa en GENERADORES (habilita Regenerar de B. Santander). Hereda v1.
 // VERSION: v1 · 2026-07-25 · Endpoint del módulo CONTAB (comprobantes contables).
 //   GET  ?periodo=AAAA-MM  → comprobantes generados del periodo + estado de cuadre por origen
@@ -23,6 +24,7 @@ const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital
 const GENERADORES = {
   ventas: 'contab_generar_ventas',
   compras: 'contab_generar_compras',
+  honorarios: 'contab_generar_honorarios',
   sa:      'contab_generar_sa',
 }
 
