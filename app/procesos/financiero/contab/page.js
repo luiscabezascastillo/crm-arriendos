@@ -1,3 +1,4 @@
+// VERSION: v8 · 2026-08-19 · Caja SII con boton "Conciliar F29<->SA" (accion -> /contab/f29-sa) en vez de pronto. Hereda v7.
 // VERSION: v7 · 2026-08-19 · Caja Chica activa (botón Regenerar). Hereda v6.
 // VERSION: v6 · 2026-08-19 · Rejilla 2 columnas + fondo propio, 4 cajas nuevas (SII/Tarjeta/Facturas Int/Alberto) en pronto, y boton "Pendiente de clasificar" -> /contab/pendiente. Hereda v5.
 // VERSION: v5 · 2026-08-19 · Honorarios activo (botón Regenerar). Hereda v4.
@@ -33,7 +34,7 @@ const ORIGENES = [
   { id: 'compras',      nombre: 'Compras',       desc: 'Gastos por naturaleza + IVA crédito',   activo: true  },
   { id: 'honorarios',   nombre: 'Honorarios',    desc: 'Boletas de honorarios',                 activo: true  },
   { id: 'sa',           nombre: 'B. Santander',  desc: 'Movimientos Santander (propio)',        activo: true  },
-  { id: 'sii',          nombre: 'SII',           desc: 'F29 / impuestos SII',                   activo: false },
+  { id: 'sii',          nombre: 'SII',           desc: 'F29 / impuestos SII',                   activo: false, accion: '/procesos/financiero/contab/f29-sa' },
   { id: 'tarjeta',      nombre: 'Tarjeta',       desc: 'Tarjeta de crédito Santander (…2494)',  activo: false },
   { id: 'facturas_int', nombre: 'Facturas Int.', desc: 'Facturas internacionales de servicios', activo: false },
   { id: 'alberto',      nombre: 'Alberto',       desc: 'Cuenta corriente del propietario',      activo: false },
@@ -222,6 +223,8 @@ export default function ContabPage() {
                         {gen ? '…' : (res ? 'Regenerar' : 'Generar')}
                       </button>
                     )
+                  ) : o.accion ? (
+                    <button onClick={() => router.push(o.accion)} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #B45309', background: '#fff', color: '#B45309', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Conciliar →</button>
                   ) : (<span style={{ fontSize: 11, color: '#B4B2A9', padding: '4px 8px', whiteSpace: 'nowrap' }}>pronto</span>)}
                 </div>
               )
