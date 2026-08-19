@@ -1,4 +1,7 @@
 'use client';
+// VERSION: v26 · 2026-08-18 · FIX filtro por FOLIO (columna Núm): su etiqueta se formateaba como dinero ("4.938"),
+//   así que buscar "4938" no encontraba nada. Ahora el folio se muestra como número plano (sin separador de miles) en
+//   el filtro; los montos siguen en formato dinero. Hereda v25.
 // VERSION: v25 · 2026-08-11 · DEEP-LINK: /procesos/descuentos?num=NNN abre y centra ese descuento al cargar
 //   (para enlazarlo desde la hoja del término). Reutiliza la lógica de "buscar por Núm". Aditivo. Hereda v24.
 // VERSION: v24 · 2026-08-11 · FILTROS ESTILO CC1: se sustituye el menú de columna propio por el motor compartido
@@ -106,8 +109,14 @@ const DCOLS = COLS.map((c) => {
     return { key: 'fecha', label: c.label, tipo: 'fecha', fkey: (r) => toISO(r.fecha), flabel: (k) => (k ? fmtFecha(k) : '(vacío)') };
   if (c.key === 'verificado')
     return { key: 'verificado', label: c.label, tipo: 'texto', fkey: (r) => (r.verificado ? 'Sí' : 'No'), flabel: (k) => k };
-  if (DFILTRO_NUM.has(c.key))
-    return { key: c.key, label: c.label, tipo: 'num', fkey: (r) => (r[c.key] == null || r[c.key] === '' ? '' : String(r[c.key])), flabel: (k) => (k === '' ? '(vacío)' : money(k)) };
+  if (DFILTRO_NUM.has(c.key)) {
+    // El folio (Núm) es un número identificador: se muestra plano (sin separador de miles), para que
+    // buscar "4938" case con "4938". Los montos sí se muestran en formato dinero.
+    const esFolio = c.key === 'num';
+    return { key: c.key, label: c.label, tipo: 'num',
+      fkey: (r) => (r[c.key] == null || r[c.key] === '' ? '' : String(r[c.key])),
+      flabel: esFolio ? (k) => (k === '' ? '(vacío)' : String(k)) : (k) => (k === '' ? '(vacío)' : money(k)) };
+  }
   return { key: c.key, label: c.label, tipo: 'texto', fkey: (r) => String(r[c.key] ?? ''), flabel: (k) => (k === '' ? '(vacío)' : k) };
 });
 const DCByKey = Object.fromEntries(DCOLS.map((c) => [c.key, c]));
