@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v52 · 2026-08-19 · El panel "Urgentes ≤45 días" incluye al final dos desplegables MÁS (cerrados por
+//   defecto): "45–90 días" y "más de 90 días", para profundizar sin saturar la vista. Misma tabla, tres tramos.
+//   Hereda v51.
 // VERSION: v51 · 2026-08-16 · El panel "Urgentes ≤45 días" se puede OCULTAR/mostrar (clic en su cabecera): abierto por
 //   defecto, colapsable tras leerlo. Incluye además el freeze de presupuesto de v50. Hereda v50.
 // VERSION: v50 · 2026-08-16 · FREEZE del envío de presupuesto: si el presupuesto de este término está pendiente de que
@@ -338,6 +341,8 @@ export default function TerminosPage() {
   const [presuGen, setPresuGen] = useState(false)   // generando/enviando presupuesto
   const [presuPendiente, setPresuPendiente] = useState(false)   // presupuesto de término pendiente de que Karina acepte el markup
   const [urgAbierto, setUrgAbierto] = useState(true)   // panel "Urgentes": abierto por defecto, se puede ocultar tras leerlo
+  const [urg2Abierto, setUrg2Abierto] = useState(false)   // sub-desplegable "45–90 días": cerrado por defecto
+  const [urg3Abierto, setUrg3Abierto] = useState(false)   // sub-desplegable "más de 90 días": cerrado por defecto
   const [pdfTermGen, setPdfTermGen] = useState(false)   // generando el PDF profesional del término
   const [testTo, setTestTo] = useState('')              // dirección para envíos de PRUEBA (por defecto, la del usuario)
   const [completandoWf, setCompletandoWf] = useState(false)
@@ -917,10 +922,62 @@ export default function TerminosPage() {
       if (est === 'Q-Reclamado') return 'Reclamación en curso'
       return '—'
     }
-    const urgentes = listaIds
-      .map(r => ({ ...r, _dias: diasEntrega(r.fecha_entrega) }))
-      .filter(r => ['Q', 'Q-Auditado', 'Q-Reclamado'].includes(String(r.estado)) && r._dias != null && r._dias >= 0 && r._dias <= 45)
-      .sort((a, b) => b._dias - a._dias)
+    const conDias = listaIds.map(r => ({ ...r, _dias: diasEntrega(r.fecha_entrega) }))
+    const esTerm = r => ['Q', 'Q-Auditado', 'Q-Reclamado'].includes(String(r.estado)) && r._dias != null
+    const urgentes = conDias.filter(r => esTerm(r) && r._dias >= 0 && r._dias <= 45).sort((a, b) => b._dias - a._dias)
+    const urg4590  = conDias.filter(r => esTerm(r) && r._dias > 45 && r._dias <= 90).sort((a, b) => b._dias - a._dias)
+    const urgMas90 = conDias.filter(r => esTerm(r) && r._dias > 90).sort((a, b) => b._dias - a._dias)
+    // Tabla reutilizable para los tres tramos del panel de urgentes.
+    const tablaUrg = (lista) => (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1100, fontSize: 12 }}>
+          <thead>
+            <tr>
+              {['IDADMON', 'Inmueble', 'Arrendatario', 'Entrega', 'Días', 'Resultado', 'Garantía', 'Avisos', 'Próxima acción'].map((h, i) => (
+                <th key={h} style={{ textAlign: (i >= 4 && i <= 5) ? 'right' : 'left', padding: '8px 10px', borderBottom: '1px solid #F0EEE8', color: '#92400E', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map(r => {
+              const g = urgGest[r.idadmon] || { aval: false, prop: false }
+              const def = r.resultado != null && Number(r.resultado) < 0
+              const critico = r._dias >= 40
+              return (
+                <tr key={r.idadmon} onClick={() => abrir(r.idadmon)} style={{ cursor: 'pointer', background: def ? '#FEF2F2' : '#fff' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#FFFDF6'}
+                  onMouseLeave={e => e.currentTarget.style.background = def ? '#FEF2F2' : '#fff'}>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', fontWeight: 700 }}>{r.idadmon}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555' }}>{r.inmueble || '—'}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555' }}>{r.arrendatario || '—'}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtFecha(r.fecha_entrega)}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', fontWeight: 700, color: critico ? '#B91C1C' : '#B45309' }}>{r._dias}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: def ? '#B91C1C' : '#065F46' }}>{fmtM(r.resultado)}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', color: '#555', whiteSpace: 'nowrap' }}>{r.quien || '—'}{r.garantia != null ? ' · ' + fmtM(r.garantia) : ''}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', whiteSpace: 'nowrap' }}>
+                    <span title="Aval avisado" style={{ color: g.aval ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{g.aval ? '✓ aval' : '✗ aval'}</span>
+                    <span style={{ color: '#ccc' }}> · </span>
+                    <span title="Propietario avisado" style={{ color: g.prop ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{g.prop ? '✓ prop.' : '✗ prop.'}</span>
+                  </td>
+                  <td style={{ padding: '8px 10px', borderBottom: '0.5px solid #F0EEE8', fontWeight: 700, color: def ? '#B91C1C' : '#7c2d12' }}>{proxAccion(r)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+    const subPanel = (lista, abierto, setAbierto, titulo) => (
+      <div style={{ borderTop: '1px solid #FDE68A' }}>
+        <div onClick={() => setAbierto(v => !v)} style={{ background: '#FFFDF6', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>{abierto ? '▾' : '▸'}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>{titulo}</span>
+          <span style={{ fontSize: 12, color: '#B45309' }}>{lista.length} término{lista.length === 1 ? '' : 's'}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#B45309', textDecoration: 'underline' }}>{abierto ? 'ocultar' : 'mostrar'}</span>
+        </div>
+        {abierto && tablaUrg(lista)}
+      </div>
+    )
     return (
       <>
         <TopNav />
@@ -930,7 +987,7 @@ export default function TerminosPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Búsqueda rápida…" style={{ ...input, marginBottom: 14, maxWidth: 520 }} />
           {!listaCargada ? <div style={{ color: '#888' }}>Cargando…</div> : (
             <>
-              {urgentes.length > 0 && (
+              {(urgentes.length > 0 || urg4590.length > 0 || urgMas90.length > 0) && (
                 <div style={{ border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
                   <div onClick={() => setUrgAbierto(v => !v)}
                     title={urgAbierto ? 'Ocultar el panel' : 'Mostrar el panel'}
@@ -940,7 +997,7 @@ export default function TerminosPage() {
                     <span style={{ fontSize: 12, color: '#B45309' }}>{urgentes.length} término{urgentes.length === 1 ? '' : 's'}{urgAbierto ? ' · el reloj legal corre desde la entrega. Orden: auditar (Karina) → reclamar aval si queda deuda → avisar propietario → liquidar garantía → cerrar.' : ''}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 11, color: '#B45309', textDecoration: 'underline' }}>{urgAbierto ? 'ocultar' : 'mostrar'}</span>
                   </div>
-                  {urgAbierto && (<div style={{ overflowX: 'auto' }}>
+                  {urgAbierto && urgentes.length > 0 && (<div style={{ overflowX: 'auto' }}>
                     <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1100, fontSize: 12 }}>
                       <thead>
                         <tr>
@@ -977,6 +1034,8 @@ export default function TerminosPage() {
                       </tbody>
                     </table>
                   </div>)}
+                  {urgAbierto && urg4590.length > 0 && subPanel(urg4590, urg2Abierto, setUrg2Abierto, 'Término hace 45–90 días')}
+                  {urgAbierto && urgMas90.length > 0 && subPanel(urgMas90, urg3Abierto, setUrg3Abierto, 'Término hace más de 90 días')}
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>

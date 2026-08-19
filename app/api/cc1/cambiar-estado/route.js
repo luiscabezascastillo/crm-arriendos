@@ -1,3 +1,6 @@
+// VERSION: v9 · 2026-08-19 · Aviso de término (S→SQ / S→Q) se envía a anthony.mendoza (valora la NOTIFICACIÓN
+//   del término) con copia a administracion@ y karina.morales@. El resto de transiciones sigue al buzón
+//   general (cambiosdeestado@). Cambio aditivo sobre enviarNotificacion (ya admitía to/cc). Hereda v8.
 // VERSION: v8 · 2026-08-17 · Al crear el expediente de término (S→Q) se SIEMBRAN también las 6 tareas del workflow
 //   desde la plantilla workflow_nodes (T1 ACTIVO + T2..T6 PENDIENTE, responsable = area_responsable). Antes el
 //   circuito creaba la instancia pero no las tareas, y esos términos salían "sin expediente". Hereda v7.
@@ -292,6 +295,12 @@ export async function POST(req) {
     propietario: contrato.propietario,
     inmueble: contrato.inmueble,
     fecha: fechaEvento,
+    // Aviso de término (S->SQ / S->Q): destinatario Anthony (valora la NOTIFICACIÓN del término),
+    // con copia a Administración y a Karina. El resto de transiciones sigue yendo al buzón general.
+    ...(esAvisoTermino ? {
+      to: 'anthony.mendoza@fondocapital.com',
+      cc: ['administracion@fondocapital.com', 'karina.morales@fondocapital.com'],
+    } : {}),
   })
   emailsEnviados.push({ subject: subjectCambio, ok: r1.ok })
 

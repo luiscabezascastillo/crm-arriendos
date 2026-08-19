@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v4 · 2026-08-18 · Cada fila del Motor pasa a UNA sola línea: título · frecuencia · conexión · descripción/etapas,
+//   ocupando todo el ancho de la hoja y recortando con … si no cabe. Más compacto y de un vistazo. Hereda v3.
 // VERSION: v3 · 2026-08-15 · La lista ("el cuadro") solo muestra los procesos que la persona USA (proceso_permisos);
 //   los que no usa YA NO aparecen (antes salían atenuados con candado). Dirección los ve todos (para gestionar).
 //   Mismo criterio que el desplegable del TopNav. Hereda v2.
@@ -64,8 +66,8 @@ function FrecBadge({ frecuencia }) {
   )
 }
 
-/* Una fila = exactamente DOS líneas. La segunda se recorta con … antes que saltar a una tercera,
-   así la altura es siempre la misma y los 16 procesos se recorren de un vistazo. */
+/* Una fila = UNA sola línea: título · frecuencia · conexión · descripción/etapas. La descripción ocupa
+   el ancho restante de la hoja y se recorta con … si no cabe, así todas las filas miden lo mismo. */
 function ProcesoFila({ proceso, permiso, responsablePersona, onClick, isMobile, esProduccion }) {
   const tiene = !!permiso
   const nombreResp = responsablePersona?.nombre
@@ -94,26 +96,22 @@ function ProcesoFila({ proceso, permiso, responsablePersona, onClick, isMobile, 
       onMouseEnter={e => { if (tiene) e.currentTarget.style.borderColor = '#888780' }}
       onMouseLeave={e => { if (tiene) e.currentTarget.style.borderColor = '#B4B2A9' }}>
 
-      <div style={{ minWidth: 0 }}>
-        {/* LÍNEA 1 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          {!tiene && <span style={{ fontSize: 11, flexShrink: 0 }}>🔒</span>}
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {proceso.titulo}
-          </span>
-          <FrecBadge frecuencia={proceso.frecuencia} />
-          {proceso.conecta && tiene && (
-            <span style={{ fontSize: 10, color: '#1D9E75', whiteSpace: 'nowrap', flexShrink: 0 }}>↳ {proceso.conecta}</span>
-          )}
-        </div>
-
-        {/* LÍNEA 2 — nunca salta a una tercera */}
-        <div style={{
-          fontSize: 11, color: tiene ? '#888780' : '#B4B2A9', lineHeight: 1.45, marginTop: 1,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      {/* UNA sola línea: título · frecuencia · conexión · descripción/etapas (ocupa el ancho restante) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {!tiene && <span style={{ fontSize: 11, flexShrink: 0 }}>🔒</span>}
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {proceso.titulo}
+        </span>
+        <FrecBadge frecuencia={proceso.frecuencia} />
+        {proceso.conecta && tiene && (
+          <span style={{ fontSize: 10, color: '#1D9E75', whiteSpace: 'nowrap', flexShrink: 0 }}>↳ {proceso.conecta}</span>
+        )}
+        <span style={{
+          fontSize: 11, color: tiene ? '#888780' : '#B4B2A9',
+          flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {linea2}
-        </div>
+        </span>
       </div>
 
       {/* DERECHA — responsable, participantes y encargada/o */}
