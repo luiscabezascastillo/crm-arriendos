@@ -1,3 +1,8 @@
+// VERSION: v12 · 2026-08-20 · Botón "Nuevo IDADMON (prop. existente)" en la barra Datos base: da de alta un
+//   contrato NUEVO para un propietario ya existente. Modal con buscador de propietario + alta de la unidad
+//   nueva (tipo dep/bod/est + dirección + ROL); llama a /api/cc1/alta-existente, que genera el IDINMUE en
+//   inmuebles_norm y crea el IDADMON en estado P. Visible solo a quien puede dar de alta (responsable/Dirección
+//   directa; colaborador → pendiente). Al terminar enlaza a la ficha (/admin?idadmon=). Hereda v11.
 // VERSION: v11 · 2026-08-16 · Estados de término Q-Auditado y Q-Reclamado dados de alta en el LOG (etiqueta en el
 //   filtro, color de badge y de fila, y orden). Y se quita del selector rápido de estado la opción fantasma "O"
 //   (no existe ningún contrato así); en su lugar quedan Q-Auditado y Q-Reclamado. Hereda v10.
@@ -270,6 +275,63 @@ export default function CC1Page() {
   const [portalLoading, setPortalLoading] = useState(null) // idadmon cargando
   const [idpropMap, setIdpropMap] = useState({}) // idadmon -> idprop
 
+  // ── Alta de IDADMON para un propietario YA existente (modal) ──
+  const [cap, setCap] = useState(null)
+  const puedeAlta = !!cap && (cap.puedeAltaDirecta || cap.puedeAltaPendiente)
+  const [modalAlta, setModalAlta] = useState(false)
+  const [propsList, setPropsList] = useState([])       // [{ idprop, nombre }]
+  const [propsCargando, setPropsCargando] = useState(false)
+  const [altaBusca, setAltaBusca] = useState('')
+  const [altaForm, setAltaForm] = useState({ idprop: '', tipo: 'dep', inmueble: '', rol: '' })
+  const [altaMsg, setAltaMsg] = useState(null)         // { type, text }
+  const [altaRes, setAltaRes] = useState(null)         // { idadmon, idinmue, idprop, propietario, pendiente_aprobacion }
+  const [altaEnviando, setAltaEnviando] = useState(false)
+
+  const lblAlta = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 5 }
+  const inpAlta = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontSize: 12.5, color: 'var(--gray-800)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
+  const btnPri = { padding: '8px 14px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+  const btnSec = { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--gray-600)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+
+  useEffect(() => {
+    let vivo = true
+    fetch('/api/cc1/pendientes').then(r => r.json()).then(d => { if (vivo) setCap(d?.capacidades || null) }).catch(() => {})
+    return () => { vivo = false }
+  }, [])
+
+  async function abrirModalAlta() {
+    setModalAlta(true); setAltaMsg(null); setAltaRes(null)
+    setAltaForm({ idprop: '', tipo: 'dep', inmueble: '', rol: '' }); setAltaBusca('')
+    if (propsList.length) return
+    setPropsCargando(true)
+    const { data } = await supabase.from('propietarios').select('idprop, propietario, nombre, apellidos').limit(3000)
+    const lista = (data || []).map(p => ({
+      idprop: p.idprop,
+      nombre: (p.propietario || [p.apellidos, p.nombre].filter(Boolean).join(', ') || p.idprop || '').trim(),
+    })).filter(p => p.idprop)
+    lista.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'))
+    setPropsList(lista); setPropsCargando(false)
+  }
+
+  async function enviarAlta() {
+    if (!altaForm.idprop) { setAltaMsg({ type: 'warn', text: 'Elige primero el propietario.' }); return }
+    if ((altaForm.inmueble || '').trim().length < 3) { setAltaMsg({ type: 'warn', text: 'Escribe la dirección / descripción del inmueble.' }); return }
+    setAltaEnviando(true); setAltaMsg(null)
+    try {
+      const res = await fetch('/api/cc1/alta-existente', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(altaForm),
+      })
+      const d = await res.json()
+      if (!res.ok) { setAltaMsg({ type: 'error', text: d.error || 'Error al dar de alta' }); setAltaEnviando(false); return }
+      setAltaRes(d)
+      setAltaMsg({ type: d.pendiente_aprobacion ? 'warn' : 'ok', text: d.mensaje })
+      loadTodas(); loadKpis()
+    } catch {
+      setAltaMsg({ type: 'error', text: 'Error de conexión' })
+    }
+    setAltaEnviando(false)
+  }
+
   useEffect(() => { loadKpis() }, [])
   useEffect(() => { loadTodas() }, [])
   // Al cambiar búsqueda, filtros u orden, volver a la página 1 (paginación sobre lo ya filtrado).
@@ -480,6 +542,9 @@ export default function CC1Page() {
               outline: 'none', textTransform: 'uppercase' }} />
           <ActionBtn label="RECUPERAR" bg="#1a56db" icon={Ico.edit} onClick={recuperar} />
         </div>
+        {puedeAlta && (
+          <ActionBtn label="Nuevo IDADMON (prop. existente)" bg="#0f766e" icon={Ico.plus} onClick={abrirModalAlta} />
+        )}
         <ActionBtn label="Propietarios"               bg="#16a34a" icon={Ico.users} onClick={() => router.push('/cc1/propietarios')} />
         <ActionBtn label="Inmuebles"                  bg="#0891b2" icon={Ico.home}  onClick={() => router.push('/cc1/inmuebles')} />
         <ActionBtn label="Comentarios"                bg="#7c3aed" icon={Ico.comment} onClick={() => router.push('/cc1/comentarios')} />
@@ -626,6 +691,89 @@ export default function CC1Page() {
           <span style={{ fontSize:11, color:'var(--gray-400)' }}>{total} registro{total === 1 ? '' : 's'}</span>
         </div>
       </div>
+
+      {modalAlta && (
+        <div onClick={() => !altaEnviando && setModalAlta(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 100, padding: '40px 16px', overflowY: 'auto' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--gray-900)' }}>Nuevo IDADMON · propietario existente</div>
+              <button onClick={() => !altaEnviando && setModalAlta(false)}
+                style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: 'var(--gray-400)', lineHeight: '20px' }}>×</button>
+            </div>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {altaRes ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ background: altaRes.pendiente_aprobacion ? '#FFFBEB' : '#ECFDF5', border: '1px solid ' + (altaRes.pendiente_aprobacion ? '#FCD34D' : '#6EE7B7'), borderRadius: 10, padding: '12px 14px', fontSize: 13, color: altaRes.pendiente_aprobacion ? '#92400E' : '#065F46' }}>
+                    {altaMsg?.text}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--gray-700)', lineHeight: 1.6 }}>
+                    Contrato <b>{altaRes.idadmon}</b> · Inmueble <b>{altaRes.idinmue}</b> · Propietario <b>{altaRes.propietario}</b> ({altaRes.idprop}).
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setModalAlta(false)} style={btnSec}>Cerrar</button>
+                    <button onClick={() => router.push('/admin?idadmon=' + encodeURIComponent(altaRes.idadmon))} style={btnPri}>Abrir ficha →</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label style={lblAlta}>1 · Propietario existente</label>
+                    <input value={altaBusca} onChange={e => setAltaBusca(e.target.value)} placeholder="Buscar por nombre o IDPROP…" style={inpAlta} />
+                    {propsCargando ? (
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)', padding: '8px 2px' }}>Cargando propietarios…</div>
+                    ) : (
+                      <select size={6} value={altaForm.idprop} onChange={e => setAltaForm(f => ({ ...f, idprop: e.target.value }))}
+                        style={{ width: '100%', marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', padding: 4, color: 'var(--gray-800)' }}>
+                        {propsList
+                          .filter(p => { const q = altaBusca.trim().toLowerCase(); return !q || p.nombre.toLowerCase().includes(q) || String(p.idprop).toLowerCase().includes(q) })
+                          .slice(0, 300)
+                          .map(p => <option key={p.idprop} value={p.idprop}>{p.idprop} · {p.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <label style={lblAlta}>2 · Tipo de unidad</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[['dep', 'Depto', '01–49'], ['bod', 'Bodega', '51–79'], ['est', 'Estac.', '81–99']].map(([v, t, r]) => (
+                        <button key={v} type="button" onClick={() => setAltaForm(f => ({ ...f, tipo: v }))}
+                          style={{ flex: 1, padding: '8px 6px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+                            border: '1px solid ' + (altaForm.tipo === v ? '#0f766e' : 'var(--border)'),
+                            background: altaForm.tipo === v ? '#0f766e' : '#fff', color: altaForm.tipo === v ? '#fff' : 'var(--gray-600)', fontWeight: 600 }}>
+                          {t}<div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>{r}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lblAlta}>3 · Dirección / descripción del inmueble</label>
+                    <input value={altaForm.inmueble} onChange={e => setAltaForm(f => ({ ...f, inmueble: e.target.value }))}
+                      placeholder="Ej: Pablo Urzúa 1481- dep 908A" style={inpAlta} />
+                  </div>
+                  <div>
+                    <label style={lblAlta}>4 · ROL (SII) — opcional</label>
+                    <input value={altaForm.rol} onChange={e => setAltaForm(f => ({ ...f, rol: e.target.value }))}
+                      placeholder="Ej: 1234-56" style={inpAlta} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--gray-500)', background: 'var(--gray-50)', borderRadius: 8, padding: '8px 10px' }}>
+                    Se generará el <b>IDINMUE</b> del propietario y un <b>IDADMON</b> nuevo en <b>estado P</b>, que seguirá el flujo normal.
+                  </div>
+                  {altaMsg && (
+                    <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 8,
+                      background: altaMsg.type === 'error' ? '#FEF2F2' : altaMsg.type === 'warn' ? '#FFFBEB' : '#ECFDF5',
+                      color: altaMsg.type === 'error' ? '#B91C1C' : altaMsg.type === 'warn' ? '#92400E' : '#065F46' }}>{altaMsg.text}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 2 }}>
+                    <button onClick={() => setModalAlta(false)} disabled={altaEnviando} style={btnSec}>Cancelar</button>
+                    <button onClick={enviarAlta} disabled={altaEnviando} style={btnPri}>{altaEnviando ? 'Creando…' : 'Crear IDADMON en P'}</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
