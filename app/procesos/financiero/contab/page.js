@@ -167,7 +167,7 @@ export default function ContabPage() {
             cab ? f.tipo : null,          // B Tipo
             fs === '' ? null : fs,        // C Fecha (serial; vacio en detalle)
             cab ? nz(f.glosa) : null,     // D Glosa
-            nz(f.cuenta_nubox || f.cuenta), // E Cuenta Detalle (3er nivel analitico truncado al padre imputable)
+            nz(f.cuenta_nubox || f.cuenta), // E Cuenta Detalle (analitica de 3er nivel rellenada a 4 digitos para Nubox)
             nz(f.glosa_detalle),          // F Glosa Detalle
             null,                         // G Centro Costo: vacio SIEMPRE (el CC viaja en las cuentas 4301-XX, no en columna Nubox)
             null,                         // H Sucursal
