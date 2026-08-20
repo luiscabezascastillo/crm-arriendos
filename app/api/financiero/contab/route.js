@@ -1,3 +1,4 @@
+// VERSION: v8 · 2026-08-20 · Previsualizacion: columna centro_costo tambien en blanco (coincide con lo que va a Nubox; el CC real queda en campo ccb solo de referencia). Hereda v7.
 // VERSION: v7 · 2026-08-20 · Export Nubox: (a) excluye comprobantes con cuenta puente (1104-98/4201-99): no imputables, van a Pendiente; (b) trunca cuentas de 3er nivel analitico al padre imputable (4201-01-07 -> 4201-01) en campo cuenta_nubox, el detalle por empleado se conserva en glosa/preview. Hereda v6.
 // VERSION: v6 · 2026-08-19 · Límite de bloque Nubox a 4950 (antes 5000). Hereda v5.
 // VERSION: v5 · 2026-08-19 · filasNubox: lee TODAS las lineas paginando (antes se cortaba a 1000 -> falso descuadre y export incompleto). Hereda v4.
@@ -217,7 +218,8 @@ async function filasNubox(periodos, ordenarFecha = false) {
         cuenta: l.cuenta,
         cuenta_nubox: cuentaNubox(l.cuenta),   // lo que se imputa en Nubox (3er nivel truncado al padre)
         glosa_detalle: l.glosa_detalle || '',
-        centro_costo: l.ccb || '',
+        centro_costo: '',              // columna Nubox Centro Costo: SIEMPRE vacia (el CC viaja en 4301-XX / en la desc de cuenta)
+        ccb: l.ccb || '',               // CC real de la linea, solo referencia interna (no va a Nubox)
         sucursal: '',
         debe: Number(l.debe) || 0,
         haber: Number(l.haber) || 0,
