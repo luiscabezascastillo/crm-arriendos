@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-08-19 · filasNubox: lee TODAS las lineas paginando (antes se cortaba a 1000 -> falso descuadre y export incompleto). Hereda v4.
 // VERSION: v4 · 2026-08-19 · Caja Chica enchufada ('caja_chica' -> contab_generar_caja_chica). Hereda v3.
 // VERSION: v3 · 2026-08-19 · Honorarios enchufado ('honorarios' -> contab_generar_honorarios). Hereda v2.
 // VERSION: v2 · 2026-08-19 · SA enchufado: 'sa' -> contab_generar_sa en GENERADORES (habilita Regenerar de B. Santander). Hereda v1.
@@ -153,12 +154,26 @@ async function filasNubox(periodos, ordenarFecha = false) {
   })
 
   const ids = comps.map(c => c.id)
-  const { data: lineas } = await admin
-    .from('contab_lineas')
-    .select('comprobante_id, sub_orden, id, cuenta, glosa_detalle, ccb, debe, haber')
-    .in('comprobante_id', ids)
-    .order('sub_orden', { ascending: true })
-    .order('id', { ascending: true })
+  // Leer TODAS las lineas paginando. Supabase limita a 1000 filas por consulta: sin esto,
+  // la previsualizacion/exportacion se cortaba a 1000 lineas y partia comprobantes (falso descuadre
+  // y export incompleto). Troceo de ids (<=200) para no reventar la querystring + .range() por bloques.
+  const lineas = []
+  for (let i = 0; i < ids.length; i += 200) {
+    const trozo = ids.slice(i, i + 200)
+    let desde = 0
+    for (;;) {
+      const { data, error } = await admin
+        .from('contab_lineas')
+        .select('comprobante_id, sub_orden, id, cuenta, glosa_detalle, ccb, debe, haber')
+        .in('comprobante_id', trozo)
+        .order('id', { ascending: true })
+        .range(desde, desde + 999)
+      if (error || !data || !data.length) break
+      lineas.push(...data)
+      if (data.length < 1000) break
+      desde += 1000
+    }
+  }
 
   const { data: plan } = await admin
     .from('contab_plan_cuentas').select('codigo, descripcion')
@@ -170,7 +185,7 @@ async function filasNubox(periodos, ordenarFecha = false) {
 
   const filas = []
   for (const c of comps) {
-    const ls = porComp[c.id] || []
+    const ls = (porComp[c.id] || []).slice().sort((a, b) => (a.sub_orden - b.sub_orden) || (a.id - b.id))
     ls.forEach((l, i) => {
       const cabecera = i === 0
       filas.push({
