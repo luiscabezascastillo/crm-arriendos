@@ -1,4 +1,4 @@
-// VERSION: v12 · 2026-08-20 · Export Nubox: celdas vacias como null (no string ''). SheetJS escribia '' como celda-string presente en L-Q y Nubox lo leia como 'campo relleno invalido' (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga. Hereda v11.
+// VERSION: v12 · 2026-08-20 · Export Nubox: (a) celdas vacias como null (no string '') -> SheetJS escribia '' como celda presente en L-Q y Nubox lo leia como campo invalido (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga; (b) columna Centro Costo SIEMPRE vacia (el CC viaja en las cuentas 4301-XX, no en columna Nubox); (c) cuenta = cuenta_nubox (3er nivel analitico truncado al padre imputable). Hereda v11.
 // VERSION: v11 · 2026-08-19 · Numeración correlativa con Nº de inicio configurable y continua entre bloques. Hereda v10.
 // VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
@@ -167,9 +167,9 @@ export default function ContabPage() {
             cab ? f.tipo : null,          // B Tipo
             fs === '' ? null : fs,        // C Fecha (serial; vacio en detalle)
             cab ? nz(f.glosa) : null,     // D Glosa
-            nz(f.cuenta),                 // E Cuenta Detalle
+            nz(f.cuenta_nubox || f.cuenta), // E Cuenta Detalle (3er nivel analitico truncado al padre imputable)
             nz(f.glosa_detalle),          // F Glosa Detalle
-            nz(f.centro_costo),           // G Centro Costo
+            null,                         // G Centro Costo: vacio SIEMPRE (el CC viaja en las cuentas 4301-XX, no en columna Nubox)
             null,                         // H Sucursal
             f.debe || null,               // I Debe (lado 0 -> vacio)
             f.haber || null,              // J Haber

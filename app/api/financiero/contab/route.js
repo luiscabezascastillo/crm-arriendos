@@ -1,3 +1,4 @@
+// VERSION: v7 · 2026-08-20 · Export Nubox: (a) excluye comprobantes con cuenta puente (1104-98/4201-99): no imputables, van a Pendiente; (b) trunca cuentas de 3er nivel analitico al padre imputable (4201-01-07 -> 4201-01) en campo cuenta_nubox, el detalle por empleado se conserva en glosa/preview. Hereda v6.
 // VERSION: v6 · 2026-08-19 · Límite de bloque Nubox a 4950 (antes 5000). Hereda v5.
 // VERSION: v5 · 2026-08-19 · filasNubox: lee TODAS las lineas paginando (antes se cortaba a 1000 -> falso descuadre y export incompleto). Hereda v4.
 // VERSION: v4 · 2026-08-19 · Caja Chica enchufada ('caja_chica' -> contab_generar_caja_chica). Hereda v3.
@@ -34,6 +35,17 @@ const GENERADORES = {
 
 const LIMITE_NUBOX = 4950 // líneas máximas por bloque de importación (Nubox admite <5000; margen)
 
+// Cuentas puente internas: NO son imputables en Nubox (van a "Pendiente de clasificar").
+// Se excluye el COMPROBANTE entero que las contenga, para no romper el cuadre del asiento.
+const CUENTAS_PUENTE = ['1104-98', '4201-99']
+
+// Regla del plan: las cuentas de 3er nivel (analiticas, p.ej. la persona) NO son imputables;
+// a Nubox va su padre (4201-01-07 -> 4201-01). El detalle sigue en la glosa y en el CRM.
+function cuentaNubox(c) {
+  const m = /^(\d{4}-\d{2})-\w+$/.exec((c || '').trim())
+  return m ? m[1] : (c || '')
+}
+
 export async function GET(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
@@ -69,6 +81,7 @@ export async function GET(req) {
       periodos, filas,
       total_debe: totDebe, total_haber: totHaber,
       cuadra: Math.abs(totDebe - totHaber) < 1, n_lineas: filas.length,
+      excluidos_puente: filas.excluidos || 0,
     })
   }
 
@@ -78,7 +91,7 @@ export async function GET(req) {
     if (!periodos.length) return Response.json({ error: 'No hay comprobantes para exportar.' }, { status: 200 })
     const filas = await filasNubox(periodos, true)
     const bloques = trocear(filas, LIMITE_NUBOX)
-    return Response.json({ alcance: periodo || anio, total_filas: filas.length, n_bloques: bloques.length, bloques })
+    return Response.json({ alcance: periodo || anio, total_filas: filas.length, n_bloques: bloques.length, excluidos_puente: filas.excluidos || 0, bloques })
   }
 
   // Comprobantes de un periodo (mes) o de un año + cuadre por origen
@@ -185,8 +198,11 @@ async function filasNubox(periodos, ordenarFecha = false) {
   for (const l of (lineas || [])) (porComp[l.comprobante_id] ||= []).push(l)
 
   const filas = []
+  let excluidos = 0
   for (const c of comps) {
     const ls = (porComp[c.id] || []).slice().sort((a, b) => (a.sub_orden - b.sub_orden) || (a.id - b.id))
+    // Comprobante con cuenta puente -> NO va a Nubox (queda en Pendiente de clasificar). Se salta entero para no descuadrar.
+    if (ls.some(l => CUENTAS_PUENTE.includes((l.cuenta || '').trim()))) { excluidos++; continue }
     ls.forEach((l, i) => {
       const cabecera = i === 0
       filas.push({
@@ -199,6 +215,7 @@ async function filasNubox(periodos, ordenarFecha = false) {
         fecha_orden: c.fecha,           // fecha del asiento en todas sus líneas (para filtrar/ordenar)
         glosa: cabecera ? c.glosa : '',
         cuenta: l.cuenta,
+        cuenta_nubox: cuentaNubox(l.cuenta),   // lo que se imputa en Nubox (3er nivel truncado al padre)
         glosa_detalle: l.glosa_detalle || '',
         centro_costo: l.ccb || '',
         sucursal: '',
@@ -208,6 +225,7 @@ async function filasNubox(periodos, ordenarFecha = false) {
       })
     })
   }
+  filas.excluidos = excluidos
   return filas
 }
 
