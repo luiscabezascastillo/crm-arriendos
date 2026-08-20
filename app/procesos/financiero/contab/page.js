@@ -1,3 +1,4 @@
+// VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
 // VERSION: v8 · 2026-08-19 · Caja SII con boton "Conciliar F29<->SA" (accion -> /contab/f29-sa) en vez de pronto. Hereda v7.
 // VERSION: v7 · 2026-08-19 · Caja Chica activa (botón Regenerar). Hereda v6.
 // VERSION: v6 · 2026-08-19 · Rejilla 2 columnas + fondo propio, 4 cajas nuevas (SII/Tarjeta/Facturas Int/Alberto) en pronto, y boton "Pendiente de clasificar" -> /contab/pendiente. Hereda v5.
@@ -314,7 +315,7 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
   const setF = (col, val) => setFiltros(f => ({ ...f, [col]: val }))
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', flexDirection: 'column', padding: 20 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', flexDirection: 'column', padding: 20 }}>
       <div style={{ background: '#fff', borderRadius: 12, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: `1px solid ${BORDE}`, flexWrap: 'wrap' }}>
           <div>
