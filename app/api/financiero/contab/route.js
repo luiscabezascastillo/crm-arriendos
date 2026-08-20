@@ -1,3 +1,4 @@
+// VERSION: v10 · 2026-08-20 · cuentaNubox: si la cuenta trae el nombre pegado ("4201-46 CONSERVADOR...") se queda solo con el codigo (Nubox no lo encontraba). Hereda v9.
 // VERSION: v9 · 2026-08-20 · cuentaNubox: en vez de truncar el 3er nivel al padre, RELLENA la analitica a 4 digitos (4201-01-02 -> 4201-01-0002). Nubox tiene las hijas dadas de alta y obliga a imputar en ellas, no en el padre. Hereda v8.
 // VERSION: v8 · 2026-08-20 · Previsualizacion: columna centro_costo tambien en blanco (coincide con lo que va a Nubox; el CC real queda en campo ccb solo de referencia). Hereda v7.
 // VERSION: v7 · 2026-08-20 · Export Nubox: (a) excluye comprobantes con cuenta puente (1104-98/4201-99): no imputables, van a Pendiente; (b) trunca cuentas de 3er nivel analitico al padre imputable (4201-01-07 -> 4201-01) en campo cuenta_nubox, el detalle por empleado se conserva en glosa/preview. Hereda v6.
@@ -45,6 +46,11 @@ const CUENTAS_PUENTE = ['1104-98', '4201-99']
 // El CRM lo guarda a 2 digitos (4201-01-02); se rellena a 4 -> 4201-01-0002. NO se trunca al padre.
 function cuentaNubox(c) {
   c = (c || '').trim()
+  // Si viene "CODIGO NOMBRE" (codigo pegado a su descripcion), quedarse con el codigo.
+  // No colapsa si el 2o token es OTRO codigo (p.ej. "1104-04 2105-07" -> lo maneja el generador -> puente).
+  const mm = /^(\d{4}-\d{2}(?:-\w+)?)\s+(\S+)/.exec(c)
+  if (mm && !/^\d{4}-\d{2}/.test(mm[2])) c = mm[1]
+  // 3er nivel analitico: rellenar a 4 digitos (4201-01-02 -> 4201-01-0002).
   const m = /^(\d{4}-\d{2})-(\d{1,4})$/.exec(c)
   return m ? `${m[1]}-${m[2].padStart(4, '0')}` : c
 }
