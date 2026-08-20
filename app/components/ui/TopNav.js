@@ -1,4 +1,6 @@
 'use client';
+// VERSION: v15 · 2026-08-18 · Nuevo botón "🔔 Recordatorios" (alarmas personales) junto a "Mis tareas", solo para
+//   RECORDATORIOS_USERS (Luis, Alberto). Hereda v14.
 // VERSION: v14 · 2026-08-18 · "Ventas internas" (Neika): NO ve el menú comercial "Ventas" (Requerimientos/Visitas/
 //   Publicaciones/etc.), aunque conserva acceso a /publicaciones por su proceso. Se controla con VENTAS_INTERNAS
 //   (por email). Hereda v13.
@@ -49,6 +51,9 @@ const DIRECCION_EMAILS = [
 // "Ventas internas": personas con rol 'ventas' cuya labor es interna (p. ej. Neika registra los primeros pagos).
 // NO deben ver el menú comercial "Ventas", pero conservan acceso a las rutas que usan por sus procesos.
 const VENTAS_INTERNAS = ['neika.duque@fondocapital.com'];
+
+// Quién tiene "Mis recordatorios" (alarmas personales). Cada uno gestiona SOLO los suyos. Extensible.
+const RECORDATORIOS_USERS = ['luis.cabezas@fondocapital.com', 'alberto.cabezas@fondocapital.com'];
 
 // Quién ve el botón de Alertas (solo Karina + Dirección; el resto tendrá sus propias alertas más adelante).
 const ALERTAS_EMAILS = [
@@ -556,6 +561,11 @@ export default function TopNav() {
       {/* Mis tareas */}
       {puede('/procesos/mi-portal') && (
         <Link href="/procesos/mi-portal" style={s.infoLink(isActive('/procesos/mi-portal'))}>📋 Mis tareas</Link>
+      )}
+
+      {/* Mis recordatorios (alarmas personales) — solo quien lo tiene activado */}
+      {RECORDATORIOS_USERS.includes(session?.user?.email) && (
+        <Link href="/procesos/recordatorios" style={s.infoLink(isActive('/procesos/recordatorios'))}>🔔 Recordatorios</Link>
       )}
 
       {/* Menú de usuario */}

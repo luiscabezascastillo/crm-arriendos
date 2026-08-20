@@ -1,4 +1,7 @@
 // RUTA: app/components/ui/AvisoPagos.js
+// VERSION: v4 · 2026-08-18 · Se QUITA a Luis del aviso de pagos de Alberto (Luis pasa a tener sus propios
+//   recordatorios personales, AvisoRecordatorios). Ahora este aviso lo ven SOLO Alberto (actúa) y Karina (info).
+//   Hereda v3.
 // VERSION: v3 · 2026-08-18 · VISIBILIDAD RESTRINGIDA. El aviso SOLO lo ven Alberto (actúa), Luis y Karina (info).
 //   Antes se mostraba a cualquiera que abriera /panel (p. ej. Anthony lo veía). Ahora, si el usuario no está en la
 //   lista, no se renderiza ni se pide la API. Hereda v2.
@@ -15,8 +18,8 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 
 const ALBERTO = 'alberto.cabezas@fondocapital.com'
-// Solo estos ven el aviso: Alberto (actúa), Luis y Karina (información). El resto NO lo ve.
-const VISIBLE = [ALBERTO, 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
+// Solo estos ven el aviso de pagos de Alberto: Alberto (actúa) y Karina (información). Luis ya NO (tiene los suyos).
+const VISIBLE = [ALBERTO, 'karina.morales@fondocapital.com']
 
 export default function AvisoPagos() {
   const router = useRouter()

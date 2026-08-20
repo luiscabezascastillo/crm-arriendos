@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import TopNav from '../components/ui/TopNav'
 import AvisoPagos from '../components/ui/AvisoPagos'
+import AvisoRecordatorios from '../components/ui/AvisoRecordatorios'
 
 const DIRECCION_EMAILS = ['alberto.cabezas@fondocapital.com','luis.cabezas@fondocapital.com']
 
@@ -81,6 +82,7 @@ export default function DireccionPage() {
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
       <AvisoPagos />
+      <AvisoRecordatorios />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         {[
