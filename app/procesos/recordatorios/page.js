@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v2 · 2026-08-18 · Botón "📅 Calendar" en cada recordatorio con fecha: abre Google Calendar con el evento
+//   ya rellenado (día completo). El aviso "1 día antes" lo aplica el propio Google Calendar. Hereda v1.
 // VERSION: v1 · 2026-08-18 · Página de RECORDATORIOS personales: cada usuario gestiona SOLO los suyos (añadir, editar,
 //   marcar hecho, borrar). Alimenta el aviso del Panel. Color por persona (Luis azul · Alberto teal).
 //   Solo para RECORDATORIOS_USERS. Ruta: app/procesos/recordatorios/page.js
@@ -14,6 +16,18 @@ const COLORES = {
 const fmtFecha = (s) => {
   if (!s) return '—'
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s)
+}
+// Enlace a Google Calendar (evento de día completo en la fecha del recordatorio). El aviso "1 día antes" lo
+// aplica Google según tus recordatorios por defecto del calendario. Devuelve null si el recordatorio no tiene fecha.
+function gcalUrl(r) {
+  if (!r.fecha_venc) return null
+  const p2 = (n) => String(n).padStart(2, '0')
+  const ini = String(r.fecha_venc).slice(0, 10).replace(/-/g, '')          // YYYYMMDD
+  const d = new Date(String(r.fecha_venc).slice(0, 10) + 'T00:00:00'); d.setDate(d.getDate() + 1)
+  const fin = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}` // fin exclusivo (día siguiente)
+  const text = encodeURIComponent(r.titulo || 'Recordatorio')
+  const det = encodeURIComponent((r.nota ? r.nota + '\n\n' : '') + 'Creado desde el CRM de Fondo Capital')
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${ini}/${fin}&details=${det}`
 }
 const badgeEstado = (e) => e === 'vencido' ? { t: 'Vencido', bg: '#FEE2E2', fg: '#B91C1C' }
   : e === 'por_vencer' ? { t: 'Por vencer', bg: '#FEF3C7', fg: '#92400E' }
@@ -111,6 +125,7 @@ export default function Recordatorios() {
             {!r.hecho
               ? <button onClick={() => accion(r.id, { accion: 'marcar', hecho: true })} style={mini('#EAF3DE', '#3B6D11', '#BBE3A0')}>✓ Hecho</button>
               : <button onClick={() => accion(r.id, { accion: 'marcar', hecho: false })} style={mini('#EEF2FF', '#3730A3', '#C7D2FE')}>↩ Reabrir</button>}
+            {r.fecha_venc && <a href={gcalUrl(r)} target="_blank" rel="noopener noreferrer" title="Añadir a Google Calendar (el aviso '1 día antes' lo pone tu calendario)" style={{ ...mini('#F0FDF4', '#166534', '#BBF7D0'), textDecoration: 'none', display: 'inline-block' }}>📅 Calendar</a>}
             <button onClick={() => editar(r)} style={mini('#EFF6FF', '#1D4ED8', '#BFDBFE')}>Editar</button>
             <button onClick={() => { if (typeof window !== 'undefined' && window.confirm('¿Borrar este recordatorio?')) accion(r.id, { accion: 'borrar' }) }} style={mini('#FCEBEB', '#A32D2D', '#F3C0C0')}>Borrar</button>
           </span>
