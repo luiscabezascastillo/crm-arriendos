@@ -1,3 +1,5 @@
+// VERSION: v2 · 2026-08-20 · La columna `tipo` de inmuebles_norm se guarda con los valores REALES de la
+//   tabla (`depto` / `bodega` / `estac`), no con el código corto. El resto igual. Hereda v1.
 // VERSION: v1 · 2026-08-20 · Alta de un IDADMON NUEVO para un PROPIETARIO YA EXISTENTE, creando además
 //   la unidad en el ORIGEN (inmuebles_norm). Flujo (b): (1) valida el propietario (idprop) contra la tabla
 //   `propietarios` y toma su nombre real; (2) genera el siguiente IDINMUE del propietario según el rango del
@@ -18,6 +20,8 @@ export const dynamic = 'force-dynamic'
 // Rangos del número del IDINMUE por tipo (mismo criterio que la agrupación de inmuebles).
 const RANGOS = { dep: [1, 49], bod: [51, 79], est: [81, 99] }
 const TIPO_LABEL = { dep: 'departamento', bod: 'bodega', est: 'estacionamiento' }
+// Valor que se guarda en inmuebles_norm.tipo (convención real de la tabla: depto/bodega/estac).
+const TIPO_DB = { dep: 'depto', bod: 'bodega', est: 'estac' }
 
 function siguienteIdadmon(maxId) {
   const m = String(maxId || '').match(/^([A-Za-z]*)(\d+)$/)
@@ -91,7 +95,7 @@ export async function POST(req) {
 
   // 4) Registrar la unidad en el ORIGEN (inmuebles_norm).
   const { error: eIns } = await supabaseAdmin.from('inmuebles_norm').insert([{
-    idinmue, idprop, tipo, inmueble, rol: rol || null, propietario: nombreProp,
+    idinmue, idprop, tipo: TIPO_DB[tipo], inmueble, rol: rol || null, propietario: nombreProp,
   }])
   if (eIns) return Response.json({ error: 'Error al crear el inmueble: ' + eIns.message }, { status: 500 })
 

@@ -1,3 +1,4 @@
+// VERSION: v11 · 2026-08-19 · Numeración correlativa con Nº de inicio configurable y continua entre bloques. Hereda v10.
 // VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
 // VERSION: v8 · 2026-08-19 · Caja SII con boton "Conciliar F29<->SA" (accion -> /contab/f29-sa) en vez de pronto. Hereda v7.
@@ -135,7 +136,7 @@ export default function ContabPage() {
     } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo previsualizar.' }) } finally { setCargandoPreview(false) }
   }
 
-  const exportarNubox = async (numeracion = 'auto') => {
+  const exportarNubox = async (numeracion = 'auto', numInicio = 1) => {
     try {
       const r = await fetch(`/api/financiero/contab?export=nubox&${qsAlcance()}`)
       const j = await r.json()
@@ -149,10 +150,10 @@ export default function ContabPage() {
         if (isNaN(d)) return ''
         return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000)
       }
+      let corr = (Number(numInicio) || 1) - 1
       j.bloques.forEach((bloque, bi) => {
         const aoa = [HEADERS_NUBOX]
         const dateRows = []
-        let corr = 0
         for (const f of bloque) {
           const cab = f.tipo != null && f.tipo !== ''
           if (cab && numeracion === 'correlativa') corr += 1
@@ -313,6 +314,7 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
   const [filtros, setFiltros] = useState({})
   const [ordenFecha, setOrdenFecha] = useState(true)
   const [numeracion, setNumeracion] = useState('auto')
+  const [numInicio, setNumInicio] = useState(1)
 
   // filtros a nivel de ASIENTO: si el filtro casa con alguna línea del asiento, se muestra entero
   const compIdsVisibles = useMemo(() => {
@@ -356,7 +358,11 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
             <option value="auto">Nº automático (0)</option>
             <option value="correlativa">Nº 1, 2, 3…</option>
           </select>
-          <button onClick={() => onExportar(numeracion)} disabled={!cuadra} title={cuadra ? 'Exportar .xls Nubox' : 'No cuadra'} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: cuadra ? VERDE : '#B4B2A9', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cuadra ? 'pointer' : 'default' }}>Exportar a Nubox (.xls)</button>
+          {numeracion === 'correlativa' && (
+            <input type="number" min="1" value={numInicio} onChange={e => setNumInicio(e.target.value)} title="Número de inicio de la numeración"
+              style={{ width: 78, padding: '9px 8px', borderRadius: 8, border: `1px solid ${BORDE}`, fontSize: 13, color: VERDE, fontWeight: 600 }} />
+          )}
+          <button onClick={() => onExportar(numeracion, numInicio)} disabled={!cuadra} title={cuadra ? 'Exportar .xls Nubox' : 'No cuadra'} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: cuadra ? VERDE : '#B4B2A9', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cuadra ? 'pointer' : 'default' }}>Exportar a Nubox (.xls)</button>
           <button onClick={onCerrar} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${BORDE}`, background: '#fff', color: '#1A1A17', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cerrar</button>
         </div>
 
