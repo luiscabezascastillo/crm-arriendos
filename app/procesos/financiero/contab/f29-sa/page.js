@@ -1,4 +1,4 @@
-// VERSION: v1 · 2026-08-19 · Vista Conciliación F29 (SII) vs pago en SA (desfase M->M+1), con export a Excel y cabecera sticky.
+// VERSION: v2 · 2026-08-20 · Muestra el giro complementario de rectificatorias (nota bajo Diferencia); el resumen de diferencia acumulada solo cuenta los meses que NO cuadran. Hereda v1.
 'use client'
 
 import { useSession } from 'next-auth/react'
@@ -56,13 +56,13 @@ export default function F29SaPage() {
 
   const resumen = useMemo(() => {
     const cuadran = filas.filter(f => f.cuadra).length
-    const difTotal = filas.reduce((s, f) => s + (Number(f.dif) || 0), 0)
+    const difTotal = filas.filter(f => !f.cuadra).reduce((s, f) => s + (Number(f.dif) || 0), 0)
     return { n: filas.length, cuadran, difTotal }
   }, [filas])
 
   const exportarExcel = () => {
-    const cab = ['F29 mes', 'Tipo', 'IVA debito', 'IVA credito', 'PPM', 'Retencion', 'Total a pagar', 'Mes pago', 'Pagado SA', 'Diferencia']
-    const fl = filas.map(f => [f.mes, f.tipo, f.iva_debito, f.iva_credito, f.ppm, f.retencion, f.total_a_pagar, f.pago_periodo, f.pagado, f.dif])
+    const cab = ['F29 mes', 'Tipo', 'IVA debito', 'IVA credito', 'PPM', 'Retencion', 'Total a pagar', 'Mes pago', 'Pagado SA', 'Diferencia', 'Giro complementario']
+    const fl = filas.map(f => [f.mes, f.tipo, f.iva_debito, f.iva_credito, f.ppm, f.retencion, f.total_a_pagar, f.pago_periodo, f.pagado, f.dif, f.giro ? `${f.giro.monto} (${f.giro.periodo}, +${f.giro.recargo} recargos)` : ''])
     const esc = (v) => { const s = String(v == null ? '' : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
     const csv = [cab, ...fl].map(r => r.map(esc).join(';')).join('\r\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -130,7 +130,10 @@ export default function F29SaPage() {
                     <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{clp(f.total_a_pagar)}</td>
                     <td style={td}>{f.pago_periodo}</td>
                     <td style={{ ...td, textAlign: 'right' }}>{clp(f.pagado)}</td>
-                    <td style={{ ...td, textAlign: 'right', color: f.cuadra ? TENUE : ROJO }}>{f.dif ? clp(f.dif) : ''}</td>
+                    <td style={{ ...td, textAlign: 'right', color: f.cuadra ? TENUE : ROJO }}>
+                      {f.dif ? clp(f.dif) : ''}
+                      {f.giro && <div style={{ fontSize: 11, color: VERDE, whiteSpace: 'nowrap' }}>&rarr; giro {clp(f.giro.monto)} · {f.giro.periodo}{f.giro.recargo ? ` (+${clp(f.giro.recargo)} recargos)` : ''}</div>}
+                    </td>
                     <td style={td}>{f.cuadra ? <span style={{ color: VERDE }}>✓</span> : <span style={{ color: ROJO }}>✗</span>}</td>
                   </tr>
                 ))}

@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-20 · Empareja el GIRO COMPLEMENTARIO de las rectificatorias: si una rectificatoria
+//   no cuadra en M+1, busca un pago al SII 'suelto' (mes sin F29) posterior cuyo importe ~= la diferencia
+//   (tolerando recargos hasta +30%). Lo marca cuadra y expone el giro. Hereda v1.
 // VERSION: v1 · 2026-08-19 · GET conciliacion F29 (sii_f29) vs pago S.I.I. en SA, con desfase M->M+1.
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
@@ -49,12 +52,21 @@ export async function GET(req) {
 
   const perDe = {}
   for (const c of (cargas || [])) perDe[c.id] = c.periodo
-  const pagoPorPeriodo = {}
+
+  // Pagos individuales al SII, con su periodo de carga SA (en positivo)
+  const pagos = []
   for (const m of (mov || [])) {
     const p = perDe[m.carga_id]
     if (!p) continue
-    pagoPorPeriodo[p] = (pagoPorPeriodo[p] || 0) + (-(Number(m.monto) || 0))
+    pagos.push({ per: p, monto: -(Number(m.monto) || 0) })
   }
+  const pagoPorPeriodo = {}
+  for (const g of pagos) pagoPorPeriodo[g.per] = (pagoPorPeriodo[g.per] || 0) + g.monto
+
+  // Meses de pago "esperados" = M+1 de cada F29. Un pago en un mes NO esperado es un pago suelto
+  // (candidato a giro complementario de una rectificatoria, que se paga tarde y con recargos).
+  const mesesEsperados = new Set((f29 || []).map(f => pagoPeriodo(f.periodo)))
+  const sueltos = pagos.filter(g => !mesesEsperados.has(g.per))
 
   const filas = (f29 || [])
     .sort((a, b) => (String(a.periodo) < String(b.periodo) ? -1 : 1))
@@ -63,12 +75,23 @@ export async function GET(req) {
       const pagado = pagoPorPeriodo[pp] || 0
       const total = Number(f.total_a_pagar) || 0
       const dif = total - pagado
-      return {
+      const row = {
         periodo: f.periodo, mes: f29Label(f.periodo), tipo: f.tipo_declaracion, folio: f.folio,
         iva_debito: Number(f.iva_debito) || 0, iva_credito: Number(f.iva_credito) || 0,
         ppm: Number(f.ppm) || 0, retencion: Number(f.retencion_honorarios) || 0,
-        total_a_pagar: total, pago_periodo: pp, pagado, dif, cuadra: Math.abs(dif) < 1,
+        total_a_pagar: total, pago_periodo: pp, pagado, dif, cuadra: Math.abs(dif) < 1, giro: null,
       }
+      // Rectificatoria que no cuadra en M+1: buscar el giro complementario en un pago suelto POSTERIOR,
+      // tolerando recargos (reajuste + intereses) de hasta +30% sobre la diferencia.
+      if (!row.cuadra && dif > 1 && /rectificat/i.test(String(f.tipo_declaracion || ''))) {
+        const idx = sueltos.findIndex(sg => sg.per > pp && sg.monto >= dif - 1 && sg.monto <= dif * 1.3)
+        if (idx >= 0) {
+          const g = sueltos.splice(idx, 1)[0]   // consumir: que no lo empareje otra fila
+          row.giro = { periodo: g.per, monto: g.monto, recargo: Math.round(g.monto - dif) }
+          row.cuadra = true                       // la diferencia queda cubierta por el giro
+        }
+      }
+      return row
     })
 
   return Response.json({ ok: true, anio, filas })
