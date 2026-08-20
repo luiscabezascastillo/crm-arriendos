@@ -1,3 +1,4 @@
+// VERSION: v12 · 2026-08-20 · Export Nubox: celdas vacias como null (no string ''). SheetJS escribia '' como celda-string presente en L-Q y Nubox lo leia como 'campo relleno invalido' (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga. Hereda v11.
 // VERSION: v11 · 2026-08-19 · Numeración correlativa con Nº de inicio configurable y continua entre bloques. Hereda v10.
 // VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
@@ -151,16 +152,29 @@ export default function ContabPage() {
         return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000)
       }
       let corr = (Number(numInicio) || 1) - 1
+      const nz = (v) => (v === '' || v == null ? null : v)   // celda vacia -> null (Nubox rechaza el string vacio en L-Q)
       j.bloques.forEach((bloque, bi) => {
         const aoa = [HEADERS_NUBOX]
         const dateRows = []
         for (const f of bloque) {
           const cab = f.tipo != null && f.tipo !== ''
           if (cab && numeracion === 'correlativa') corr += 1
-          const numero = cab ? (numeracion === 'correlativa' ? corr : 0) : ''
+          const numero = cab ? (numeracion === 'correlativa' ? corr : 0) : null
           const fs = cab ? serialFecha(f.fecha) : ''
           if (fs !== '') dateRows.push(aoa.length)
-          aoa.push([numero, cab ? f.tipo : '', fs, cab ? f.glosa : '', f.cuenta, f.glosa_detalle || '', f.centro_costo || '', '', f.debe || '', f.haber || '', '', '', '', '', '', '', ''])
+          aoa.push([
+            numero,                       // A Numero (cabecera: corr o 0 auto; detalle: vacio)
+            cab ? f.tipo : null,          // B Tipo
+            fs === '' ? null : fs,        // C Fecha (serial; vacio en detalle)
+            cab ? nz(f.glosa) : null,     // D Glosa
+            nz(f.cuenta),                 // E Cuenta Detalle
+            nz(f.glosa_detalle),          // F Glosa Detalle
+            nz(f.centro_costo),           // G Centro Costo
+            null,                         // H Sucursal
+            f.debe || null,               // I Debe (lado 0 -> vacio)
+            f.haber || null,              // J Haber
+            null, null, null, null, null, null, null  // K-Q vacias REALES (celda ausente, no string)
+          ])
         }
         const ws = XLSX.utils.aoa_to_sheet(aoa)
         for (const rr of dateRows) { const ref = XLSX.utils.encode_cell({ r: rr, c: 2 }); if (ws[ref]) { ws[ref].t = 'n'; ws[ref].z = 'dd/mm/yyyy' } }
