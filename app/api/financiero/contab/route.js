@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-19 · Límite de bloque Nubox a 4950 (antes 5000). Hereda v5.
 // VERSION: v5 · 2026-08-19 · filasNubox: lee TODAS las lineas paginando (antes se cortaba a 1000 -> falso descuadre y export incompleto). Hereda v4.
 // VERSION: v4 · 2026-08-19 · Caja Chica enchufada ('caja_chica' -> contab_generar_caja_chica). Hereda v3.
 // VERSION: v3 · 2026-08-19 · Honorarios enchufado ('honorarios' -> contab_generar_honorarios). Hereda v2.
@@ -31,7 +32,7 @@ const GENERADORES = {
   caja_chica: 'contab_generar_caja_chica',
 }
 
-const LIMITE_NUBOX = 5000 // líneas máximas por bloque de importación
+const LIMITE_NUBOX = 4950 // líneas máximas por bloque de importación (Nubox admite <5000; margen)
 
 export async function GET(req) {
   const session = await getServerSession(authOptions)

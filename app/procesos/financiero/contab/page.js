@@ -1,3 +1,4 @@
+// VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
 // VERSION: v8 · 2026-08-19 · Caja SII con boton "Conciliar F29<->SA" (accion -> /contab/f29-sa) en vez de pronto. Hereda v7.
 // VERSION: v7 · 2026-08-19 · Caja Chica activa (botón Regenerar). Hereda v6.
@@ -18,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import * as XLSX from 'xlsx'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
@@ -29,6 +31,10 @@ const ROJO_BG = '#FBE9E7'
 const ROJO = '#B23A3A'
 
 const clp = (n) => (n == null || n === '' ? '' : Number(n).toLocaleString('es-CL'))
+
+// Cabecera EXACTA de la plantilla de Carga Masiva de Comprobantes de Nubox (17 columnas).
+// La primera fila del .xls debe ser idéntica a esto o Nubox rechaza el archivo. K-Q van vacías.
+const HEADERS_NUBOX = ['Número', 'Tipo', 'Fecha', 'Glosa', 'Cuenta Detalle', 'Glosa Detalle', 'Centro Costo', 'Sucursal', 'Debe', 'Haber', 'Tipo Auxiliar', 'A: Rut Cliente-Proveedor/H: Rut Prestador', 'A: Razon Social/B: Descripción Movimiento Bancario/ H: Nombre Prestador', 'A: Tipo De Documento/H: Tipo De Boleta Honorario', 'A: Folio /B: Numero Documento/H: Folio Boleta', 'A/B/H: Monto', 'A: Fecha Vencimiento /B: Fecha /H: Fecha Emisión  (DD/MM/AAAA)']
 
 const ORIGENES = [
   { id: 'ventas',       nombre: 'Ventas',        desc: 'Ingresos por CCB (bruto/neto/IVA)',     activo: true  },
@@ -129,26 +135,42 @@ export default function ContabPage() {
     } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo previsualizar.' }) } finally { setCargandoPreview(false) }
   }
 
-  const exportarNubox = async () => {
+  const exportarNubox = async (numeracion = 'auto') => {
     try {
       const r = await fetch(`/api/financiero/contab?export=nubox&${qsAlcance()}`)
       const j = await r.json()
       if (j.error) { setAviso({ tipo: 'error', txt: j.error }); return }
       if (!j.bloques?.length) { setAviso({ tipo: 'error', txt: 'No hay comprobantes para exportar.' }); return }
-      const base = alcance === 'mes' ? periodoStr() : String(anio)
-      j.bloques.forEach((bloque, i) => {
-        const cab = ['Número', 'Tipo', 'Fecha', 'Glosa', 'Cuenta Detalle', 'Glosa Detalle', 'Centro Costo', 'Sucursal', 'Debe', 'Haber']
-        const filas = bloque.map(f => [f.numero, f.tipo, f.fecha ? fechaCL(f.fecha) : '', f.glosa, f.cuenta, f.glosa_detalle, f.centro_costo, f.sucursal, f.debe || '', f.haber || ''])
-        const tsv = [cab, ...filas].map(r => r.join('\t')).join('\r\n')
-        const blob = new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = j.n_bloques > 1 ? `CONTAB_${base}_bloque${i + 1}de${j.n_bloques}.txt` : `CONTAB_${base}.txt`
-        a.click(); URL.revokeObjectURL(url)
+      const HOY = new Date()
+      const yyyymmdd = `${HOY.getFullYear()}${String(HOY.getMonth() + 1).padStart(2, '0')}${String(HOY.getDate()).padStart(2, '0')}`
+      const serialFecha = (f) => {
+        if (!f) return ''
+        const d = new Date(f)
+        if (isNaN(d)) return ''
+        return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000)
+      }
+      j.bloques.forEach((bloque, bi) => {
+        const aoa = [HEADERS_NUBOX]
+        const dateRows = []
+        let corr = 0
+        for (const f of bloque) {
+          const cab = f.tipo != null && f.tipo !== ''
+          if (cab && numeracion === 'correlativa') corr += 1
+          const numero = cab ? (numeracion === 'correlativa' ? corr : 0) : ''
+          const fs = cab ? serialFecha(f.fecha) : ''
+          if (fs !== '') dateRows.push(aoa.length)
+          aoa.push([numero, cab ? f.tipo : '', fs, cab ? f.glosa : '', f.cuenta, f.glosa_detalle || '', f.centro_costo || '', '', f.debe || '', f.haber || '', '', '', '', '', '', '', ''])
+        }
+        const ws = XLSX.utils.aoa_to_sheet(aoa)
+        for (const rr of dateRows) { const ref = XLSX.utils.encode_cell({ r: rr, c: 2 }); if (ws[ref]) { ws[ref].t = 'n'; ws[ref].z = 'dd/mm/yyyy' } }
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Comprobantes')
+        const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' })
+        const blob = new Blob([wbout], { type: 'application/vnd.ms-excel' })
+        const url = URL.createObjectURL(blob); const a = document.createElement('a')
+        a.href = url; a.download = `cargaNubox-${yyyymmdd}-${bi + 1}.xls`; a.click(); URL.revokeObjectURL(url)
       })
-      setAviso({ tipo: 'ok', txt: `Exportado: ${j.total_filas} líneas en ${j.n_bloques} bloque(s) <5000.` })
-    } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo exportar.' }) }
+      setAviso({ tipo: 'ok', txt: `Exportado ${j.bloques.length} bloque(s) .xls (Nubox) · numeración ${numeracion === 'correlativa' ? '1,2,3…' : 'automática (0)'}.` })
+    } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo exportar: ' + (e?.message || e) }) }
   }
 
   const totalGeneral = useMemo(() => {
@@ -290,6 +312,7 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
   const { filas, total_debe, total_haber, cuadra, n_lineas, alcance } = preview
   const [filtros, setFiltros] = useState({})
   const [ordenFecha, setOrdenFecha] = useState(true)
+  const [numeracion, setNumeracion] = useState('auto')
 
   // filtros a nivel de ASIENTO: si el filtro casa con alguna línea del asiento, se muestra entero
   const compIdsVisibles = useMemo(() => {
@@ -329,7 +352,11 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
           {Object.values(filtros).some(v => v && v.trim()) && (
             <button onClick={() => setFiltros({})} style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${BORDE}`, background: '#fff', color: VERDE, fontSize: 13, cursor: 'pointer' }}>Quitar filtros</button>
           )}
-          <button onClick={onExportar} disabled={!cuadra} title={cuadra ? 'Exportar archivo Nubox' : 'No cuadra'} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: cuadra ? VERDE : '#B4B2A9', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cuadra ? 'pointer' : 'default' }}>Exportar a Nubox</button>
+          <select value={numeracion} onChange={e => setNumeracion(e.target.value)} title="Numeración de la 1ª columna" style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDE}`, fontSize: 13, color: VERDE, background: '#fff', fontWeight: 600 }}>
+            <option value="auto">Nº automático (0)</option>
+            <option value="correlativa">Nº 1, 2, 3…</option>
+          </select>
+          <button onClick={() => onExportar(numeracion)} disabled={!cuadra} title={cuadra ? 'Exportar .xls Nubox' : 'No cuadra'} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: cuadra ? VERDE : '#B4B2A9', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cuadra ? 'pointer' : 'default' }}>Exportar a Nubox (.xls)</button>
           <button onClick={onCerrar} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${BORDE}`, background: '#fff', color: '#1A1A17', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cerrar</button>
         </div>
 
