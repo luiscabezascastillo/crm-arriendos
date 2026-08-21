@@ -1,3 +1,7 @@
+// VERSION: v15 · 2026-08-19 · FIX pérdida de datos manuales al "Guardar mes en el CRM": (1) el buffer `edits` ya
+//   NO se pisa en un refresco de `datos` — se fusiona conservando lo tecleado; (2) el guardado por celda (onBlur)
+//   es silencioso y no deshabilita el botón del mes en mitad del clic (antes la carrera evitaba que se guardara
+//   el mes). Los comentarios/columnas manuales ya no se pierden. Hereda v14.
 // VERSION: v14 · 2026-08-18 · Estado de pago por contrato (columnas manuales): selector PAGADO / Pago atrasado /
 //   No pagó + Nota, que marca Administración. Aclara los "pagos que parecen del mes pero son atrasados". Se
 //   guarda en liquidacion_paola y sale en el Excel de Paola. Requiere route v11. Hereda v13.
@@ -97,13 +101,21 @@ export default function LiquidacionPaolaPage() {
   // (lo guardado en liquidacion_paola). Así lo tecleado se conserva y se puede exportar/guardar.
   useEffect(() => {
     if (!datos?.resultado) { setEdits({}); return }
-    const e = {}
-    for (const r of datos.resultado) e[r.idadmon] = {
-      multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
-      comentarios1: r.comentarios1 ?? '', comentarios2: r.comentarios2 ?? '',
-      estadoPago: r.estadoPago ?? '', notaPago: r.notaPago ?? '',
-    }
-    setEdits(e)
+    // Fusión NO destructiva: los valores del servidor son el punto de partida, pero lo que el usuario
+    // ya tecleó (prev) MANDA y NUNCA se pisa por un refresco de `datos`. Antes esto reiniciaba el buffer
+    // y se perdían los comentarios/columnas manuales sin guardar.
+    setEdits(prev => {
+      const e = {}
+      for (const r of datos.resultado) {
+        const servidor = {
+          multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
+          comentarios1: r.comentarios1 ?? '', comentarios2: r.comentarios2 ?? '',
+          estadoPago: r.estadoPago ?? '', notaPago: r.notaPago ?? '',
+        }
+        e[r.idadmon] = { ...servidor, ...(prev[r.idadmon] || {}) }
+      }
+      return e
+    })
   }, [datos])
 
   const mesLabel = () => {
@@ -213,23 +225,28 @@ export default function LiquidacionPaolaPage() {
   const setCampo = (idadmon, campo, valor) => setEdits(x => ({ ...x, [idadmon]: { ...x[idadmon], [campo]: valor } }))
   const filaConEdits = (r) => ({ ...r, ...(edits[r.idadmon] || {}) })
   const filasConEdits = () => (datos?.resultado || []).map(filaConEdits)
-  async function guardar(filas) {
+  // `silencioso`: guardado por celda (onBlur). NO toca `guardandoMes` (para no deshabilitar el botón
+  // "Guardar mes" en mitad del clic) ni muestra aviso. El guardado del mes completo sí lo hace.
+  async function guardar(filas, { silencioso = false } = {}) {
     if (!filas?.length) return
-    setGuardandoMes(true); setError(null); setAvisoGuardado(null)
+    if (!silencioso) { setGuardandoMes(true); setAvisoGuardado(null) }
+    setError(null)
     try {
       const res = await fetch('/api/liquidacion-paola', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accion: 'guardar', mes, filas }),
       })
       const d = await res.json()
-      if (!d.ok) { setError(d.error || 'No se pudo guardar'); setGuardandoMes(false); return }
-      setAvisoGuardado(`Guardado en el CRM (${d.guardadas} fila${d.guardadas === 1 ? '' : 's'})`)
-      setTimeout(() => setAvisoGuardado(null), 3500)
+      if (!d.ok) { setError(d.error || 'No se pudo guardar'); if (!silencioso) setGuardandoMes(false); return }
+      if (!silencioso) {
+        setAvisoGuardado(`Guardado en el CRM (${d.guardadas} fila${d.guardadas === 1 ? '' : 's'})`)
+        setTimeout(() => setAvisoGuardado(null), 3500)
+      }
     } catch (e) { setError('Error de conexión al guardar: ' + e.message) }
-    setGuardandoMes(false)
+    if (!silencioso) setGuardandoMes(false)
   }
   const guardarMes = () => guardar(filasConEdits())
-  const guardarFila = (r) => guardar([filaConEdits(r)])
+  const guardarFila = (r) => guardar([filaConEdits(r)], { silencioso: true })
 
   // Abrir el mes YA GUARDADO (lo que dejó otra persona) sin re-procesar la cartola.
   async function cargarGuardado() {
