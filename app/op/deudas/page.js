@@ -1,3 +1,7 @@
+// VERSION: v9 · 2026-08-21 · Drawer: muestra el Nº de cliente (luz/agua/gas) etiquetado como "N° cliente: …"
+//   y activa también el de Gas. El código se toma de la fuente única servicios_codigos y, si allí no hay,
+//   de la propia fila del mes en ggcc_agua_luz (antes se pisaba con null, por eso no se veía). Se piden
+//   codigo_ele/agua/gas en el SELECT. Los marcadores (estacionamiento/bodega) siguen ocultos. Hereda v8.
 'use client'
 import * as XLSX from 'xlsx'
 import { useState, useEffect, useRef } from 'react'
@@ -227,7 +231,7 @@ export default function Deudas() {
       let all = []; let from = 0; const PAGE = 1000
       for (;;) {
         const { data, error } = await supabase.from('ggcc_agua_luz')
-          .select('idadmon,idinmue,estado,aamm,mes,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua')
+          .select('idadmon,idinmue,estado,aamm,mes,edificio_proyecto,arrendatario,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas,fecha_hecho_ggcc,fecha_hecho_luz,fecha_hecho_agua,fecha_hecho_gas,comentarios_se_han_dejado_los_comentarios_mes_anterior,comentarios_y_fecha_corte,deuda_anterior_agua,codigo_ele,codigo_agua,codigo_gas')
           .in('mes', MESES_ISO)
           .order('aamm', { ascending: false }).order('idadmon', { ascending: true })
           .range(from, from + PAGE - 1)
@@ -245,7 +249,11 @@ export default function Deudas() {
         const c = mc.get(f.idinmue)
         // Comunidad: usa la del mes si viene; si está vacía, hereda de servicios_codigos (propia del inmueble).
         const comunidad = (f.edificio_proyecto && String(f.edificio_proyecto).trim()) ? f.edificio_proyecto : (c?.edificio_proyecto ?? null)
-        return { ...f, edificio_proyecto: comunidad, codigo_ele: c?.codigo_ele ?? null, codigo_agua: c?.codigo_agua ?? null, codigo_gas: c?.codigo_gas ?? null }
+        // Código de cliente: fuente única servicios_codigos; si allí no hay, el de la propia fila del mes.
+        return { ...f, edificio_proyecto: comunidad,
+          codigo_ele: c?.codigo_ele ?? f.codigo_ele ?? null,
+          codigo_agua: c?.codigo_agua ?? f.codigo_agua ?? null,
+          codigo_gas: c?.codigo_gas ?? f.codigo_gas ?? null }
       }))
       setLoading(false)
     })()
@@ -634,9 +642,9 @@ export default function Deudas() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
                 {[
                   {label:'G. Comunes',val:drawer.deuda_gastos_comunes,meta:drawer.fecha_hecho_ggcc,comentario:drawer.comentarios_se_han_dejado_los_comentarios_mes_anterior},
-                  {label:'Electricidad',val:drawer.deuda_vigente_electricidad,meta:drawer.codigo_ele,comentario:drawer.comentarios_y_fecha_corte},
-                  {label:'Agua',val:drawer.deuda_vigente_agua,meta:drawer.codigo_agua,comentario:drawer.deuda_anterior_agua},
-                  {label:'Gas',val:drawer.deuda_vigente_gas,meta:null,comentario:null},
+                  {label:'Electricidad',val:drawer.deuda_vigente_electricidad,meta:drawer.codigo_ele,esCodigo:true,comentario:drawer.comentarios_y_fecha_corte},
+                  {label:'Agua',val:drawer.deuda_vigente_agua,meta:drawer.codigo_agua,esCodigo:true,comentario:drawer.deuda_anterior_agua},
+                  {label:'Gas',val:drawer.deuda_vigente_gas,meta:drawer.codigo_gas,esCodigo:true,comentario:null},
                 ].map((s,i)=>{
                   const v=fmt(s.val)
                   return (
@@ -649,7 +657,9 @@ export default function Deudas() {
                         {v===null?'Sin datos':v===0?'Sin deuda':fmtPeso(v)}
                       </div>
                       {s.meta&&s.meta!=='estacionamiento'&&s.meta!=='bodega'&&
-                        <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>{s.meta}</div>}
+                        <div style={{fontSize:11,color:'#9CA3AF',marginTop:2}}>
+                          {s.esCodigo&&/^\d/.test(String(s.meta))?`N° cliente: ${s.meta}`:s.meta}
+                        </div>}
                       {s.comentario&&
                         <div style={{fontSize:11,color:'#854F0B',marginTop:4,background:'#FAEEDA',
                           borderRadius:4,padding:'3px 6px'}}>{s.comentario}</div>}

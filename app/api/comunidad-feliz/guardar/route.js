@@ -1,3 +1,10 @@
+// VERSION: v2 · 2026-08-21 · Al guardar GGCC desde el texto de Comunidad Feliz, HEREDA los códigos de
+//   servicio (luz/agua/gas) por idinmue: primero de la fuente única `servicios_codigos`, y lo que falte,
+//   del último mes ya cargado en ggcc_agua_luz. El texto de CF no trae códigos, así que sin esto el mes
+//   nuevo nacía con codigo_ele/agua/gas en null y el drawer de /op/deudas salía "Sin datos" (además de
+//   impedir la consulta masiva de luz/agua). Prioriza el código real (empieza por dígito) sobre los
+//   marcadores (estacionamiento/bodega/llega con ggcc), y cubre tanto el idinmue exacto (agrupaciones
+//   "P016-02 P016-51") como cada componente suelto. Hereda v1 (que no versionaba).
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -82,6 +89,63 @@ export async function POST(req) {
         comentarios_se_han_dejado_los_comentarios_mes_anterior: `CF_NO_MATCH: ${f.observacion}`,
         updated_at: new Date().toISOString()
       })
+    }
+
+    // ── Heredar códigos de servicio por idinmue ────────────────────────────────
+    // El texto de Comunidad Feliz no trae códigos de luz/agua/gas. Se heredan de la fuente única
+    // `servicios_codigos` (por idinmue) y, lo que falte, del último mes ya cargado en ggcc_agua_luz.
+    // Así el mes nuevo no nace sin nº de cliente (y la consulta masiva de luz/agua tiene con qué consultar).
+    try {
+      const splitInmue = (s) => String(s || '').trim().split(/\s+/).filter(Boolean)
+      // codPorInmue: idinmue (exacto o componente) -> { ele, agua, gas }; guarda el PRIMER no-nulo que ve.
+      const codPorInmue = new Map()
+      const set = (key, campo, val) => {
+        if (!key || !val) return
+        const e = codPorInmue.get(key) || {}
+        if (e[campo] == null) { e[campo] = val; codPorInmue.set(key, e) }
+      }
+      // Claves a buscar: el idinmue completo (para agrupaciones) y cada componente suelto.
+      const claves = new Set()
+      for (const r of rows) { const full = String(r.idinmue || '').trim(); if (full) claves.add(full); for (const c of splitInmue(full)) claves.add(c) }
+      const lista = [...claves]
+      if (lista.length) {
+        // 1) Fuente única `servicios_codigos` (por idinmue).
+        const { data: sc } = await supabase
+          .from('servicios_codigos')
+          .select('idinmue, codigo_ele, codigo_agua, codigo_gas')
+          .in('idinmue', lista)
+        for (const c of (sc || [])) { set(c.idinmue, 'ele', c.codigo_ele); set(c.idinmue, 'agua', c.codigo_agua); set(c.idinmue, 'gas', c.codigo_gas) }
+        // 2) Fallback: último mes ya cargado en ggcc_agua_luz (excluye el mes que estamos guardando).
+        const { data: hist } = await supabase
+          .from('ggcc_agua_luz')
+          .select('idinmue, mes, codigo_ele, codigo_agua, codigo_gas')
+          .in('idinmue', lista)
+          .neq('mes', mesClave)
+          .order('mes', { ascending: false })
+        for (const h of (hist || [])) { set(h.idinmue, 'ele', h.codigo_ele); set(h.idinmue, 'agua', h.codigo_agua); set(h.idinmue, 'gas', h.codigo_gas) }
+        // 3) Volcar a cada fila: por servicio, el primer candidato con código; el código real
+        //    (empieza por dígito) tiene prioridad sobre un marcador (estacionamiento/bodega/…).
+        const esReal = (v) => /^\d/.test(String(v))
+        const elegir = (idinmue, campo) => {
+          const cand = [String(idinmue || '').trim(), ...splitInmue(idinmue)]
+          let marcador = null
+          for (const c of cand) {
+            const v = codPorInmue.get(c)?.[campo]
+            if (!v) continue
+            if (esReal(v)) return v
+            if (marcador == null) marcador = v
+          }
+          return marcador
+        }
+        for (const r of rows) {
+          const ele = elegir(r.idinmue, 'ele'); if (ele) r.codigo_ele = ele
+          const agua = elegir(r.idinmue, 'agua'); if (agua) r.codigo_agua = agua
+          const gas = elegir(r.idinmue, 'gas'); if (gas) r.codigo_gas = gas
+        }
+      }
+    } catch (e) {
+      console.error('guardar ggcc: no se pudieron heredar códigos:', e.message)
+      // No se bloquea la carga principal si la herencia falla.
     }
 
     // Upsert en lotes de 50
