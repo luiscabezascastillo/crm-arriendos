@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 'use client'
 // VERSION: v11 · 2026-08-14 · Cambiar estado: dos sub-estados nuevos del término, Q-Auditado y Q-Reclamado
 //   (desde Q). Solo Dirección + Karina los ven y los pueden aplicar (cap.puedeAuditarTermino); el resto de
@@ -83,7 +84,7 @@ const headerCell = {
 }
 
 const FORM_VACIO = {
-  idadmon:'', estado:'', propietario:'', idprop:'', inmueble:'', idlinmue:'',
+  idadmon:'', estado:'', propietario:'', idprop:'', inmueble:'', idinmue:'',
   tipo:'', bodega:'', estac:'', sub_estado:'', fecha:'', accion:'',
   arrendatario:'', mail_arrendatario:'', movil:'', rut:'', avalista:'',
   mail_avalista:'', telefono_avalista:'', otro_dato:'',
@@ -960,9 +961,9 @@ function AdminContent() {
     setCargandoComp(false)
   }
 
-  // Aplicar una composición elegida: cambia inmueble + idlinmue en el formulario (se guarda con Guardar).
+  // Aplicar una composición elegida: cambia inmueble + idinmue en el formulario (se guarda con Guardar).
   function elegirComposicion(it) {
-    setForm(prev => ({ ...prev, inmueble: it.inmueble, idlinmue: it.idinmue }))
+    setForm(prev => ({ ...prev, inmueble: it.inmueble, idinmue: it.idinmue }))
     setModalComponerAbierto(false)
     setBloqueado(false)   // desbloquear para que el botón Guardar se active
     setMsg({ type: 'info', text: 'Composición actualizada a ' + it.idinmue + '. Revisa y pulsa Guardar para confirmar.' })
@@ -1760,7 +1761,7 @@ function AdminContent() {
             </tr>
             <tr>
               <LB>IDINMUE</LB>
-              <td colSpan={3} style={inputCell}><IC name="idlinmue" value={form.idlinmue} onChange={handleChange} readOnly={roLog} /></td>
+              <td colSpan={3} style={inputCell}><IC name="idinmue" value={form.idinmue} onChange={handleChange} readOnly={roLog} /></td>
               <LB right>Comienzo</LB>
               <td colSpan={2} style={inputCell}><IC name="fecha_inicio" value={form.fecha_inicio} onChange={handleChange} readOnly={roLog} type="date" /></td>
               <LB right>Finalización</LB>
@@ -2136,7 +2137,7 @@ function AdminContent() {
                   </thead>
                   <tbody>
                     {inmueblesProp.map((it, i) => {
-                      const actual = String(it.idinmue).trim() === String(form.idlinmue).trim()
+                      const actual = String(it.idinmue).trim() === String(form.idinmue).trim()
                       return (
                         <tr key={i} style={{ background: it.combinacion ? '#f0fdfa' : '#fff', borderTop: '1px solid #eef2f7' }}>
                           <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: it.combinacion ? 700 : 400 }}>{it.idinmue}</td>

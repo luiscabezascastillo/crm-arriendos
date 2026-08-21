@@ -1,8 +1,9 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v12 · 2026-08-21 · FIX etiquetas del eje X de "Evolución de deudas": mostraban "202" en todas
 //   (hacían slice(0,3) sobre "2026-08"). Ahora muestran el AAMM de 4 dígitos (2608, 2607, 2606…). Hereda v11.
 // VERSION: v11 · 2026-08-21 · (1) Búsqueda global arriba: filtra por inmueble, propietario, IDADMON, IDINMUE
 //   y arrendatario a la vez (antes solo se podía por columnas). (2) Bloque "Historia del inmueble" al final
-//   del drawer: todos los IDADMON que han pasado por esta unidad (mismo idlinmue=idinmue, cogiendo el depto en
+//   del drawer: todos los IDADMON que han pasado por esta unidad (mismo idinmue=idinmue, cogiendo el depto en
 //   compuestos), con estado y última fecha (termino_actual). Hereda v10.
 // VERSION: v10 · 2026-08-21 · Editor de códigos: en "Corregir datos" se puede editar/añadir el N° de cliente
 //   de luz/agua/gas. Se guarda en la ficha única `servicios_codigos` (por idinmue) vía POST /api/servicios/codigo
@@ -26,14 +27,14 @@ function fmtPeso(n) {
   if (n === null || n === undefined) return '—'
   return '$' + Number(n).toLocaleString('es-CL')
 }
-// Depto de un idlinmue (posible compuesto "P016-02 P016-51"): el código cuyo sufijo -NN está en 01..49.
-function idinmueDepto(idlinmue) {
-  if (!idlinmue) return null
-  for (const cod of String(idlinmue).trim().split(/\s+/)) {
+// Depto de un idinmue (posible compuesto "P016-02 P016-51"): el código cuyo sufijo -NN está en 01..49.
+function idinmueDepto(idinmue) {
+  if (!idinmue) return null
+  for (const cod of String(idinmue).trim().split(/\s+/)) {
     const m = cod.match(/-(\d{2,})$/)
     if (m) { const n = parseInt(m[1], 10); if (n >= 1 && n <= 49) return cod }
   }
-  return String(idlinmue).trim().split(/\s+/)[0] || null
+  return String(idinmue).trim().split(/\s+/)[0] || null
 }
 const fmtFechaCorta = (v) => { if (!v) return '—'; const s = String(v).slice(0, 10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : s }
 // Etiqueta del eje X de la gráfica: AAMM de 4 dígitos ("2608"). Usa el campo aamm; si no, lo deriva del mes ISO.
@@ -292,14 +293,14 @@ export default function Deudas() {
       .select('mes,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas')
       .eq('idadmon', f.idadmon).order('aamm',{ascending:false}).limit(6)
       .then(({data}) => setHistorial(data||[]))
-    // Historia del inmueble: todos los IDADMON que comparten el mismo inmueble físico (idlinmue, depto en compuestos).
+    // Historia del inmueble: todos los IDADMON que comparten el mismo inmueble físico (idinmue, depto en compuestos).
     ;(async () => {
-      const { data: self } = await supabase.from('datos_arriendos').select('idlinmue').eq('idadmon', f.idadmon).maybeSingle()
-      const depto = idinmueDepto(self?.idlinmue)
+      const { data: self } = await supabase.from('datos_arriendos').select('idinmue').eq('idadmon', f.idadmon).maybeSingle()
+      const depto = idinmueDepto(self?.idinmue)
       if (!depto) { setHistInmue([]); return }
       const { data } = await supabase.from('datos_arriendos')
-        .select('idadmon,estado,termino_actual,fecha_inicio,arrendatario,idlinmue')
-        .ilike('idlinmue', `%${depto}%`).limit(60)
+        .select('idadmon,estado,termino_actual,fecha_inicio,arrendatario,idinmue')
+        .ilike('idinmue', `%${depto}%`).limit(60)
       const vig = (e) => ['P','S','SQ'].includes(String(e||'').trim().toUpperCase())
       const rows = (data||[]).sort((a,b) => {
         if (vig(a.estado) !== vig(b.estado)) return vig(a.estado) ? -1 : 1

@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v12 · 2026-08-20 · Botón "Nuevo IDADMON (prop. existente)" en la barra Datos base: da de alta un
 //   contrato NUEVO para un propietario ya existente. Modal con buscador de propietario + alta de la unidad
 //   nueva (tipo dep/bod/est + dirección + ROL); llama a /api/cc1/alta-existente, que genera el IDINMUE en
@@ -214,11 +215,11 @@ const COL_MARRON = '#EADDC7'
 const COL_VIOLETA = '#E7E0F0'
 
 // El idinmue de un departamento es el código cuyo número está en 01-49 (regla de numeración:
-// 01-49 depto, 51-79 bodega, 81-99 estacionamiento). idlinmue puede traer varios separados por
+// 01-49 depto, 51-79 bodega, 81-99 estacionamiento). idinmue puede traer varios separados por
 // espacio ("P001-14 P001-85"); devolvemos el que sea depto, o null si no hay.
-function idinmueDepto(idlinmue) {
-  if (!idlinmue) return null
-  for (const cod of String(idlinmue).trim().split(/\s+/)) {
+function idinmueDepto(idinmue) {
+  if (!idinmue) return null
+  for (const cod of String(idinmue).trim().split(/\s+/)) {
     const m = cod.match(/-(\d{2,})$/)
     if (m) { const n = parseInt(m[1], 10); if (n >= 1 && n <= 49) return cod }
   }
@@ -252,8 +253,8 @@ const LOG_COLS = [
     flabel: k => (k === '' ? '(vacías)' : fmtFechaLOG(k)) },
   { key: 'idprop', label: 'IDPROP', tipo: 'texto',
     fkey: p => p.idprop || '', flabel: k => (k === '' ? '(vacías)' : k) },
-  { key: 'idlinmue', label: 'IDINMUE', tipo: 'texto',
-    fkey: p => p.idlinmue || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'idinmue', label: 'IDINMUE', tipo: 'texto',
+    fkey: p => p.idinmue || '', flabel: k => (k === '' ? '(vacías)' : k) },
 ]
 
 export default function CC1Page() {
@@ -341,7 +342,7 @@ export default function CC1Page() {
   // con operadores. Trae en bloques de 1000 por si supera el tope por consulta de Supabase.
   async function loadTodas() {
     setLoading(true)
-    const cols = 'idadmon, estado, propietario, idprop, idlinmue, inmueble, cuota, unid, fecha_inicio, termino_actual, arrendatario'
+    const cols = 'idadmon, estado, propietario, idprop, idinmue, inmueble, cuota, unid, fecha_inicio, termino_actual, arrendatario'
     let desde = 0, acc = [], hay = true
     while (hay) {
       const { data, error } = await supabase.from('datos_arriendos').select(cols)
@@ -426,7 +427,7 @@ export default function CC1Page() {
   const deptosConSQ = useMemo(() => {
     const s = new Set()
     for (const r of todas) {
-      if (estadoNorm(r.estado) === 'SQ') { const d = idinmueDepto(r.idlinmue); if (d) s.add(d) }
+      if (estadoNorm(r.estado) === 'SQ') { const d = idinmueDepto(r.idinmue); if (d) s.add(d) }
     }
     return s
   }, [todas])
@@ -436,7 +437,7 @@ export default function CC1Page() {
     const est = estadoNorm(p.estado)
     if (est === 'N-DICOM') return { idadmon: COL_NDICOM, inmueble: COL_NDICOM }
     if (est === 'P') {
-      const d = idinmueDepto(p.idlinmue)
+      const d = idinmueDepto(p.idinmue)
       if (d && deptosConSQ.has(d)) return { idadmon: COL_MARRON, inmueble: COL_VIOLETA }  // ocupado
       return { idadmon: COL_ESTADO.P, inmueble: COL_ESTADO.P }
     }
@@ -460,7 +461,7 @@ export default function CC1Page() {
       'Término actual': p.termino_actual ? String(p.termino_actual).slice(0, 10) : '',
       Vencido: (alertaTermino(p.termino_actual, p.estado)?.text === 'Vencido') ? 'SÍ' : '',
       IDPROP: p.idprop || '',
-      IDINMUE: p.idlinmue || '',
+      IDINMUE: p.idinmue || '',
       Arrendatario: p.arrendatario || '',
     }))
     const wb = XLSX.utils.book_new()
@@ -621,7 +622,7 @@ export default function CC1Page() {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDPROP</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idprop')} movs={todas} state={filters['idprop']} setState={v => setFiltroCol('idprop', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'left', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDINMUE</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idlinmue')} movs={todas} state={filters['idlinmue']} setState={v => setFiltroCol('idlinmue', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>IDINMUE</span><HeaderFilter col={LOG_COLS.find(c => c.key === 'idinmue')} movs={todas} state={filters['idinmue']} setState={v => setFiltroCol('idinmue', v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltros} /></span>
                 </th>
                 <th style={{ padding: '9px 12px', textAlign: 'center', position: 'sticky', top: 154, zIndex: 20, background: 'var(--gray-50)', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', borderTopRightRadius: 12 }}>Portal</th>
               </tr>
@@ -657,7 +658,7 @@ export default function CC1Page() {
                       ) : '—'}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace' }}>{p.idprop || '—'}</td>
-                    <td title={p.idlinmue || ''} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.idlinmue || '—'}</td>
+                    <td title={p.idinmue || ''} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.idinmue || '—'}</td>
                     <td style={{ padding: '9px 8px', borderBottom: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                       {p.idprop ? (
                         <button

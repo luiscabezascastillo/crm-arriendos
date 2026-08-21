@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // app/api/descuentos/garantia-info/route.js
 // VERSION: v2 · 2026-08-07 · Devuelve además `devolucion_existente` = {num} si ya hay un descuento GARANTIAS ACTIVO
 //   con idadmon_relacionado = este término (para que la ficha muestre "Garantía ya figura en descuento Nº X" en vez
@@ -12,7 +13,7 @@ const numOf = (v) => {
   const n = Math.round(Number(String(v ?? '').replace(/\./g, '').replace(/[^0-9.\-]/g, '')));
   return Number.isFinite(n) ? n : 0;
 };
-const primerTok = (idlinmue) => String(idlinmue || '').trim().split(/\s+/)[0] || '';
+const primerTok = (idinmue) => String(idinmue || '').trim().split(/\s+/)[0] || '';
 
 export async function GET(req) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req) {
     // Contrato terminado (el del descuento T-)
     const { data: term, error } = await supa
       .from('datos_arriendos')
-      .select('idadmon, estado, quien_tiene_garantia, garantia_pedida, deuda_garantia, inmueble, propietario, idlinmue')
+      .select('idadmon, estado, quien_tiene_garantia, garantia_pedida, deuda_garantia, inmueble, propietario, idinmue')
       .eq('idadmon', idadmon)
       .maybeSingle();
     if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -32,23 +33,23 @@ export async function GET(req) {
     const garantia = numOf(term.garantia_pedida);
     const es_dueno = esDueno(term.quien_tiene_garantia);
 
-    // Sucesor vigente (P/S/SQ) del mismo inmueble. Primero por idlinmue exacto; si no,
-    // por inclusión del primer token (para agrupaciones cuyo idlinmue cambió).
+    // Sucesor vigente (P/S/SQ) del mismo inmueble. Primero por idinmue exacto; si no,
+    // por inclusión del primer token (para agrupaciones cuyo idinmue cambió).
     let sucesores = [];
-    const tok = primerTok(term.idlinmue);
-    if (term.idlinmue) {
+    const tok = primerTok(term.idinmue);
+    if (term.idinmue) {
       const { data: exactos } = await supa
         .from('datos_arriendos')
-        .select('idadmon, estado, inmueble, propietario, idlinmue, fecha_inicio')
-        .eq('idlinmue', term.idlinmue)
+        .select('idadmon, estado, inmueble, propietario, idinmue, fecha_inicio')
+        .eq('idinmue', term.idinmue)
         .neq('idadmon', idadmon)
         .in('estado', ['P', 'S', 'SQ']);
       sucesores = exactos || [];
       if (sucesores.length === 0 && tok) {
         const { data: porTok } = await supa
           .from('datos_arriendos')
-          .select('idadmon, estado, inmueble, propietario, idlinmue, fecha_inicio')
-          .ilike('idlinmue', `%${tok}%`)
+          .select('idadmon, estado, inmueble, propietario, idinmue, fecha_inicio')
+          .ilike('idinmue', `%${tok}%`)
           .neq('idadmon', idadmon)
           .in('estado', ['P', 'S', 'SQ']);
         sucesores = porTok || [];

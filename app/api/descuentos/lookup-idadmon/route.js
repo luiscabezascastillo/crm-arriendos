@@ -1,5 +1,6 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v2 · 2026-07-17 · Además de inmueble/propietario/estado, devuelve el SUCESOR del inmueble
-//   (otro idadmon con el mismo idlinmue en estado P/S/SQ) para autocompletar idadmon_relacionado
+//   (otro idadmon con el mismo idinmue en estado P/S/SQ) para autocompletar idadmon_relacionado
 //   en los descuentos de término (T-...). Si hay 0 o >1 candidatos, sucesor = null (se rellena a mano).
 // app/api/descuentos/lookup-idadmon/route.js
 import { sesionYCaps } from '@/lib/descuentosServer';
@@ -13,21 +14,21 @@ export async function GET(req) {
 
     const { data, error } = await supa
       .from('datos_arriendos')
-      .select('idadmon, propietario, inmueble, estado, idlinmue')
+      .select('idadmon, propietario, inmueble, estado, idinmue')
       .eq('idadmon', idadmon)
       .maybeSingle();
 
     if (error) return Response.json({ error: error.message }, { status: 500 });
     if (!data) return Response.json({ encontrado: false });
 
-    // Buscar el sucesor: mismo idlinmue, distinto idadmon, en estado activo (P/S/SQ)
+    // Buscar el sucesor: mismo idinmue, distinto idadmon, en estado activo (P/S/SQ)
     let sucesor = null;
     let sucesor_multiple = false;
-    if (data.idlinmue) {
+    if (data.idinmue) {
       const { data: hermanos } = await supa
         .from('datos_arriendos')
         .select('idadmon, estado, arrendatario')
-        .eq('idlinmue', data.idlinmue)
+        .eq('idinmue', data.idinmue)
         .neq('idadmon', idadmon);
       const activos = (hermanos || []).filter(h =>
         ['P', 'S', 'SQ'].includes(String(h.estado || '').trim().toUpperCase())

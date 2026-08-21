@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v2 · 2026-08-20 · La columna `tipo` de inmuebles_norm se guarda con los valores REALES de la
 //   tabla (`depto` / `bodega` / `estac`), no con el código corto. El resto igual. Hereda v1.
 // VERSION: v1 · 2026-08-20 · Alta de un IDADMON NUEVO para un PROPIETARIO YA EXISTENTE, creando además
@@ -106,7 +107,7 @@ export async function POST(req) {
     idprop,
     propietario: nombreProp,
     inmueble,
-    idlinmue: idinmue,
+    idinmue: idinmue,
     pendiente_aprobacion: pendiente,
     creado_por: email,
     updated_at: new Date().toISOString(),

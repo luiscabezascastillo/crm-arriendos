@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v11 · 2026-08-19 · El asunto del email de aviso de término (S→SQ / S→Q) pasa a "Término o Comunicación
 //   de Término para valoración de cumplimiento de contrato — <código+idadmon+fecha>": frase legible para Anthony
 //   delante, código de buzón detrás. El LOG (historico_idadmon.email_subject) sigue guardando el subject codificado.
@@ -52,7 +53,7 @@ import { buildSubject, enviarNotificacion } from '../../../../lib/cc1Email'
 
 // Campos que hereda el nuevo IDADMON en P (solo inmueble/propietario)
 const CAMPOS_HEREDADOS = [
-  'propietario', 'idprop', 'inmueble', 'idlinmue', 'tipo', 'bodega', 'estac',
+  'propietario', 'idprop', 'inmueble', 'idinmue', 'tipo', 'bodega', 'estac',
   'tiene_contrato_admon', 'pct_adm', 'si_fijo_admon', 'adicionar_iva',
   'quien_cobra', 'tiene_termo_mant',
 ]
@@ -441,7 +442,7 @@ export async function POST(req) {
             Propietario: contrato.propietario || '',
             IdProp: contrato.idprop || '',
             Inmueble: contrato.inmueble || '',
-            IdInmue: contrato.idlinmue || '',
+            IdInmue: contrato.idinmue || '',
             FECHA: fechaEvento,
             masinfo: 'creado por circuito CC1 (origen ' + idadmon + ')',
           },

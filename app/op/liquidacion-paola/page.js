@@ -1,3 +1,9 @@
+// VERSION: v17 · 2026-08-19 · Claridad de guardado: botones "💾 Guardar cambios" y "🔄 Ver lo guardado" (direcciones
+//   opuestas, no se fusionan) + chip de estado "● Cambios sin guardar" (ámbar) / "✓ Guardado" (verde) que quita la
+//   duda de si quedó persistido. Hereda v16.
+// VERSION: v16 · 2026-08-19 · Botón "🔄 Refrescar con lo guardado": relee liquidacion_paola y muestra EXACTAMENTE lo
+//   guardado en el CRM (limpia el buffer local; avisa si hay cambios sin guardar). Para confirmar de un vistazo que lo
+//   tecleado quedó. Hereda v15.
 // VERSION: v15 · 2026-08-19 · FIX pérdida de datos manuales al "Guardar mes en el CRM": (1) el buffer `edits` ya
 //   NO se pisa en un refresco de `datos` — se fusiona conservando lo tecleado; (2) el guardado por celda (onBlur)
 //   es silencioso y no deshabilita el botón del mes en mitad del clic (antes la carrera evitaba que se guardara
@@ -74,6 +80,7 @@ export default function LiquidacionPaolaPage() {
   const [guardandoMes, setGuardandoMes] = useState(false)
   const [avisoGuardado, setAvisoGuardado] = useState(null)
   const [edits, setEdits] = useState({})   // buffer de las columnas manuales por idadmon (no toca `datos` al teclear)
+  const [dirty, setDirty] = useState(false)   // hay algo tecleado que aún no se ha persistido en el CRM
 
   useEffect(() => {
     const h = new Date()
@@ -222,7 +229,7 @@ export default function LiquidacionPaolaPage() {
 
   // Columnas manuales (Adalis deja el Excel): se escriben en un buffer `edits` (teclear NO re-renderiza
   // toda la tabla) y al guardar se funden con la fila y se persisten en el CRM (liquidacion_paola).
-  const setCampo = (idadmon, campo, valor) => setEdits(x => ({ ...x, [idadmon]: { ...x[idadmon], [campo]: valor } }))
+  const setCampo = (idadmon, campo, valor) => { setDirty(true); setEdits(x => ({ ...x, [idadmon]: { ...x[idadmon], [campo]: valor } })) }
   const filaConEdits = (r) => ({ ...r, ...(edits[r.idadmon] || {}) })
   const filasConEdits = () => (datos?.resultado || []).map(filaConEdits)
   // `silencioso`: guardado por celda (onBlur). NO toca `guardandoMes` (para no deshabilitar el botón
@@ -238,6 +245,7 @@ export default function LiquidacionPaolaPage() {
       })
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo guardar'); if (!silencioso) setGuardandoMes(false); return }
+      setDirty(false)   // lo tecleado quedó persistido
       if (!silencioso) {
         setAvisoGuardado(`Guardado en el CRM (${d.guardadas} fila${d.guardadas === 1 ? '' : 's'})`)
         setTimeout(() => setAvisoGuardado(null), 3500)
@@ -248,9 +256,17 @@ export default function LiquidacionPaolaPage() {
   const guardarMes = () => guardar(filasConEdits())
   const guardarFila = (r) => guardar([filaConEdits(r)], { silencioso: true })
 
-  // Abrir el mes YA GUARDADO (lo que dejó otra persona) sin re-procesar la cartola.
+  // Abrir/refrescar el mes YA GUARDADO en el CRM (liquidacion_paola), sin re-procesar la cartola.
+  // Sirve también como "Refrescar con lo guardado": muestra EXACTAMENTE lo que hay en el CRM, para
+  // confirmar que los cambios quedaron. Por eso limpia el buffer local (así se ven los valores del servidor).
   async function cargarGuardado() {
     if (!mes) return
+    if (datos?.resultado?.length) {
+      const ok = window.confirm(
+        'Voy a recargar lo GUARDADO en el CRM de este mes, para que veas lo que quedó realmente.\n\n' +
+        'Si has tecleado algo y NO lo has guardado, se descartará. ¿Continuar?')
+      if (!ok) return
+    }
     setProcesando(true); setError(null)
     try {
       const res = await fetch('/api/liquidacion-paola', {
@@ -260,7 +276,7 @@ export default function LiquidacionPaolaPage() {
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo abrir lo guardado') }
       else if (d.vacio) { setError('No hay nada guardado de este mes todavía. Procesa la liquidación y pulsa «Guardar mes en el CRM».') }
-      else { setDatos(d); setTab('liquidacion'); setAbierta(null) }
+      else { setEdits({}); setDirty(false); setDatos(d); setTab('liquidacion'); setAbierta(null) }   // buffer limpio => se ven los valores del CRM
     } catch (e) { setError('Error de conexión: ' + e.message) }
     setProcesando(false)
   }
@@ -524,15 +540,34 @@ export default function LiquidacionPaolaPage() {
                 {generando ? 'Guardando…' : '☁ Guardar en Drive'}
               </button>
               <button onClick={guardarMes} disabled={guardandoMes || !datos?.resultado?.length}
-                title="Guarda la liquidación del mes en el CRM (columnas manuales incluidas). Así no se pierde al salir."
+                title="Guarda en el CRM lo que has tecleado (columnas manuales incluidas). Así no se pierde al salir."
                 style={{
                   padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
                   color: 'white', border: 'none', borderRadius: 8,
                   background: guardandoMes ? 'var(--gray-300)' : '#6b4423',
                   cursor: guardandoMes ? 'default' : 'pointer',
                 }}>
-                {guardandoMes ? 'Guardando…' : '💾 Guardar mes en el CRM'}
+                {guardandoMes ? 'Guardando…' : '💾 Guardar cambios'}
               </button>
+              <button onClick={cargarGuardado} disabled={procesando || !mes}
+                title="Trae del CRM lo que hay guardado de este mes, para confirmar que tus cambios quedaron. Descarta lo que hayas tecleado sin guardar."
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                  color: '#3730A3', border: '1px solid #C7D2FE', borderRadius: 8,
+                  background: '#EEF2FF', cursor: procesando ? 'default' : 'pointer',
+                }}>
+                🔄 Ver lo guardado
+              </button>
+              {datos?.resultado?.length > 0 && (
+                <span title={dirty ? 'Has tecleado algo que aún no está guardado en el CRM' : 'Todo lo tecleado está guardado en el CRM'}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20,
+                    background: dirty ? '#FEF3C7' : '#DCFCE7', color: dirty ? '#92400E' : '#166534',
+                    border: '1px solid ' + (dirty ? '#FCD34D' : '#86EFAC'),
+                  }}>
+                  {dirty ? '● Cambios sin guardar' : '✓ Guardado'}
+                </span>
+              )}
               {avisoExcel && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500 }}>✓ {avisoExcel}</span>}
               {avisoGuardado && <span style={{ fontSize: 11, color: '#6b4423', fontWeight: 600 }}>✓ {avisoGuardado}</span>}
             </div>

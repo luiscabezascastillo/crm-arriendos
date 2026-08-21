@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // ═══════════════════════════════════════════════════════════════
 // VERSION: v8  ·  2026-07-08  ·  facturar por defecto NO (seguridad: hay que activar SI a mano)
 // Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v8"
@@ -44,9 +45,9 @@ function numOf(v) {
   return Number.isFinite(n) ? Math.round(n) : 0
 }
 
-function primerInmue(idlinmue) {
-  if (!idlinmue) return null
-  return String(idlinmue).trim().split(/\s+/)[0] || null
+function primerInmue(idinmue) {
+  if (!idinmue) return null
+  return String(idinmue).trim().split(/\s+/)[0] || null
 }
 
 // yymm ('2607') -> primer dia del mes en ISO date '2026-07-01'
@@ -104,7 +105,7 @@ export async function POST(req) {
   // tablas pequeñas; se filtran en memoria. Se sube el limit por si acaso.
   const [rArr, rProps, rInm, rServ, rExistA, rExistP] = await Promise.all([
     sb.from('datos_arriendos')
-      .select('idadmon, estado, idprop, propietario, inmueble, idlinmue, fecha_inicio, termino_actual, arrendatario, rut, unid, cuota, uf_peso_factor, quien_cobra, especial_a, revision, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
+      .select('idadmon, estado, idprop, propietario, inmueble, idinmue, fecha_inicio, termino_actual, arrendatario, rut, unid, cuota, uf_peso_factor, quien_cobra, especial_a, revision, fecha_reajuste1, cantidad_reajuste1, fecha_reajuste2, cantidad_reajuste2, fecha_reajuste3, cantidad_reajuste3, fecha_reajuste4, cantidad_reajuste4, fecha_reajuste5, cantidad_reajuste5, fecha_reajuste6, cantidad_reajuste6')
       .limit(5000),
     sb.from('propietarios')
       .select('idprop, propietario, nombre, tipo_factura')
@@ -176,7 +177,7 @@ export async function POST(req) {
   for (const r of rows) {
     const a = arrDe[r.idadmon] || {}
     const p = propDe[r.idprop] || {}
-    const rolInmue = rolDe[primerInmue(a.idlinmue)] || null
+    const rolInmue = rolDe[primerInmue(a.idinmue)] || null
     const sv = servDe[r.idadmon] || null
 
     const a_cobrar = numOf(r.base)
@@ -210,7 +211,7 @@ export async function POST(req) {
       idprop: r.idprop,
       propietario: r.propietario || a.propietario || p.propietario || '',
       inmueble: r.inmueble || a.inmueble || '',
-      idlinmue: a.idlinmue || '',
+      idinmue: a.idinmue || '',
       rol: rolInmue,
       comuna: '',   // no se congela: para la DJ 1835 se cruza el codigo SII (3 digitos) desde tabla comunas_sii aparte
       fecha_inicio: a.fecha_inicio || null,

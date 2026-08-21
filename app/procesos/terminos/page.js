@@ -1,3 +1,4 @@
+// RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 'use client'
 // VERSION: v55 · 2026-08-19 · "Fecha de notificación" pasa a texto libre (la columna terminos.fecha_notificacion es
 //   ahora text): admite la fecha (dd/mm/aaaa) o un estado ("Indicar fecha para CRM", "No se rellenó en el Excel",
@@ -633,10 +634,10 @@ export default function TerminosPage() {
     }
     setLineas(L)
 
-    // asociado = IDADMON inmediatamente mas nuevo del mismo inmueble (idlinmue)
+    // asociado = IDADMON inmediatamente mas nuevo del mismo inmueble (idinmue)
     let asociado = null
-    if (arriendo?.idlinmue != null && arriendo.idlinmue !== '') {
-      const { data: hermanos } = await supabase.from('datos_arriendos').select('idadmon').eq('idlinmue', arriendo.idlinmue)
+    if (arriendo?.idinmue != null && arriendo.idinmue !== '') {
+      const { data: hermanos } = await supabase.from('datos_arriendos').select('idadmon').eq('idinmue', arriendo.idinmue)
       const masNuevos = (hermanos || []).map(h => (h.idadmon || '').trim()).filter(x => x && x > idadmon).sort()
       if (masNuevos.length) asociado = masNuevos[0]
     }
