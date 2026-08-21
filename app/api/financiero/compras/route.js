@@ -65,7 +65,18 @@ export async function GET(req) {
           .order('rut', { ascending: true }))
       } catch { memoria = [] }
 
-      return Response.json({ compras, plan, memoria, total: compras.length })
+      // Sugeridor top-3 de cuenta por RUT (vw_compras_cta_rank). Aditivo; si no existe, se sigue sin el.
+      let sugerencias = {}
+      try {
+        const rank = await leerTodo(() => admin.from('vw_compras_cta_rank')
+          .select('rut, cuenta_sugerida, pct, rank').lte('rank', 3)
+          .order('rut', { ascending: true }).order('rank', { ascending: true }))
+        for (const r of (rank || [])) {
+          (sugerencias[r.rut] ||= []).push({ cuenta: r.cuenta_sugerida, pct: r.pct })
+        }
+      } catch { sugerencias = {} }
+
+      return Response.json({ compras, plan, memoria, sugerencias, total: compras.length })
     }
 
     const filas = await leerTodo(() => admin.from('compras').select('mes').order('id', { ascending: true }))

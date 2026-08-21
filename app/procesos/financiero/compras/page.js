@@ -1,6 +1,7 @@
 // VERSION: v22 · 2026-08-10 · Las compras "No es de FCR" (rechazadas) se OCULTAN del listado por defecto (antes se
 //   mostraban en rojo). Siguen en los datos: totales de cabecera, "Total según SII" y export las incluyen (trazabilidad
 //   y cuadre intactos). Enlace "Verlas / Ocultarlas" en la nota de abajo para mostrarlas puntualmente. Hereda v21.
+// VERSION: v22 · 2026-08-20 · Cuenta gasto: chips top-3 sugeridos por RUT desde toda la historia (vw_compras_cta_rank via API), clicables, con %. Hereda v21.
 // VERSION: v21 · 2026-08-04 · memoriaRut (sugerencia de Cuenta gasto) solo aprende de cuentas 41xx/42xx, nunca 2105-05. Casilla Proveedores fija.
 //   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
 //     encima del velo (queda con su color original) y lleva un realce verde a la izquierda.
@@ -361,6 +362,7 @@ export default function ComprasPage() {
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [compras, setCompras] = useState([]); const [loading, setLoading] = useState(false)
   const [planApi, setPlanApi] = useState([])
+  const [sugerencias, setSugerencias] = useState({})   // { rut: [{cuenta, pct}] } top-3 por RUT (servidor)
   const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
   const [verNoFcr, setVerNoFcr] = useState(false)   // por defecto las "No es de FCR" NO se muestran (se conservan en datos)
   // Lo mas reciente ABAJO y scroll al fondo: se ve lo ultimo y se sube para lo antiguo.
@@ -379,7 +381,7 @@ const wantScroll = useRef(false)
     const url = modo === 'continua' ? '/api/financiero/compras?todas=1' : (mesSel ? `/api/financiero/compras?mes=${mesSel}` : null)
     if (!url) return
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (d.plan) setPlanApi(d.plan); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
+    fetch(url).then(r => r.json()).then(d => { setCompras(d.compras || []); if (d.plan) setPlanApi(d.plan); if (d.sugerencias) setSugerencias(d.sugerencias); if (wantScroll.current) { wantScroll.current = false; setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }), 90) } }).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated' && (modo === 'continua' || mesSel)) { wantScroll.current = true; cargar() } }, [modo, mesSel, status]) // eslint-disable-line
 
@@ -652,15 +654,30 @@ const wantScroll = useRef(false)
                 style={{ ...inp, marginTop: 4, background: '#F1F0EC', color: '#6b6b66', cursor: 'not-allowed' }} />
             </label>
 
-            {/* 2 · Cuenta de gasto: sugerida por RUT, editable por Karina */}
+            {/* 2 · Cuenta de gasto: top-3 sugerido por RUT (historia), editable por Karina */}
             <label style={{ fontSize: 12, color: '#888780' }}>Cuenta gasto
+              {sel && (sugerencias[String(sel.rut || '').trim()] || []).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 5 }}>
+                  {(sugerencias[String(sel.rut || '').trim()] || []).map(sug => (
+                    <button key={sug.cuenta} type="button" disabled={!canEdit}
+                      onClick={() => setEdit(x => ({ ...x, cuenta: sug.cuenta }))}
+                      title={describeCuenta(sug.cuenta)}
+                      style={{ fontSize: 12, padding: '3px 9px', borderRadius: 999, cursor: canEdit ? 'pointer' : 'default',
+                        border: (edit.cuenta || '').trim().startsWith(sug.cuenta) ? '1px solid #1D9E75' : '1px solid #D9D7CF',
+                        background: (edit.cuenta || '').trim().startsWith(sug.cuenta) ? '#E6F4EE' : '#fff',
+                        color: '#1A1A17', whiteSpace: 'nowrap' }}>
+                      {sug.cuenta} <span style={{ color: '#888780' }}>{sug.pct}%</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ marginTop: 4 }}>
                 <CuentaSelector
                   valor={edit.cuenta}
                   plan={plan}
                   disabled={!canEdit}
                   formato="codigo+desc"
-                  sugerida={sel ? (memoriaRut[String(sel.rut || '').trim()] || null) : null}
+                  sugerida={sel ? ((sugerencias[String(sel.rut || '').trim()] || [])[0]?.cuenta || memoriaRut[String(sel.rut || '').trim()] || null) : null}
                   onChange={v => setEdit(x => ({ ...x, cuenta: v }))}
                   estilo={{ ...inp, width: '100%', boxSizing: 'border-box' }}
                 />
