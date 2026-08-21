@@ -29,6 +29,7 @@
 //   pagina media solo el hermano inmediato y la cabecera se escondia tras el TopNav.
 //   Totales como chips dentro de la zona fija: ya no desaparecen al hacer scroll.
 //   Fuera el boton ← Financiero (duplicado: ya esta en FinancieroNav).
+// VERSION: v3 · 2026-08-20 · Mensaje de carga acorde al importador v2 (actualiza filas existentes + recalcula saldo). Hereda v2.
 // VERSION: v2 · 2026-07-14 · Caja Chica: orden por nº de fila (saldo corrido correcto) + resalte de saltos de saldo.
 'use client'
 
@@ -227,7 +228,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
       const res = await fetch('/api/financiero/caja-chica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ movimientos: parsed, archivo }) })
       const d = await res.json()
       if (!res.ok) { setUploadMsg({ error: d.error || 'No se pudo cargar.' }); return }
-      setUploadMsg({ text: `${d.nuevas} movimiento(s) nuevo(s), ${d.duplicadas} ya estaban, ${d.total} de 2026 en el archivo.` })
+      setUploadMsg({ text: `${d.escritas} movimiento(s) cargado(s)/actualizado(s), ${d.total} de 2026 en el archivo. Saldo recalculado.` })
       fetch('/api/financiero/caja-chica').then(r => r.json()).then(x => setMeses(x.meses || [])).catch(() => {})
       cargar()
     } catch (err) { setUploadMsg({ error: String(err?.message || err) }) } finally { setUploading(false) }

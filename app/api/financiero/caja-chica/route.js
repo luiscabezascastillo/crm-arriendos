@@ -5,6 +5,9 @@
 //   2) Supabase corta en 1000 filas y aqui no se paginaba, ni en movimientos ni en la
 //      lectura de meses. Con 520 movimientos ya se estaba a mitad de camino.
 //   3) El GET devuelve el PLAN DE CUENTAS de detalle, para el buscador del panel.
+// VERSION: v2 · 2026-08-20 · POST cargar: al recargar ACTUALIZA las filas existentes (quita ignoreDuplicates) para que
+//   las correcciones del Excel entren; conserva CCB/cuenta (no van en el payload). Tras cargar, recalcula el saldo corrido
+//   desde los importes (rpc caja_chica_recalcular_saldo), asi un error de tecleo en la columna Saldo del Excel no rompe la cadena.
 // VERSION: v1 · 2026-07-13 · API Caja Chica (Financiero). GET meses/movimientos · PUT editar CCB · POST cargar (dedup por orden).
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
@@ -105,9 +108,16 @@ export async function POST(req) {
   let nuevas = 0
   for (let i = 0; i < rows.length; i += PAGINA) {
     const lote = rows.slice(i, i + PAGINA)
-    const { data, error } = await admin.from('caja_chica').upsert(lote, { onConflict: 'orden', ignoreDuplicates: true }).select('id')
+    // onConflict sin ignoreDuplicates -> ACTUALIZA las columnas del payload (importe/detalle/saldo) en las filas ya existentes.
+    // ccb/cuenta/origen_clasificacion NO van en el payload, asi que la clasificacion hecha en el CRM se conserva.
+    const { data, error } = await admin.from('caja_chica').upsert(lote, { onConflict: 'orden' }).select('id')
     if (error) return Response.json({ error: error.message }, { status: 500 })
     nuevas += (data || []).length
   }
-  return Response.json({ ok: true, nuevas, duplicadas: rows.length - nuevas, total: rows.length })
+  // El saldo es derivado: se recalcula desde los importes para que un error de tecleo en la columna
+  // Saldo del Excel no deje saltos en el CRM.
+  const { error: eRec } = await admin.rpc('caja_chica_recalcular_saldo')
+  if (eRec) return Response.json({ error: eRec.message }, { status: 500 })
+
+  return Response.json({ ok: true, escritas: nuevas, total: rows.length })
 }
