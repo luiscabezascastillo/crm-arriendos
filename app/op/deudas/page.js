@@ -1,3 +1,7 @@
+// VERSION: v11 · 2026-08-21 · (1) Búsqueda global arriba: filtra por inmueble, propietario, IDADMON, IDINMUE
+//   y arrendatario a la vez (antes solo se podía por columnas). (2) Bloque "Historia del inmueble" al final
+//   del drawer: todos los IDADMON que han pasado por esta unidad (mismo idlinmue=idinmue, cogiendo el depto en
+//   compuestos), con estado y última fecha (termino_actual). Hereda v10.
 // VERSION: v10 · 2026-08-21 · Editor de códigos: en "Corregir datos" se puede editar/añadir el N° de cliente
 //   de luz/agua/gas. Se guarda en la ficha única `servicios_codigos` (por idinmue) vía POST /api/servicios/codigo
 //   (service-role) y se refleja en la fila del mes. Fusión sin borrar (un campo vacío no pisa lo existente).
@@ -20,6 +24,18 @@ function fmtPeso(n) {
   if (n === null || n === undefined) return '—'
   return '$' + Number(n).toLocaleString('es-CL')
 }
+// Depto de un idlinmue (posible compuesto "P016-02 P016-51"): el código cuyo sufijo -NN está en 01..49.
+function idinmueDepto(idlinmue) {
+  if (!idlinmue) return null
+  for (const cod of String(idlinmue).trim().split(/\s+/)) {
+    const m = cod.match(/-(\d{2,})$/)
+    if (m) { const n = parseInt(m[1], 10); if (n >= 1 && n <= 49) return cod }
+  }
+  return String(idlinmue).trim().split(/\s+/)[0] || null
+}
+const fmtFechaCorta = (v) => { if (!v) return '—'; const s = String(v).slice(0, 10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : s }
+// Color por estado del contrato.
+const colorEstado = (e) => { const x = String(e || '').trim().toUpperCase(); if (x === 'S' || x === 'SQ') return '#3B6D11'; if (x === 'P') return '#9A6E00'; if (x.startsWith('Q') || x.startsWith('N')) return '#A32D2D'; return '#6B7280' }
 function Dot({ val }) {
   const v = fmt(val)
   const color = v === null ? '#B4B2A9' : v === 0 ? '#639922' : '#E24B4A'
@@ -199,6 +215,8 @@ export default function Deudas() {
   const [loading, setLoading] = useState(true)
   const [drawer, setDrawer] = useState(null)
   const [historial, setHistorial] = useState(null)
+  const [histInmue, setHistInmue] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
   const [editando, setEditando] = useState(false)
   const [editData, setEditData] = useState(null)
   const [guardando, setGuardando] = useState(false)
@@ -265,11 +283,26 @@ export default function Deudas() {
   }, [])
 
   function abrirDrawer(f) {
-    setDrawer(f); setHistorial(null); setEditando(false); setGuardadoOk(false)
+    setDrawer(f); setHistorial(null); setHistInmue(null); setEditando(false); setGuardadoOk(false)
     supabase.from('ggcc_agua_luz')
       .select('mes,aamm,deuda_gastos_comunes,deuda_vigente_electricidad,deuda_vigente_agua,deuda_vigente_gas')
       .eq('idadmon', f.idadmon).order('aamm',{ascending:false}).limit(6)
       .then(({data}) => setHistorial(data||[]))
+    // Historia del inmueble: todos los IDADMON que comparten el mismo inmueble físico (idlinmue, depto en compuestos).
+    ;(async () => {
+      const { data: self } = await supabase.from('datos_arriendos').select('idlinmue').eq('idadmon', f.idadmon).maybeSingle()
+      const depto = idinmueDepto(self?.idlinmue)
+      if (!depto) { setHistInmue([]); return }
+      const { data } = await supabase.from('datos_arriendos')
+        .select('idadmon,estado,termino_actual,fecha_inicio,arrendatario,idlinmue')
+        .ilike('idlinmue', `%${depto}%`).limit(60)
+      const vig = (e) => ['P','S','SQ'].includes(String(e||'').trim().toUpperCase())
+      const rows = (data||[]).sort((a,b) => {
+        if (vig(a.estado) !== vig(b.estado)) return vig(a.estado) ? -1 : 1
+        return String(b.termino_actual||b.fecha_inicio||'').localeCompare(String(a.termino_actual||a.fecha_inicio||''))
+      })
+      setHistInmue(rows)
+    })()
   }
 
   function abrirEdicion() {
@@ -388,8 +421,15 @@ export default function Deudas() {
     return f.selected.includes(val)
   }
 
+  const q = busqueda.trim().toLowerCase()
   let datos = filas.filter(f => {
     const c = contratos[f.idadmon]||{}
+    if (q) {
+      // Búsqueda global: inmueble, propietario, IDADMON, IDINMUE, arrendatario y comunidad.
+      const hay = [c.inmueble, f.idinmue, c.propietario, f.idadmon, f.arrendatario, f.edificio_proyecto]
+        .some(x => String(x||'').toLowerCase().includes(q))
+      if (!hay) return false
+    }
     if (!inSelected(f.aamm, fAamm)) return false
     if (!inSelected(f.idadmon, fIdadmon)) return false
     if (!inSelected(c.propietario||'—', fProp)) return false
@@ -428,7 +468,7 @@ export default function Deudas() {
     })
   }
 
-  const hayFiltros = fAamm.selected.length||fIdadmon.selected.length||fProp.selected.length||fInmueble.selected.length||fComuni.selected.length||fEstado.selected.length||
+  const hayFiltros = busqueda.trim()||fAamm.selected.length||fIdadmon.selected.length||fProp.selected.length||fInmueble.selected.length||fComuni.selected.length||fEstado.selected.length||
     fGGCC.min!==''||fGGCC.max!==''||fLuz.min!==''||fLuz.max!==''||
     fAgua.min!==''||fAgua.max!==''||fGas.min!==''||fGas.max!==''||
     fTotal.min!==''||fTotal.max!==''
@@ -476,6 +516,7 @@ export default function Deudas() {
     XLSX.writeFile(wb, 'deudas_servicios.xlsx')
   }
   function limpiarTodo() {
+    setBusqueda('')
     setFAamm(emptyF);setFIdadmon(emptyF);setFProp(emptyF);setFInmueble(emptyF);setFComuni(emptyF);setFEstado(emptyF)
     setFGGCC(emptyF);setFLuz(emptyF);setFAgua(emptyF);setFGas(emptyF);setFTotal(emptyF)
     setSortCol(null);setSortDir(null)
@@ -502,6 +543,13 @@ export default function Deudas() {
           <p style={{color:'#6B7280',fontSize:13,marginTop:4}}>GGCC · Luz · Agua · Gas</p>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{position:'relative',display:'flex',alignItems:'center'}}>
+            <span style={{position:'absolute',left:10,color:'#9CA3AF',fontSize:13,pointerEvents:'none'}}>🔍</span>
+            <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+              placeholder="Buscar inmueble, propietario, IDADMON…"
+              style={{padding:'7px 28px 7px 30px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:13,width:260,boxSizing:'border-box'}}/>
+            {busqueda && <button onClick={()=>setBusqueda('')} title="Limpiar" style={{position:'absolute',right:8,border:'none',background:'none',cursor:'pointer',color:'#9CA3AF',fontSize:15,lineHeight:1,padding:0}}>×</button>}
+          </div>
           {hayFiltros && (
             <button onClick={limpiarTodo} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #E5E7EB',
               background:'#FEF3C7',fontSize:12,cursor:'pointer',color:'#92400E'}}>
@@ -853,6 +901,34 @@ export default function Deudas() {
                   </div>
                 )
               }):<div style={{color:'#9CA3AF',fontSize:12}}>Cargando...</div>}
+
+              {/* Historia del inmueble: todos los IDADMON que han pasado por esta unidad (mismo idinmue) */}
+              <div style={{fontSize:11,fontWeight:600,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.05em',margin:'22px 0 10px'}}>
+                Historia del inmueble
+              </div>
+              {histInmue===null ? <div style={{color:'#9CA3AF',fontSize:12}}>Cargando...</div>
+                : histInmue.length===0 ? <div style={{color:'#9CA3AF',fontSize:12}}>Sin otros contratos registrados para este inmueble.</div>
+                : (
+                <div style={{border:'0.5px solid #E5E7EB',borderRadius:8,overflow:'hidden'}}>
+                  {histInmue.map((h,i)=>{
+                    const actual = h.idadmon===drawer.idadmon
+                    return (
+                      <div key={h.idadmon+i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'7px 10px',fontSize:12,borderBottom:i<histInmue.length-1?'0.5px solid #F3F4F6':'none',background:actual?'#F0F7FF':'#fff'}}>
+                        <div style={{whiteSpace:'nowrap'}}>
+                          <span style={{fontWeight:actual?700:600,color:'#374151'}}>{h.idadmon}</span>
+                          <span style={{marginLeft:6,fontWeight:600,color:colorEstado(h.estado),fontSize:11}}>{String(h.estado||'—').toUpperCase()}</span>
+                          {actual&&<span style={{fontSize:10,color:'#1D4ED8',marginLeft:5}}>(este)</span>}
+                        </div>
+                        <div style={{textAlign:'right',minWidth:0}}>
+                          <div style={{fontSize:11,color:'#6B7280'}} title="Última fecha (término / actividad)">{fmtFechaCorta(h.termino_actual)}</div>
+                          {h.arrendatario?<div style={{fontSize:10,color:'#9CA3AF',maxWidth:170,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={h.arrendatario}>{h.arrendatario}</div>:null}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <div style={{fontSize:10,color:'#B4B2A9',marginTop:6}}>IDADMON que han pasado por este inmueble (mismo idinmue). Fecha = término / última actividad.</div>
             </div>
           </div>
         </>
