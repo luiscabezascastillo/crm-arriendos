@@ -76,6 +76,25 @@ export async function GET(req) {
         }
       } catch { sugerencias = {} }
 
+      // Fallback por RUBRO (nombre del proveedor) para RUTs SIN historia. No pisa la sugerencia por RUT.
+      try {
+        const rubros = await leerTodo(() => admin.from('compras_rubro_cuenta')
+          .select('patron, cuenta, nota, prioridad').eq('activo', true)
+          .order('prioridad', { ascending: false }))
+        if ((rubros || []).length) {
+          const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+          const vistos = new Set()
+          for (const c of (compras || [])) {
+            const rut = String(c.rut || '').trim()
+            if (!rut || sugerencias[rut] || vistos.has(rut)) continue
+            vistos.add(rut)
+            const nom = norm(c.proveedor)
+            const hit = (rubros || []).find(r => r.patron && nom.includes(r.patron))
+            if (hit) sugerencias[rut] = [{ cuenta: hit.cuenta, pct: null, fuente: 'rubro', nota: hit.nota || null }]
+          }
+        }
+      } catch { /* si la tabla no existe, se sigue sin rubro */ }
+
       return Response.json({ compras, plan, memoria, sugerencias, total: compras.length })
     }
 

@@ -1,6 +1,7 @@
 // VERSION: v22 · 2026-08-10 · Las compras "No es de FCR" (rechazadas) se OCULTAN del listado por defecto (antes se
 //   mostraban en rojo). Siguen en los datos: totales de cabecera, "Total según SII" y export las incluyen (trazabilidad
 //   y cuadre intactos). Enlace "Verlas / Ocultarlas" en la nota de abajo para mostrarlas puntualmente. Hereda v21.
+// VERSION: v23 · 2026-08-20 · Cuenta gasto: fallback por RUBRO (nombre del proveedor) cuando el RUT no tiene historia; el chip muestra 'rubro' en vez de %. Hereda v22.
 // VERSION: v22 · 2026-08-20 · Cuenta gasto: chips top-3 sugeridos por RUT desde toda la historia (vw_compras_cta_rank via API), clicables, con %. Hereda v21.
 // VERSION: v21 · 2026-08-04 · memoriaRut (sugerencia de Cuenta gasto) solo aprende de cuentas 41xx/42xx, nunca 2105-05. Casilla Proveedores fija.
 //   · Al abrir el panel, el velo gris tapaba también la fila abierta. Ahora esa fila se eleva por
@@ -661,12 +662,12 @@ const wantScroll = useRef(false)
                   {(sugerencias[String(sel.rut || '').trim()] || []).map(sug => (
                     <button key={sug.cuenta} type="button" disabled={!canEdit}
                       onClick={() => setEdit(x => ({ ...x, cuenta: sug.cuenta }))}
-                      title={describeCuenta(sug.cuenta)}
+                      title={sug.nota ? `${describeCuenta(sug.cuenta)} · por rubro: ${sug.nota}` : describeCuenta(sug.cuenta)}
                       style={{ fontSize: 12, padding: '3px 9px', borderRadius: 999, cursor: canEdit ? 'pointer' : 'default',
                         border: (edit.cuenta || '').trim().startsWith(sug.cuenta) ? '1px solid #1D9E75' : '1px solid #D9D7CF',
                         background: (edit.cuenta || '').trim().startsWith(sug.cuenta) ? '#E6F4EE' : '#fff',
                         color: '#1A1A17', whiteSpace: 'nowrap' }}>
-                      {sug.cuenta} <span style={{ color: '#888780' }}>{sug.pct}%</span>
+                      {sug.cuenta} <span style={{ color: '#888780' }}>{sug.pct != null ? `${sug.pct}%` : 'rubro'}</span>
                     </button>
                   ))}
                 </div>
