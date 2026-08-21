@@ -1,3 +1,9 @@
+// VERSION: v8 · 2026-08-21 · Filtros de columna al motor compartido lib/filtroExcel (el mismo de
+//   CC1 / LOG / Descuentos): casillas estilo Excel + buscador que marca solo los resultados +
+//   condiciones por tipo (texto/num/fecha) + orden asc/desc + "quitar todos los filtros". Sustituye
+//   el HeaderFilter casero de esta pagina, que trataba una seleccion vacia como "sin filtro" (por eso
+//   parecia que no filtraba). Ahora Fecha usa arbol ano/mes/dia y los montos filtran como numero.
+//   Hereda v7.
 // VERSION: v7 · 2026-07-27 · Caja Chica: marca en ambar lo que puso la maquina.
 //   Los 520 movimientos se preclasifican por patron (SQL), pero marcados como 'auto':
 //   punto ambar junto al CCB y contador en la cabecera. Al abrir uno y guardarlo pasa
@@ -33,6 +39,7 @@ import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
 import FinancieroHeader from '@/app/components/ui/FinancieroHeader'
 import CuentaSelector from '@/app/components/ui/CuentaSelector'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 const CCB_SUGERIDOS = ['CC1', 'CC2', 'CC3', 'BB1', 'BB2', 'GG']
@@ -87,14 +94,24 @@ async function parseCajaChica(file, XLSX) {
 // Primera palabra del detalle, sin numeros ni codigos: "Dominio A00842" -> "DOMINIO".
 const patronDe = (d) => String(d || '').trim().split(/\s+/)[0].toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g, '')
 
+// Columnas para el motor de filtro compartido (lib/filtroExcel, el mismo de CC1/LOG/Descuentos).
+//   tipo: 'fecha' · 'texto' · 'num' · fkey = valor con el que se filtra · flabel = etiqueta en la casilla.
+//   w/align/label se usan además para pintar la tabla.
 const COLDEFS = [
-  { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', get: v => fmtFecha(v.fecha), filter: 'list' },
-  { key: 'detalle', label: 'Detalle', w: '1fr', align: 'left', get: v => v.detalle || '', filter: 'text' },
-  { key: 'n_documento', label: 'N° Doc', w: '128px', align: 'left', get: v => v.n_documento || '', filter: 'text' },
-  { key: 'pagado', label: 'Pagado', w: '98px', align: 'right', get: v => v.pagado, filter: null },
-  { key: 'recibido', label: 'Recibido', w: '98px', align: 'right', get: v => v.recibido, filter: null },
-  { key: 'saldo', label: 'Saldo', w: '112px', align: 'right', get: v => v.saldo, filter: null },
-  { key: 'ccb', label: 'CCB', w: '92px', align: 'left', get: v => v.ccb || '', filter: 'list' },
+  { key: 'fecha', label: 'Fecha', w: '92px', align: 'left', tipo: 'fecha',
+    fkey: v => String(v.fecha || '').slice(0, 10), flabel: k => (k ? fmtFecha(k) : '(vacío)') },
+  { key: 'detalle', label: 'Detalle', w: '1fr', align: 'left', tipo: 'texto',
+    fkey: v => v.detalle || '', flabel: k => (k === '' ? '(vacío)' : k) },
+  { key: 'n_documento', label: 'N° Doc', w: '128px', align: 'left', tipo: 'texto',
+    fkey: v => v.n_documento || '', flabel: k => (k === '' ? '(vacío)' : k) },
+  { key: 'pagado', label: 'Pagado', w: '98px', align: 'right', tipo: 'num',
+    fkey: v => (v.pagado == null ? '' : String(v.pagado)), flabel: k => (k === '' ? '(vacío)' : clp(Number(k))) },
+  { key: 'recibido', label: 'Recibido', w: '98px', align: 'right', tipo: 'num',
+    fkey: v => (v.recibido == null ? '' : String(v.recibido)), flabel: k => (k === '' ? '(vacío)' : clp(Number(k))) },
+  { key: 'saldo', label: 'Saldo', w: '112px', align: 'right', tipo: 'num',
+    fkey: v => (v.saldo == null ? '' : String(v.saldo)), flabel: k => (k === '' ? '(vacío)' : clp(Number(k))) },
+  { key: 'ccb', label: 'CCB', w: '92px', align: 'left', tipo: 'texto',
+    fkey: v => v.ccb || '', flabel: k => (k === '' ? '(sin CCB)' : k) },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -106,33 +123,6 @@ function Card({ label, value, color }) {
   return (<div style={{ background: '#fff', border: '0.5px solid #E0DED6', borderRadius: 10, padding: '10px 14px', minWidth: 108, flex: '1 1 auto' }}>
     <div style={{ fontSize: 11, color: '#888780', marginBottom: 3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color: color || '#2C2C2A' }}>{value}</div></div>)
 }
-function HeaderFilter({ col, movs, state, setState, open, setOpen }) {
-  const active = state && (state.text || (state.sel && state.sel.length))
-  const distinct = useMemo(() => { if (col.filter !== 'list') return []; const s = new Set(); for (const m of movs) s.add(String(col.get(m))); return Array.from(s).sort() }, [movs, col])
-  const s = state || { text: '', sel: [] }
-  const toggle = (v) => { const sel = s.sel.includes(v) ? s.sel.filter(x => x !== v) : [...s.sel, v]; setState({ ...s, sel }) }
-  return (
-    <span style={{ position: 'relative', marginLeft: 4 }}>
-      <button onClick={(e) => { e.stopPropagation(); setOpen(open === col.key ? null : col.key) }} title="Filtrar" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: active ? '#1D9E75' : '#B4B2A9', fontSize: 11, padding: 0 }}>▼</button>
-      {open === col.key && (<>
-        <div onClick={() => setOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-        <div style={{ position: 'absolute', top: 18, left: 0, zIndex: 31, background: '#fff', border: '0.5px solid #D3D1C7', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', padding: 10, width: 220, textAlign: 'left', fontWeight: 400 }}>
-          <input value={s.text} onChange={e => setState({ ...s, text: e.target.value })} placeholder="Contiene…" autoFocus style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box', marginBottom: 8 }} />
-          {col.filter === 'list' && distinct.length <= 40 && (<>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
-              <button onClick={() => setState({ ...s, sel: distinct.slice() })} style={{ border: 'none', background: 'transparent', color: '#0C447C', cursor: 'pointer', padding: 0 }}>Todos</button>
-              <button onClick={() => setState({ ...s, sel: [] })} style={{ border: 'none', background: 'transparent', color: '#888780', cursor: 'pointer', padding: 0 }}>Limpiar</button>
-            </div>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-              {distinct.map(v => (<label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 0', cursor: 'pointer' }}>
-                <input type="checkbox" checked={s.sel.includes(v)} onChange={() => toggle(v)} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v === '' ? '(vacío)' : v}</span></label>))}
-            </div></>)}
-          {active ? <button onClick={() => { setState({ text: '', sel: [] }); setOpen(null) }} style={{ marginTop: 8, width: '100%', fontSize: 12, padding: '5px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#F7F6F2', cursor: 'pointer' }}>Quitar filtro</button> : null}
-        </div></>)}
-    </span>
-  )
-}
-
 export default function CajaChicaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -140,7 +130,7 @@ export default function CajaChicaPage() {
   const [modo, setModo] = useState('continua')
   const [meses, setMeses] = useState([]); const [mesSel, setMesSel] = useState(null)
   const [movimientos, setMovimientos] = useState([]); const [loading, setLoading] = useState(false)
-  const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null)
+  const [filters, setFilters] = useState({}); const [openFilter, setOpenFilter] = useState(null); const [orden, setOrden] = useState(null)
   const [plan, setPlan] = useState([])
   const [sel, setSel] = useState(null); const [edit, setEdit] = useState({}); const [saving, setSaving] = useState(false); const [savedFlag, setSavedFlag] = useState(false)
   const [uploading, setUploading] = useState(false); const [uploadMsg, setUploadMsg] = useState(null); const [dragOver, setDragOver] = useState(false); const fileRef = useRef(null)
@@ -184,7 +174,12 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
     return set
   }, [movimientos])
 
-  const filtrados = useMemo(() => movimientos.filter(v => { for (const c of COLDEFS) { const f = filters[c.key]; if (!f) continue; const val = String(c.get(v) ?? ''); if (f.text && !val.toLowerCase().includes(f.text.toLowerCase())) return false; if (f.sel && f.sel.length && !f.sel.includes(val)) return false } return true }), [movimientos, filters])
+  // Filtro + orden en memoria con el motor compartido (mismo de CC1/LOG/Descuentos).
+  const filtrados = useMemo(() => aplicarFiltros(movimientos, COLDEFS, filters, orden), [movimientos, filters, orden])
+  const hayFiltroActivo = COLDEFS.some(c => filtroActivo(filters[c.key]))
+  const hayAlguno = hayFiltroActivo || !!orden?.key
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
 
   // Memoria por patron: para cada primera palabra, la cuenta y el CCB mas usados.
   // Solo se propone si el historico es UNANIME (una sola cuenta) y hay al menos uno.
@@ -303,7 +298,7 @@ const wantScroll = useRef(false); const handleFileRef = useRef(null)
 
         <div style={{ border: '0.5px solid #E0DED6', borderRadius: 10, overflow: 'visible', background: '#fff' }}>
           <div style={{ position: 'sticky', top: topTabla, zIndex: 16, display: 'grid', gridTemplateColumns: GRID, background: '#F1EFE9', borderBottom: '0.5px solid #E0DED6', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#888780' }}>
-            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center', paddingRight: c.align === 'right' ? 10 : 0 }}><span>{c.label}</span>{c.filter && <HeaderFilter col={c} movs={movimientos} state={filters[c.key]} setState={(v) => setFilters(f => ({ ...f, [c.key]: v }))} open={openFilter} setOpen={setOpenFilter} />}</div>))}
+            {COLDEFS.map(c => (<div key={c.key} style={{ textAlign: c.align, display: 'flex', justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start', alignItems: 'center', paddingRight: c.align === 'right' ? 10 : 0 }}><span>{c.label}</span>{c.tipo && <HeaderFilter col={c} movs={movimientos} state={filters[c.key]} setState={(v) => setFiltroCol(c.key, v)} open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} flotante />}</div>))}
           </div>
           {loading ? (<div style={{ padding: 30, textAlign: 'center', color: '#888', fontSize: 13 }}>Cargando…</div>
           ) : (<>
