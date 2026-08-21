@@ -1,3 +1,7 @@
+// VERSION: v10 · 2026-08-21 · Editor de códigos: en "Corregir datos" se puede editar/añadir el N° de cliente
+//   de luz/agua/gas. Se guarda en la ficha única `servicios_codigos` (por idinmue) vía POST /api/servicios/codigo
+//   (service-role) y se refleja en la fila del mes. Fusión sin borrar (un campo vacío no pisa lo existente).
+//   Hereda v9.
 // VERSION: v9 · 2026-08-21 · Drawer: muestra el Nº de cliente (luz/agua/gas) etiquetado como "N° cliente: …"
 //   y activa también el de Gas. El código se toma de la fuente única servicios_codigos y, si allí no hay,
 //   de la propia fila del mes en ggcc_agua_luz (antes se pisaba con null, por eso no se veía). Se piden
@@ -281,6 +285,9 @@ export default function Deudas() {
       comentarios_agua: drawer.deuda_anterior_agua || '',
       deuda_vigente_gas: drawer.deuda_vigente_gas || '',
       fecha_hecho_gas: drawer.fecha_hecho_gas || '',
+      codigo_ele: drawer.codigo_ele || '',
+      codigo_agua: drawer.codigo_agua || '',
+      codigo_gas: drawer.codigo_gas || '',
     })
     setEditando(true)
     setGuardadoOk(false)
@@ -289,26 +296,44 @@ export default function Deudas() {
   async function guardarEdicion() {
     setGuardando(true)
     try {
+      const ce = String(editData.codigo_ele || '').trim()
+      const ca = String(editData.codigo_agua || '').trim()
+      const cg = String(editData.codigo_gas || '').trim()
+      const payload = {
+        deuda_gastos_comunes: editData.deuda_gastos_comunes,
+        fecha_hecho_ggcc: editData.fecha_hecho_ggcc,
+        comentarios_se_han_dejado_los_comentarios_mes_anterior: editData.comentarios_ggcc,
+        deuda_vigente_electricidad: editData.deuda_vigente_electricidad,
+        fecha_hecho_luz: editData.fecha_hecho_luz,
+        comentarios_y_fecha_corte: editData.comentarios_luz,
+        deuda_vigente_agua: editData.deuda_vigente_agua,
+        fecha_hecho_agua: editData.fecha_hecho_agua,
+        deuda_anterior_agua: editData.comentarios_agua,
+        deuda_vigente_gas: editData.deuda_vigente_gas,
+        fecha_hecho_gas: editData.fecha_hecho_gas,
+        updated_at: new Date().toISOString(),
+      }
+      // Códigos: se reflejan en la fila del mes (solo si vienen con valor, no se borra).
+      if (ce) payload.codigo_ele = ce
+      if (ca) payload.codigo_agua = ca
+      if (cg) payload.codigo_gas = cg
       const { error } = await supabase
         .from('ggcc_agua_luz')
-        .update({
-          deuda_gastos_comunes: editData.deuda_gastos_comunes,
-          fecha_hecho_ggcc: editData.fecha_hecho_ggcc,
-          comentarios_se_han_dejado_los_comentarios_mes_anterior: editData.comentarios_ggcc,
-          deuda_vigente_electricidad: editData.deuda_vigente_electricidad,
-          fecha_hecho_luz: editData.fecha_hecho_luz,
-          comentarios_y_fecha_corte: editData.comentarios_luz,
-          deuda_vigente_agua: editData.deuda_vigente_agua,
-          fecha_hecho_agua: editData.fecha_hecho_agua,
-          deuda_anterior_agua: editData.comentarios_agua,
-          deuda_vigente_gas: editData.deuda_vigente_gas,
-          fecha_hecho_gas: editData.fecha_hecho_gas,
-          updated_at: new Date().toISOString(),
-        })
+        .update(payload)
         .eq('mes', drawer.mes)
         .eq('idadmon', drawer.idadmon)
         .eq('idinmue', drawer.idinmue)
       if (error) throw error
+      // Ficha única de códigos por inmueble (servicios_codigos), vía endpoint service-role.
+      if ((ce || ca || cg) && drawer.idinmue) {
+        try {
+          const rc = await fetch('/api/servicios/codigo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idinmue: drawer.idinmue, codigo_ele: ce, codigo_agua: ca, codigo_gas: cg }),
+          })
+          if (!rc.ok) { const ej = await rc.json().catch(() => ({})); throw new Error(ej.error || 'No se pudo guardar el código en la ficha única') }
+        } catch (err) { alert('Aviso: la deuda se guardó, pero el código no se pudo guardar en la ficha del inmueble: ' + err.message) }
+      }
       const updatedDrawer = {
         ...drawer,
         deuda_gastos_comunes: editData.deuda_gastos_comunes,
@@ -322,6 +347,9 @@ export default function Deudas() {
         deuda_anterior_agua: editData.comentarios_agua,
         deuda_vigente_gas: editData.deuda_vigente_gas,
         fecha_hecho_gas: editData.fecha_hecho_gas,
+        codigo_ele: ce || drawer.codigo_ele || null,
+        codigo_agua: ca || drawer.codigo_agua || null,
+        codigo_gas: cg || drawer.codigo_gas || null,
       }
       setDrawer(updatedDrawer)
       setFilas(prev => prev.map(f =>
@@ -696,10 +724,10 @@ export default function Deudas() {
                     <button onClick={()=>setEditando(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B7280',fontSize:18}}>✕</button>
                   </div>
                   {[
-                    {label:'🏢 G. Comunes',montoKey:'deuda_gastos_comunes',fechaKey:'fecha_hecho_ggcc',comentKey:'comentarios_ggcc',comentLabel:'Comentario GGCC'},
-                    {label:'⚡ Electricidad',montoKey:'deuda_vigente_electricidad',fechaKey:'fecha_hecho_luz',comentKey:'comentarios_luz',comentLabel:'Comentario luz / fecha corte'},
-                    {label:'💧 Agua',montoKey:'deuda_vigente_agua',fechaKey:'fecha_hecho_agua',comentKey:'comentarios_agua',comentLabel:'Comentario agua'},
-                    {label:'🔥 Gas',montoKey:'deuda_vigente_gas',fechaKey:'fecha_hecho_gas',comentKey:null,comentLabel:null},
+                    {label:'🏢 G. Comunes',montoKey:'deuda_gastos_comunes',fechaKey:'fecha_hecho_ggcc',comentKey:'comentarios_ggcc',comentLabel:'Comentario GGCC',codigoKey:null},
+                    {label:'⚡ Electricidad',montoKey:'deuda_vigente_electricidad',fechaKey:'fecha_hecho_luz',comentKey:'comentarios_luz',comentLabel:'Comentario luz / fecha corte',codigoKey:'codigo_ele'},
+                    {label:'💧 Agua',montoKey:'deuda_vigente_agua',fechaKey:'fecha_hecho_agua',comentKey:'comentarios_agua',comentLabel:'Comentario agua',codigoKey:'codigo_agua'},
+                    {label:'🔥 Gas',montoKey:'deuda_vigente_gas',fechaKey:'fecha_hecho_gas',comentKey:null,comentLabel:null,codigoKey:'codigo_gas'},
                   ].map((campo,i)=>(
                     <div key={i} style={{marginBottom:14,paddingBottom:14,borderBottom:i<3?'0.5px solid #BFDBFE':'none'}}>
                       <div style={{fontSize:11,fontWeight:600,color:'#374151',marginBottom:8}}>{campo.label}</div>
@@ -718,8 +746,17 @@ export default function Deudas() {
                             style={{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid #BFDBFE',fontSize:13,boxSizing:'border-box'}}/>
                         </div>
                       </div>
+                      {campo.codigoKey&&(
+                        <div style={{marginTop:6}}>
+                          <div style={{fontSize:10,color:'#6B7280',marginBottom:3}}>N° cliente</div>
+                          <input type="text" value={editData[campo.codigoKey]||''}
+                            onChange={e=>setEditData(d=>({...d,[campo.codigoKey]:e.target.value}))}
+                            placeholder="p. ej. 3222238-2"
+                            style={{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid #BFDBFE',fontSize:13,boxSizing:'border-box',fontVariantNumeric:'tabular-nums'}}/>
+                        </div>
+                      )}
                       {campo.comentKey&&(
-                        <div>
+                        <div style={{marginTop:6}}>
                           <div style={{fontSize:10,color:'#6B7280',marginBottom:3}}>{campo.comentLabel}</div>
                           <textarea value={editData[campo.comentKey]}
                             onChange={e=>setEditData(d=>({...d,[campo.comentKey]:e.target.value}))}
