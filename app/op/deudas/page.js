@@ -1,3 +1,5 @@
+// VERSION: v12 · 2026-08-21 · FIX etiquetas del eje X de "Evolución de deudas": mostraban "202" en todas
+//   (hacían slice(0,3) sobre "2026-08"). Ahora muestran el AAMM de 4 dígitos (2608, 2607, 2606…). Hereda v11.
 // VERSION: v11 · 2026-08-21 · (1) Búsqueda global arriba: filtra por inmueble, propietario, IDADMON, IDINMUE
 //   y arrendatario a la vez (antes solo se podía por columnas). (2) Bloque "Historia del inmueble" al final
 //   del drawer: todos los IDADMON que han pasado por esta unidad (mismo idlinmue=idinmue, cogiendo el depto en
@@ -34,6 +36,8 @@ function idinmueDepto(idlinmue) {
   return String(idlinmue).trim().split(/\s+/)[0] || null
 }
 const fmtFechaCorta = (v) => { if (!v) return '—'; const s = String(v).slice(0, 10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : s }
+// Etiqueta del eje X de la gráfica: AAMM de 4 dígitos ("2608"). Usa el campo aamm; si no, lo deriva del mes ISO.
+const aammLabel = (h) => { if (h?.aamm) return String(h.aamm); const m = String(h?.mes || '').match(/^(\d{4})-(\d{2})/); return m ? m[1].slice(2) + m[2] : '' }
 // Color por estado del contrato.
 const colorEstado = (e) => { const x = String(e || '').trim().toUpperCase(); if (x === 'S' || x === 'SQ') return '#3B6D11'; if (x === 'P') return '#9A6E00'; if (x.startsWith('Q') || x.startsWith('N')) return '#A32D2D'; return '#6B7280' }
 function Dot({ val }) {
@@ -868,7 +872,7 @@ export default function Deudas() {
                       ))}
                       {meses.map((h,i)=>(
                         <text key={i} x={padL+i*xStep} y={H-2} textAnchor="middle" fontSize="8" fill="#9CA3AF">
-                          {(h.mes||'').split(' ')[0].slice(0,3)}
+                          {aammLabel(h)}
                         </text>
                       ))}
                     </svg>
