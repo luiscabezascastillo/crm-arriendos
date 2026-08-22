@@ -1,3 +1,6 @@
+// VERSION: v18 · 2026-08-19 · El Excel de Paola (Descargar Control / Guardar en Drive) se genera con el nuevo diseño
+//   profesional y multi-hoja: se envían también los movimientos de la cartola para la hoja "Movimientos cuenta".
+//   Requiere lib/paolaExcel v4 y route v12. Hereda v17.
 // VERSION: v17 · 2026-08-19 · Claridad de guardado: botones "💾 Guardar cambios" y "🔄 Ver lo guardado" (direcciones
 //   opuestas, no se fusionan) + chip de estado "● Cambios sin guardar" (ámbar) / "✓ Guardado" (verde) que quita la
 //   duda de si quedó persistido. Hereda v16.
@@ -202,7 +205,7 @@ export default function LiquidacionPaolaPage() {
     try {
       const res = await fetch('/api/liquidacion-paola', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: filasConEdits() }),
+        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: filasConEdits(), movimientos: datos?.movimientos || [] }),
       })
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo generar el Excel'); setGenerando(false); return }

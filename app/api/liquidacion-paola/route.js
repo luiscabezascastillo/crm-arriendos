@@ -1,3 +1,5 @@
+// VERSION: v12 · 2026-08-19 · La acción 'excel' recibe y pasa `movimientos` (cartola del mes) a generarExcelPaola,
+//   para la nueva hoja "Movimientos cuenta" del diseño profesional (lib/paolaExcel v4). Hereda v11.
 // VERSION: v11 · 2026-08-18 · Estado de pago por contrato (columnas manuales estado_pago + nota_pago en
 //   liquidacion_paola): Administración marca PAGADO / ATRASADO (el abono visto es de un mes anterior) /
 //   NO_PAGADO, con una nota. Se persiste, se relee al recargar/cargar-guardado y sale en el Excel. Hereda v10.
@@ -383,7 +385,7 @@ export async function POST(request) {
 
     // ── acción: generar el Excel (y guardarlo en Drive si se pide) ──────────
     if (body.accion === 'excel') {
-      const { mes, filas, guardarEnDrive, sufijo, email } = body
+      const { mes, filas, guardarEnDrive, sufijo, email, movimientos } = body
       if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
       if (!Array.isArray(filas) || filas.length === 0) {
         return NextResponse.json({ error: 'No hay filas que volcar: procesa la liquidación primero' }, { status: 400 })
@@ -395,7 +397,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
       }
 
-      const buffer = await generarExcelPaola({ mes, filas })
+      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [] })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
 
       let drive = null, errorDrive = null
