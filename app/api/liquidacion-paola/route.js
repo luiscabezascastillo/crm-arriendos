@@ -1,3 +1,5 @@
+// VERSION: v20 · 2026-08-23 · garantias_upsert numera la cuota sola cuando el nº viene vacío (mayor del contrato + 1),
+//   para que la clave (idadmon, mes, nº) sea siempre única y editable. Hereda v19.
 // VERSION: v19 · 2026-08-23 · Control de garantías CRUD (acciones garantias_list/_upsert/_delete sobre paola_garantias)
 //   para registrar cuotas desde la pantalla; y las acciones 'excel'/'enviar' pasan las cuotas a generarExcelPaola
 //   para la nueva hoja "Garantías". Hereda v18.
@@ -416,10 +418,19 @@ export async function POST(request) {
       const g = body.cuota || {}
       if (!g.idadmon) return NextResponse.json({ error: 'Falta el idadmon' }, { status: 400 })
       if (!g.mes) return NextResponse.json({ error: 'Falta el mes de la cuota' }, { status: 400 })
+      const idadmonG = String(g.idadmon).trim()
+      // Nº de cuota: si viene vacío, se numera solo (la mayor registrada de ese contrato + 1, o 1 si es la primera).
+      let nCuota = g.n_cuota != null && g.n_cuota !== '' ? parseInt(g.n_cuota, 10) : null
+      if (nCuota == null || isNaN(nCuota)) {
+        const { data: prev } = await admin.from('paola_garantias')
+          .select('n_cuota').eq('idadmon', idadmonG).not('n_cuota', 'is', null)
+          .order('n_cuota', { ascending: false }).limit(1)
+        nCuota = (prev && prev.length ? (parseInt(prev[0].n_cuota, 10) || 0) : 0) + 1
+      }
       const fila = {
-        idadmon: String(g.idadmon).trim(),
+        idadmon: idadmonG,
         mes: aYYYYMM(g.mes),
-        n_cuota: g.n_cuota != null && g.n_cuota !== '' ? parseInt(g.n_cuota, 10) : null,
+        n_cuota: nCuota,
         monto: aNumero(g.monto) || 0,
         bodega_monto: aNumero(g.bodega_monto),
         garantia_total: aNumero(g.garantia_total),
