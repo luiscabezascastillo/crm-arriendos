@@ -1,3 +1,6 @@
+// VERSION: v13 · 2026-08-19 · La cartola se captura COMPLETA (cargos y abonos) en `cartolaRows`, con el IDADMON
+//   reconocido por abono, y se pasa a generarExcelPaola para la hoja "Movimientos cuenta" (toda la cartola + IdAdmon
+//   e Inmueble). parsearCartola devuelve filasCartola. Hereda v12.
 // VERSION: v12 · 2026-08-19 · La acción 'excel' recibe y pasa `movimientos` (cartola del mes) a generarExcelPaola,
 //   para la nueva hoja "Movimientos cuenta" del diseño profesional (lib/paolaExcel v4). Hereda v11.
 // VERSION: v11 · 2026-08-18 · Estado de pago por contrato (columnas manuales estado_pago + nota_pago en
@@ -225,30 +228,33 @@ function parsearCartola(XLSX, buffer) {
     if (iFecha >= 0 && iDet >= 0 && iAbono >= 0) {
       filaCab = i
       // La última columna es "Saldo", pero Adalis la usa para anotar la propiedad a mano.
-      cols = { fecha: iFecha, detalle: iDet, abono: iAbono, nota: fila.findIndex(c => c.includes('saldo')) }
+      cols = { fecha: iFecha, detalle: iDet, cargo: fila.findIndex(c => c.includes('cargo')), abono: iAbono, nota: fila.findIndex(c => c.includes('saldo')) }
       break
     }
   }
   if (filaCab < 0) throw new Error('No se reconoce la cartola: falta una cabecera con Fecha, Detalle y Monto abono.')
 
   const abonos = []
+  const filasCartola = []   // TODAS las filas de la cartola (cargos y abonos) para la hoja "Movimientos cuenta"
   for (let i = filaCab + 1; i < raw.length; i++) {
     const fila = raw[i]
     if (!fila || !fila[cols.fecha]) continue
-    const monto = aNumero(fila[cols.abono])      // los CARGOS no se miran nunca
-    if (!monto || monto <= 10) continue
+    const detalle = String(fila[cols.detalle] || '')
+    const cargo = cols.cargo >= 0 ? aNumero(fila[cols.cargo]) : null
+    const abono = aNumero(fila[cols.abono])
     const notaCruda = cols.nota >= 0 ? fila[cols.nota] : null
-    abonos.push({
-      fila: abonos.length,
-      fecha: fila[cols.fecha],
-      detalle: String(fila[cols.detalle] || ''),
-      monto,
-      rut: extraerRut(fila[cols.detalle]),
-      clave: claveDe(fila[cols.detalle]),
-      nota: typeof notaCruda === 'string' ? notaCruda.trim() : null,
-    })
+    const nota = typeof notaCruda === 'string' ? notaCruda.trim() : null
+    let abonoIdx = null
+    if (abono && abono > 10) {   // solo los ABONOS entran en la liquidación (los cargos solo se listan)
+      abonoIdx = abonos.length
+      abonos.push({
+        fila: abonos.length, fecha: fila[cols.fecha], detalle, monto: abono,
+        rut: extraerRut(fila[cols.detalle]), clave: claveDe(fila[cols.detalle]), nota,
+      })
+    }
+    filasCartola.push({ fecha: fila[cols.fecha], detalle, cargo, abono, nota, abonoIdx })
   }
-  return { hoja, abonos }
+  return { hoja, abonos, filasCartola }
 }
 
 // ── GET ──────────────────────────────────────────────────────────────────────
@@ -385,7 +391,7 @@ export async function POST(request) {
 
     // ── acción: generar el Excel (y guardarlo en Drive si se pide) ──────────
     if (body.accion === 'excel') {
-      const { mes, filas, guardarEnDrive, sufijo, email, movimientos } = body
+      const { mes, filas, guardarEnDrive, sufijo, email, movimientos, cartolaRows } = body
       if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
       if (!Array.isArray(filas) || filas.length === 0) {
         return NextResponse.json({ error: 'No hay filas que volcar: procesa la liquidación primero' }, { status: 400 })
@@ -397,7 +403,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
       }
 
-      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [] })
+      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [] })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
 
       let drive = null, errorDrive = null
@@ -503,13 +509,14 @@ export async function POST(request) {
     }
 
     // Cartola
-    let abonos = [], infoCartola = null, buffer = null
+    let abonos = [], filasCartola = [], infoCartola = null, buffer = null
     if (cartolaBase64) buffer = Buffer.from(cartolaBase64, 'base64')
     else if (cartolaDriveId) buffer = await descargarDeDrive(cartolaDriveId)
     if (buffer) {
       const XLSX = await import('xlsx')
       const p = parsearCartola(XLSX, buffer)
       abonos = p.abonos
+      filasCartola = p.filasCartola || []
       infoCartola = {
         hoja: p.hoja, movimientos: abonos.length, origen: cartolaBase64 ? 'subida' : 'drive',
         totalAbonos: abonos.reduce((s, a) => s + a.monto, 0),
@@ -614,6 +621,15 @@ export async function POST(request) {
       })
     }
 
+    // IDADMON reconocido por abono → se pega a la fila de la cartola (para la hoja "Movimientos cuenta").
+    const idadmonPorAbono = {}
+    for (const mv of movimientos) if (mv.identificado && mv.idadmon) idadmonPorAbono[mv.fila] = mv.idadmon
+    const cartolaRows = (filasCartola || []).map(fc => ({
+      fecha: aFechaISO(fc.fecha) || String(fc.fecha || ''),
+      detalle: fc.detalle, cargo: fc.cargo, abono: fc.abono, nota: fc.nota,
+      idadmon: fc.abonoIdx != null ? (idadmonPorAbono[fc.abonoIdx] || null) : null,
+    }))
+
     const { data: guardado } = await supabase.from('liquidacion_paola').select('*').eq('mes', aYYYYMM(mes))
     const manualMap = {}
     for (const g of guardado || []) manualMap[g.idadmon] = g
@@ -647,7 +663,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       ok: true, mes: aamm, generadoPor: email || null, cartola: infoCartola,
-      resultado, sinIdentificar, noEsRenta, movimientos, aprender,
+      resultado, sinIdentificar, noEsRenta, movimientos, cartolaRows, aprender,
       contratos: liquidables.map(f => ({ idadmon: f.idadmon, propiedad: f.propiedad, arrendatario: f.arrendatario })),
       avisos: {
         vacantesNuevas,

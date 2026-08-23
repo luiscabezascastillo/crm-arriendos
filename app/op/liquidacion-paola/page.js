@@ -1,3 +1,5 @@
+// VERSION: v20 · 2026-08-19 · Al generar el Excel se envía también `cartolaRows` (cartola completa) para la hoja
+//   "Movimientos cuenta" (toda la cartola + IdAdmon/Inmueble). Requiere route v13 y paolaExcel v6. Hereda v19.
 // VERSION: v19 · 2026-08-19 · Cabecera del panel de ayuda lleva el lema en mayúsculas del proceso (controlado por
 //   Adalis; objetivo enviar 2 días tras la cartola). El Excel usa lib/paolaExcel v5 (Movimientos con IdAdmon). Hereda v18.
 // VERSION: v18 · 2026-08-19 · El Excel de Paola (Descargar Control / Guardar en Drive) se genera con el nuevo diseño
@@ -207,7 +209,7 @@ export default function LiquidacionPaolaPage() {
     try {
       const res = await fetch('/api/liquidacion-paola', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: filasConEdits(), movimientos: datos?.movimientos || [] }),
+        body: JSON.stringify({ accion: 'excel', mes, guardarEnDrive, filas: filasConEdits(), movimientos: datos?.movimientos || [], cartolaRows: datos?.cartolaRows || [] }),
       })
       const d = await res.json()
       if (!d.ok) { setError(d.error || 'No se pudo generar el Excel'); setGenerando(false); return }
