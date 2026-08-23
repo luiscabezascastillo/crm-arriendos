@@ -1,3 +1,6 @@
+// VERSION: v21 · 2026-08-23 · Hoja "Garantías" del Excel = roster de TODOS los contratos S/SQ desde datos_arriendos
+//   (garantía pedida, entregada = Σ cobradas, cuotas 1-4, quién, deuda, contacto), ordenado por inmueble + resumen del
+//   mes. Nuevo helper cargarGarantiasRoster(); 'excel'/'enviar' pasan garantiasRoster a generarExcelPaola. Hereda v20.
 // VERSION: v20 · 2026-08-23 · garantias_upsert numera la cuota sola cuando el nº viene vacío (mayor del contrato + 1),
 //   para que la clave (idadmon, mes, nº) sea siempre única y editable. Hereda v19.
 // VERSION: v19 · 2026-08-23 · Control de garantías CRUD (acciones garantias_list/_upsert/_delete sobre paola_garantias)
@@ -69,6 +72,17 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
 const IDPROP_PAOLA = 'P001'
 const ESTADOS_LIQUIDABLES = ['S', 'SQ', 'P', 'Q']
+
+// Roster de garantías para la hoja "Garantías" del Excel: TODOS los contratos S/SQ de Paola con sus
+// datos de garantía tal como viven en datos_arriendos (pedida, cuotas 1-4 con fecha/monto/cobrado, quién,
+// deuda, contacto). La hoja lo ordena por inmueble. Fuente única = datos_arriendos.
+async function cargarGarantiasRoster() {
+  const { data, error } = await admin.from('datos_arriendos')
+    .select('idadmon, estado, inmueble, arrendatario, garantia_pedida, deuda_garantia, quien_tiene_garantia, garantia_con, fecha1, cuota1, cobrada1, fecha2, cuota2, cobrada2, fecha3, cuota3, cobrada3, fecha4, cuota4, cobrada4, fecha_inicio, termino_actual, mail_arrendatario, movil')
+    .eq('idprop', IDPROP_PAOLA).in('estado', ['S', 'SQ'])
+  if (error) { console.error('cargarGarantiasRoster:', error.message); return [] }
+  return data || []
+}
 const TOLERANCIA_MONTO = 500
 const TOLERANCIA_EXCESO = 1000
 const UMBRAL_NOMBRE = 65
@@ -519,9 +533,8 @@ export async function POST(request) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
       }
 
-      const { data: garExcel } = await admin.from('paola_garantias')
-        .select('idadmon, garantia_total, n_cuota, monto, bodega_monto, fecha, mes, pagada, nota')
-      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantias: garExcel || [] })
+      const garantiasRoster = await cargarGarantiasRoster()
+      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantiasRoster })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
 
       let drive = null, errorDrive = null
@@ -575,13 +588,12 @@ export async function POST(request) {
         return NextResponse.json({ error: 'No hay un email válido de Paola (propietarios P001). Ponlo o usa un correo de prueba.' }, { status: 400 })
       }
 
-      const { data: garEnvio } = await admin.from('paola_garantias')
-        .select('idadmon, garantia_total, n_cuota, monto, bodega_monto, fecha, mes, pagada, nota')
+      const garantiasRoster = await cargarGarantiasRoster()
       const buffer = await generarExcelPaola({
         mes, filas,
         movimientos: Array.isArray(movimientos) ? movimientos : [],
         cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [],
-        garantias: garEnvio || [],
+        garantiasRoster,
       })
       const nombreBase = nombreArchivo(mes, 'Control', '', n)   // 2026-08-1-Control Ago 2026.xlsx
       const nombre = esPrueba ? `PRUEBA-${nombreBase}` : nombreBase   // en prueba, prefijo para borrarlo luego
