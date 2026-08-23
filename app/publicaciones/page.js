@@ -1,3 +1,6 @@
+// VERSION: v3 · 2026-08-21 · "Dar de baja" endurecido: si el cierre en Portal Inmobiliario falla, AVISA y
+//   NO marca la ficha como baja en el CRM (antes se tragaba el error y desincronizaba: cerrado en CRM,
+//   vivo en PI). Junto con cerrar/route v2 (pausa→cierra), el cierre en PI ya funciona de verdad. Hereda v2.
 // VERSION: v2 · 2026-08-21 · (1) Botón "⇄ Reconciliar PI" en la cabecera → /publicaciones/reconciliar.
 //   (2) Tarjetas activas: Ficha · Compartir · Republicar (se quitó "Editar", que era un botón sin acción);
 //   las históricas siguen con Ficha · Republicar (sin Compartir, no tienen link). Hereda v1.
@@ -434,19 +437,28 @@ export default function PublicacionesPage() {
     if (!window.confirm(`¿Dar de baja la propiedad ${pub.codigo}?\n\nSe cerrará en todos los portales activos y pasará a Históricas.`)) return
     setDandoDeBaja(pub.id)
     try {
-      // Cerrar en PI via ML si está activa
+      // Cerrar en PI via ML si está activa. Si el cierre en PI falla, NO se da de baja en el CRM
+      // (evita el "cerrado en CRM / vivo en PI"): se avisa y se aborta.
       if (pub.pi === 'SI' && pub.codigo_pi && pub.activo === 'active') {
+        let cerrOk = false, cerrMsg = ''
         try {
           const res = await fetch('/api/publicar-pi/cerrar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ codigoPI: pub.codigo_pi }),
           })
-        } catch(e) { console.log('Error cerrando PI:', e.message) }
+          const d = await res.json().catch(() => ({}))
+          cerrOk = res.ok && d.ok
+          cerrMsg = d.error || res.status
+        } catch(e) { cerrMsg = e.message }
+        if (!cerrOk) {
+          alert(`⚠️ No se pudo cerrar en Portal Inmobiliario (${cerrMsg}).\n\nNO se dio de baja en el CRM para no desincronizar (quedaría cerrado aquí pero vivo en PI). Revisa el aviso en PI, o usa "Reconciliar PI".`)
+          setDandoDeBaja(null); return
+        }
       }
-      // Marcar como CLOSE en Supabase
+      // Marcar como CLOSE en Supabase (solo si el cierre en PI fue OK, o si no estaba en PI)
       const { error } = await supabase.from('publicaciones').update({
-        pi: 'NO', yapo: 'NO', web: 'NO', goplaceit: 'NO', proppit: 'NO', activo: 'closed'
+        pi: 'NO', yapo: 'NO', web: 'NO', goplaceit: 'NO', proppit: 'NO', activo: 'closed', estado_pi: 'closed'
       }).eq('id', pub.id)
       if (error) throw new Error(error.message)
       await loadKpis()
