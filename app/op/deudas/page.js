@@ -1,4 +1,7 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
+// VERSION: v13 · 2026-08-23 · Botón "📸 Tomar corte" en la barra de acciones: toma una foto congelada del mes
+//   (plan B) vía POST /api/servicios/cortes (action:'tomar'), con periodo (AAMM más reciente), fecha y nota.
+//   No modifica los datos vivos. Hereda v12.
 // VERSION: v12 · 2026-08-21 · FIX etiquetas del eje X de "Evolución de deudas": mostraban "202" en todas
 //   (hacían slice(0,3) sobre "2026-08"). Ahora muestran el AAMM de 4 dígitos (2608, 2607, 2606…). Hereda v11.
 // VERSION: v11 · 2026-08-21 · (1) Búsqueda global arriba: filtra por inmueble, propietario, IDADMON, IDINMUE
@@ -240,6 +243,40 @@ export default function Deudas() {
   const [fTotal, setFTotal] = useState(emptyF)
   const [sortCol, setSortCol] = useState(null)
   const [sortDir, setSortDir] = useState(null)
+  // Tomar corte (foto congelada del mes) — plan B. Toma del periodo más reciente cargado.
+  const [corteAbierto, setCorteAbierto] = useState(false)
+  const [corteAamm, setCorteAamm] = useState('')
+  const [corteFecha, setCorteFecha] = useState('')
+  const [corteNota, setCorteNota] = useState('')
+  const [corteBusy, setCorteBusy] = useState(false)
+  const [corteMsg, setCorteMsg] = useState(null)
+  const [cortesReg, setCortesReg] = useState([])
+  async function cargarCortes() {
+    try { const r = await fetch('/api/servicios/cortes'); const j = await r.json(); setCortesReg(j.cortes || []) } catch (e) { /* no bloquea */ }
+  }
+  function abrirCorte() {
+    const aamm = filas.reduce((mx, f) => { const a = String(f.aamm || ''); return a > mx ? a : mx }, '')
+    setCorteAamm(aamm)
+    setCorteFecha(new Date().toISOString().substring(0, 10))
+    setCorteNota(''); setCorteMsg(null); setCorteAbierto(true)
+  }
+  async function tomarCorte() {
+    const aamm = (corteAamm || '').trim()
+    if (!aamm) { setCorteMsg({ tipo: 'error', txt: 'Indica el periodo (AAMM).' }); return }
+    if (!window.confirm(`Tomar una FOTO (corte) del periodo ${aamm} con fecha ${corteFecha}.\nCopia el estado actual de servicios; no modifica los datos. ¿Continuar?`)) return
+    setCorteBusy(true); setCorteMsg(null)
+    try {
+      const r = await fetch('/api/servicios/cortes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tomar', aamm, fecha: corteFecha, nota: corteNota || undefined }),
+      })
+      const j = await r.json()
+      if (!r.ok || j.error) setCorteMsg({ tipo: 'error', txt: j.error || ('Error ' + r.status) })
+      else { setCorteMsg({ tipo: 'ok', txt: `✓ Corte ${j.corte} del ${aamm} tomado (${j.fecha}) — ${j.filas} filas congeladas.` }); await cargarCortes() }
+    } catch (e) { setCorteMsg({ tipo: 'error', txt: String(e?.message || e) }) }
+    setCorteBusy(false)
+  }
+  useEffect(() => { cargarCortes() }, [])
 
   useEffect(() => {
     supabase.from('datos_arriendos').select('idadmon,propietario,inmueble,estado')
@@ -532,6 +569,10 @@ export default function Deudas() {
   const totDeuda = datos.reduce((s,f)=>s+totalF(f),0)
   const nMeses = new Set(datos.map(f=>f.aamm)).size
 
+  // Cortes del mes en curso (el AAMM más reciente cargado)
+  const aammActual = filas.reduce((mx,f)=>{ const a=String(f.aamm||''); return a>mx?a:mx }, '')
+  const cortesMes = cortesReg.filter(c=>String(c.aamm)===aammActual).sort((a,b)=>a.corte-b.corte)
+
   return (
     <div style={{padding:'24px 32px',maxWidth:1400,margin:'0 auto',fontFamily:'var(--font-sans,sans-serif)'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,fontSize:13}}>
@@ -575,7 +616,36 @@ export default function Deudas() {
         <Link href="/op/servicios/luz" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>⚡ Cargar Luz</Link>
         <Link href="/op/servicios/agua" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>💧 Cargar Agua</Link>
         <Link href="/op/email-deudores" style={{padding:'7px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,color:'#374151',fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>📧 Email grandes deudores</Link>
+        <button onClick={corteAbierto ? () => setCorteAbierto(false) : abrirCorte} style={{padding:'7px 12px',borderRadius:8,border:'1px solid #16A34A',background:corteAbierto?'#DCFCE7':'#F0FDF4',fontSize:13,color:'#166534',fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>📸 Tomar corte</button>
       </div>
+
+      {/* Panel Tomar corte (foto congelada del mes) */}
+      {corteAbierto && (
+        <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'flex-end',background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:10,padding:'12px 14px',marginBottom:20}}>
+          <label style={{fontSize:11,color:'#6B7280'}}>Periodo (AAMM)<br/>
+            <input value={corteAamm} onChange={e=>setCorteAamm(e.target.value)} placeholder="2608" style={{marginTop:4,width:80,padding:'7px 9px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:13,fontFamily:'inherit'}}/>
+          </label>
+          <label style={{fontSize:11,color:'#6B7280'}}>Fecha del corte<br/>
+            <input type="date" value={corteFecha} onChange={e=>setCorteFecha(e.target.value)} style={{marginTop:4,padding:'7px 9px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:13,fontFamily:'inherit'}}/>
+          </label>
+          <label style={{fontSize:11,color:'#6B7280',flex:1,minWidth:150}}>Nota (opcional)<br/>
+            <input value={corteNota} onChange={e=>setCorteNota(e.target.value)} placeholder="p.ej. semana 3" style={{marginTop:4,width:'100%',padding:'7px 9px',borderRadius:8,border:'1px solid #D1D5DB',fontSize:13,fontFamily:'inherit'}}/>
+          </label>
+          <button onClick={tomarCorte} disabled={corteBusy} style={{padding:'9px 16px',borderRadius:8,border:'none',background:corteBusy?'#CBD5E1':'#16A34A',color:'#fff',fontSize:13,fontWeight:700,cursor:corteBusy?'default':'pointer'}}>{corteBusy?'Tomando…':'Confirmar corte'}</button>
+          <button onClick={()=>setCorteAbierto(false)} style={{padding:'9px 12px',borderRadius:8,border:'1px solid #D1D5DB',background:'#fff',fontSize:13,cursor:'pointer',color:'#6B7280'}}>Cerrar</button>
+          {corteMsg && <div style={{flexBasis:'100%',fontSize:13,fontWeight:600,color:corteMsg.tipo==='ok'?'#16A34A':'#B91C1C'}}>{corteMsg.txt}</div>}
+        </div>
+      )}
+
+      {/* Indicador de cortes del mes en curso */}
+      {aammActual && (
+        <div style={{fontSize:12,color:'#374151',marginBottom:18,marginTop:-6,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontWeight:600}}>📸 Cortes del mes {aammActual}:</span>
+          {cortesMes.length
+            ? cortesMes.map(c=>(<span key={c.corte} style={{background:'#DCFCE7',color:'#166534',padding:'2px 9px',borderRadius:12,fontWeight:600}}>{aammActual}-{c.corte}{c.fecha?` · ${String(c.fecha).slice(8,10)}-${String(c.fecha).slice(5,7)}`:''}</span>))
+            : <span style={{color:'#9CA3AF'}}>sin cortes este mes todavía</span>}
+        </div>
+      )}
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:20}}>
         {[
