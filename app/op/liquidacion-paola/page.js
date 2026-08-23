@@ -1,3 +1,5 @@
+// VERSION: v23 · 2026-08-19 · Panel Email a Paola con VISTA PREVIA EDITABLE de la carta (asunto + cuerpo, textarea) que se
+//   regenera al abrir/cambiar de envío; se manda el texto editado. Requiere route v17. Hereda v22.
 // VERSION: v22 · 2026-08-19 · La tabla de la liquidación se ordena SIEMPRE alfabéticamente por propiedad en el propio
 //   render (localeCompare es, numérico), para que en pantalla salga ordenada pase lo que pase. Hereda v21.
 // VERSION: v21 · 2026-08-19 · "Guardar en Drive" pasa a "✉ Email a Paola": panel con selector 1º/2º/3º, correo de
@@ -100,6 +102,9 @@ export default function LiquidacionPaolaPage() {
   const [enviando, setEnviando] = useState(false)
   const [avisoEnvio, setAvisoEnvio] = useState(null)
   const [envios, setEnvios] = useState([])
+  const [cartaAsunto, setCartaAsunto] = useState('')
+  const [cartaCuerpo, setCartaCuerpo] = useState('')
+  const [cartaCargando, setCartaCargando] = useState(false)
 
   useEffect(() => {
     const h = new Date()
@@ -260,6 +265,24 @@ export default function LiquidacionPaolaPage() {
   }
   useEffect(() => { if (datos?.resultado?.length) cargarEnvios() }, [mes, datos])
 
+  // Redacta la carta (texto preescrito) para revisarla/editarla antes de enviar.
+  async function verCarta() {
+    if (!datos?.resultado?.length) return
+    setCartaCargando(true); setError(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'preview', mes, numero: envioNum, filas: filasConEdits() }),
+      })
+      const d = await res.json()
+      if (d.ok) { setCartaAsunto(d.asunto); setCartaCuerpo(d.cuerpo) }
+      else setError(d.error || 'No se pudo generar la vista previa')
+    } catch (e) { setError('Error: ' + e.message) }
+    setCartaCargando(false)
+  }
+  // Al abrir el panel o cambiar el número de envío, se (re)genera el texto preescrito.
+  useEffect(() => { if (envioAbierto && datos?.resultado?.length) verCarta() }, [envioAbierto, envioNum])
+
   async function enviarPaola() {
     if (!datos?.resultado?.length) return
     const prueba = envioPrueba.trim()
@@ -273,6 +296,7 @@ export default function LiquidacionPaolaPage() {
           accion: 'enviar', mes, numero: envioNum,
           filas: filasConEdits(), movimientos: datos?.movimientos || [], cartolaRows: datos?.cartolaRows || [],
           enviarA: prueba || undefined,
+          asunto: cartaAsunto, cuerpo: cartaCuerpo,
         }),
       })
       const d = await res.json()
@@ -647,8 +671,24 @@ export default function LiquidacionPaolaPage() {
                     style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, border: 'none', borderRadius: 8, color: '#fff', background: enviando ? '#9CA3AF' : (envioPrueba.trim() ? '#2563EB' : '#16a34a'), cursor: enviando ? 'default' : 'pointer' }}>
                     {enviando ? 'Enviando…' : (envioPrueba.trim() ? '✉ Enviar PRUEBA' : '✉ Enviar a Paola')}
                   </button>
+                  <button onClick={verCarta} disabled={cartaCargando}
+                    title="Vuelve a generar el texto preescrito de la carta (por si cambiaste algo)."
+                    style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, border: '1px solid #CBD5E1', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer' }}>
+                    {cartaCargando ? 'Redactando…' : '↺ Redactar carta'}
+                  </button>
                   {avisoEnvio && <span style={{ fontSize: 11, fontWeight: 600, color: '#166534' }}>{avisoEnvio}</span>}
                 </div>
+
+                {/* Vista previa EDITABLE de la carta: texto preescrito que Adalis puede retocar antes de enviar */}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 4 }}>Asunto</div>
+                  <input value={cartaAsunto} onChange={e => setCartaAsunto(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '7px 10px', borderRadius: 6, border: '1px solid #CBD5E1', marginBottom: 8 }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 4 }}>Carta (puedes editarla antes de enviar)</div>
+                  <textarea value={cartaCuerpo} onChange={e => setCartaCuerpo(e.target.value)} rows={14}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', resize: 'vertical' }} />
+                </div>
+
                 {envios.length > 0 && (
                   <div style={{ marginTop: 10, fontSize: 11, color: '#374151' }}>
                     <b>Enviados este mes:</b>{' '}
@@ -660,7 +700,7 @@ export default function LiquidacionPaolaPage() {
                   </div>
                 )}
                 <div style={{ marginTop: 8, fontSize: 11, color: '#6B7280' }}>
-                  El email lleva el progreso de cobranza (a cobrar, recibido, pendiente, morosos y multas) y el Excel adjunto. Con correo de prueba va a ese correo (no a Paola) y el archivo se guarda en Drive con prefijo «PRUEBA-» para borrarlo luego.
+                  Revisa y edita la carta antes de enviar (el texto de arriba es una propuesta; se manda tal cual quede). Lleva el Excel adjunto. Con correo de prueba va a ese correo (no a Paola) y el archivo se guarda en Drive con prefijo «PRUEBA-» para borrarlo luego.
                 </div>
               </div>
             )}

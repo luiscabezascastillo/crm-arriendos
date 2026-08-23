@@ -1,3 +1,6 @@
+// VERSION: v17 · 2026-08-19 · Carta EDITABLE antes de enviar (acción 'preview' devuelve el texto preescrito; 'enviar' admite
+//   asunto/cuerpo editados). Morosos refinados: se separan los CRÍTICOS (no han pagado nada o deben ≥50%) con aviso de
+//   gestiones de cobranza + llamadas + informe en una semana. Hereda v16.
 // VERSION: v16 · 2026-08-19 · PERSISTENCIA de la cartola del mes (tabla paola_cartola): al procesar una cartola se guarda,
 //   y al reabrir el mes (procesar sin cartola o "Ver lo guardado") se recupera sola → la hoja "Movimientos cuenta"
 //   sale llena sin volver a subirla. Hereda v15.
@@ -292,6 +295,47 @@ export async function GET(request) {
   }
 }
 
+// Redacta la carta de envío a Paola (texto preescrito, editable después por quien envía).
+// Distingue morosos "pendientes" de los CRÍTICOS (no han pagado nada o deben gran parte),
+// para los que se anuncia gestión de cobranza + llamadas personales + informe en una semana.
+function componerCartaPaola(filas, mes, n) {
+  const num = v => Number(v) || 0
+  const fmt = v => '$' + Math.round(v).toLocaleString('es-CL')
+  const { texto: mesTxt } = etiquetaMes(mes)
+  const noVac = (filas || []).filter(f => String(f.estado || '').toUpperCase() !== 'P' && !f.vacante)
+  const aCobrar = noVac.reduce((s, f) => s + num(f.aCobrar), 0)
+  const recibido = noVac.reduce((s, f) => s + num(f.recibido), 0)
+  const falta = aCobrar - recibido
+  const pct = aCobrar ? Math.round(recibido * 100 / aCobrar) : 0
+  const multas = (filas || []).reduce((s, f) => s + num(f.multasDeudas), 0)
+  const desc = f => `${f.idadmon}${f.arrendatario ? ' — ' + f.arrendatario : ''}`
+  // Críticos: no han pagado nada, o deben la mitad o más de su renta del mes.
+  const criticos = noVac.filter(f => num(f.aCobrar) > 0 && (num(f.recibido) === 0 || (num(f.aCobrar) - num(f.recibido)) >= num(f.aCobrar) * 0.5))
+  const critIds = new Set(criticos.map(c => c.idadmon))
+  const pendientes = noVac.filter(f => num(f.aCobrar) - num(f.recibido) > 1000 && !critIds.has(f.idadmon))
+
+  const ETAPA = { 1: 'primer envío, recién recibida la cartola', 2: 'segundo envío, avance de cobranza', 3: 'envío definitivo del mes' }
+  const L = ['Hola Paola:', '', `Te adjunto la liquidación de ${mesTxt} (${ETAPA[n]}).`, '',
+    'Estado de la cobranza a día de hoy:',
+    `  · A cobrar del mes : ${fmt(aCobrar)}`,
+    `  · Recibido         : ${fmt(recibido)}  (${pct}%)`,
+    `  · Pendiente        : ${fmt(falta)}`,
+    `  · Multas aplicadas : ${fmt(multas)}`]
+  if (pendientes.length) L.push('', `Pagos pendientes (${pendientes.length}): ${pendientes.map(desc).join(' · ')}.`)
+  if (criticos.length) {
+    L.push('', 'PRIORIDAD DE COBRANZA:')
+    for (const c of criticos) {
+      const f2 = num(c.aCobrar) - num(c.recibido)
+      L.push(`  · ${desc(c)} — ${num(c.recibido) === 0 ? 'no ha pagado nada del mes' : 'debe ' + fmt(f2) + ' (una parte importante)'}.`)
+    }
+    L.push('Con estos casos vamos a hacer todas las gestiones de cobranza necesarias, incluidas llamadas personales, y te informaré del resultado en una semana.')
+  }
+  L.push('', n < 3 ? 'Seguimos gestionando el cobro de lo que queda pendiente y te enviaré una actualización durante el mes.' : 'Con esto cerramos la liquidación del mes.',
+    '', 'Un saludo,', 'Adalis · Fondo Capital Rent')
+  const asunto = `Liquidación ${mesTxt} · P001 Paola — ${n === 1 ? 'envío 1' : n === 2 ? 'envío 2' : 'envío final'}`
+  return { asunto, cuerpo: L.join('\n'), resumen: { aCobrar, recibido, falta, pct, multas, morosos: pendientes.length + criticos.length, criticos: criticos.length } }
+}
+
 // ── POST ─────────────────────────────────────────────────────────────────────
 export async function POST(request) {
   try {
@@ -440,9 +484,19 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, envios: data || [] })
     }
 
+    // ── acción: VISTA PREVIA de la carta (texto preescrito para revisar/editar antes de enviar) ──
+    if (body.accion === 'preview') {
+      const { mes, numero, filas } = body
+      const n = Number(numero)
+      if (!mes || ![1, 2, 3].includes(n) || !Array.isArray(filas) || filas.length === 0) {
+        return NextResponse.json({ error: 'Faltan datos para la vista previa (mes, número o liquidación).' }, { status: 400 })
+      }
+      return NextResponse.json({ ok: true, ...componerCartaPaola(filas, mes, n) })
+    }
+
     // ── acción: ENVIAR a Paola por email (1º rápido / 2º semanal / 3º definitivo) ──
     if (body.accion === 'enviar') {
-      const { mes, numero, filas, movimientos, cartolaRows, enviarA, email } = body
+      const { mes, numero, filas, movimientos, cartolaRows, enviarA, email, cuerpo: cuerpoEdit, asunto: asuntoEdit } = body
       if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
       const n = Number(numero)
       if (![1, 2, 3].includes(n)) return NextResponse.json({ error: 'Número de envío inválido (1, 2 o 3)' }, { status: 400 })
@@ -466,36 +520,12 @@ export async function POST(request) {
       })
       const nombreBase = nombreArchivo(mes, 'Control', '', n)   // 2026-08-1-Control Ago 2026.xlsx
       const nombre = esPrueba ? `PRUEBA-${nombreBase}` : nombreBase   // en prueba, prefijo para borrarlo luego
-      const { texto: mesTxt } = etiquetaMes(mes)
 
-      // Progreso de cobranza (excluye vacantes P)
-      const num = v => Number(v) || 0
-      const noVac = filas.filter(f => String(f.estado || '').toUpperCase() !== 'P' && !f.vacante)
-      const aCobrar = noVac.reduce((s, f) => s + num(f.aCobrar), 0)
-      const recibido = noVac.reduce((s, f) => s + num(f.recibido), 0)
-      const falta = aCobrar - recibido
-      const morosos = noVac.filter(f => num(f.aCobrar) - num(f.recibido) > 1000)
-      const multas = filas.reduce((s, f) => s + num(f.multasDeudas), 0)
-      const pct = aCobrar ? Math.round(recibido * 100 / aCobrar) : 0
-      const fmt = v => '$' + Math.round(v).toLocaleString('es-CL')
-
-      const ETAPA = { 1: 'primer envío, recién recibida la cartola', 2: 'segundo envío, avance de cobranza', 3: 'envío definitivo del mes' }
-      const cierre = n < 3
-        ? 'Seguimos gestionando el cobro de lo que queda pendiente y te enviaré una actualización durante el mes.'
-        : 'Con esto cerramos la liquidación del mes.'
-      const cuerpo = [
-        'Hola Paola:', '',
-        `Te adjunto la liquidación de ${mesTxt} (${ETAPA[n]}).`, '',
-        'Estado de la cobranza a día de hoy:',
-        `  · A cobrar del mes : ${fmt(aCobrar)}`,
-        `  · Recibido         : ${fmt(recibido)}  (${pct}%)`,
-        `  · Pendiente        : ${fmt(falta)}`,
-        `  · Morosos          : ${morosos.length}${morosos.length ? ' (' + morosos.map(m => m.idadmon).join(', ') + ')' : ''}`,
-        `  · Multas aplicadas : ${fmt(multas)}`,
-        '', cierre, '',
-        'Un saludo,', 'Adalis · Fondo Capital Rent',
-      ].join('\n')
-      const asunto = `Liquidación ${mesTxt} · P001 Paola — ${n === 1 ? 'envío 1' : n === 2 ? 'envío 2' : 'envío final'}${esPrueba ? ' [PRUEBA]' : ''}`
+      // Carta: se usa el texto EDITADO por quien envía si viene; si no, el preescrito. El resumen sale del cálculo.
+      const carta = componerCartaPaola(filas, mes, n)
+      const { aCobrar, recibido, falta, multas, morosos } = carta.resumen
+      const cuerpo = (typeof cuerpoEdit === 'string' && cuerpoEdit.trim()) ? cuerpoEdit : carta.cuerpo
+      const asunto = ((typeof asuntoEdit === 'string' && asuntoEdit.trim()) ? asuntoEdit : carta.asunto) + (esPrueba ? ' [PRUEBA]' : '')
 
       const r1 = await enviarNotificacion({
         to: dest, subject: asunto, cuerpo, autor: email,
@@ -512,12 +542,12 @@ export async function POST(request) {
         await admin.from('paola_envios').insert({
           mes: aYYYYMM(mes), numero: n, email_dest: dest, asunto,
           a_cobrar: Math.round(aCobrar), recibido: Math.round(recibido), falta: Math.round(falta),
-          morosos: morosos.length, multas: Math.round(multas),
+          morosos, multas: Math.round(multas),
           enviado_por: email || null, es_prueba: esPrueba,
         })
       } catch (e) { /* registro secundario */ }
 
-      return NextResponse.json({ ok: true, enviado_a: dest, numero: n, esPrueba, drive, errorDrive, resumen: { aCobrar, recibido, falta, morosos: morosos.length, multas, pct } })
+      return NextResponse.json({ ok: true, enviado_a: dest, numero: n, esPrueba, drive, errorDrive, resumen: carta.resumen })
     }
 
     // ── acción por defecto: generar ─────────────────────────────────────────

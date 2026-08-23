@@ -1,5 +1,9 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 'use client'
+// VERSION: v57 · 2026-08-23 · UX: al pulsar "PDF/EMAIL Arrendatario/Propietario" (o Enviar Presupuesto), la vista
+//   ahora SALTA al panel del correo (scrollIntoView por id). Antes, en términos largos, el panel se abría pero la
+//   página se quedaba al fondo y daba la impresión de que no había salido. El scroll depende solo de abrir/cerrar
+//   el panel, no de editarlo. Hereda v56.
 // VERSION: v56 · 2026-08-23 · FIX PDF del término: el importe "Arreglos presupuesto" (bloque reparaciones) ahora sale
 //   en el PDF de arrendatario y de propietario tomando el importe de la PROPIA línea de la liquidación, no de
 //   'repPresu' (que se calcula del presupuesto_detalle y valía 0 cuando el presupuesto no tenía filas de detalle o
@@ -360,6 +364,18 @@ export default function TerminosPage() {
   const [testTo, setTestTo] = useState('')              // dirección para envíos de PRUEBA (por defecto, la del usuario)
   const [completandoWf, setCompletandoWf] = useState(false)
   const [emailPanel, setEmailPanel] = useState(null) // { loading, error?, drafts:{ arrendatario:{...}, propietario:{...} } }
+  // Al ABRIR el panel de correo (PDF/EMAIL), llevar la vista hasta él: si no, en términos largos la página se
+  // queda al fondo y parece que "no ha salido". Depende de un booleano (abierto/cerrado), no del contenido del
+  // panel, para NO re-hacer scroll en cada tecla mientras se edita el correo.
+  const emailPanelAbierto = !!emailPanel
+  useEffect(() => {
+    if (!emailPanelAbierto) return
+    const t = setTimeout(() => {
+      const el = typeof document !== 'undefined' ? document.getElementById('panel-email-termino') : null
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+    return () => clearTimeout(t)
+  }, [emailPanelAbierto])
   const [reclamPanel, setReclamPanel] = useState(null) // { loading, aviso?, draft:{ to, cc, subject, cuerpo, saldo, ... } }
   // Cambiar estado embebido (panel bajo la cabecera)
   const [cambiarEstadoOpen, setCambiarEstadoOpen] = useState(false)
@@ -1448,7 +1464,7 @@ export default function TerminosPage() {
           const dr = emailPanel.drafts?.[dest]
           const titulo = dest === 'arrendatario' ? 'Ex-arrendatario' : dest === 'propietario' ? 'Propietario' : 'Presupuesto'
           return (
-          <div style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF' }}>
+          <div id="panel-email-termino" style={{ ...card, border: '2px solid #2563eb', background: '#F5F8FF', scrollMarginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e' }}>✉ PDF/EMAIL — {titulo}</div>
               <button onClick={() => setEmailPanel(null)} style={{ ...input, width: 'auto', cursor: 'pointer', background: '#fff' }}>Cerrar ✕</button>
