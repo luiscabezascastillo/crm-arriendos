@@ -16,6 +16,9 @@ function generarMeses(nAtras = 12) {
 }
 const MESES_DISPONIBLES = generarMeses(12)
 
+// VERSION: v4 · 2026-08-23 · Robustez del botón "Iniciar consulta": try/finally para que procesandoRef
+//   nunca quede colgado y bloquee clics futuros en silencio (mismo arreglo que Agua v4). El guard ahora
+//   avisa en el log el motivo si no arranca. Hereda v3.
 // VERSION: v3 · 2026-07-18 · Los meses del desplegable se generan solos (mes en curso + 12 atrás);
 //   ya no hay lista fija que editar cada mes. Incluye lo de v2 (ID de extensión editable/guardado).
 // VERSION: v2 · 2026-07-18 · El ID de la extensión CRM Bridge deja de estar fijo: ahora es un campo
@@ -119,7 +122,9 @@ export default function ServiciosLuzPage() {
   }
 
   async function iniciarConsulta() {
-    if (codigos.length === 0 || procesandoRef.current) return
+    // Guard con motivo visible en el log (antes fallaba en silencio si el ref quedaba pegado).
+    if (procesandoRef.current) { addLog('warn', 'Ya hay una consulta en curso; espera a que termine o recarga (Ctrl+Shift+R).'); return }
+    if (codigos.length === 0) { addLog('error', 'No hay códigos que consultar para este mes.'); return }
 
     // Verificar extensión antes de empezar
     try {
@@ -147,6 +152,7 @@ export default function ServiciosLuzPage() {
     const PAUSA_MS = 4000
     const espera = (ms) => new Promise(r => setTimeout(r, ms))
 
+    try {
     for (let i = 0; i < codigos.length; i++) {
       if (cancelarRef.current) { addLog('warn', 'Proceso detenido por el usuario'); break }
       const { idadmon, idinmue, codigo_ele } = codigos[i]
@@ -208,8 +214,14 @@ export default function ServiciosLuzPage() {
 
     addLog('ok', `✓ Completado: ${exitosos} exitosos, ${fallidos} fallidos de ${procesados}`)
     setFase('completado')
-    procesandoRef.current = false
-    cargarContPendientes()
+    } catch (e) {
+      addLog('error', `Consulta interrumpida: ${e.message}`)
+      setFase('idle')
+    } finally {
+      // Pase lo que pase, liberamos el ref para no bloquear el siguiente intento.
+      procesandoRef.current = false
+      cargarContPendientes()
+    }
   }
 
   function detener() { cancelarRef.current = true }

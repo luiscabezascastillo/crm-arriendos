@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-23 · "Solo pendientes" ahora = sin fecha O consultado antes del ÚLTIMO DOMINGO
+//   (antes: antes del día 1 del mes). Encaja con los cortes semanales: lo no consultado desde el domingo
+//   se considera pendiente para el corte de la semana. Domingo anclado a hora de Chile. Hereda v3.
 // VERSION: v3 · 2026-08-17 · El código de agua (Aguas Andinas) ya NO se lee de la fila del mes, sino de la fuente
 //   única `servicios_codigos` (por idinmue). Los meses nuevos lo heredan solo. La deuda del mes sigue en
 //   ggcc_agua_luz. Hereda v2.
@@ -22,6 +25,21 @@ function normalizarMes(m) {
   const mm = s.toLowerCase().match(/^([a-záéíóúñ]+)\s+(\d{4})$/)
   if (mm && MESES[mm[1]]) return mm[2] + '-' + MESES[mm[1]]
   return s
+}
+
+// Fecha (YYYY-MM-DD) del domingo más reciente, inclusive si hoy es domingo.
+// Anclado a hora de Chile (America/Santiago) para no desfasar cerca de medianoche.
+function ultimoDomingoISO() {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(new Date())
+  const o = {}
+  for (const p of partes) o[p.type] = p.value
+  const dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[o.weekday] ?? 0
+  // Mediodía UTC para restar días sin cruzar de fecha por husos.
+  const base = new Date(`${o.year}-${o.month}-${o.day}T12:00:00Z`)
+  base.setUTCDate(base.getUTCDate() - dow)
+  return base.toISOString().split('T')[0]
 }
 
 function esCodigoAguaValido(codigo) {
@@ -89,9 +107,9 @@ export async function GET(request) {
       .order('idadmon')
 
       if (soloPendientes) {
-        const hoy = new Date().toISOString().split('T')[0]
-        const primerDiaMes = hoy.substring(0, 7) + '-01'
-        query = query.or(`fecha_hecho_agua.is.null,fecha_hecho_agua.eq.,fecha_hecho_agua.lt.${primerDiaMes}`)
+        // Pendiente = sin fecha o consultado antes del último domingo (corte semanal).
+        const corte = ultimoDomingoISO()
+        query = query.or(`fecha_hecho_agua.is.null,fecha_hecho_agua.eq.,fecha_hecho_agua.lt.${corte}`)
       }
 
     const { data, error } = await query
