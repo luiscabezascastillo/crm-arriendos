@@ -1,3 +1,6 @@
+// VERSION: v21 · 2026-08-19 · "Guardar en Drive" pasa a "✉ Email a Paola": panel con selector 1º/2º/3º, correo de
+//   PRUEBA opcional y estado de lo ya enviado; manda el Excel adjunto + progreso de cobranza (acción 'enviar' del
+//   route v14) y archiva en Drive. Requiere route v14 y paolaExcel v7. Hereda v20.
 // VERSION: v20 · 2026-08-19 · Al generar el Excel se envía también `cartolaRows` (cartola completa) para la hoja
 //   "Movimientos cuenta" (toda la cartola + IdAdmon/Inmueble). Requiere route v13 y paolaExcel v6. Hereda v19.
 // VERSION: v19 · 2026-08-19 · Cabecera del panel de ayuda lleva el lema en mayúsculas del proceso (controlado por
@@ -88,6 +91,13 @@ export default function LiquidacionPaolaPage() {
   const [avisoGuardado, setAvisoGuardado] = useState(null)
   const [edits, setEdits] = useState({})   // buffer de las columnas manuales por idadmon (no toca `datos` al teclear)
   const [dirty, setDirty] = useState(false)   // hay algo tecleado que aún no se ha persistido en el CRM
+  // Envío a Paola (1º/2º/3º)
+  const [envioAbierto, setEnvioAbierto] = useState(false)
+  const [envioNum, setEnvioNum] = useState(1)
+  const [envioPrueba, setEnvioPrueba] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [avisoEnvio, setAvisoEnvio] = useState(null)
+  const [envios, setEnvios] = useState([])
 
   useEffect(() => {
     const h = new Date()
@@ -232,6 +242,43 @@ export default function LiquidacionPaolaPage() {
       setError('Error de conexión: ' + e.message)
     }
     setGenerando(false)
+  }
+
+  // Envíos ya hechos a Paola de este mes (para el panel de "Email a Paola").
+  async function cargarEnvios() {
+    if (!mes) return
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'envios', mes }),
+      })
+      const d = await res.json()
+      if (d.ok) setEnvios(d.envios || [])
+    } catch { /* silencioso */ }
+  }
+  useEffect(() => { if (datos?.resultado?.length) cargarEnvios() }, [mes, datos])
+
+  async function enviarPaola() {
+    if (!datos?.resultado?.length) return
+    const prueba = envioPrueba.trim()
+    const destTxt = prueba ? `al correo de PRUEBA ${prueba}` : 'a PAOLA (su correo real)'
+    if (!window.confirm(`Vas a enviar el ${envioNum}º email de ${mesLabel()} ${destTxt}, con el Excel adjunto.\n\n¿Continuar?`)) return
+    setEnviando(true); setAvisoEnvio(null); setError(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'enviar', mes, numero: envioNum,
+          filas: filasConEdits(), movimientos: datos?.movimientos || [], cartolaRows: datos?.cartolaRows || [],
+          enviarA: prueba || undefined,
+        }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setError(d.error || 'No se pudo enviar'); setEnviando(false); return }
+      setAvisoEnvio(`✓ Enviado (${envioNum}º) a ${d.enviado_a}${d.esPrueba ? ' [prueba]' : ''}`)
+      cargarEnvios()
+    } catch (e) { setError('Error de conexión al enviar: ' + e.message) }
+    setEnviando(false)
   }
 
   // Columnas manuales (Adalis deja el Excel): se escriben en un buffer `edits` (teclear NO re-renderiza
@@ -540,14 +587,15 @@ export default function LiquidacionPaolaPage() {
                 }}>
                 {generando ? 'Generando…' : '⬇ Descargar Control'}
               </button>
-              <button onClick={() => generarExcel(true)} disabled={generando}
+              <button onClick={() => setEnvioAbierto(o => !o)} disabled={!datos?.resultado?.length}
+                title="Enviar la liquidación a Paola por email (1º rápido / 2º semanal / 3º definitivo). También la archiva en Drive."
                 style={{
                   padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
                   color: 'white', border: 'none', borderRadius: 8,
-                  background: generando ? 'var(--gray-300)' : '#16a34a',
-                  cursor: generando ? 'default' : 'pointer',
+                  background: !datos?.resultado?.length ? 'var(--gray-300)' : (envioAbierto ? '#15803d' : '#16a34a'),
+                  cursor: !datos?.resultado?.length ? 'default' : 'pointer',
                 }}>
-                {generando ? 'Guardando…' : '☁ Guardar en Drive'}
+                ✉ Email a Paola {envioAbierto ? '▾' : '▸'}
               </button>
               <button onClick={guardarMes} disabled={guardandoMes || !datos?.resultado?.length}
                 title="Guarda en el CRM lo que has tecleado (columnas manuales incluidas). Así no se pierde al salir."
@@ -581,6 +629,39 @@ export default function LiquidacionPaolaPage() {
               {avisoExcel && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500 }}>✓ {avisoExcel}</span>}
               {avisoGuardado && <span style={{ fontSize: 11, color: '#6b4423', fontWeight: 600 }}>✓ {avisoGuardado}</span>}
             </div>
+
+            {envioAbierto && datos?.resultado?.length > 0 && (
+              <div style={{ border: '1px solid #86EFAC', background: '#F0FDF4', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>Enviar a Paola:</span>
+                  <select value={envioNum} onChange={e => setEnvioNum(Number(e.target.value))} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1' }}>
+                    <option value={1}>1º · envío rápido (2 días tras la cartola)</option>
+                    <option value={2}>2º · avance (una semana después)</option>
+                    <option value={3}>3º · definitivo (fin de mes)</option>
+                  </select>
+                  <input value={envioPrueba} onChange={e => setEnvioPrueba(e.target.value)} placeholder="correo de PRUEBA (opcional) — vacío = Paola"
+                    style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, border: '1px solid #CBD5E1', minWidth: 280 }} />
+                  <button onClick={enviarPaola} disabled={enviando}
+                    style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, border: 'none', borderRadius: 8, color: '#fff', background: enviando ? '#9CA3AF' : (envioPrueba.trim() ? '#2563EB' : '#16a34a'), cursor: enviando ? 'default' : 'pointer' }}>
+                    {enviando ? 'Enviando…' : (envioPrueba.trim() ? '✉ Enviar PRUEBA' : '✉ Enviar a Paola')}
+                  </button>
+                  {avisoEnvio && <span style={{ fontSize: 11, fontWeight: 600, color: '#166534' }}>{avisoEnvio}</span>}
+                </div>
+                {envios.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: 11, color: '#374151' }}>
+                    <b>Enviados este mes:</b>{' '}
+                    {envios.map((e, i) => (
+                      <span key={i} style={{ marginRight: 12 }}>
+                        {e.numero}º · {new Date(e.fecha_envio).toLocaleString('es-CL')} · {e.email_dest}{e.es_prueba ? ' [prueba]' : ''} · recibido {Math.round((e.recibido / (e.a_cobrar || 1)) * 100)}%
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop: 8, fontSize: 11, color: '#6B7280' }}>
+                  El email lleva el progreso de cobranza (a cobrar, recibido, pendiente, morosos y multas) y el Excel adjunto. Con correo de prueba va a ese correo (no a Paola) y el archivo se guarda en Drive con prefijo «PRUEBA-» para borrarlo luego.
+                </div>
+              </div>
+            )}
 
             {datos.cartola && (
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginBottom: 12 }}>

@@ -1,3 +1,7 @@
+// VERSION: v15 · 2026-08-19 · En modo PRUEBA el archivo también se guarda en Drive con prefijo PRUEBA- (para borrarlo luego).
+// VERSION: v14 · 2026-08-19 · Envío a Paola por email (acción 'enviar'): 1º/2º/3º del mes con el progreso de cobranza
+//   (a cobrar, recibido, %, morosos, multas) en el cuerpo + Excel adjunto; archiva en Drive y registra en paola_envios.
+//   Acción 'envios' lista lo ya enviado. Admite correo de PRUEBA (no toca a Paola ni Drive). Hereda v13.
 // VERSION: v13 · 2026-08-19 · La cartola se captura COMPLETA (cargos y abonos) en `cartolaRows`, con el IDADMON
 //   reconocido por abono, y se pasa a generarExcelPaola para la hoja "Movimientos cuenta" (toda la cartola + IdAdmon
 //   e Inmueble). parsearCartola devuelve filasCartola. Hereda v12.
@@ -38,7 +42,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../../lib/supabaseClient'
 import { google } from 'googleapis'
-import { generarExcelPaola, nombreArchivo } from '../../../lib/paolaExcel'
+import { generarExcelPaola, nombreArchivo, etiquetaMes } from '../../../lib/paolaExcel'
+import { enviarNotificacion } from '../../../lib/cc1Email'
 
 // Cliente de servicio (service_role) SOLO para escrituras server-side: evita que RLS bloquee en
 // silencio el guardado del mes (mismo patrón que Global 66 / Tarjeta / SA). Nunca sale al navegador.
@@ -415,6 +420,97 @@ export async function POST(request) {
         ok: true, nombre, drive, errorDrive, generadoPor: email || null,
         excelBase64: buffer.toString('base64'),
       })
+    }
+
+    // ── acción: LISTAR los envíos ya hechos a Paola de un mes ────────────────
+    if (body.accion === 'envios') {
+      const { mes } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      const { data, error } = await admin.from('paola_envios')
+        .select('numero, email_dest, asunto, a_cobrar, recibido, falta, morosos, multas, enviado_por, es_prueba, fecha_envio')
+        .eq('mes', aYYYYMM(mes)).order('fecha_envio', { ascending: false })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, envios: data || [] })
+    }
+
+    // ── acción: ENVIAR a Paola por email (1º rápido / 2º semanal / 3º definitivo) ──
+    if (body.accion === 'enviar') {
+      const { mes, numero, filas, movimientos, cartolaRows, enviarA, email } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      const n = Number(numero)
+      if (![1, 2, 3].includes(n)) return NextResponse.json({ error: 'Número de envío inválido (1, 2 o 3)' }, { status: 400 })
+      if (!Array.isArray(filas) || filas.length === 0) return NextResponse.json({ error: 'No hay liquidación que enviar: procesa el mes primero' }, { status: 400 })
+
+      // Destino: Paola (propietarios P001) o un correo de PRUEBA si se indica.
+      let dest = (enviarA || '').trim()
+      const esPrueba = !!dest
+      if (!dest) {
+        const { data: prop } = await admin.from('propietarios').select('mail1, email_2').eq('idprop', IDPROP_PAOLA).maybeSingle()
+        dest = (prop?.mail1 || prop?.email_2 || '').trim()
+      }
+      if (!dest || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest)) {
+        return NextResponse.json({ error: 'No hay un email válido de Paola (propietarios P001). Ponlo o usa un correo de prueba.' }, { status: 400 })
+      }
+
+      const buffer = await generarExcelPaola({
+        mes, filas,
+        movimientos: Array.isArray(movimientos) ? movimientos : [],
+        cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [],
+      })
+      const nombreBase = nombreArchivo(mes, 'Control', '', n)   // 2026-08-1-Control Ago 2026.xlsx
+      const nombre = esPrueba ? `PRUEBA-${nombreBase}` : nombreBase   // en prueba, prefijo para borrarlo luego
+      const { texto: mesTxt } = etiquetaMes(mes)
+
+      // Progreso de cobranza (excluye vacantes P)
+      const num = v => Number(v) || 0
+      const noVac = filas.filter(f => String(f.estado || '').toUpperCase() !== 'P' && !f.vacante)
+      const aCobrar = noVac.reduce((s, f) => s + num(f.aCobrar), 0)
+      const recibido = noVac.reduce((s, f) => s + num(f.recibido), 0)
+      const falta = aCobrar - recibido
+      const morosos = noVac.filter(f => num(f.aCobrar) - num(f.recibido) > 1000)
+      const multas = filas.reduce((s, f) => s + num(f.multasDeudas), 0)
+      const pct = aCobrar ? Math.round(recibido * 100 / aCobrar) : 0
+      const fmt = v => '$' + Math.round(v).toLocaleString('es-CL')
+
+      const ETAPA = { 1: 'primer envío, recién recibida la cartola', 2: 'segundo envío, avance de cobranza', 3: 'envío definitivo del mes' }
+      const cierre = n < 3
+        ? 'Seguimos gestionando el cobro de lo que queda pendiente y te enviaré una actualización durante el mes.'
+        : 'Con esto cerramos la liquidación del mes.'
+      const cuerpo = [
+        'Hola Paola:', '',
+        `Te adjunto la liquidación de ${mesTxt} (${ETAPA[n]}).`, '',
+        'Estado de la cobranza a día de hoy:',
+        `  · A cobrar del mes : ${fmt(aCobrar)}`,
+        `  · Recibido         : ${fmt(recibido)}  (${pct}%)`,
+        `  · Pendiente        : ${fmt(falta)}`,
+        `  · Morosos          : ${morosos.length}${morosos.length ? ' (' + morosos.map(m => m.idadmon).join(', ') + ')' : ''}`,
+        `  · Multas aplicadas : ${fmt(multas)}`,
+        '', cierre, '',
+        'Un saludo,', 'Adalis · Fondo Capital Rent',
+      ].join('\n')
+      const asunto = `Liquidación ${mesTxt} · P001 Paola — ${n === 1 ? 'envío 1' : n === 2 ? 'envío 2' : 'envío final'}${esPrueba ? ' [PRUEBA]' : ''}`
+
+      const r1 = await enviarNotificacion({
+        to: dest, subject: asunto, cuerpo, autor: email,
+        attachments: [{ filename: nombre, content: buffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
+      })
+      if (!r1 || r1.ok === false) return NextResponse.json({ error: 'No se pudo enviar el email: ' + (r1?.error || 'motivo desconocido') }, { status: 500 })
+
+      // Archivar en Drive (también en prueba, con el prefijo PRUEBA- para poder borrarlo luego).
+      let drive = null, errorDrive = null
+      try { drive = await subirADrive(nombre, buffer) } catch (e) { errorDrive = e.message }
+
+      // Registro del envío (no rompe el flujo si falla).
+      try {
+        await admin.from('paola_envios').insert({
+          mes: aYYYYMM(mes), numero: n, email_dest: dest, asunto,
+          a_cobrar: Math.round(aCobrar), recibido: Math.round(recibido), falta: Math.round(falta),
+          morosos: morosos.length, multas: Math.round(multas),
+          enviado_por: email || null, es_prueba: esPrueba,
+        })
+      } catch (e) { /* registro secundario */ }
+
+      return NextResponse.json({ ok: true, enviado_a: dest, numero: n, esPrueba, drive, errorDrive, resumen: { aCobrar, recibido, falta, morosos: morosos.length, multas, pct } })
     }
 
     // ── acción por defecto: generar ─────────────────────────────────────────
