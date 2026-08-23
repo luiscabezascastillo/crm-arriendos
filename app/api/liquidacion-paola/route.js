@@ -1,3 +1,6 @@
+// VERSION: v16 · 2026-08-19 · PERSISTENCIA de la cartola del mes (tabla paola_cartola): al procesar una cartola se guarda,
+//   y al reabrir el mes (procesar sin cartola o "Ver lo guardado") se recupera sola → la hoja "Movimientos cuenta"
+//   sale llena sin volver a subirla. Hereda v15.
 // VERSION: v15 · 2026-08-19 · En modo PRUEBA el archivo también se guarda en Drive con prefijo PRUEBA- (para borrarlo luego).
 // VERSION: v14 · 2026-08-19 · Envío a Paola por email (acción 'enviar'): 1º/2º/3º del mes con el progreso de cobranza
 //   (a cobrar, recibido, %, morosos, multas) en el cuerpo + Excel adjunto; archiva en Drive y registra en paola_envios.
@@ -381,10 +384,14 @@ export async function POST(request) {
         }
       }
 
+      // Cartola del mes persistida (para que "Movimientos cuenta" salga llena sin volver a subir la cartola).
+      let cartolaGuardada = []
+      try { const { data: pc } = await admin.from('paola_cartola').select('rows').eq('mes', aYYYYMM(mes)).maybeSingle(); if (pc?.rows) cartolaGuardada = pc.rows } catch (e) { /* secundario */ }
+
       const suma = (k) => resultado.reduce((s, r) => s + (Number(r[k]) || 0), 0)
       return NextResponse.json({
         ok: true, mes: aYYYYMM(mes), cargadoDeGuardado: true, cartola: null,
-        resultado, sinIdentificar: [], noEsRenta: [], movimientos: [], aprender: [], contratos: [],
+        resultado, sinIdentificar: [], noEsRenta: [], movimientos: [], cartolaRows: cartolaGuardada, aprender: [], contratos: [],
         resumen: {
           totalFilas: resultado.length, conImporte: resultado.filter(r => r.aCobrar != null).length,
           revisar: 0, sinIdentificar: 0, noEsRenta: 0,
@@ -720,11 +727,18 @@ export async function POST(request) {
     // IDADMON reconocido por abono → se pega a la fila de la cartola (para la hoja "Movimientos cuenta").
     const idadmonPorAbono = {}
     for (const mv of movimientos) if (mv.identificado && mv.idadmon) idadmonPorAbono[mv.fila] = mv.idadmon
-    const cartolaRows = (filasCartola || []).map(fc => ({
+    let cartolaRows = (filasCartola || []).map(fc => ({
       fecha: aFechaISO(fc.fecha) || String(fc.fecha || ''),
       detalle: fc.detalle, cargo: fc.cargo, abono: fc.abono, nota: fc.nota,
       idadmon: fc.abonoIdx != null ? (idadmonPorAbono[fc.abonoIdx] || null) : null,
     }))
+    // PERSISTENCIA de la cartola del mes: si se procesó una cartola nueva, se guarda; si no,
+    // se recupera la última guardada, para no tener que volver a subirla y que la hoja "Movimientos" salga llena.
+    if (buffer && cartolaRows.length) {
+      try { await admin.from('paola_cartola').upsert({ mes: aYYYYMM(mes), rows: cartolaRows, actualizado_at: new Date().toISOString() }, { onConflict: 'mes' }) } catch (e) { /* secundario */ }
+    } else if (!cartolaRows.length) {
+      try { const { data: pc } = await admin.from('paola_cartola').select('rows').eq('mes', aYYYYMM(mes)).maybeSingle(); if (pc?.rows) cartolaRows = pc.rows } catch (e) { /* secundario */ }
+    }
 
     const { data: guardado } = await supabase.from('liquidacion_paola').select('*').eq('mes', aYYYYMM(mes))
     const manualMap = {}
