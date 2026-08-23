@@ -2,6 +2,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
+// VERSION: v4 · 2026-08-23 · Robustez del botón "Iniciar consulta": try/finally para que procesandoRef
+//   nunca quede colgado y bloquee clics futuros en silencio (causa de "pincho y no hace nada"). El guard
+//   ahora avisa en el log el motivo si no arranca y comprueba que chrome.runtime exista. Al cambiar de
+//   mes / "Nueva consulta" se libera el ref. Hereda v3.
 // VERSION: v3 · 2026-07-18 · Añade botón "↗ Abrir Aguas Andinas" (como el de Sencillito en Luz).
 //   Incluye lo de v2 (meses automáticos + ID de extensión guardado por navegador).
 // VERSION: v2 · 2026-07-18 · Meses del desplegable automáticos (mes en curso + 12 atrás) e ID de la
@@ -128,7 +132,14 @@ export default function ServiciosAguaPage() {
   }
 
   async function iniciarConsulta() {
-    if (!extensionOk || codigos.length === 0 || procesandoRef.current) return
+    // Guard con motivo visible en el log (antes fallaba en silencio → "pincho y no hace nada").
+    if (procesandoRef.current) { addLog('warn', 'Ya hay una consulta en curso; espera a que termine o recarga (Ctrl+Shift+R).'); return }
+    if (!extensionOk) { addLog('error', 'Primero pulsa "Verificar" para conectar la extensión.'); return }
+    if (codigos.length === 0) { addLog('error', 'No hay códigos que consultar para este mes.'); return }
+    if (typeof window === 'undefined' || !window.chrome?.runtime?.sendMessage) {
+      addLog('error', 'Este navegador no expone chrome.runtime. Usa Chrome con la extensión CRM Bridge instalada.'); return
+    }
+
     procesandoRef.current = true
     setFase('procesando')
     setProgreso({ procesados: 0, exitosos: 0, fallidos: 0 })
@@ -140,40 +151,47 @@ export default function ServiciosAguaPage() {
     let procesados = 0, exitosos = 0, fallidos = 0
     const todosResultados = []
 
-    for (let i = 0; i < codigos.length; i++) {
-      const { idadmon, idinmue, codigo_agua } = codigos[i]
-      const codigo_agua_normalizado = codigo_agua.trim().split('-')[0]
+    try {
+      for (let i = 0; i < codigos.length; i++) {
+        const { idadmon, idinmue, codigo_agua } = codigos[i]
+        const codigo_agua_normalizado = codigo_agua.trim().split('-')[0]
 
-      if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length} — ${codigo_agua}`)
+        if (i % 10 === 0) addLog('info', `Consultando ${i + 1}/${codigos.length} — ${codigo_agua}`)
 
-      try {
-        const result = await consultarAguaviaExtension(extensionId.trim(), codigo_agua_normalizado)
+        try {
+          const result = await consultarAguaviaExtension(extensionId.trim(), codigo_agua_normalizado)
 
-        if (!result?.ok) {
-          todosResultados.push({ idadmon, codigo_agua, status: 'error', mensaje: result?.error || 'sin respuesta' })
+          if (!result?.ok) {
+            todosResultados.push({ idadmon, codigo_agua, status: 'error', mensaje: result?.error || 'sin respuesta' })
+            fallidos++
+          } else {
+            const fecha = new Date().toISOString().split('T')[0]
+            await guardarResultado(mes, idadmon, idinmue, result.deuda, fecha)
+            todosResultados.push({ idadmon, codigo_agua, status: 'ok', deuda: result.deuda })
+            exitosos++
+            if (exitosos % 10 === 0) addLog('ok', `${exitosos} registros guardados en Supabase`)
+          }
+        } catch (e) {
+          todosResultados.push({ idadmon, codigo_agua, status: 'error', mensaje: e.message })
           fallidos++
-        } else {
-          const fecha = new Date().toISOString().split('T')[0]
-          await guardarResultado(mes, idadmon, idinmue, result.deuda, fecha)
-          todosResultados.push({ idadmon, codigo_agua, status: 'ok', deuda: result.deuda })
-          exitosos++
-          if (exitosos % 10 === 0) addLog('ok', `${exitosos} registros guardados en Supabase`)
         }
-      } catch (e) {
-        todosResultados.push({ idadmon, codigo_agua, status: 'error', mensaje: e.message })
-        fallidos++
+
+        procesados++
+        setProgreso({ procesados, exitosos, fallidos })
+        setResultados([...todosResultados])
+        await new Promise(r => setTimeout(r, 800)) // pausa entre requests
       }
 
-      procesados++
-      setProgreso({ procesados, exitosos, fallidos })
-      setResultados([...todosResultados])
-      await new Promise(r => setTimeout(r, 800)) // pausa entre requests
+      addLog('ok', `✓ Completado: ${exitosos} exitosos, ${fallidos} fallidos de ${procesados} total`)
+      setFase('completado')
+    } catch (e) {
+      addLog('error', `Consulta interrumpida: ${e.message}`)
+      setFase('idle')
+    } finally {
+      // Pase lo que pase, liberamos el ref para no bloquear el siguiente intento.
+      procesandoRef.current = false
+      cargarContPendientes()
     }
-
-    addLog('ok', `✓ Completado: ${exitosos} exitosos, ${fallidos} fallidos de ${procesados} total`)
-    setFase('completado')
-    procesandoRef.current = false
-    cargarContPendientes()
   }
 
   const s = {
