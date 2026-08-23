@@ -1,8 +1,11 @@
 // ============================================================
 // CRM Bridge - content.js
-// VERSION: v8  (2026-07-01)
+// VERSION: v9-servipag  (2026-08-23)
+//   ENEL vuelve a funcionar: nuevo handler SERVIPAG_FETCH que consulta la API de
+//   Servipag (company 107 / category 14) DENTRO de portal.servipag.com, pasando el
+//   Cloudflare Turnstile via cookie. Sustituye la via Sencillito (deshabilitada).
 // ------------------------------------------------------------
-// Corre en el mundo ISOLATED de aguasandinas.cl y sencillito.com.
+// Corre en el mundo ISOLATED de aguasandinas.cl, sencillito.com y portal.servipag.com.
 // - Habla con el background (chrome.runtime).
 // - Para Sencillito: delega el fetch a senc-main.js (que corre en MAIN world
 //   y SI ve Liferay) via window.postMessage. Esto resuelve el problema de que
@@ -36,7 +39,82 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }))
     return true
   }
+
+  if (msg && msg.type === 'SERVIPAG_FETCH') {
+    consultarServipagAqui(msg.codigo)
+      .then((r) => sendResponse({ ok: true, deuda: r.deuda, fecha: r.fecha }))
+      .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }))
+    return true
+  }
 })
+
+// ============================================================
+// ENEL via API de Servipag (POST query 107/14 -> polling -> totalAmount)
+// Se ejecuta DENTRO de portal.servipag.com (misma-origen, credentials:'include'),
+// asi hereda la cookie cf_clearance de Cloudflare Turnstile que la pagina ya resolvio.
+// ============================================================
+async function consultarServipagAqui(codigoBruto) {
+  const ident = String(codigoBruto || '').trim().split('-')[0].replace(/\D/g, '')
+  if (!ident) throw new Error('codigo invalido: ' + codigoBruto)
+
+  // Paso 1: registrar la consulta -> queryId
+  const bodyQ = {
+    bill: {
+      company: { id: 107 },
+      category: { id: 14 },
+      type: 'standard',
+      metaData: [{ name: 'identifier', value: ident }],
+    },
+    queryId: '',
+  }
+  let r
+  try {
+    r = await fetch('https://portal.servipag.com/portal/bill/v3/query/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify(bodyQ),
+    })
+  } catch (e) {
+    throw new Error(ident + ': fallo de red en PASO1 (' + ((e && e.message) || e) + ')')
+  }
+  if (r.status === 403) throw new Error(ident + ': 403 Cloudflare — recarga la pestana de Servipag y espera a que cargue del todo antes de reintentar')
+  if (!r.ok) throw new Error(ident + ': PASO1 HTTP ' + r.status)
+  let j = await r.json().catch(() => null)
+  const queryId = j && j.data && j.data.queryId
+  if (!queryId) throw new Error(ident + ': sin queryId (' + ((j && j.result && j.result.mensaje) || 'respuesta inesperada') + ')')
+
+  // Paso 2: polling (asincrono) hasta queryStatus === 1
+  const espera = (ms) => new Promise((res) => setTimeout(res, ms))
+  let fila = null
+  for (let intento = 0; intento < 15; intento++) {
+    await espera(1000)
+    let rp
+    try {
+      rp = await fetch('https://portal.servipag.com/portal/bill/v3/query/' + encodeURIComponent(queryId) + '/lastcall/false', {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'accept': 'application/json' },
+      })
+    } catch (e) { continue }
+    if (!rp.ok) continue
+    let jp = await rp.json().catch(() => null)
+    const d0 = jp && Array.isArray(jp.data) ? jp.data[0] : null
+    if (!d0) continue
+    if (d0.queryStatus === 1) { fila = d0; break }               // busqueda finalizada con exito
+    if (d0.queryStatus !== 0 && d0.queryStatus != null) {        // 0 = sigue buscando; otro = error
+      throw new Error(ident + ': queryStatus ' + d0.queryStatus + ' (' + (d0.queryStatusDescription || d0.statusDescription || 'sin descripcion') + ')')
+    }
+  }
+  if (!fila) throw new Error(ident + ': timeout esperando el resultado de Servipag (15 intentos)')
+
+  // Paso 3: leer resultado
+  const deuda = parseInt(fila.totalAmount, 10)
+  let fecha = null
+  const m = String(fila.expirationDate || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (m) fecha = m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0')
+  return { deuda: isNaN(deuda) ? 0 : deuda, fecha }
+}
 
 // ── Sencillito: pide el fetch a senc-main.js (MAIN world) via postMessage ──
 let _sencReqId = 0
