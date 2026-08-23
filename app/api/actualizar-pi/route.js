@@ -1,4 +1,8 @@
-﻿import { NextResponse } from 'next/server'
+﻿// VERSION: v2 · 2026-08-23 · FIX "actualizar PI dos veces" para la descripción. El recurso de descripción
+//   (/items/{id}/description) se escribía solo con PUT; si el aviso nunca tuvo descripción creada (todos los
+//   publicados antes de publicar-pi v3), el PUT no la creaba y hacía falta una 2ª pasada. Ahora: PUT y, si no
+//   da 200, POST para crearla → queda escrita en UNA sola pasada. Hereda v1 (sin versión).
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sincronizarFotos } from '@/lib/fase2/fotos-ml'
 import { EJECUTIVOS } from '@/lib/ejecutivos'
@@ -247,14 +251,19 @@ export async function POST(request) {
         }
       }
 
-      // 5b. Descripcion (endpoint aparte)
+      // 5b. Descripcion (recurso aparte /items/{id}/description).
+      // ROBUSTO: PUT reemplaza si el recurso ya existe. Si el aviso nunca tuvo descripcion creada
+      // (p.ej. publicado antes de publicar-pi v3), el PUT puede no crearla -> caemos a POST para crearla.
+      // Asi la descripcion queda escrita en UNA sola pasada de "Actualizar PI" (fin del "actualizar dos veces").
       const descripcion = construirDescripcion(pub)
-      const resDesc = await fetch(`${ML_API}/items/${pub.codigo_pi}/description`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plain_text: descripcion }),
-      })
-      resultados.descripcion = { ok: resDesc.status === 200 }
+      const descHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8', 'Accept': 'application/json' }
+      const descBody = JSON.stringify({ plain_text: descripcion })
+      let resDesc = await fetch(`${ML_API}/items/${pub.codigo_pi}/description`, { method: 'PUT', headers: descHeaders, body: descBody })
+      if (resDesc.status !== 200) {
+        // No existia el recurso de descripcion: crearlo con POST
+        resDesc = await fetch(`${ML_API}/items/${pub.codigo_pi}/description`, { method: 'POST', headers: descHeaders, body: descBody })
+      }
+      resultados.descripcion = { ok: resDesc.status === 200 || resDesc.status === 201 }
 
       // ───────────────────────────────────────────────────────────────────
       // 5c. FOTOS (FASE 2) — delega en el módulo lib/fase2/fotos-ml.js
