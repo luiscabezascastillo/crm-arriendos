@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-23 · Lee la hoja 'GGCC-AGUA-LUZ-DESCUENTOS' (no la [0], que es CODIGOS) y el diagnóstico
+//   vuelca las primeras filas de esa hoja (`ggccFilas`) para ver título/cabeceras reales. Hereda v2.
 // VERSION: v2 · 2026-08-23 · Añade DIAGNÓSTICO: la respuesta incluye qué AAMM existen realmente en el Excel
 //   (`aammEnExcel`), cuántas filas van sin AAMM y una muestra, para localizar dónde están los meses históricos.
 //   Hereda v1.
@@ -42,8 +44,12 @@ export async function POST(req) {
     if (!archivo) return Response.json({ error: `No se encontró ${ARCHIVO} en Drive` }, { status: 404 })
     const fileRes = await drive.files.get({ fileId: archivo.id, alt: 'media' }, { responseType: 'arraybuffer' })
     const wb = XLSX.read(fileRes.data, { type: 'array', cellDates: true })
-    const ws = wb.Sheets[wb.SheetNames[0]]
+    const HOJA_GGCC = 'GGCC-AGUA-LUZ-DESCUENTOS'
+    const ws = wb.Sheets[HOJA_GGCC] || wb.Sheets[wb.SheetNames[0]]
     const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: null })
+    // Rejilla cruda (primeras filas) para ver título/cabeceras reales de la hoja GGCC
+    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null })
+    const ggccFilas = grid.slice(0, 16).map(r => (r || []).map(c => c === null ? '' : String(c)).slice(0, 14))
 
     const mapFila = r => ({
       mes:                     limpia(r['MES'] || r['mes']),
@@ -78,7 +84,7 @@ export async function POST(req) {
     const aammEnExcel = [...new Set(rows.map(r => aammDe(r)).filter(Boolean))].sort()
     const filasSinAamm = rows.filter(r => !aammDe(r) && (r['IDADMON'] || r['idadmon']))
     const sinAammMuestra = filasSinAamm.slice(0, 10).map(r => ({ mes: r['MES'] || r['mes'] || null, idadmon: r['IDADMON'] || r['idadmon'] || null }))
-    const diagnostico = { hoja: wb.SheetNames[0], hojas: wb.SheetNames, aammEnExcel, filasSinAamm: filasSinAamm.length, sinAammMuestra }
+    const diagnostico = { hojaLeida: (wb.Sheets[HOJA_GGCC] ? HOJA_GGCC : wb.SheetNames[0]), hojas: wb.SheetNames, aammEnExcel, filasSinAamm: filasSinAamm.length, sinAammMuestra, ggccFilas }
 
     const reporte = []
     for (const aamm of aamms) {
