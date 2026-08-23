@@ -1,3 +1,5 @@
+// VERSION: v19 · 2026-08-19 · Cabecera del panel de ayuda lleva el lema en mayúsculas del proceso (controlado por
+//   Adalis; objetivo enviar 2 días tras la cartola). El Excel usa lib/paolaExcel v5 (Movimientos con IdAdmon). Hereda v18.
 // VERSION: v18 · 2026-08-19 · El Excel de Paola (Descargar Control / Guardar en Drive) se genera con el nuevo diseño
 //   profesional y multi-hoja: se envían también los movimientos de la cartola para la hoja "Movimientos cuenta".
 //   Requiere lib/paolaExcel v4 y route v12. Hereda v17.
@@ -329,7 +331,10 @@ export default function LiquidacionPaolaPage() {
             }}>
             <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{ayuda ? '▾' : '▸'}</span>
             Cómo se hace la liquidación de Paola
-            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: 'var(--gray-400)' }}>
+            <span style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: 800, letterSpacing: '.02em', color: '#9A3412' }}>
+              PROCESO CONTROLADO POR ADALIS · OBJETIVO: ENVÍO DESDE AQUÍ DOS DÍAS DESPUÉS DE RECIBIR LA CARTOLA DE PAOLA
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--gray-400)' }}>
               {ayuda ? 'ocultar' : '9 pasos · 2 min de lectura'}
             </span>
           </button>
