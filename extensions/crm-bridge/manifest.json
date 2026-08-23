@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CRM Bridge — Fondo Capital",
-  "version": "2.4",
+  "version": "2.7",
   "description": "Proxy para consultas ENEL (vía Servipag) y Aguas Andinas desde CRM Arriendos",
   "permissions": [
     "tabs",
@@ -45,6 +45,12 @@
       "matches": ["https://portal.servipag.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://portal.servipag.com/*"],
+      "js": ["servipag-main.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ],
   "action": {

@@ -1,9 +1,10 @@
 // ============================================================
 // CRM Bridge - content.js
-// VERSION: v9-servipag  (2026-08-23)
-//   ENEL vuelve a funcionar: nuevo handler SERVIPAG_FETCH que consulta la API de
-//   Servipag (company 107 / category 14) DENTRO de portal.servipag.com, pasando el
-//   Cloudflare Turnstile via cookie. Sustituye la via Sencillito (deshabilitada).
+// VERSION: v11-servipag  (2026-08-23)
+//   ENEL funciona vía Servipag. El fetch se delega a servipag-main.js (MUNDO MAIN) por
+//   postMessage: DEBE salir del contexto de la pagina o Cloudflare responde 403 aunque el
+//   token sea correcto. servipag-main.js lee el token de sessionStorage.authorization y
+//   manda authorization + x-cookie + x-channel. Sustituye la via Sencillito (deshabilitada).
 // ------------------------------------------------------------
 // Corre en el mundo ISOLATED de aguasandinas.cl, sencillito.com y portal.servipag.com.
 // - Habla con el background (chrome.runtime).
@@ -17,7 +18,7 @@
 //   { type: 'SENCILLITO_FETCH', codigo } -> { ok, deuda, fecha }
 // ============================================================
 
-console.log('[CRM Bridge v8] content script (isolated) activo en', window.location.href)
+console.log('[CRM Bridge v12] content script (isolated) activo en', window.location.href)
 
 try {
   chrome.runtime.sendMessage({ type: 'ENEL_TAB_READY', url: window.location.href })
@@ -41,79 +42,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg && msg.type === 'SERVIPAG_FETCH') {
-    consultarServipagAqui(msg.codigo)
+    consultarServipagMain(msg.codigo)
       .then((r) => sendResponse({ ok: true, deuda: r.deuda, fecha: r.fecha }))
       .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }))
     return true
   }
 })
 
-// ============================================================
-// ENEL via API de Servipag (POST query 107/14 -> polling -> totalAmount)
-// Se ejecuta DENTRO de portal.servipag.com (misma-origen, credentials:'include'),
-// asi hereda la cookie cf_clearance de Cloudflare Turnstile que la pagina ya resolvio.
-// ============================================================
-async function consultarServipagAqui(codigoBruto) {
-  const ident = String(codigoBruto || '').trim().split('-')[0].replace(/\D/g, '')
-  if (!ident) throw new Error('codigo invalido: ' + codigoBruto)
+// ── Servipag (ENEL): pide el fetch a servipag-main.js (MAIN world) via postMessage ──
+// El fetch DEBE salir del contexto de la pagina (MAIN world); desde el content script
+// aislado, Cloudflare lo rechaza con 403 aunque el token sea correcto.
+let _spReqId = 0
+const _spPendientes = {}
 
-  // Paso 1: registrar la consulta -> queryId
-  const bodyQ = {
-    bill: {
-      company: { id: 107 },
-      category: { id: 14 },
-      type: 'standard',
-      metaData: [{ name: 'identifier', value: ident }],
-    },
-    queryId: '',
-  }
-  let r
-  try {
-    r = await fetch('https://portal.servipag.com/portal/bill/v3/query/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-      body: JSON.stringify(bodyQ),
-    })
-  } catch (e) {
-    throw new Error(ident + ': fallo de red en PASO1 (' + ((e && e.message) || e) + ')')
-  }
-  if (r.status === 403) throw new Error(ident + ': 403 Cloudflare — recarga la pestana de Servipag y espera a que cargue del todo antes de reintentar')
-  if (!r.ok) throw new Error(ident + ': PASO1 HTTP ' + r.status)
-  let j = await r.json().catch(() => null)
-  const queryId = j && j.data && j.data.queryId
-  if (!queryId) throw new Error(ident + ': sin queryId (' + ((j && j.result && j.result.mensaje) || 'respuesta inesperada') + ')')
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window) return
+  const d = ev.data
+  if (!d || d.__crmBridge !== 'SERVIPAG_RESULT') return
+  const cb = _spPendientes[d.reqId]
+  if (cb) { delete _spPendientes[d.reqId]; cb(d) }
+})
 
-  // Paso 2: polling (asincrono) hasta queryStatus === 1
-  const espera = (ms) => new Promise((res) => setTimeout(res, ms))
-  let fila = null
-  for (let intento = 0; intento < 15; intento++) {
-    await espera(1000)
-    let rp
-    try {
-      rp = await fetch('https://portal.servipag.com/portal/bill/v3/query/' + encodeURIComponent(queryId) + '/lastcall/false', {
-        method: 'GET',
-        credentials: 'include',
-        headers: { 'accept': 'application/json' },
-      })
-    } catch (e) { continue }
-    if (!rp.ok) continue
-    let jp = await rp.json().catch(() => null)
-    const d0 = jp && Array.isArray(jp.data) ? jp.data[0] : null
-    if (!d0) continue
-    if (d0.queryStatus === 1) { fila = d0; break }               // busqueda finalizada con exito
-    if (d0.queryStatus !== 0 && d0.queryStatus != null) {        // 0 = sigue buscando; otro = error
-      throw new Error(ident + ': queryStatus ' + d0.queryStatus + ' (' + (d0.queryStatusDescription || d0.statusDescription || 'sin descripcion') + ')')
+function consultarServipagMain(codigoBruto) {
+  return new Promise((resolve, reject) => {
+    const ref = String(codigoBruto || '').trim()
+    if (!ref) { reject(new Error('codigo invalido: ' + codigoBruto)); return }
+
+    const reqId = ++_spReqId
+    let done = false
+    _spPendientes[reqId] = (d) => {
+      if (done) return
+      done = true
+      if (d.ok) resolve({ deuda: d.deuda, fecha: d.fecha })
+      else reject(new Error(d.error || 'error desconocido en Servipag'))
     }
-  }
-  if (!fila) throw new Error(ident + ': timeout esperando el resultado de Servipag (15 intentos)')
 
-  // Paso 3: leer resultado
-  const deuda = parseInt(fila.totalAmount, 10)
-  let fecha = null
-  const m = String(fila.expirationDate || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (m) fecha = m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0')
-  return { deuda: isNaN(deuda) ? 0 : deuda, fecha }
+    // La automacion de la UI (Continuar + polling web + "+" + reset) puede tardar; margen amplio.
+    setTimeout(() => {
+      if (done) return
+      done = true
+      delete _spPendientes[reqId]
+      reject(new Error(ref + ': sin respuesta de servipag-main.js (¿estas en portal.servipag.com y recargaste la pestana tras actualizar la extension?)'))
+    }, 60000)
+
+    window.postMessage({ __crmBridge: 'SERVIPAG_REQ', reqId, codigo: ref }, '*')
+  })
 }
 
 // ── Sencillito: pide el fetch a senc-main.js (MAIN world) via postMessage ──

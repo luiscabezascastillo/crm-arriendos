@@ -19,7 +19,7 @@
 //   /op/servicios/agua/page.js  -> PING, CONSULTAR_AGUA {codigo} -> {ok, deuda}
 // ============================================================
 
-const VERSION = 'v9-servipag'
+const VERSION = 'v12-servipag-ui'
 
 // ============================================================
 // LISTENER PRINCIPAL - mensajes desde el CRM (pagina web)
