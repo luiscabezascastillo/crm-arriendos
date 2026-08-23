@@ -4,6 +4,9 @@
 //   "actualizar PI" otra vez para escribirla (y si se olvidaba, quedaba en blanco). Ahora, tras crear el
 //   aviso (201), se fija la descripción explícitamente por su recurso (POST y, si ya existía, PUT). Así queda
 //   puesta a la PRIMERA. Hereda v2 (bloqueo mira pi='SI') y v1.
+// VERSION: v4 · 2026-08-23 · La descripción ahora se arma con el builder único '@/lib/descripcionPI'
+//   (construirDescripcionPI), compartido con actualizar-pi y publicar-pi/descripcion, para que el texto sea
+//   idéntico venga por donde venga. Hereda v3 (fija descripción por su recurso tras crear el aviso) y v2/v1.
 // VERSION: v2 · 2026-08-21 · El bloqueo "Ya publicada en PI" ahora mira `pi='SI'` (si sigue en PI), no
 //   `activo`. Antes, una ficha activa en otro portal (Web) con un codigo_pi viejo de una publicación de PI
 //   ya cerrada se bloqueaba por error al republicar en PI. Ahora, si no está en PI, limpia el código viejo
@@ -13,6 +16,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
 import { EJECUTIVOS } from '@/lib/ejecutivos'
+import { construirDescripcionPI } from '@/lib/descripcionPI'
 
 const ML_CLIENT_ID = process.env.ML_CLIENT_ID
 const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET
@@ -191,18 +195,7 @@ function buildPayload(p) {
   const esUF = String(p.tipo_moneda || '').toUpperCase() === 'UF'
  const titulo = (p.titulo && p.titulo.trim()) ? p.titulo.trim() : `${p.objetivo || ''}, ${p.tipo || ''}, ${p.comuna || ''}. ${p.dormitorios || '0'}D/${p.banos|| '0'}B`
 
-  let descripcion = p.observaciones || ''
-  descripcion += `<br>- ${p.codigo} - <br><br>metros aproximados proporcionados por el dueno`
-  descripcion = descripcion
-    .replace(/<br>/g, '\n ').replace(/<\/br>/g, '\n ')
-    .replace(/á/g, '\u00E1').replace(/é/g, '\u00E9')
-    .replace(/í/g, '\u00ED').replace(/ó/g, '\u00F3')
-    .replace(/ú/g, '\u00FA').replace(/ñ/g, '\u00F1')
-    .replace(/Á/g, '\u00C1').replace(/É/g, '\u00C9')
-    .replace(/Í/g, '\u00CD').replace(/Ó/g, '\u00D3')
-    .replace(/Ú/g, '\u00DA').replace(/Ñ/g, '\u00D1')
-    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '')
-    .replace(/ {2,}/g, ' ')
+  const descripcion = construirDescripcionPI(p)
 
   const imagenes = []
   for (let i = 1; i <= 30; i++) {

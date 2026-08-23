@@ -1,5 +1,9 @@
+// VERSION: v2 · 2026-08-23 · La descripción se arma con el builder único '@/lib/descripcionPI'
+//   (construirDescripcionPI), el mismo de publicar-pi y actualizar-pi, para que el texto sea idéntico.
+//   Este endpoint ya hacía PUT y, si fallaba, POST (patrón robusto); solo se unifica el texto. (v1 sin versión)
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { construirDescripcionPI } from '@/lib/descripcionPI'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -52,16 +56,7 @@ export async function POST(request) {
       .from('publicaciones').select('observaciones, codigo').eq('id', publicacionId).single()
     if (errPub || !pub) return NextResponse.json({ error: 'Publicación no encontrada' }, { status: 404 })
 
-    let descripcion = pub.observaciones || ''
-    descripcion += `\n - ${pub.codigo} - \n\nmetros aproximados proporcionados por el dueno`
-    descripcion = descripcion
-      .replace(/<br>/g, '\n ').replace(/<\/br>/g, '\n ')
-      .replace(/á/g, '\u00E1').replace(/é/g, '\u00E9')
-      .replace(/í/g, '\u00ED').replace(/ó/g, '\u00F3')
-      .replace(/ú/g, '\u00FA').replace(/ñ/g, '\u00F1')
-      .replace(/Á/g, '\u00C1').replace(/É/g, '\u00C9')
-      .replace(/Í/g, '\u00CD').replace(/Ó/g, '\u00D3')
-      .replace(/Ú/g, '\u00DA').replace(/Ñ/g, '\u00D1')
+    const descripcion = construirDescripcionPI(pub)
 
     const token = await getValidToken()
 

@@ -1,4 +1,7 @@
-﻿// VERSION: v2 · 2026-08-23 · FIX "actualizar PI dos veces" para la descripción. El recurso de descripción
+﻿// VERSION: v3 · 2026-08-23 · La descripción ahora usa el builder único '@/lib/descripcionPI'
+//   (construirDescripcionPI), compartido con publicar-pi y publicar-pi/descripcion, para texto idéntico.
+//   Se elimina el construirDescripcion local. Hereda v2 (PUT y si no POST) y v1.
+// VERSION: v2 · 2026-08-23 · FIX "actualizar PI dos veces" para la descripción. El recurso de descripción
 //   (/items/{id}/description) se escribía solo con PUT; si el aviso nunca tuvo descripción creada (todos los
 //   publicados antes de publicar-pi v3), el PUT no la creaba y hacía falta una 2ª pasada. Ahora: PUT y, si no
 //   da 200, POST para crearla → queda escrita en UNA sola pasada. Hereda v1 (sin versión).
@@ -6,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sincronizarFotos } from '@/lib/fase2/fotos-ml'
 import { EJECUTIVOS } from '@/lib/ejecutivos'
+import { construirDescripcionPI } from '@/lib/descripcionPI'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -26,17 +30,6 @@ function monedaToCurrency(tipo_moneda) {
 }
 
 // Limpia la descripcion igual que en publicar-pi/descripcion
-function construirDescripcion(pub) {
-  let descripcion = pub.observaciones || ''
-  descripcion += `\n - ${pub.codigo} - \n\nmetros aproximados proporcionados por el dueno`
-  return descripcion
-    .replace(/<br>/g, '\n ').replace(/<\/br>/g, '\n ')
-    .replace(/Ã¡/g, '\u00E1').replace(/Ã©/g, '\u00E9')
-    .replace(/Ã/g, '\u00ED').replace(/Ã³/g, '\u00F3')
-    .replace(/Ãº/g, '\u00FA').replace(/Ã±/g, '\u00F1')
-    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '')
-    .replace(/ {2,}/g, ' ')
-}
 
 // Lista ordenada de nombres de archivo de fotos (imagen1..imagen30, break al primer hueco).
 function listaFotos(pub) {
@@ -255,7 +248,7 @@ export async function POST(request) {
       // ROBUSTO: PUT reemplaza si el recurso ya existe. Si el aviso nunca tuvo descripcion creada
       // (p.ej. publicado antes de publicar-pi v3), el PUT puede no crearla -> caemos a POST para crearla.
       // Asi la descripcion queda escrita en UNA sola pasada de "Actualizar PI" (fin del "actualizar dos veces").
-      const descripcion = construirDescripcion(pub)
+      const descripcion = construirDescripcionPI(pub)
       const descHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8', 'Accept': 'application/json' }
       const descBody = JSON.stringify({ plain_text: descripcion })
       let resDesc = await fetch(`${ML_API}/items/${pub.codigo_pi}/description`, { method: 'PUT', headers: descHeaders, body: descBody })
