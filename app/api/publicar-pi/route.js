@@ -1,4 +1,10 @@
-﻿// VERSION: v2 · 2026-08-21 · El bloqueo "Ya publicada en PI" ahora mira `pi='SI'` (si sigue en PI), no
+﻿// VERSION: v3 · 2026-08-23 · FIX descripción "hay que actualizar PI dos veces". MercadoLibre (clasificados
+//   inmobiliarios) NO aplica de forma fiable el campo `description` inline del POST /items: la descripción es
+//   un recurso aparte (/items/{id}/description). Por eso el aviso nacía SIN descripción y había que
+//   "actualizar PI" otra vez para escribirla (y si se olvidaba, quedaba en blanco). Ahora, tras crear el
+//   aviso (201), se fija la descripción explícitamente por su recurso (POST y, si ya existía, PUT). Así queda
+//   puesta a la PRIMERA. Hereda v2 (bloqueo mira pi='SI') y v1.
+// VERSION: v2 · 2026-08-21 · El bloqueo "Ya publicada en PI" ahora mira `pi='SI'` (si sigue en PI), no
 //   `activo`. Antes, una ficha activa en otro portal (Web) con un codigo_pi viejo de una publicación de PI
 //   ya cerrada se bloqueaba por error al republicar en PI. Ahora, si no está en PI, limpia el código viejo
 //   y deja publicar. Hereda v1 (sin versión).
@@ -342,6 +348,31 @@ export async function POST(request) {
       return NextResponse.json({ error: `Error ML ${res.status}: ${json.message || 'error'}`, detalle: mlDetalle, mlRespuesta: json }, { status: 500 })
     }
 
+    // --- FASE 1.5: fijar la DESCRIPCIÓN por su recurso dedicado ---
+    // MercadoLibre no aplica de forma fiable el `description` inline del POST /items en clasificados
+    // inmobiliarios. La descripción es un recurso aparte. La escribimos aquí para que aparezca a la primera
+    // (esto elimina el "hay que actualizar PI dos veces"). POST crea el recurso; si ya existía, PUT lo
+    // reemplaza. No rompemos la publicación si esto fallara: el aviso ya quedó creado.
+    let descripcionOk = false
+    let descripcionAviso = null
+    try {
+      const descHeaders = {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Accept': 'application/json',
+      }
+      const descBody = JSON.stringify({ plain_text: payload.description || '' })
+      let rDesc = await fetch(`${ML_API}/items/${json.id}/description`, { method: 'POST', headers: descHeaders, body: descBody })
+      if (!rDesc.ok) {
+        // Si ya existe (POST devuelve 400 "already has a description"), reemplazar con PUT
+        rDesc = await fetch(`${ML_API}/items/${json.id}/description`, { method: 'PUT', headers: descHeaders, body: descBody })
+      }
+      descripcionOk = rDesc.ok
+      if (!rDesc.ok) descripcionAviso = `No se pudo fijar la descripción (${rDesc.status}). Revisa el aviso.`
+    } catch (e) {
+      descripcionAviso = 'Error fijando la descripción: ' + e.message
+    }
+
     // --- FASE 2: capturar el mapeo nombre_de_archivo <-> id de ML ---
     // Reconstruimos la lista de nombres que mandamos (imagen1..30 en orden, break al primer hueco)
     const nombresEnviados = []
@@ -385,7 +416,9 @@ export async function POST(request) {
       ok: true,
       codigoPI: json.id,
       permalink: json.permalink || '',
-      mensaje: `✓ Publicado en Portal Inmobiliario con código ${json.id}`,
+      descripcion_ok: descripcionOk,
+      aviso: descripcionAviso,
+      mensaje: `✓ Publicado en Portal Inmobiliario con código ${json.id}` + (descripcionOk ? ' (con descripción)' : (descripcionAviso ? ' — ⚠ ' + descripcionAviso : '')),
     })
 
   } catch (error) {
