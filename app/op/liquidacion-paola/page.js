@@ -1,3 +1,5 @@
+// VERSION: v22 · 2026-08-19 · La tabla de la liquidación se ordena SIEMPRE alfabéticamente por propiedad en el propio
+//   render (localeCompare es, numérico), para que en pantalla salga ordenada pase lo que pase. Hereda v21.
 // VERSION: v21 · 2026-08-19 · "Guardar en Drive" pasa a "✉ Email a Paola": panel con selector 1º/2º/3º, correo de
 //   PRUEBA opcional y estado de lo ya enviado; manda el Excel adjunto + progreso de cobranza (acción 'enviar' del
 //   route v14) y archiva en Drive. Requiere route v14 y paolaExcel v7. Hereda v20.
@@ -702,7 +704,7 @@ export default function LiquidacionPaolaPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {datos.resultado.filter(r => tab === 'liquidacion' || r.revisar).map((r, i) => (
+                    {[...datos.resultado].sort((a, b) => String(a.propiedad || '').localeCompare(String(b.propiedad || ''), 'es', { numeric: true })).filter(r => tab === 'liquidacion' || r.revisar).map((r, i) => (
                       <Fragment key={r.idadmon}>
                         <tr onClick={() => setAbierta(abierta === r.idadmon ? null : r.idadmon)}
                           style={{
