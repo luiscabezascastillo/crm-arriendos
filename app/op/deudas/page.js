@@ -1,4 +1,9 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
+// VERSION: v16 · 2026-08-23 · La etiqueta de corte es el ÚLTIMO corte tomado (máximo), no +1: la tabla viva ES
+//   la edición viva = el último corte, que se sigue actualizando (manualmente) hasta el próximo corte. Tras
+//   tomar 2608-2 la vista queda en 2608-2 hasta el domingo siguiente. El indicador muestra "edición viva" (azul)
+//   y las fotos congeladas (verde). Revierte el +1 de v15.
+// VERSION: v15 · 2026-08-23 · [revertida] etiqueta = congelados+1 (en preparación); no encajaba con el modelo.
 // VERSION: v14 · 2026-08-23 · (1) La vista arranca filtrada al MES EN CURSO (AAMM más reciente) → KPIs y tabla
 //   muestran solo el corte actual, no el histórico (se ve el resto abriendo el filtro AAMM). (2) La columna AAMM
 //   muestra el corte: "2608-1", "2608-2"… (corte más reciente del mes, de ggcc_cortes). Hereda v13.
@@ -654,10 +659,12 @@ export default function Deudas() {
       {/* Indicador de cortes del mes en curso */}
       {aammActual && (
         <div style={{fontSize:12,color:'#374151',marginBottom:18,marginTop:-6,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <span style={{fontWeight:600}}>📸 Cortes del mes {aammActual}:</span>
-          {cortesMes.length
-            ? cortesMes.map(c=>(<span key={c.corte} style={{background:'#DCFCE7',color:'#166534',padding:'2px 9px',borderRadius:12,fontWeight:600}}>{aammActual}-{c.corte}{c.fecha?` · ${String(c.fecha).slice(8,10)}-${String(c.fecha).slice(5,7)}`:''}</span>))
+          <span style={{fontWeight:600}}>📸 Mes {aammActual}:</span>
+          {corteDeAamm[aammActual]
+            ? <span style={{background:'#DBEAFE',color:'#1E40AF',padding:'2px 9px',borderRadius:12,fontWeight:700,border:'1px solid #BFDBFE'}}>edición viva: {aammActual}-{corteDeAamm[aammActual]} · se actualiza hasta el próximo corte</span>
             : <span style={{color:'#9CA3AF'}}>sin cortes este mes todavía</span>}
+          {cortesMes.length>0 && <span style={{color:'#6B7280'}}>· fotos congeladas:</span>}
+          {cortesMes.map(c=>(<span key={c.corte} style={{background:'#DCFCE7',color:'#166534',padding:'2px 9px',borderRadius:12,fontWeight:600}}>{aammActual}-{c.corte}{c.fecha?` · ${String(c.fecha).slice(8,10)}-${String(c.fecha).slice(5,7)}`:''}</span>))}
         </div>
       )}
 

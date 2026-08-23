@@ -1,3 +1,6 @@
+// VERSION: v23 · 2026-08-23 · Roster de garantías = solo arriendos VIGENTES (S/SQ) desde datos_arriendos. Los N
+//   (terminados) son histórico y no salen (mejora futura: bloque aparte con los N cuya garantía está en uso en la
+//   liquidación de término). Hereda v22.
 // VERSION: v22 · 2026-08-23 · Roster de garantías = TODOS los arriendos de Paola (con arrendatario, no vacantes) desde
 //   datos_arriendos, con moneda/cuota/reajustes + garantía pedida/cuotas 1-4/quién/deuda + contacto, para la hoja
 //   "Garantías" (ledger agrupado, ordenado por inmueble). Hereda v21.
@@ -88,8 +91,9 @@ async function cargarGarantiasRoster() {
       'fecha_inicio, termino_actual, arrendatario, mail_arrendatario, movil')
     .eq('idprop', IDPROP_PAOLA)
   if (error) { console.error('cargarGarantiasRoster:', error.message); return [] }
-  // Todos los arriendos reales (con arrendatario), no las vacantes; la hoja los ordena por inmueble.
-  return (data || []).filter(r => String(r.arrendatario || '').trim() && String(r.estado || '').toUpperCase() !== 'P')
+  // Solo arriendos VIGENTES (S/SQ). Los N (terminados) son histórico y NO salen en la hoja.
+  // (Mejora futura: un bloque aparte con los N cuya garantía se está usando en la liquidación de término.)
+  return (data || []).filter(r => ['S', 'SQ'].includes(String(r.estado || '').toUpperCase().trim()))
 }
 const TOLERANCIA_MONTO = 500
 const TOLERANCIA_EXCESO = 1000
