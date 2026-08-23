@@ -1,0 +1,20 @@
+# Normaliza fin de línea: LF en el repo y en el árbol de trabajo (evita el "mar de M" por CRLF).
+* text=auto eol=lf
+
+# Binarios: que git no los toque nunca.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.xlsx binary
+*.xlsm binary
+*.xls  binary
+*.docx binary
+*.doc  binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
+*.eot  binary
