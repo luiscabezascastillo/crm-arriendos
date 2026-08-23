@@ -1,3 +1,6 @@
+// VERSION: v22 · 2026-08-23 · Roster de garantías = TODOS los arriendos de Paola (con arrendatario, no vacantes) desde
+//   datos_arriendos, con moneda/cuota/reajustes + garantía pedida/cuotas 1-4/quién/deuda + contacto, para la hoja
+//   "Garantías" (ledger agrupado, ordenado por inmueble). Hereda v21.
 // VERSION: v21 · 2026-08-23 · Hoja "Garantías" del Excel = roster de TODOS los contratos S/SQ desde datos_arriendos
 //   (garantía pedida, entregada = Σ cobradas, cuotas 1-4, quién, deuda, contacto), ordenado por inmueble + resumen del
 //   mes. Nuevo helper cargarGarantiasRoster(); 'excel'/'enviar' pasan garantiasRoster a generarExcelPaola. Hereda v20.
@@ -78,10 +81,15 @@ const ESTADOS_LIQUIDABLES = ['S', 'SQ', 'P', 'Q']
 // deuda, contacto). La hoja lo ordena por inmueble. Fuente única = datos_arriendos.
 async function cargarGarantiasRoster() {
   const { data, error } = await admin.from('datos_arriendos')
-    .select('idadmon, estado, inmueble, arrendatario, garantia_pedida, deuda_garantia, quien_tiene_garantia, garantia_con, fecha1, cuota1, cobrada1, fecha2, cuota2, cobrada2, fecha3, cuota3, cobrada3, fecha4, cuota4, cobrada4, fecha_inicio, termino_actual, mail_arrendatario, movil')
-    .eq('idprop', IDPROP_PAOLA).in('estado', ['S', 'SQ'])
+    .select('idadmon, estado, inmueble, idinmue, unid, cuota, uf_peso_factor, ' +
+      'cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, ' +
+      'garantia_pedida, deuda_garantia, quien_tiene_garantia, garantia_con, ' +
+      'fecha1, cuota1, cobrada1, fecha2, cuota2, cobrada2, fecha3, cuota3, cobrada3, fecha4, cuota4, cobrada4, ' +
+      'fecha_inicio, termino_actual, arrendatario, mail_arrendatario, movil')
+    .eq('idprop', IDPROP_PAOLA)
   if (error) { console.error('cargarGarantiasRoster:', error.message); return [] }
-  return data || []
+  // Todos los arriendos reales (con arrendatario), no las vacantes; la hoja los ordena por inmueble.
+  return (data || []).filter(r => String(r.arrendatario || '').trim() && String(r.estado || '').toUpperCase() !== 'P')
 }
 const TOLERANCIA_MONTO = 500
 const TOLERANCIA_EXCESO = 1000
