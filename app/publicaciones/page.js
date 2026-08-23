@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-21 · (1) Botón "⇄ Reconciliar PI" en la cabecera → /publicaciones/reconciliar.
+//   (2) Tarjetas activas: Ficha · Compartir · Republicar (se quitó "Editar", que era un botón sin acción);
+//   las históricas siguen con Ficha · Republicar (sin Compartir, no tienen link). Hereda v1.
 'use client'
 import React from 'react'
 
@@ -549,6 +552,7 @@ export default function PublicacionesPage() {
               {chequeandoPI ? '⏳ Chequeando...' : '🔄 Chequear PI'}
             </button>
           )}
+          <button onClick={() => router.push('/publicaciones/reconciliar')} style={{ padding:'7px 16px', background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>⇄ Reconciliar PI</button>
           <button style={{ padding:'7px 16px', background:'#1a56db', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }} onClick={nuevaPublicacion}>+ Nueva publicación</button>
         </div>
       </div>
@@ -819,9 +823,9 @@ export default function PublicacionesPage() {
                         </>
                       ) : (
                         <>
-                          <button style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #1a56db', background:'#eff6ff', color:'#1a56db', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>Editar</button>
                           <button onClick={() => router.push(`/publicaciones/${p.id}`)} style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #16a34a', background:'#f0fdf4', color:'#16a34a', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>Ficha</button>
                           <button onClick={() => compartir(p)} style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #0891b2', background:'#ecfeff', color:'#0891b2', fontSize:10, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}>{linkCopiado===p.id ? '✓ Copiado' : 'Compartir'}</button>
+                          <button onClick={() => republicar(p)} disabled={republicando===p.id} style={{ flex:1, padding:'5px 0', borderRadius:6, border:'1px solid #1a56db', background:'#eff6ff', color:'#1a56db', fontSize:10, fontWeight:500, cursor:republicando===p.id?'not-allowed':'pointer', fontFamily:'inherit' }}>{republicando===p.id?'⏳':'🔄 Republicar'}</button>
                         </>
                       )}
                     </div>

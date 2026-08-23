@@ -1,11 +1,13 @@
-// VERSION: v1 · 2026-08-21 · GET /api/pi/reconciliar — REVISA (no toca nada) la desincronización entre el
-//   CRM y Portal Inmobiliario. Trae TODAS tus publicaciones activas reales de ML (/users/me/items),
-//   lee su PROPERTY_CODE (= codigo del CRM, que publicar-pi mete en el item) y su MLC real, y cruza:
-//   - desincronizadas: el CRM tiene un codigo_pi distinto al MLC real → arreglable (poner el MLC bueno).
-//   - crm_dice_baja_pero_viva: el CRM la da por caída/histórica pero en ML está activa.
-//   - fantasmas: el CRM la marca en PI (pi='SI', active) pero su codigo NO está entre tus activas de ML.
-//   - huerfanas: item activo en ML cuyo codigo no está en ninguna publicación del CRM.
-//   Solo lectura: devuelve el informe en JSON. El arreglo automático se hará en otra acción aparte.
+// VERSION: v2 · 2026-08-21 · Reconciliación CRM ↔ Portal Inmobiliario (MercadoLibre).
+//   GET  → informe (solo lectura): cruza tus publicaciones activas reales de ML (por PROPERTY_CODE = codigo
+//          del CRM) contra el CRM. Listas: desincronizadas, crm_dice_baja_pero_viva, fantasmas, huerfanas.
+//   POST → aplica acciones que SOLO tocan el CRM (nunca PI): pone el CRM al día con lo que hay en PI.
+//          body { action, items:[{id, mlc_real, permalink}] }.
+//          - 'sync_links'   → codigo_pi/url_pi = valor real de ML (solo metadato).
+//          - 'reactivar'    → pi='SI', activo='active', codigo_pi/url_pi reales, estado_pi='active'.
+//          - 'marcar_caida' → pi='NO', activo='closed', estado_pi='closed' (refleja que en PI está caída).
+//   Ninguna acción crea/cierra nada en Portal Inmobiliario: solo copia el estado real de PI hacia el CRM.
+// VERSION: v1 · 2026-08-21 · GET de reconciliación (solo lectura).
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -54,13 +56,12 @@ export async function GET() {
     const token = await getValidToken()
     const auth = { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
 
-    // 1. user_id del token
     const meRes = await fetch(`${ML_API}/users/me`, auth)
     const me = await meRes.json()
     const userId = me.id
     if (!userId) return NextResponse.json({ error: 'No se pudo obtener el user_id de ML', detalle: me }, { status: 500 })
 
-    // 2. IDs de TODAS las publicaciones activas del vendedor (paginado)
+    // IDs de todas las publicaciones activas del vendedor (paginado)
     const activeIds = []
     let offset = 0
     for (let guard = 0; guard < 60; guard++) {
@@ -73,57 +74,53 @@ export async function GET() {
       if (results.length === 0 || offset >= total) break
     }
 
-    // 3. Detalle de cada item (id, status, permalink, PROPERTY_CODE) en lotes de 20
-    const mlItems = []   // { mlc, status, permalink, codigo }
+    // Detalle: id, status, permalink, PROPERTY_CODE
+    const mlItems = []
     for (const lote of lotes(activeIds, 20)) {
       const r = await fetch(`${ML_API}/items?ids=${lote.join(',')}&attributes=id,status,permalink,attributes`, auth)
       const data = await r.json()
       if (Array.isArray(data)) {
         for (const it of data) {
           const b = it.body || {}
-          if (it.code === 200 && b.id) {
-            mlItems.push({ mlc: b.id, status: b.status, permalink: b.permalink || '', codigo: propertyCodeDe(b) })
-          }
+          if (it.code === 200 && b.id) mlItems.push({ mlc: b.id, status: b.status, permalink: b.permalink || '', codigo: propertyCodeDe(b) })
         }
       }
     }
 
-    // 4. Publicaciones del CRM (todas, paginado). codigo -> fila
+    // CRM (todas, paginado)
     let crm = []
-    let from = 0
+    let cfrom = 0
     for (let guard = 0; guard < 20; guard++) {
       const { data } = await supabase.from('publicaciones')
-        .select('id, codigo, codigo_pi, url_pi, pi, activo').range(from, from + 999)
+        .select('id, codigo, codigo_pi, url_pi, pi, activo').range(cfrom, cfrom + 999)
       if (!data || data.length === 0) break
       crm = crm.concat(data)
       if (data.length < 1000) break
-      from += 1000
+      cfrom += 1000
     }
     const crmPorCodigo = new Map()
     for (const p of crm) if (p.codigo) crmPorCodigo.set(String(p.codigo).trim(), p)
     const codigosMLactivas = new Set(mlItems.filter(m => m.codigo).map(m => m.codigo))
 
-    // 5. Cruce
-    const desincronizadas = []          // CRM tiene codigo_pi != MLC real
-    const crm_dice_baja_pero_viva = []  // ML activa, CRM la da por baja
-    const huerfanas = []                // ML activa, sin publicación en el CRM con ese codigo
+    const desincronizadas = []
+    const crm_dice_baja_pero_viva = []
+    const huerfanas = []
     let sincronizadas = 0
 
     for (const m of mlItems) {
       const pub = m.codigo ? crmPorCodigo.get(m.codigo) : null
       if (!pub) { huerfanas.push({ mlc: m.mlc, property_code: m.codigo || null, permalink: m.permalink }); continue }
       const igualMLC = String(pub.codigo_pi || '') === String(m.mlc)
-      if (!igualMLC) desincronizadas.push({ codigo: pub.codigo, codigo_pi_crm: pub.codigo_pi || null, mlc_real: m.mlc, permalink: m.permalink })
+      if (!igualMLC) desincronizadas.push({ id: pub.id, codigo: pub.codigo, codigo_pi_crm: pub.codigo_pi || null, mlc_real: m.mlc, permalink: m.permalink })
       else sincronizadas++
       if (pub.pi !== 'SI' || pub.activo !== 'active') {
-        crm_dice_baja_pero_viva.push({ codigo: pub.codigo, crm_pi: pub.pi, crm_activo: pub.activo, mlc_real: m.mlc, permalink: m.permalink })
+        crm_dice_baja_pero_viva.push({ id: pub.id, codigo: pub.codigo, crm_pi: pub.pi, crm_activo: pub.activo, mlc_real: m.mlc, permalink: m.permalink })
       }
     }
 
-    // Fantasmas: CRM cree que está en PI y activa, pero su codigo no está entre las activas reales de ML
     const fantasmas = crm
       .filter(p => p.pi === 'SI' && p.activo === 'active' && p.codigo && !codigosMLactivas.has(String(p.codigo).trim()))
-      .map(p => ({ codigo: p.codigo, codigo_pi_crm: p.codigo_pi || null }))
+      .map(p => ({ id: p.id, codigo: p.codigo, codigo_pi_crm: p.codigo_pi || null }))
 
     return NextResponse.json({
       ok: true,
@@ -136,13 +133,41 @@ export async function GET() {
         fantasmas: fantasmas.length,
         huerfanas: huerfanas.length,
       },
-      desincronizadas,
-      crm_dice_baja_pero_viva,
-      fantasmas,
-      huerfanas,
+      desincronizadas, crm_dice_baja_pero_viva, fantasmas, huerfanas,
       fecha: new Date().toISOString(),
     })
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+// Aplica acciones. SOLO toca el CRM (nunca Portal Inmobiliario).
+export async function POST(request) {
+  try {
+    const body = await request.json()
+    const action = String(body?.action || '')
+    const items = Array.isArray(body?.items) ? body.items : []
+    if (!items.length) return NextResponse.json({ error: 'No hay filas para aplicar.' }, { status: 400 })
+    const now = new Date().toISOString()
+    let n = 0
+    for (const it of items) {
+      const id = it.id
+      if (!id) continue
+      let patch = null
+      if (action === 'sync_links') {
+        patch = { codigo_pi: it.mlc_real, url_pi: it.permalink || '', updated_at: now }
+      } else if (action === 'reactivar') {
+        patch = { pi: 'SI', activo: 'active', codigo_pi: it.mlc_real, url_pi: it.permalink || '', estado_pi: 'active', estado_pi_fecha: now, updated_at: now }
+      } else if (action === 'marcar_caida') {
+        patch = { pi: 'NO', activo: 'closed', estado_pi: 'closed', estado_pi_fecha: now, updated_at: now }
+      } else {
+        return NextResponse.json({ error: 'Acción no válida: ' + action }, { status: 400 })
+      }
+      const { error } = await supabase.from('publicaciones').update(patch).eq('id', id)
+      if (!error) n++
+    }
+    return NextResponse.json({ ok: true, action, actualizadas: n })
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
