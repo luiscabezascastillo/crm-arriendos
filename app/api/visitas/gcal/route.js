@@ -1,3 +1,4 @@
+// VERSION: v3 · 2026-08-21 · Guarda el resultado de la sync en la visita (gcal_error + gcal_sync_at) para diagnosticar por SQL. Hereda v2.
 // VERSION: v2 · 2026-08-21 · Enruta cada visita al calendario de su comercial (tabla gcal_calendarios); respaldo GCAL_VISITAS_ID.
 // VERSION: v1 · 2026-08-20 · POST { visita_id } -> sincroniza la visita con Google Calendar "FCR · Visitas".
 //   Crea/edita el evento (guarda gcal_event_id) o lo borra si estado='cancelada'. Best-effort:
@@ -35,10 +36,8 @@ export async function POST(req) {
 
   try {
     if (v.estado === 'cancelada') {
-      if (v.gcal_event_id) {
-        await deleteVisita(v.gcal_event_id, calendarId)
-        await admin.from('visitas').update({ gcal_event_id: null }).eq('id', id)
-      }
+      if (v.gcal_event_id) await deleteVisita(v.gcal_event_id, calendarId)
+      await admin.from('visitas').update({ gcal_event_id: null, gcal_error: null, gcal_sync_at: new Date().toISOString() }).eq('id', id)
       return Response.json({ ok: true, accion: 'cancelada' })
     }
 
@@ -65,11 +64,13 @@ export async function POST(req) {
     } catch { /* opcional */ }
 
     const eventId = await upsertVisita(v, { direccion, comercialEmail, calendarId })
-    if (eventId && eventId !== v.gcal_event_id) {
-      await admin.from('visitas').update({ gcal_event_id: eventId }).eq('id', id)
-    }
+    await admin.from('visitas')
+      .update({ gcal_event_id: eventId || v.gcal_event_id, gcal_error: null, gcal_sync_at: new Date().toISOString() })
+      .eq('id', id)
     return Response.json({ ok: true, accion: v.gcal_event_id ? 'update' : 'create', event_id: eventId })
   } catch (e) {
-    return Response.json({ ok: false, error: String(e?.message || e) })
+    const msg = String(e?.message || e).slice(0, 400)
+    try { await admin.from('visitas').update({ gcal_error: msg, gcal_sync_at: new Date().toISOString() }).eq('id', id) } catch { /* noop */ }
+    return Response.json({ ok: false, error: msg })
   }
 }

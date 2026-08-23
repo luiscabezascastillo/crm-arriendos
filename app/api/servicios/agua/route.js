@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-08-23 · Filtro de pendientes calculado en JS (no en SQL) con esPendiente(): sin fecha,
+//   formato no-ISO (d/m/aaaa, no fiable) o ISO anterior al último domingo. Evita depender del orden de texto
+//   con formatos mezclados. Mismo criterio que Luz v4. Hereda v4.
 // VERSION: v4 · 2026-08-23 · "Solo pendientes" ahora = sin fecha O consultado antes del ÚLTIMO DOMINGO
 //   (antes: antes del día 1 del mes). Encaja con los cortes semanales: lo no consultado desde el domingo
 //   se considera pendiente para el corte de la semana. Domingo anclado a hora de Chile. Hereda v3.
@@ -40,6 +43,17 @@ function ultimoDomingoISO() {
   const base = new Date(`${o.year}-${o.month}-${o.day}T12:00:00Z`)
   base.setUTCDate(base.getUTCDate() - dow)
   return base.toISOString().split('T')[0]
+}
+
+// Pendiente = sin fecha, formato no-ISO (d/m/aaaa: fecha vieja, no fiable como consulta),
+// o ISO anterior al último domingo. Robusto ante formatos mezclados en la columna.
+function esPendiente(fh, corte) {
+  if (fh == null) return true
+  const s = String(fh).trim()
+  if (!s) return true
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return s.slice(0, 10) < corte
+  return true
 }
 
 function esCodigoAguaValido(codigo) {
@@ -99,18 +113,13 @@ export async function GET(request) {
     if (!mes) return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
 
     // Filas del mes (deuda/estado); el CÓDIGO ya no vive aquí.
-    let query = supabase
+    // El filtro de pendientes se hace en JS (ver esPendiente), no en SQL, por los formatos mezclados de fecha.
+    const query = supabase
       .from('ggcc_agua_luz')
       .select('idadmon, idinmue, deuda_vigente_agua, fecha_hecho_agua, edificio_proyecto, inmueble')
       .eq('mes', mes)
       .not('idadmon', 'like', '.%')
       .order('idadmon')
-
-      if (soloPendientes) {
-        // Pendiente = sin fecha o consultado antes del último domingo (corte semanal).
-        const corte = ultimoDomingoISO()
-        query = query.or(`fecha_hecho_agua.is.null,fecha_hecho_agua.eq.,fecha_hecho_agua.lt.${corte}`)
-      }
 
     const { data, error } = await query
     if (error) return Response.json({ error: error.message }, { status: 500 })
@@ -120,10 +129,15 @@ export async function GET(request) {
     if (eC) return Response.json({ error: eC.message }, { status: 500 })
     const mapAgua = new Map((cods || []).map(c => [c.idinmue, c.codigo_agua]))
 
-    const filtrado = (data || [])
+    let filtrado = (data || [])
       .map(row => ({ ...row, codigo_agua: mapAgua.get(row.idinmue) || null }))
       .filter(row => esCodigoAguaValido(row.codigo_agua))
       .map(row => ({ ...row, codigo_agua_normalizado: normalizarCodigoAgua(row.codigo_agua) }))
+
+    if (soloPendientes) {
+      const corte = ultimoDomingoISO()
+      filtrado = filtrado.filter(row => esPendiente(row.fecha_hecho_agua, corte))
+    }
 
     return Response.json({ codigos: filtrado, total: filtrado.length })
 

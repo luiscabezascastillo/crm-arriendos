@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-23 · "Solo pendientes" = sin fecha, formato no-ISO (d/m/aaaa = fecha vieja/factura,
+//   no fiable como consulta) o ISO anterior al ÚLTIMO DOMINGO. Cálculo en JS (no en SQL) para no depender del
+//   orden de texto con formatos mezclados. Encaja con los cortes semanales. Domingo anclado a hora de Chile. Hereda v3.
 // VERSION: v3 · 2026-08-17 · El código Enel ya NO se lee de la fila del mes en ggcc_agua_luz, sino de la fuente
 //   única `servicios_codigos` (por idinmue). Así los meses nuevos heredan el código solo (no se pierde al reproducir
 //   el mes). La deuda del mes sigue en ggcc_agua_luz. Hereda v2.
@@ -24,6 +27,31 @@ function normalizarMes(m) {
   const mm = s.toLowerCase().match(/^([a-záéíóúñ]+)\s+(\d{4})$/)
   if (mm && MESES[mm[1]]) return mm[2] + '-' + MESES[mm[1]]
   return s
+}
+
+// Fecha (YYYY-MM-DD) del domingo más reciente, inclusive si hoy es domingo.
+// Anclado a hora de Chile (America/Santiago) para no desfasar cerca de medianoche.
+function ultimoDomingoISO() {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(new Date())
+  const o = {}
+  for (const p of partes) o[p.type] = p.value
+  const dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[o.weekday] ?? 0
+  const base = new Date(`${o.year}-${o.month}-${o.day}T12:00:00Z`)
+  base.setUTCDate(base.getUTCDate() - dow)
+  return base.toISOString().split('T')[0]
+}
+
+// Pendiente = sin fecha, formato no-ISO (d/m/aaaa: fecha vieja/factura, no fiable como consulta),
+// o ISO anterior al último domingo. Robusto ante formatos mezclados en la columna.
+function esPendiente(fh, corte) {
+  if (fh == null) return true
+  const s = String(fh).trim()
+  if (!s) return true
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return s.slice(0, 10) < corte
+  return true
 }
 
 // Guarda la deuda de luz de un inmueble (todas las columnas son text)
@@ -89,16 +117,13 @@ export async function GET(request) {
     if (!mes) return Response.json({ error: 'Parámetro mes requerido' }, { status: 400 })
 
     // Filas del mes (deuda/estado); el CÓDIGO ya no vive aquí.
-    let query = supabase
+    // El filtro de pendientes se hace en JS (ver esPendiente), no en SQL, por los formatos mezclados de fecha.
+    const query = supabase
       .from('ggcc_agua_luz')
       .select('idadmon, idinmue, deuda_vigente_electricidad, fecha_hecho_luz, edificio_proyecto, inmueble')
       .eq('mes', mes)
       .not('idinmue', 'like', '.%')
       .order('idadmon')
-
-    if (soloPendientes) {
-      query = query.is('fecha_hecho_luz', null)
-    }
 
     const { data, error } = await query
     if (error) return Response.json({ error: error.message }, { status: 500 })
@@ -109,9 +134,14 @@ export async function GET(request) {
     const mapEle = new Map((cods || []).map(c => [c.idinmue, c.codigo_ele]))
 
     // Solo códigos con formato válido (número-DV); descarta bodega/estacionamiento/etc.
-    const filtrado = (data || [])
+    let filtrado = (data || [])
       .map(row => ({ ...row, codigo_ele: mapEle.get(row.idinmue) || null }))
       .filter(row => row.codigo_ele && /^[\d-]+[\dkK]?$/.test(String(row.codigo_ele).trim()))
+
+    if (soloPendientes) {
+      const corte = ultimoDomingoISO()
+      filtrado = filtrado.filter(row => esPendiente(row.fecha_hecho_luz, corte))
+    }
 
     return Response.json({ codigos: filtrado, total: filtrado.length })
   } catch (e) {

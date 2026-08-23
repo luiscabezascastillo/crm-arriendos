@@ -16,6 +16,9 @@ function generarMeses(nAtras = 12) {
 }
 const MESES_DISPONIBLES = generarMeses(12)
 
+// VERSION: v5 · 2026-08-23 · Guarda la fecha de CONSULTA (ISO de hoy) en fecha_hecho_luz, no la de la
+//   factura (d/m/aaaa que devolvía el scraping). Así "fecha de captura" mide antigüedad del dato y el
+//   umbral "no consultado desde el último domingo" funciona igual que en Agua. Hereda v4.
 // VERSION: v4 · 2026-08-23 · Robustez del botón "Iniciar consulta": try/finally para que procesandoRef
 //   nunca quede colgado y bloquee clics futuros en silencio (mismo arreglo que Agua v4). El guard ahora
 //   avisa en el log el motivo si no arranca. Hereda v3.
@@ -181,9 +184,11 @@ export default function ServiciosLuzPage() {
           todosResultados.push({ idadmon, codigo_ele, status: 'error', mensaje: (resp && resp.error) || 'sin respuesta de la extensión' })
           fallidos++
         } else {
-          // Guardar en el servidor (Supabase no tiene anti-bot)
+          // Guardar en el servidor (Supabase no tiene anti-bot).
+          // v5: guardamos la fecha de CONSULTA (ISO de hoy), NO la de la factura, para paridad con Agua
+          //   y para que "fecha de captura" sirva de indicador de dato viejo (base del umbral de pendientes).
           const hoy = new Date().toISOString().split('T')[0]
-          const fecha = resp.fecha || hoy
+          const fecha = hoy
           const g = await fetch('/api/servicios/luz', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
