@@ -1,4 +1,7 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
+// VERSION: v14 · 2026-08-23 · (1) La vista arranca filtrada al MES EN CURSO (AAMM más reciente) → KPIs y tabla
+//   muestran solo el corte actual, no el histórico (se ve el resto abriendo el filtro AAMM). (2) La columna AAMM
+//   muestra el corte: "2608-1", "2608-2"… (corte más reciente del mes, de ggcc_cortes). Hereda v13.
 // VERSION: v13 · 2026-08-23 · Botón "📸 Tomar corte" en la barra de acciones: toma una foto congelada del mes
 //   (plan B) vía POST /api/servicios/cortes (action:'tomar'), con periodo (AAMM más reciente), fecha y nota.
 //   No modifica los datos vivos. Hereda v12.
@@ -277,6 +280,14 @@ export default function Deudas() {
     setCorteBusy(false)
   }
   useEffect(() => { cargarCortes() }, [])
+  // Por defecto, la vista se centra en el MES EN CURSO (el AAMM más reciente): el cuadro de KPIs y la tabla
+  // muestran solo el corte actual, no el histórico. El usuario puede abrir el filtro AAMM para ver otros meses.
+  const defAammRef = useRef(false)
+  useEffect(() => {
+    if (defAammRef.current || !filas.length) return
+    const a = filas.reduce((mx, f) => { const x = String(f.aamm || ''); return x > mx ? x : mx }, '')
+    if (a) { setFAamm(f => ({ ...f, selected: [a] })); defAammRef.current = true }
+  }, [filas])
 
   useEffect(() => {
     supabase.from('datos_arriendos').select('idadmon,propietario,inmueble,estado')
@@ -572,6 +583,9 @@ export default function Deudas() {
   // Cortes del mes en curso (el AAMM más reciente cargado)
   const aammActual = filas.reduce((mx,f)=>{ const a=String(f.aamm||''); return a>mx?a:mx }, '')
   const cortesMes = cortesReg.filter(c=>String(c.aamm)===aammActual).sort((a,b)=>a.corte-b.corte)
+  // Corte más reciente por AAMM (para etiquetar la columna: "2608-1", "2608-2"…)
+  const corteDeAamm = {}
+  for (const c of cortesReg) { const a=String(c.aamm); if (!(a in corteDeAamm) || c.corte>corteDeAamm[a]) corteDeAamm[a]=c.corte }
 
   return (
     <div style={{padding:'24px 32px',maxWidth:1400,margin:'0 auto',fontFamily:'var(--font-sans,sans-serif)'}}>
@@ -717,7 +731,7 @@ export default function Deudas() {
                   return (
                     <tr key={f.idadmon+i} onClick={()=>abrirDrawer(f)}
                       style={{background:drawer?.idadmon===f.idadmon?'#EFF6FF':i%2===0?'#fff':'#FAFAFA',cursor:'pointer'}}>
-                      <td style={tdS}><span style={{fontWeight:600,color:'#185FA5'}}>{f.aamm}</span></td>
+                      <td style={tdS}><span style={{fontWeight:600,color:'#185FA5'}}>{f.aamm}{corteDeAamm[String(f.aamm)]?`-${corteDeAamm[String(f.aamm)]}`:''}</span></td>
                       <td style={tdS}><span style={{fontWeight:500}}>{f.idadmon}</span></td>
                       <td style={tdS}><div style={trunc(170)} title={propTxt}>{propTxt}</div></td>
                       <td style={{...tdS,color:'#6B7280'}}><div style={{...trunc(170),fontSize:12}} title={inmuTxt}>{inmuTxt}</div></td>
