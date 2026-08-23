@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-23 · Añade DIAGNÓSTICO: la respuesta incluye qué AAMM existen realmente en el Excel
+//   (`aammEnExcel`), cuántas filas van sin AAMM y una muestra, para localizar dónde están los meses históricos.
+//   Hereda v1.
 // VERSION: v1 · 2026-08-23 · Carga MASIVA de meses históricos de GGCC/servicios a la tabla viva `ggcc_agua_luz`.
 //   Reutiliza la lógica de deudas/cargar-excel pero recorre una LISTA de AAMM (descarga el Excel del Drive una
 //   sola vez). Para cada mes reporta: filas del Excel, idadmon únicos, y DUPLICADOS (mismo idadmon+idinmue+mes
@@ -71,6 +74,12 @@ export async function POST(req) {
       updated_at:              new Date().toISOString(),
     })
 
+    // DIAGNÓSTICO: qué AAMM hay realmente y filas sin AAMM (para localizar los históricos)
+    const aammEnExcel = [...new Set(rows.map(r => aammDe(r)).filter(Boolean))].sort()
+    const filasSinAamm = rows.filter(r => !aammDe(r) && (r['IDADMON'] || r['idadmon']))
+    const sinAammMuestra = filasSinAamm.slice(0, 10).map(r => ({ mes: r['MES'] || r['mes'] || null, idadmon: r['IDADMON'] || r['idadmon'] || null }))
+    const diagnostico = { hoja: wb.SheetNames[0], hojas: wb.SheetNames, aammEnExcel, filasSinAamm: filasSinAamm.length, sinAammMuestra }
+
     const reporte = []
     for (const aamm of aamms) {
       const filtradas = rows.filter(r => aammDe(r) === aamm)
@@ -106,7 +115,7 @@ export async function POST(req) {
     }
 
     const conDuplicados = reporte.filter(r => r.duplicados)
-    return Response.json({ ok: true, reporte, mesesConDuplicados: conDuplicados.map(r => r.aamm) })
+    return Response.json({ ok: true, diagnostico, reporte, mesesConDuplicados: conDuplicados.map(r => r.aamm) })
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 })
   }

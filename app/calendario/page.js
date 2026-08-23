@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-20 · Al cambiar el estado de una visita se sincroniza con Google Calendar (FCR · Visitas). Hereda v2.
 // VERSION: v2 · 2026-07-21 · Los roles comerciales (comercial, ventas) entran y trabajan aquí, viendo SOLO sus visitas.
 //   Antes solo Dirección/admin: al resto lo expulsaba y acababa en la pantalla de login.
 import { useState, useEffect, useMemo } from 'react'
@@ -73,6 +74,7 @@ export default function CalendarioPage() {
 
   async function cambiarEstado(v, estado) {
     await supabase.from('visitas').update({ estado, updated_at: new Date().toISOString() }).eq('id', v.id)
+    fetch('/api/visitas/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visita_id: v.id }) }).catch(() => {})
     await cargar()
   }
   async function generarOrden(v) {

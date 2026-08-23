@@ -133,6 +133,9 @@ export default function AgendarVisitaModal({ pub = null, contactoInicial = null,
         await supabase.from('visita_propiedades').insert(detalle)
       }
 
+      // Sincroniza con Google Calendar (FCR · Visitas). Best-effort: no bloquea ni rompe si falla.
+      fetch('/api/visitas/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visita_id: vis.id }) }).catch(() => {})
+
       let orden = null
       if (genOrden) {
         const res = await fetch('/api/ordenes/generar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visita_id: vis.id }) })
