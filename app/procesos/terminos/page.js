@@ -1,5 +1,10 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 'use client'
+// VERSION: v56 · 2026-08-23 · FIX PDF del término: el importe "Arreglos presupuesto" (bloque reparaciones) ahora sale
+//   en el PDF de arrendatario y de propietario tomando el importe de la PROPIA línea de la liquidación, no de
+//   'repPresu' (que se calcula del presupuesto_detalle y valía 0 cuando el presupuesto no tenía filas de detalle o
+//   el importe era un override) → antes esos arreglos desaparecían del PDF aunque el resultado sí los sumaba. El
+//   cálculo del término no cambia. Hereda v55.
 // VERSION: v55 · 2026-08-19 · "Fecha de notificación" pasa a texto libre (la columna terminos.fecha_notificacion es
 //   ahora text): admite la fecha (dd/mm/aaaa) o un estado ("Indicar fecha para CRM", "No se rellenó en el Excel",
 //   "No encontrado Excel"…). Input type=text, sin recorte ni fmtFecha. Hereda v54.
@@ -1188,7 +1193,17 @@ export default function TerminosPage() {
       const lr = (lineas.reparaciones || []).filter(inc)
       const Rv = calcResult({ garantia: lg, servicios: ls, reparaciones: lr }, 0, garantiaVal, repPresu, quienGar)
       // La AUTO ("Arreglos presupuesto") representa el presupuesto: si el propietario la excluye, no se muestra su detalle.
-      const autoIncluida = lr.some(l => l.concepto === AUTO_CONCEPTO)
+      // FIX v56: el importe del presupuesto en el PDF debe ser el de la PROPIA línea de la liquidación (lo que se
+      // cobra y se ve en pantalla), NO 'repPresu' (que se calcula del presupuesto_detalle con markup y vale 0
+      // cuando el presupuesto no tiene filas de detalle o el importe es un override). Antes, en esos casos, los
+      // "Arreglos presupuesto" desaparecían del PDF aunque el resultado del término sí los sumaba.
+      const autoLine = lr.find(l => l.concepto === AUTO_CONCEPTO)
+      const autoMonto = autoLine ? n0(autoLine.monto) : 0
+      // El detalle (líneas del presupuesto con markup) solo se muestra si su suma coincide con el importe real
+      // de la línea; si hay override que lo contradice, se muestra una sola línea "Arreglos segun presupuesto".
+      const detMapped = (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total }))
+      const detSum = detMapped.reduce((a, x) => a + n0(x.importe), 0)
+      const usarDetalle = detMapped.length > 0 && detSum === autoMonto
       const datos = {
         idadmon: idadmonSel,
         inmueble: A?.inmueble || '',
@@ -1202,7 +1217,7 @@ export default function TerminosPage() {
         reparaciones: {
           total: Rv?.sr || 0,
           lineas: lr.filter(l => l.concepto !== AUTO_CONCEPTO).map(l => ({ concepto: l.concepto, monto: n0(l.monto), comentario: l.comentario || '' })).filter(x => n0(x.monto) !== 0),
-          presupuesto: autoIncluida ? { total: repPresu, detalle: (panel?.detalle || []).map(l => ({ descripcion: l.descripcion, importe: lineaConMarkup(l, mkDef).total })) } : { total: 0, detalle: [] },
+          presupuesto: (autoLine && autoMonto !== 0) ? { total: autoMonto, detalle: usarDetalle ? detMapped : [] } : { total: 0, detalle: [] },
         },
         // La GARANTÍA ya sale en la cabecera del PDF: se excluye de "Descuentos aplicados" (familia garantía o texto de garantía).
         descuentos: (descDelTermino || []).filter(dd => familiaDe(dd.tipo) !== 'garantia' && !/garant[ií]a/i.test(String(dd.texto_explicativo_para_carta_a_propietario || ''))).map(dd => ({ num: dd.num, fecha: fmtFecha(dd.fecha_contable), imputarA: dd.repercutir_a || '', monto: n0(dd.monto_a_imputar), comentario: dd.texto_explicativo_para_carta_a_propietario || '' })),
