@@ -1,4 +1,6 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
+// VERSION: v17 · 2026-08-23 · Bajo cada importe de servicio (GGCC/Luz/Agua/Gas) se muestra su FECHA DE CAPTURA
+//   compacta (dd-mm, de fecha_hecho_*), para detectar de un vistazo datos viejos que conviene actualizar a mano.
 // VERSION: v16 · 2026-08-23 · La etiqueta de corte es el ÚLTIMO corte tomado (máximo), no +1: la tabla viva ES
 //   la edición viva = el último corte, que se sigue actualizando (manualmente) hasta el próximo corte. Tras
 //   tomar 2608-2 la vista queda en 2608-2 hasta el domingo siguiente. El indicador muestra "edición viva" (azul)
@@ -37,6 +39,17 @@ function fmt(n) {
 function fmtPeso(n) {
   if (n === null || n === undefined) return '—'
   return '$' + Number(n).toLocaleString('es-CL')
+}
+// Fecha de captura compacta (dd-mm) a partir de un texto de fecha (ISO, dd/mm/aaaa, datetime…). Para ver de un
+// vistazo si un dato de servicio quedó viejo y conviene actualizarlo a mano.
+function fhCorta(v) {
+  if (!v) return ''
+  const s = String(v).trim()
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)            // ISO aaaa-mm-dd
+  if (m) return `${m[3]}-${m[2]}`
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/) // dd/mm/aaaa
+  if (m) return `${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`
+  return s.slice(0, 5)
 }
 // Depto de un idinmue (posible compuesto "P016-02 P016-51"): el código cuyo sufijo -NN está en 01..49.
 function idinmueDepto(idinmue) {
@@ -755,10 +768,11 @@ export default function Deudas() {
                           <Dot val={f.deuda_vigente_agua}/><Dot val={f.deuda_vigente_gas}/>
                         </div>
                       </td>
-                      {[f.deuda_gastos_comunes,f.deuda_vigente_electricidad,f.deuda_vigente_agua,f.deuda_vigente_gas].map((v,vi)=>(
+                      {[[f.deuda_gastos_comunes,f.fecha_hecho_ggcc],[f.deuda_vigente_electricidad,f.fecha_hecho_luz],[f.deuda_vigente_agua,f.fecha_hecho_agua],[f.deuda_vigente_gas,f.fecha_hecho_gas]].map(([v,fh],vi)=>(
                         <td key={vi} style={{...tdS,textAlign:'right',fontWeight:500,
                           color:fmt(v)>0?'#A32D2D':fmt(v)===0?'#3B6D11':'#9CA3AF'}}>
-                          {v===null?'—':fmtPeso(fmt(v))}
+                          <div>{v===null?'—':fmtPeso(fmt(v))}</div>
+                          {fhCorta(fh) && <div style={{fontSize:10,color:'#9CA3AF',fontWeight:400,marginTop:1}} title={String(fh)}>{fhCorta(fh)}</div>}
                         </td>
                       ))}
                       <td style={{...tdS,textAlign:'right',fontWeight:600,color:tot>0?'#A32D2D':'#3B6D11'}}>
