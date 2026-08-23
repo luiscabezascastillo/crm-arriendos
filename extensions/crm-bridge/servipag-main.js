@@ -33,17 +33,17 @@
     )
   }
   function botonMas() {
-    // 1) boton cuyo texto es exactamente "+"
-    let b = botones().find((x) => (x.textContent || '').trim() === '+')
+    // 1) por id de Servipag (btnIconAddToCart-...) — lo mas estable
+    let b = document.querySelector('button[id*="AddToCart"]')
     if (b) return b
-    // 2) boton dentro del contenedor donde esta el "$monto"
-    const amt = [...document.querySelectorAll('*')].find((e) => e.childElementCount <= 2 && /\$\s?[\d.]{3,}/.test(e.textContent || ''))
-    if (amt) {
-      let cont = amt.closest('div')
-      for (let up = 0; up < 3 && cont; up++) { const nb = cont.querySelector('button'); if (nb) return nb; cont = cont.parentElement }
-    }
-    // 3) por clase/aria
-    b = botones().find((x) => /add|plus|agregar|mas|más/i.test(x.className || '') || /add|plus|agregar/i.test(x.getAttribute('aria-label') || ''))
+    // 2) boton que contiene el icono "+" (<i class="bi bi-plus">)
+    const ico = document.querySelector('button i.bi-plus, button .bi-plus, button i[class*="plus"]')
+    if (ico && ico.closest('button')) return ico.closest('button')
+    // 3) dentro del contenedor del precio
+    const cont = document.querySelector('#card-lib-divAddToCart-click, .form-control-price')
+    if (cont) { const nb = cont.querySelector('button'); if (nb) return nb }
+    // 4) fallback: boton cuyo texto es exactamente "+"
+    b = botones().find((x) => (x.textContent || '').trim() === '+')
     return b || null
   }
 
@@ -111,5 +111,5 @@
     }
   })
 
-  console.log('[CRM Bridge v12] servipag-main.js (UI, MAIN world) activo en', location.href)
+  console.log('[CRM Bridge v13] servipag-main.js (UI, MAIN world) activo en', location.href)
 })()
