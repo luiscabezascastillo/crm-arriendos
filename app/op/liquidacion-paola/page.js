@@ -1,3 +1,10 @@
+// VERSION: v25 · 2026-08-23 · Dos pestañas nuevas. GARANTÍAS: registro de cuotas por contrato (idadmon, mes, nº, monto,
+//   bodega, total, fecha, pagada, nota) contra paola_garantias, con resumen por contrato (pagado/pendiente) y calendario
+//   de cuotas (mes en curso resaltado, borrado por fila). RADAR: descuadres del mes — sobrepagos sin cuota de garantía
+//   (con atajo "Registrar cuota") y pagos parciales; enlaza a Sin identificar. Hereda v24.
+// VERSION: v24 · 2026-08-23 · Pagos combinados (arriendo + garantía + bodega): la fila muestra Recibido TOPADO al
+//   arriendo (FALTA 0) con un chip "tope" (tooltip con el bruto y el excedente), y el Comentario 1 se PRECARGA con el
+//   desglose sugerido por el route (editable; solo si no hay comentario guardado). Hereda v23.
 // VERSION: v23 · 2026-08-19 · Panel Email a Paola con VISTA PREVIA EDITABLE de la carta (asunto + cuerpo, textarea) que se
 //   regenera al abrir/cambiar de envío; se manda el texto editado. Requiere route v17. Hereda v22.
 // VERSION: v22 · 2026-08-19 · La tabla de la liquidación se ordena SIEMPRE alfabéticamente por propiedad en el propio
@@ -105,6 +112,13 @@ export default function LiquidacionPaolaPage() {
   const [cartaAsunto, setCartaAsunto] = useState('')
   const [cartaCuerpo, setCartaCuerpo] = useState('')
   const [cartaCargando, setCartaCargando] = useState(false)
+  // Control de garantías por cuotas
+  const [garantias, setGarantias] = useState([])
+  const [garCargando, setGarCargando] = useState(false)
+  const [garGuardando, setGarGuardando] = useState(false)
+  const [garAviso, setGarAviso] = useState(null)
+  const garVacia = { idadmon: '', mes: '', n_cuota: '', monto: '', bodega_monto: '', garantia_total: '', fecha: '', nota: '', pagada: true }
+  const [garForm, setGarForm] = useState(garVacia)
 
   useEffect(() => {
     const h = new Date()
@@ -140,7 +154,7 @@ export default function LiquidacionPaolaPage() {
       for (const r of datos.resultado) {
         const servidor = {
           multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
-          comentarios1: r.comentarios1 ?? '', comentarios2: r.comentarios2 ?? '',
+          comentarios1: (r.comentarios1 ?? '') || r.comentario1Sugerido || '', comentarios2: r.comentarios2 ?? '',
           estadoPago: r.estadoPago ?? '', notaPago: r.notaPago ?? '',
         }
         e[r.idadmon] = { ...servidor, ...(prev[r.idadmon] || {}) }
@@ -265,6 +279,51 @@ export default function LiquidacionPaolaPage() {
   }
   useEffect(() => { if (datos?.resultado?.length) cargarEnvios() }, [mes, datos])
 
+  // ── Control de garantías por cuotas ────────────────────────────────────────
+  async function cargarGarantias() {
+    setGarCargando(true)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'garantias_list' }),
+      })
+      const d = await res.json()
+      if (d.ok) setGarantias(d.garantias || [])
+    } catch { /* silencioso */ }
+    setGarCargando(false)
+  }
+  useEffect(() => { if (tab === 'garantias' || tab === 'radar') cargarGarantias() }, [tab])
+
+  async function guardarCuota() {
+    if (!garForm.idadmon) { setGarAviso('Elige un contrato'); return }
+    if (!garForm.mes) { setGarAviso('Indica el mes de la cuota (AAAA-MM)'); return }
+    setGarGuardando(true); setGarAviso(null)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'garantias_upsert', cuota: garForm }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setGarAviso(d.error || 'No se pudo guardar la cuota'); setGarGuardando(false); return }
+      setGarForm(garVacia)
+      setGarAviso('Cuota registrada')
+      await cargarGarantias()
+      setTimeout(() => setGarAviso(null), 3000)
+    } catch (e) { setGarAviso('Error de conexión: ' + e.message) }
+    setGarGuardando(false)
+  }
+
+  async function borrarCuota(id) {
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'garantias_delete', id }),
+      })
+      const d = await res.json()
+      if (d.ok) setGarantias(gs => gs.filter(g => g.id !== id))
+    } catch { /* silencioso */ }
+  }
+
   // Redacta la carta (texto preescrito) para revisarla/editarla antes de enviar.
   async function verCarta() {
     if (!datos?.resultado?.length) return
@@ -372,6 +431,22 @@ export default function LiquidacionPaolaPage() {
   const inpManual = { width: '100%', minWidth: 90, boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', fontSize: 11, fontFamily: 'inherit', background: '#fff' }
   const hayCartola = !!(archivoLocal || driveId)
   const cartolasDelMes = archivosDrive.filter(f => f.name.includes(`${mes}-Cartola`))
+
+  // ── Radar de descuadres del mes ────────────────────────────────────────────
+  const TOL_RADAR = 2000
+  const radarSobre = (datos?.resultado || []).filter(r => !r.vacante && !r.topado && r.recibido != null && r.aCobrar != null && (r.recibido - r.aCobrar) > TOL_RADAR)
+  const radarParcial = (datos?.resultado || []).filter(r => !r.vacante && r.recibido != null && r.recibido > 0 && r.faltaMes != null && r.faltaMes > TOL_RADAR)
+  const nRadar = radarSobre.length + radarParcial.length + (datos?.sinIdentificar?.length || 0)
+  // Resumen de garantías por contrato (para la pestaña Garantías)
+  const propDeId = {}, arrDeId = {}, pedidaDeId = {}, quienDeId = {}
+  for (const r of (datos?.resultado || [])) {
+    propDeId[r.idadmon] = r.propiedad || ''
+    arrDeId[r.idadmon] = r.arrendatario || ''
+    if (r.garantiaPedida != null) pedidaDeId[r.idadmon] = Number(r.garantiaPedida)
+    if (r.quienGarantia != null) quienDeId[r.idadmon] = r.quienGarantia
+  }
+  const garPorId = {}
+  for (const g of garantias) (garPorId[g.idadmon] = garPorId[g.idadmon] || []).push(g)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
@@ -718,6 +793,8 @@ export default function LiquidacionPaolaPage() {
               {[
                 { key: 'liquidacion', label: `Liquidación (${datos.resultado.length})` },
                 { key: 'revisar', label: `Revisar (${datos.resumen.revisar})` },
+                { key: 'radar', label: `Radar (${nRadar})` },
+                { key: 'garantias', label: 'Garantías' },
                 { key: 'sin_identificar', label: `Sin identificar (${datos.sinIdentificar.length})` },
                 { key: 'no_renta', label: `No es renta (${datos.noEsRenta.length})` },
               ].map(t => (
@@ -762,6 +839,10 @@ export default function LiquidacionPaolaPage() {
                           <td style={{ ...td, textAlign: 'right' }}>{num(r.aCobrar)}</td>
                           <td style={{ ...td, textAlign: 'right', fontWeight: r.recibido ? 600 : 400, color: r.vacante ? 'var(--gray-300)' : r.recibido ? '#16a34a' : '#dc2626' }}>
                             {r.vacante ? '—' : r.recibido ? num(r.recibido) : 'NO PAGADO'}
+                            {r.topado && (
+                              <span title={`Pago combinado: entró ${num(r.recibidoBruto)} (arriendo ${num(r.aCobrar)} + ${num(r.excedente)} de garantía/bodega). Se topa al arriendo.`}
+                                    style={{ marginLeft: 4, fontSize: 9, fontWeight: 700, color: '#d97706', background: '#fef3c7', borderRadius: 3, padding: '1px 3px', cursor: 'help' }}>tope</span>
+                            )}
                           </td>
                           <td style={{ ...td, textAlign: 'right', color: r.faltaMes > 0 ? '#dc2626' : r.faltaMes < 0 ? '#d97706' : '#16a34a' }}>
                             {r.faltaMes == null ? '—' : num(r.faltaMes)}
@@ -913,6 +994,190 @@ export default function LiquidacionPaolaPage() {
                     </tbody>
                   </table>
                 )}
+              </div>
+            )}
+
+            {/* ── RADAR de descuadres ─────────────────────────────────────── */}
+            {tab === 'radar' && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  Descuadres del mes para revisar antes de enviar: pagos que no cuadran con el A Cobrar. Los abonos que no
+                  se pudieron atribuir a ningún contrato están en <b>Sin identificar ({datos.sinIdentificar.length})</b>.
+                </div>
+                {nRadar === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: '#16a34a' }}>✓ Sin descuadres: todo cuadra con el A Cobrar</div>
+                ) : (
+                  <div style={{ padding: 16 }}>
+                    {radarSobre.length > 0 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#d97706', marginBottom: 8 }}>
+                          Sobrepagos sin atribuir ({radarSobre.length}) · pagó más que el arriendo y no hay cuota de garantía registrada
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr style={{ background: 'var(--gray-50)' }}>
+                            {['IdAdmon', 'Propiedad', 'A Cobrar', 'Recibido', 'Excedente', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {radarSobre.map(r => (
+                              <tr key={r.idadmon} style={{ background: '#fffbeb' }}>
+                                <td style={{ ...td, fontWeight: 600, color: '#1a56db' }}>{r.idadmon}</td>
+                                <td style={{ ...td, fontSize: 11 }}>{r.propiedad}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{num(r.aCobrar)}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{num(r.recibidoBruto ?? r.recibido)}</td>
+                                <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: '#d97706' }}>{num((r.recibidoBruto ?? r.recibido) - r.aCobrar)}</td>
+                                <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                                  <button onClick={() => { setGarForm({ ...garVacia, idadmon: r.idadmon, mes, monto: (r.recibidoBruto ?? r.recibido) - r.aCobrar }); setTab('garantias') }}
+                                    style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', color: 'white', background: '#d97706', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                    Registrar cuota de garantía
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {radarParcial.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', marginBottom: 8 }}>
+                          Pagos parciales ({radarParcial.length}) · pagó menos que el arriendo
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr style={{ background: 'var(--gray-50)' }}>
+                            {['IdAdmon', 'Propiedad', 'A Cobrar', 'Recibido', 'Falta'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {radarParcial.map(r => (
+                              <tr key={r.idadmon} style={{ background: '#fef2f2' }}>
+                                <td style={{ ...td, fontWeight: 600, color: '#1a56db' }}>{r.idadmon}</td>
+                                <td style={{ ...td, fontSize: 11 }}>{r.propiedad}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{num(r.aCobrar)}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{num(r.recibido)}</td>
+                                <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>{num(r.faltaMes)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── GARANTÍAS (control de cuotas) ────────────────────────────── */}
+            {tab === 'garantias' && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                {/* Formulario de registro */}
+                <div style={{ padding: 16, borderBottom: '1px solid var(--border-subtle)', background: 'var(--gray-50)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', marginBottom: 10 }}>Registrar cuota de garantía</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Contrato<br />
+                      <select value={garForm.idadmon} onChange={e => setGarForm({ ...garForm, idadmon: e.target.value })}
+                        style={{ ...inpManual, minWidth: 230, marginTop: 3 }}>
+                        <option value="">— elegir —</option>
+                        {(datos.contratos || []).map(c => (
+                          <option key={c.idadmon} value={c.idadmon}>{c.idadmon} · {String(c.propiedad || '').replace('Pablo Urzúa 1481- ', '')}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Mes (AAAA-MM)<br />
+                      <input value={garForm.mes} placeholder={mes} onChange={e => setGarForm({ ...garForm, mes: e.target.value })} style={{ ...inpManual, width: 100, marginTop: 3 }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Nº cuota<br />
+                      <input inputMode="numeric" value={garForm.n_cuota} onChange={e => setGarForm({ ...garForm, n_cuota: e.target.value })} style={{ ...inpManual, width: 70, marginTop: 3 }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Garantía (cuota)<br />
+                      <input inputMode="numeric" value={garForm.monto} onChange={e => setGarForm({ ...garForm, monto: e.target.value })} style={{ ...inpManual, width: 110, marginTop: 3, textAlign: 'right' }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Bodega<br />
+                      <input inputMode="numeric" value={garForm.bodega_monto} onChange={e => setGarForm({ ...garForm, bodega_monto: e.target.value })} style={{ ...inpManual, width: 90, marginTop: 3, textAlign: 'right' }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Garantía total<br />
+                      <input inputMode="numeric" value={garForm.garantia_total} onChange={e => setGarForm({ ...garForm, garantia_total: e.target.value })} style={{ ...inpManual, width: 110, marginTop: 3, textAlign: 'right' }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)' }}>Fecha<br />
+                      <input type="date" value={garForm.fecha} onChange={e => setGarForm({ ...garForm, fecha: e.target.value })} style={{ ...inpManual, width: 140, marginTop: 3 }} />
+                    </label>
+                    <label style={{ fontSize: 10, color: 'var(--gray-500)', minWidth: 200, flex: 1 }}>Nota<br />
+                      <input value={garForm.nota} onChange={e => setGarForm({ ...garForm, nota: e.target.value })} style={{ ...inpManual, marginTop: 3 }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 4 }}>
+                      <input type="checkbox" checked={garForm.pagada !== false} onChange={e => setGarForm({ ...garForm, pagada: e.target.checked })} /> Pagada
+                    </label>
+                    <button onClick={guardarCuota} disabled={garGuardando}
+                      style={{ fontSize: 12, padding: '7px 16px', borderRadius: 8, border: 'none', color: 'white', background: garGuardando ? 'var(--gray-300)' : '#1a56db', cursor: garGuardando ? 'default' : 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>
+                      {garGuardando ? '…' : 'Registrar'}
+                    </button>
+                    {garAviso && <span style={{ fontSize: 11, color: garAviso === 'Cuota registrada' ? '#16a34a' : '#dc2626' }}>{garAviso}</span>}
+                  </div>
+                </div>
+
+                {/* Resumen por contrato */}
+                <div style={{ padding: '10px 16px 4px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)' }}>Resumen por contrato</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                    <thead><tr style={{ background: 'var(--gray-50)' }}>
+                      {['IdAdmon', 'Propiedad', 'Arrendatario', 'Garantía pedida', 'Quién la tiene', 'Pagado', 'Pendiente', 'Cuotas'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {(() => {
+                        const ids = [...new Set([...Object.keys(garPorId), ...Object.keys(pedidaDeId).filter(id => (pedidaDeId[id] || 0) > 0)])]
+                          .sort((a, b) => String(propDeId[a] || a).localeCompare(String(propDeId[b] || b), 'es', { numeric: true }))
+                        if (ids.length === 0) return <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--gray-400)', padding: 24 }}>Sin garantías registradas todavía</td></tr>
+                        return ids.map(id => {
+                          const cuotas = garPorId[id] || []
+                          const total = cuotas.some(g => g.garantia_total != null) ? Math.max(...cuotas.map(g => Number(g.garantia_total) || 0)) : (pedidaDeId[id] || 0)
+                          const pagado = cuotas.filter(g => g.pagada !== false).reduce((s, g) => s + (Number(g.monto) || 0), 0)
+                          const pendiente = total > 0 ? Math.max(total - pagado, 0) : cuotas.filter(g => g.pagada === false).reduce((s, g) => s + (Number(g.monto) || 0), 0)
+                          return (
+                            <tr key={id}>
+                              <td style={{ ...td, fontWeight: 600, color: '#1a56db' }}>{id}</td>
+                              <td style={{ ...td, fontSize: 11 }}>{propDeId[id] || ''}</td>
+                              <td style={{ ...td, fontSize: 11 }}>{arrDeId[id] || ''}</td>
+                              <td style={{ ...td, textAlign: 'right' }}>{total ? num(total) : '—'}</td>
+                              <td style={{ ...td, fontSize: 11 }}>{quienDeId[id] || '—'}</td>
+                              <td style={{ ...td, textAlign: 'right', color: '#16a34a' }}>{pagado ? num(pagado) : '—'}</td>
+                              <td style={{ ...td, textAlign: 'right', color: pendiente > 0 ? '#d97706' : 'var(--gray-400)' }}>{pendiente ? num(pendiente) : '—'}</td>
+                              <td style={{ ...td, textAlign: 'center' }}>{cuotas.length || '—'}</td>
+                            </tr>
+                          )
+                        })
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Calendario de cuotas */}
+                <div style={{ padding: '14px 16px 4px', fontSize: 12, fontWeight: 600, color: 'var(--gray-800)' }}>Calendario de cuotas {garCargando && <span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 }}>· cargando…</span>}</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                    <thead><tr style={{ background: 'var(--gray-50)' }}>
+                      {['IdAdmon', 'Propiedad', 'Mes', 'Nº', 'Garantía', 'Bodega', 'Fecha', 'Estado', 'Nota', ''].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {garantias.length === 0 ? (
+                        <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: 'var(--gray-400)', padding: 24 }}>Ninguna cuota registrada</td></tr>
+                      ) : [...garantias].sort((a, b) => String(a.mes || '').localeCompare(String(b.mes || '')) || String(propDeId[a.idadmon] || a.idadmon).localeCompare(String(propDeId[b.idadmon] || b.idadmon), 'es', { numeric: true }) || (Number(a.n_cuota) || 0) - (Number(b.n_cuota) || 0)).map(g => (
+                        <tr key={g.id} style={{ background: (g.mes === mes) ? '#eff6ff' : 'transparent' }}>
+                          <td style={{ ...td, fontWeight: 600, color: '#1a56db' }}>{g.idadmon}</td>
+                          <td style={{ ...td, fontSize: 11 }}>{(propDeId[g.idadmon] || '').replace('Pablo Urzúa 1481- ', '')}</td>
+                          <td style={{ ...td, fontSize: 11, textAlign: 'center' }}>{g.mes}</td>
+                          <td style={{ ...td, textAlign: 'center' }}>{g.n_cuota ?? '—'}</td>
+                          <td style={{ ...td, textAlign: 'right' }}>{num(g.monto)}</td>
+                          <td style={{ ...td, textAlign: 'right', color: 'var(--gray-500)' }}>{g.bodega_monto ? num(g.bodega_monto) : '—'}</td>
+                          <td style={{ ...td, fontSize: 11 }}>{fecha(g.fecha)}</td>
+                          <td style={{ ...td, fontSize: 11, fontWeight: 600, color: g.pagada === false ? '#dc2626' : '#16a34a' }}>{g.pagada === false ? 'Pendiente' : 'Pagada'}</td>
+                          <td style={{ ...td, fontSize: 11, color: 'var(--gray-500)', maxWidth: 240 }}>{g.nota || '—'}</td>
+                          <td style={{ ...td, textAlign: 'center' }}>
+                            <button onClick={() => borrarCuota(g.id)} title="Borrar cuota"
+                              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', color: '#dc2626', background: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>

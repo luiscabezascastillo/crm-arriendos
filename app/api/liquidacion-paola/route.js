@@ -1,3 +1,12 @@
+// VERSION: v19 · 2026-08-23 · Control de garantías CRUD (acciones garantias_list/_upsert/_delete sobre paola_garantias)
+//   para registrar cuotas desde la pantalla; y las acciones 'excel'/'enviar' pasan las cuotas a generarExcelPaola
+//   para la nueva hoja "Garantías". Hereda v18.
+// VERSION: v18 · 2026-08-23 · TOPE DE ARRIENDO en pagos combinados. Nuevo control de garantías por cuotas (tabla
+//   paola_garantias): cuando un arrendatario paga junto arriendo + cuota de garantía (+ bodega), la cartola trae
+//   un solo abono mayor que el arriendo. Si hay cuota registrada para el mes, se TOPA (Recibido = A cobrar, FALTA = 0,
+//   topado=true) y se sugiere el Comentario 1 con el desglose (arriendo + garantía cuota N + bodega). Sin cuota
+//   registrada NO se topa (así no se ocultan sobrepagos ajenos como intereses de atraso). Expone recibidoBruto,
+//   excedente, garantiaPedida y quien_tiene_garantia (para la hoja Garantías del Excel). Hereda v17.
 // VERSION: v17 · 2026-08-19 · Carta EDITABLE antes de enviar (acción 'preview' devuelve el texto preescrito; 'enviar' admite
 //   asunto/cuerpo editados). Morosos refinados: se separan los CRÍTICOS (no han pagado nada o deben ≥50%) con aviso de
 //   gestiones de cobranza + llamadas + informe en una semana. Hereda v16.
@@ -391,6 +400,46 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, guardadas: rows.length })
     }
 
+    // ── acciones: CONTROL DE GARANTÍAS por cuotas (tabla paola_garantias) ─────────
+    //   Adalis registra las cuotas de garantía que se pagan a plazos. Sirven para TOPAR el arriendo
+    //   en pagos combinados y para la hoja "Garantías" del Excel.
+    if (body.accion === 'garantias_list') {
+      const filtro = admin.from('paola_garantias')
+        .select('id, idadmon, garantia_total, n_cuota, monto, bodega_monto, fecha, mes, pagada, nota')
+        .order('idadmon', { ascending: true }).order('mes', { ascending: true }).order('n_cuota', { ascending: true })
+      const { data, error } = body.idadmon ? await filtro.eq('idadmon', body.idadmon) : await filtro
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, garantias: data || [] })
+    }
+
+    if (body.accion === 'garantias_upsert') {
+      const g = body.cuota || {}
+      if (!g.idadmon) return NextResponse.json({ error: 'Falta el idadmon' }, { status: 400 })
+      if (!g.mes) return NextResponse.json({ error: 'Falta el mes de la cuota' }, { status: 400 })
+      const fila = {
+        idadmon: String(g.idadmon).trim(),
+        mes: aYYYYMM(g.mes),
+        n_cuota: g.n_cuota != null && g.n_cuota !== '' ? parseInt(g.n_cuota, 10) : null,
+        monto: aNumero(g.monto) || 0,
+        bodega_monto: aNumero(g.bodega_monto),
+        garantia_total: aNumero(g.garantia_total),
+        fecha: g.fecha || null,
+        pagada: g.pagada === false ? false : true,
+        nota: txtOrNull(g.nota),
+      }
+      const { data, error } = await admin.from('paola_garantias')
+        .upsert(fila, { onConflict: 'idadmon,mes,n_cuota' }).select().maybeSingle()
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, cuota: data || fila })
+    }
+
+    if (body.accion === 'garantias_delete') {
+      if (!body.id) return NextResponse.json({ error: 'Falta el id de la cuota' }, { status: 400 })
+      const { error } = await admin.from('paola_garantias').delete().eq('id', body.id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
+
     // ── acción: ABRIR el mes ya GUARDADO (sin re-procesar la cartola) ────────────
     //   Para que otra persona (p.ej. Fabiola) entre a revisar/continuar lo que dejó Adalis.
     if (body.accion === 'cargar_guardado') {
@@ -459,7 +508,9 @@ export async function POST(request) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
       }
 
-      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [] })
+      const { data: garExcel } = await admin.from('paola_garantias')
+        .select('idadmon, garantia_total, n_cuota, monto, bodega_monto, fecha, mes, pagada, nota')
+      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantias: garExcel || [] })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
 
       let drive = null, errorDrive = null
@@ -513,10 +564,13 @@ export async function POST(request) {
         return NextResponse.json({ error: 'No hay un email válido de Paola (propietarios P001). Ponlo o usa un correo de prueba.' }, { status: 400 })
       }
 
+      const { data: garEnvio } = await admin.from('paola_garantias')
+        .select('idadmon, garantia_total, n_cuota, monto, bodega_monto, fecha, mes, pagada, nota')
       const buffer = await generarExcelPaola({
         mes, filas,
         movimientos: Array.isArray(movimientos) ? movimientos : [],
         cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [],
+        garantias: garEnvio || [],
       })
       const nombreBase = nombreArchivo(mes, 'Control', '', n)   // 2026-08-1-Control Ago 2026.xlsx
       const nombre = esPrueba ? `PRUEBA-${nombreBase}` : nombreBase   // en prueba, prefijo para borrarlo luego
@@ -563,7 +617,7 @@ export async function POST(request) {
 
     const { data: log, error: eLog } = await supabase
       .from('datos_arriendos')
-      .select('idadmon, estado, inmueble, arrendatario, rut, fecha_inicio, termino_actual')
+      .select('idadmon, estado, inmueble, arrendatario, rut, fecha_inicio, termino_actual, garantia_pedida, quien_tiene_garantia')
       .eq('idprop', IDPROP_PAOLA).in('estado', ESTADOS_LIQUIDABLES)
     if (eLog) throw new Error('LOG: ' + eLog.message)
     const logMap = {}
@@ -610,6 +664,8 @@ export async function POST(request) {
         termino: aFechaISO(l.termino_actual),
         arrendatario: c.arrendatario || '', rut: c.rut_arrendatario || '',
         aCobrar: c.a_cobrar != null ? Number(c.a_cobrar) : null,
+        garantiaPedida: l.garantia_pedida != null ? Number(l.garantia_pedida) : null,
+        quienGarantia: l.quien_tiene_garantia ?? null,
       })
     }
     const vacantesNuevas = []
@@ -619,6 +675,7 @@ export async function POST(request) {
       filas.push({
         idadmon: l.idadmon, estado: 'P', propiedad: l.inmueble || '', comienzo: null,
         termino: null, arrendatario: '', rut: '', aCobrar: null,
+        garantiaPedida: null, quienGarantia: null,
       })
     }
     for (const f of filas) {
@@ -774,18 +831,66 @@ export async function POST(request) {
     const manualMap = {}
     for (const g of guardado || []) manualMap[g.idadmon] = g
 
+    // ── Control de garantías por cuotas (tabla paola_garantias) ────────────────
+    // Adalis lleva un control exhaustivo de las garantías que se pagan a plazos. Cuando un arrendatario
+    // paga TODO junto (arriendo + cuota de garantía + bodega), la cartola trae un solo abono mayor que
+    // el arriendo. Con estas cuotas registradas para el mes sabemos ATRIBUIR el excedente y TOPAR el
+    // arriendo (Recibido = A cobrar, FALTA = 0) en vez de mostrar un falso "pagó de más".
+    // Se lee a prueba de fallos: si la tabla aún no existe, no rompe nada (el módulo sigue igual).
+    const garMap = {}
+    try {
+      const { data: gar } = await supabase
+        .from('paola_garantias')
+        .select('idadmon, n_cuota, monto, fecha, mes, bodega_monto, nota')
+        .eq('mes', aYYYYMM(mes))
+      for (const g of gar || []) {
+        const k = g.idadmon
+        const acc = garMap[k] || { cuota: 0, bodega: 0, nCuotas: [], notas: [] }
+        acc.cuota += num(g.monto)
+        acc.bodega += num(g.bodega_monto)
+        if (g.n_cuota != null) acc.nCuotas.push(g.n_cuota)
+        if (g.nota) acc.notas.push(g.nota)
+        garMap[k] = acc
+      }
+    } catch { /* tabla paola_garantias inexistente todavía: sin tope automático */ }
+    const fmtMiles = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
     const resultado = filas.map(f => {
       const pagos = pagosMap[f.idadmon] || []
-      const recibido = pagos.reduce((s, p) => s + p.monto, 0) || null
+      const recibidoBruto = pagos.reduce((s, p) => s + p.monto, 0) || null   // lo REAL que entró por cartola
       const s = servMap[f.idadmon] || {}
       const m = manualMap[f.idadmon] || {}
       const fechas = pagos.map(p => aFechaISO(p.fecha)).filter(Boolean).sort()
+
+      // ── Tope de arriendo: solo cuando hay cuota de garantía registrada para el mes y el pago excede
+      //    el arriendo (pago combinado). Así NO se topan sobrepagos ajenos (p.ej. intereses de un atraso).
+      const gar = garMap[f.idadmon] || null
+      const excedente = (recibidoBruto != null && f.aCobrar != null) ? (recibidoBruto - f.aCobrar) : 0
+      const topar = !!(gar && excedente > TOLERANCIA_EXCESO)
+      const recibido = topar ? f.aCobrar : recibidoBruto
       const faltaMes = f.aCobrar != null ? f.aCobrar - (recibido || 0) : null
+
+      // Comentario 1 sugerido (NO pisa lo que escriba Adalis; el frontend lo precarga si está vacío)
+      let comentario1Sugerido = null
+      if (topar) {
+        const partes = [`arriendo $${fmtMiles(f.aCobrar)}`]
+        if (gar.cuota > 0) partes.push(`garantía${gar.nCuotas.length ? ' cuota ' + gar.nCuotas.join('/') : ''} $${fmtMiles(gar.cuota)}`)
+        if (gar.bodega > 0) partes.push(`bodega $${fmtMiles(gar.bodega)}`)
+        const otros = excedente - gar.cuota - gar.bodega
+        if (otros > TOLERANCIA_EXCESO) partes.push(`otros $${fmtMiles(otros)}`)
+        comentario1Sugerido = `Pago combinado $${fmtMiles(recibidoBruto)} (${partes.join(' + ')})`
+      }
+
       return {
         idadmon: f.idadmon, estado: f.estado, propiedad: f.propiedad, comienzo: f.comienzo,
         termino: f.termino, arrendatario: f.arrendatario, rut: f.rut, aCobrar: f.aCobrar,
-        vacante: f.vacante, recibido, faltaMes,
-        revisar: !!(faltaMes != null && faltaMes < -TOLERANCIA_EXCESO && pagos.length > 1),
+        vacante: f.vacante, recibido, recibidoBruto, faltaMes,
+        topado: topar, excedente: excedente > 0 ? excedente : null,
+        garantiaPedida: f.garantiaPedida ?? null, quienGarantia: f.quienGarantia ?? null,
+        garantiaCuota: gar ? { monto: gar.cuota, bodega: gar.bodega, nCuotas: gar.nCuotas, notas: gar.notas } : null,
+        comentario1Sugerido,
+        // Ya no marcamos "revisar" cuando el exceso quedó atribuido y topado: es un pago combinado explicado.
+        revisar: !!(!topar && faltaMes != null && faltaMes < -TOLERANCIA_EXCESO && pagos.length > 1),
         fechaPago: fechas.length ? fechas[fechas.length - 1] : null,
         confianza: pagos.length
           ? (pagos.every(p => p.confianza === 'alta') ? 'alta' : 'media') : null,
