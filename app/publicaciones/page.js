@@ -1,3 +1,7 @@
+// VERSION: v4 · 2026-08-21 · FIX raíz del "cerrado en CRM / vivo en PI": la tabla NO pedía `codigo_pi` en
+//   el SELECT, así que `pub.codigo_pi` era undefined y "Dar de baja" SIEMPRE se saltaba el cierre en PI
+//   (solo marcaba el CRM y decía "correctamente"). Ahora se pide `codigo_pi` → el cierre en PI sí se
+//   ejecuta (con cerrar/route v2 pausa→cierra) y el aviso de fallo (v3) puede actuar. Hereda v3.
 // VERSION: v3 · 2026-08-21 · "Dar de baja" endurecido: si el cierre en Portal Inmobiliario falla, AVISA y
 //   NO marca la ficha como baja en el CRM (antes se tragaba el error y desincronizaba: cerrado en CRM,
 //   vivo en PI). Junto con cerrar/route v2 (pausa→cierra), el cierre en PI ya funciona de verdad. Hereda v2.
@@ -280,7 +284,7 @@ export default function PublicacionesPage() {
     if (status === 'loading') { setLoading(false); return }
     let query = supabase
       .from('publicaciones')
-      .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi', { count:'exact' })
+      .select('id, codigo, direccion, direccionreal, departamento, comuna, objetivo, tipo, tipo_moneda, valor, dormitorios, banos, propietario, vendedor, captador, pi, yapo, goplaceit, web, proppit, activo, estado, estado_pi, estado_pi_fecha, imagen1, mt2_const, url_pi, codigo_pi', { count:'exact' })
     if (soloMias && miNombre) query = query.eq('vendedor', miNombre)
 
         if (modo === 'activas') {
