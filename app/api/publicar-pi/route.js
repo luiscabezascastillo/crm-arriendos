@@ -1,4 +1,8 @@
-﻿import { NextResponse } from 'next/server'
+﻿// VERSION: v2 · 2026-08-21 · El bloqueo "Ya publicada en PI" ahora mira `pi='SI'` (si sigue en PI), no
+//   `activo`. Antes, una ficha activa en otro portal (Web) con un codigo_pi viejo de una publicación de PI
+//   ya cerrada se bloqueaba por error al republicar en PI. Ahora, si no está en PI, limpia el código viejo
+//   y deja publicar. Hereda v1 (sin versión).
+import { NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabaseClient'
 import { registrarBitacora } from '@/lib/bitacora'
 import { getServerSession } from 'next-auth'
@@ -300,13 +304,15 @@ export async function POST(request) {
 
     if (errPub || !p) return NextResponse.json({ error: 'Propiedad no encontrada' }, { status: 404 })
 
-    // Bloquear si ya está activa en PI
-    if (p.codigo_pi && p.activo === 'active') {
+    // Bloquear SOLO si sigue en PI de verdad (pi='SI'). Antes miraba `activo` (estado general del CRM),
+    // así que una ficha con un codigo_pi VIEJO (de una publicación de PI ya cerrada/perdida) pero activa
+    // en otro portal (p.ej. Web) se bloqueaba por error ("Ya publicada en PI"). Ahora mira si está en PI.
+    if (p.codigo_pi && p.pi === 'SI') {
       return NextResponse.json({ error: `Ya publicada en PI con código ${p.codigo_pi}. Ciérrala primero.` }, { status: 400 })
     }
 
-    // Si tiene código PI antiguo cerrado, limpiar antes de crear uno nuevo
-    if (p.codigo_pi && p.activo !== 'active') {
+    // Si tiene un codigo_pi viejo pero NO está en PI, limpiarlo antes de crear uno nuevo
+    if (p.codigo_pi && p.pi !== 'SI') {
       await supabase.from('publicaciones').update({ codigo_pi: null, url_pi: null }).eq('id', publicacionId)
     }
 
