@@ -1,7 +1,8 @@
 'use client'
-// VERSION: v2 · 2026-08-24 · Pantalla de gestión de correspondencias CF (/op/comunidad-feliz/correspondencias).
-//   v2: el idinmue es el ancla estable; marca en ROJO los idadmon terminados (Q/N) y ofrece "→ actualizar"
-//       con un clic al contrato activo del inmueble. Contadores de terminados/desactualizados.
+// VERSION: v3 · 2026-08-24 · Pantalla de gestión de correspondencias CF (/op/comunidad-feliz/correspondencias).
+//   v3: estados válidos S/SQ/P; marca en ROJO los idadmon cuyo contrato NO es válido (Q*/N*/otros) mostrando
+//       el estado real, y ofrece "→ actualizar" al contrato válido del inmueble. Hereda v2.
+//   v2: el idinmue es el ancla estable; contadores de terminados/desactualizados; sugeridor por unidad.
 //   Lista editable de cf_correspondencias enriquecida con datos_arriendos; buscador; sugeridor por nº de unidad
 //   (dep/est/bod, solo contratos activos) + búsqueda libre. Cerrada por rol (Administración + Dirección + Karina).
 //   API: /api/comunidad-feliz/correspondencias-admin.
@@ -184,7 +185,7 @@ export default function CorrespondenciasCF() {
                     {f.idadmon
                       ? <span style={f.idadmon_terminado ? { color: '#b91c1c', textDecoration: 'line-through' } : {}}>{f.idadmon}</span>
                       : <em style={s.falta}>—</em>}
-                    {f.idadmon_terminado && <span style={s.tagRojo}>terminado</span>}
+                    {f.idadmon_terminado && <span style={s.tagRojo} title="Estado del contrato en datos_arriendos (no válido: solo S/SQ/P)">{f.estado_contrato || 'no válido'}</span>}
                   </td>
                   <td style={{ ...s.td, fontWeight: 500 }}>{f.idinmue || '—'}</td>
                   <td style={s.td}>{f.propietario || '—'}</td>

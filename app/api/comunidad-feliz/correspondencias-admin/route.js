@@ -1,7 +1,8 @@
-// VERSION: v2 · 2026-08-24 · Admin de cf_correspondencias para /op/comunidad-feliz/correspondencias.
-//   v2: el idinmue es el ancla estable y el idadmon rota (contratos). Se DETECTA idadmon terminado
-//       (empieza por Q/N o estado Q/N) y se resuelve el idadmon ACTIVO a partir del idinmue para corregirlo.
-//       El sugeridor excluye contratos terminados (solo propone el activo).
+// VERSION: v3 · 2026-08-24 · Admin de cf_correspondencias para /op/comunidad-feliz/correspondencias.
+//   v3: estados de contrato precisos — VÁLIDOS = S, SQ (activos) y P (vacío, servicios del propietario);
+//       TERMINADOS/no válidos = Q*, N* (u otros). Sugeridor, búsqueda y "activo por idinmue" filtran por
+//       estado VÁLIDO (positivo). Guard al guardar consultando el estado real en datos_arriendos.
+//   v2: el idinmue es el ancla estable y el idadmon rota (contratos); se resuelve el idadmon activo por idinmue.
 //   GET ?modo=lista  → correspondencias enriquecidas (dirección, idadmon terminado, idadmon activo sugerido).
 //   GET ?modo=sugerir&comunidad=&inmueble= → candidatos activos por nº de unidad (dep/est/bod).
 //   GET ?modo=buscar&q= → búsqueda libre en el maestro (solo activos primero).
@@ -19,8 +20,11 @@ const supabase = createClient(
 const J = (o, s = 200) => Response.json(o, { status: s })
 const soloAlnum = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-// idadmon terminado: el propio código empieza por Q/N, o su estado empieza por Q/N.
-const esTerminado = (idadmon, estado) => /^[qn]/i.test(String(idadmon || '')) || /^[qn]/i.test(String(estado || ''))
+// Estados de contrato (datos_arriendos.estado):
+//   VÁLIDOS para la correspondencia → S, SQ (activos) y P (vacío, servicios a cuenta del propietario).
+//   TERMINADOS → Q* y N* (con subestados, pero siempre empiezan por esas letras).
+const esValidoEstado = (e) => { const t = String(e || '').trim().toUpperCase(); return t.startsWith('S') || t.startsWith('P') }
+const esTerminadoEstado = (e) => { const t = String(e || '').trim().toUpperCase(); return t.startsWith('Q') || t.startsWith('N') }
 
 function tokensNombre(s) {
   return String(s || '').toLowerCase()
@@ -67,7 +71,7 @@ function indexar(maestro) {
   for (const r of maestro) {
     if (r.idadmon && !dirPorIdadmon.has(r.idadmon)) dirPorIdadmon.set(r.idadmon, r.inmueble)
     if (r.idadmon && !estadoPorIdadmon.has(r.idadmon)) estadoPorIdadmon.set(r.idadmon, r.estado || '')
-    if (!esTerminado(r.idadmon, r.estado)) {
+    if (esValidoEstado(r.estado)) { // solo contratos válidos (S/SQ/P) como "activo" del inmueble
       for (const comp of String(r.idinmue || '').split(/\s+/).filter(Boolean)) {
         if (!activoPorComp.has(comp)) activoPorComp.set(comp, r.idadmon)
       }
@@ -82,7 +86,7 @@ function sugerir(comunidad_cf, inmueble_cf, maestro) {
   const toksCom = tokensNombre(comunidad_cf)
   const cands = []
   for (const r of maestro) {
-    if (esTerminado(r.idadmon, r.estado)) continue // solo contratos activos
+    if (!esValidoEstado(r.estado)) continue // solo contratos válidos (S/SQ/P)
     const { dep, est, bod } = unidadesDireccion(r.inmueble)
     let tipo = null, base = 0
     if (dep.includes(u)) { tipo = 'dep'; base = 0.75 }
@@ -116,19 +120,22 @@ export async function GET(req) {
 
       const filas = (data || []).map((c) => {
         const estadoDA = c.idadmon ? (estadoPorIdadmon.get(c.idadmon) || '') : ''
-        const terminado = c.idadmon ? esTerminado(c.idadmon, estadoDA) : false
+        // "malo" = idadmon presente cuyo estado NO es S/SQ/P (terminado Q/N, u otro no válido).
+        const malo = c.idadmon ? !esValidoEstado(estadoDA) : false
+        const terminado = c.idadmon ? esTerminadoEstado(estadoDA) : false
         const primeraComp = String(c.idinmue || '').split(/\s+/).filter(Boolean)[0] || null
         const activoSug = primeraComp ? (activoPorComp.get(primeraComp) || null) : null
         let problema = null
         if (!c.comunidad_cf?.trim()) problema = 'sin_comunidad'
         else if (!c.idadmon) problema = 'sin_idadmon'
-        else if (terminado) problema = 'idadmon_terminado'
+        else if (malo) problema = 'idadmon_terminado'
         else if (activoSug && activoSug !== c.idadmon) problema = 'idadmon_desactualizado'
         return {
           ...c,
           direccion_maestro: c.idadmon ? (dirPorIdadmon.get(c.idadmon) || null) : null,
-          idadmon_terminado: terminado,
-          idadmon_activo_sugerido: (terminado || (activoSug && activoSug !== c.idadmon)) ? activoSug : null,
+          estado_contrato: estadoDA || null,
+          idadmon_terminado: malo,
+          idadmon_activo_sugerido: (malo || (activoSug && activoSug !== c.idadmon)) ? activoSug : null,
           problema,
         }
       })
@@ -149,7 +156,7 @@ export async function GET(req) {
       const qtext = soloAlnum(searchParams.get('q') || '')
       if (qtext.length < 2) return J({ candidatos: [] })
       const res = maestro
-        .filter((r) => !esTerminado(r.idadmon, r.estado))
+        .filter((r) => esValidoEstado(r.estado))
         .filter((r) => soloAlnum(r.propietario).includes(qtext) || soloAlnum(r.inmueble).includes(qtext) || soloAlnum(r.idadmon).includes(qtext) || soloAlnum(r.idinmue).includes(qtext))
         .slice(0, 30)
         .map((r) => ({ idadmon: r.idadmon, idinmue: r.idinmue, propietario: r.propietario, inmueble: r.inmueble }))
@@ -191,7 +198,14 @@ export async function POST(req) {
     if (!fila.comunidad_cf) return J({ error: 'Falta la Comunidad CF (es la que hace casar el dato con el portal).' }, 400)
     if (!fila.inmueble_cf) return J({ error: 'Falta el Inmueble CF (la unidad).' }, 400)
     if (!['S', 'P'].includes(fila.estado)) return J({ error: 'Estado inválido (S o P).' }, 400)
-    if (fila.idadmon && esTerminado(fila.idadmon, '')) return J({ error: 'Ese IDADMON es un contrato terminado (Q/N). Asigna el contrato activo del inmueble.' }, 400)
+    // Guard: no admitir un idadmon cuyo contrato esté terminado/no válido (solo S/SQ/P).
+    if (fila.idadmon) {
+      const { data: da } = await supabase.from('datos_arriendos').select('estado').eq('idadmon', fila.idadmon).limit(1).maybeSingle()
+      const est = da?.estado || ''
+      if (est && !esValidoEstado(est)) {
+        return J({ error: `El IDADMON ${fila.idadmon} tiene estado ${est} (terminado/no válido). Asigna el contrato activo (S, SQ o P) del inmueble.` }, 400)
+      }
+    }
 
     if (body.id) {
       const { data, error } = await supabase.from('cf_correspondencias').update(fila).eq('id', body.id).select('*').maybeSingle()
