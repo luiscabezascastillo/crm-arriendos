@@ -1,3 +1,7 @@
+// VERSION: v26 · 2026-08-24 · (1) Columna RECIBIDO editable a mano (para corregir un pago del justificante aún sin
+//   discriminar antes de generar el Excel); recalcula Falta y fluye al guardado y al Excel. (2) Barra de acciones +
+//   pestañas + cabecera de la tabla STICKY bajo el TopNav (top 52/106/tabla), con la tabla en contenedor de altura
+//   acotada para que el scroll horizontal sea alcanzable. Hereda v25.
 // VERSION: v25 · 2026-08-23 · Dos pestañas nuevas. GARANTÍAS: registro de cuotas por contrato (idadmon, mes, nº, monto,
 //   bodega, total, fecha, pagada, nota) contra paola_garantias, con resumen por contrato (pagado/pendiente) y calendario
 //   de cuotas (mes en curso resaltado, borrado por fila). RADAR: descuadres del mes — sobrepagos sin cuota de garantía
@@ -76,6 +80,8 @@ const COLOR_CONFIANZA = {
 }
 
 const num = n => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
+// Parseo tolerante de un importe tecleado (quita puntos de miles y símbolos): "383.800" → 383800
+const aNum = v => { const n = Number(String(v ?? '').replace(/[.\s$]/g, '').replace(/[^\d-]/g, '')); return isNaN(n) ? 0 : n }
 const fecha = s => (s ? String(s).split('-').reverse().join('-') : '—')
 
 export default function LiquidacionPaolaPage() {
@@ -156,6 +162,7 @@ export default function LiquidacionPaolaPage() {
           multasDeudas: r.multasDeudas ?? '', especial: r.especial ?? '', cantidad: r.cantidad ?? '',
           comentarios1: (r.comentarios1 ?? '') || r.comentario1Sugerido || '', comentarios2: r.comentarios2 ?? '',
           estadoPago: r.estadoPago ?? '', notaPago: r.notaPago ?? '',
+          recibidoEdit: r.recibido == null ? '' : String(r.recibido),
         }
         e[r.idadmon] = { ...servidor, ...(prev[r.idadmon] || {}) }
       }
@@ -369,7 +376,16 @@ export default function LiquidacionPaolaPage() {
   // Columnas manuales (Adalis deja el Excel): se escriben en un buffer `edits` (teclear NO re-renderiza
   // toda la tabla) y al guardar se funden con la fila y se persisten en el CRM (liquidacion_paola).
   const setCampo = (idadmon, campo, valor) => { setDirty(true); setEdits(x => ({ ...x, [idadmon]: { ...x[idadmon], [campo]: valor } })) }
-  const filaConEdits = (r) => ({ ...r, ...(edits[r.idadmon] || {}) })
+  const filaConEdits = (r) => {
+    const e = edits[r.idadmon] || {}
+    const base = { ...r, ...e }
+    // Recibido editable a mano: se aplica al importe y recalcula la Falta, para que fluya al guardado y al Excel.
+    if (e.recibidoEdit !== undefined && e.recibidoEdit !== '' && e.recibidoEdit !== null) {
+      base.recibido = aNum(e.recibidoEdit)
+      if (r.aCobrar != null) base.faltaMes = r.aCobrar - base.recibido
+    }
+    return base
+  }
   const filasConEdits = () => (datos?.resultado || []).map(filaConEdits)
   // `silencioso`: guardado por celda (onBlur). NO toca `guardandoMes` (para no deshabilitar el botón
   // "Guardar mes" en mitad del clic) ni muestra aviso. El guardado del mes completo sí lo hace.
@@ -678,7 +694,7 @@ export default function LiquidacionPaolaPage() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 0, position: 'sticky', top: 52, zIndex: 40, background: 'var(--background)', paddingTop: 10, paddingBottom: 10 }}>
               <button onClick={() => generarExcel(false)} disabled={generando}
                 style={{
                   padding: '8px 14px', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
@@ -789,7 +805,7 @@ export default function LiquidacionPaolaPage() {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 2, background: 'var(--surface)', borderRadius: '12px 12px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '0 16px' }}>
+            <div style={{ display: 'flex', gap: 2, background: 'var(--surface)', borderRadius: '12px 12px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '0 16px', position: 'sticky', top: 106, zIndex: 39 }}>
               {[
                 { key: 'liquidacion', label: `Liquidación (${datos.resultado.length})` },
                 { key: 'revisar', label: `Revisar (${datos.resumen.revisar})` },
@@ -808,8 +824,8 @@ export default function LiquidacionPaolaPage() {
             </div>
 
             {(tab === 'liquidacion' || tab === 'revisar') && (
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflowX: 'auto' }}>
-                <style>{`.tablaMes td, .tablaMes th { border-right: 1px solid var(--border-subtle); } .tablaMes td:first-child, .tablaMes th:first-child { border-right: none; }`}</style>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'auto', maxHeight: 'calc(100vh - 210px)' }}>
+                <style>{`.tablaMes td, .tablaMes th { border-right: 1px solid var(--border-subtle); } .tablaMes td:first-child, .tablaMes th:first-child { border-right: none; } .tablaMes thead th { position: sticky; top: 0; z-index: 3; background: var(--gray-50); box-shadow: inset 0 -1px 0 var(--border); }`}</style>
                 <table className="tablaMes" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1250 }}>
                   <thead>
                     <tr style={{ background: 'var(--gray-50)' }}>
@@ -821,7 +837,11 @@ export default function LiquidacionPaolaPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...datos.resultado].sort((a, b) => String(a.propiedad || '').localeCompare(String(b.propiedad || ''), 'es', { numeric: true })).filter(r => tab === 'liquidacion' || r.revisar).map((r, i) => (
+                    {[...datos.resultado].sort((a, b) => String(a.propiedad || '').localeCompare(String(b.propiedad || ''), 'es', { numeric: true })).filter(r => tab === 'liquidacion' || r.revisar).map((r, i) => {
+                      const recEdit = edits[r.idadmon]?.recibidoEdit
+                      const recVal = (recEdit !== undefined && recEdit !== '' && recEdit !== null) ? aNum(recEdit) : (r.recibido == null ? null : r.recibido)
+                      const faltaVal = r.aCobrar == null ? null : r.aCobrar - (recVal || 0)
+                      return (
                       <Fragment key={r.idadmon}>
                         <tr onClick={() => setAbierta(abierta === r.idadmon ? null : r.idadmon)}
                           style={{
@@ -837,15 +857,21 @@ export default function LiquidacionPaolaPage() {
                           <td style={{ ...td, fontSize: 11 }}>{r.arrendatario}</td>
                           <td style={{ ...td, fontSize: 11 }}>{r.rut || '—'}</td>
                           <td style={{ ...td, textAlign: 'right' }}>{num(r.aCobrar)}</td>
-                          <td style={{ ...td, textAlign: 'right', fontWeight: r.recibido ? 600 : 400, color: r.vacante ? 'var(--gray-300)' : r.recibido ? '#16a34a' : '#dc2626' }}>
-                            {r.vacante ? '—' : r.recibido ? num(r.recibido) : 'NO PAGADO'}
+                          <td style={{ ...td, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                            {r.vacante ? <span style={{ color: 'var(--gray-300)' }}>—</span> : (
+                              <input inputMode="numeric" value={edits[r.idadmon]?.recibidoEdit ?? ''} placeholder="NO PAGADO"
+                                onChange={e => setCampo(r.idadmon, 'recibidoEdit', e.target.value)}
+                                onBlur={() => guardarFila(r)}
+                                title="Recibido. Puedes corregirlo a mano (p.ej. un pago del justificante aún sin discriminar) antes de generar el Excel. Se guarda y se congela con la liquidación."
+                                style={{ ...inpManual, width: 92, minWidth: 92, textAlign: 'right', fontWeight: 600, color: recVal ? '#16a34a' : '#dc2626' }} />
+                            )}
                             {r.topado && (
                               <span title={`Pago combinado: entró ${num(r.recibidoBruto)} (arriendo ${num(r.aCobrar)} + ${num(r.excedente)} de garantía/bodega). Se topa al arriendo.`}
                                     style={{ marginLeft: 4, fontSize: 9, fontWeight: 700, color: '#d97706', background: '#fef3c7', borderRadius: 3, padding: '1px 3px', cursor: 'help' }}>tope</span>
                             )}
                           </td>
-                          <td style={{ ...td, textAlign: 'right', color: r.faltaMes > 0 ? '#dc2626' : r.faltaMes < 0 ? '#d97706' : '#16a34a' }}>
-                            {r.faltaMes == null ? '—' : num(r.faltaMes)}
+                          <td style={{ ...td, textAlign: 'right', color: faltaVal > 0 ? '#dc2626' : faltaVal < 0 ? '#d97706' : '#16a34a' }}>
+                            {faltaVal == null ? '—' : num(faltaVal)}
                           </td>
                           <td style={{ ...td, fontSize: 11 }}>{fecha(r.fechaPago)}</td>
                           <td style={{ ...td, textAlign: 'right', fontSize: 11 }}>{r.deudaGgcc == null ? '' : num(r.deudaGgcc)}</td>
@@ -907,7 +933,7 @@ export default function LiquidacionPaolaPage() {
                           </tr>
                         ))}
                       </Fragment>
-                    ))}
+                      ) })}
                   </tbody>
                 </table>
                 {tab === 'revisar' && datos.resumen.revisar === 0 && (
