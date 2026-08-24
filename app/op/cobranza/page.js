@@ -1,5 +1,5 @@
 'use client'
-// VERSION: v12 · 2026-08-24 · Boton ? Ayuda en la cabecera con modal explicativo del modulo (mora, escalera, semaforo, gestionar, expediente). Hereda v11.
+// VERSION: v13 · 2026-08-24 · Cartolas: toggles Vigentes/Término suben a la línea de cabecera (junto a "situación al"); cabecera + "Acciones pendientes hoy" quedan STICKY bajo el TopNav (top:52) y no se ocultan. Hereda v12.
 // VERSION: v11 · 2026-08-13 · Cartolas/Inicios: filtros tipo Excel por columna (mismo motor que CC1,
 //   lib/filtroExcel) en cada cabecera de la tabla, con orden y multiselección, y botón "Exportar Excel"
 //   que vuelca EXACTAMENTE lo filtrado (respetando filtros y orden) a .xlsx. Cada grupo (Vigentes/Término)
@@ -203,49 +203,36 @@ function VistaCobranza({ tipo }) {
     return () => { vivo = false }
   }, [tipo])
 
+  const filas = data?.filas || []
+  const rv = data?.resumen?.vigente || {}
+  const rt = data?.resumen?.termino || {}
+  const grupos = []
+  if (verVigente) grupos.push({ g: 'vigente', titulo: 'Vigentes (S / SQ)', r: rv })
+  if (verTermino) grupos.push({ g: 'termino', titulo: 'En término (Q)', r: rt })
+
+  // Escalera: pendientes por moroso + worklist
+  const pendMap = {}
+  for (const f of filas) {
+    const dias = diasDesdeFecha(f.ultimo_abono)
+    pendMap[f.idadmon] = { dias, pend: f.clase === 'moroso' ? pendientesDe(dias, resumenMap[f.idadmon]) : [] }
+  }
+  const moros = filas.filter(f => f.clase === 'moroso')
+  const wl = LADDER.map(s => ({ ...s, n: moros.filter(f => pendMap[f.idadmon].pend.some(p => p.etapa === s.etapa && p.dest === s.dest)).length }))
+  const sinGestion = moros.filter(f => { const r = resumenMap[f.idadmon]; return !r || r.n === 0 }).length
+
+  // Cabecera + acciones FIJAS (sticky) bajo el TopNav (52px, z-index 100): siguen visibles al hacer scroll.
+  const stickyCab = { position: 'sticky', top: 52, zIndex: 90, background: '#f4f6f9', paddingTop: 10 }
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-        <span style={{ fontSize: 15, fontWeight: 700 }}>{TITULO_TIPO[tipo]}</span>
-        <span style={{ fontSize: 12, color: C.sub }}>· situación al {fechaHoraLocal(data?.generado)}</span>
-      </div>
-
-      {loading && <div style={{ padding: 40, textAlign: 'center', color: C.sub }}>Calculando saldos…</div>}
-      {error && <div style={{ padding: 20, color: C.rojo, fontSize: 13 }}>Error: {error}</div>}
-
-      {data && (() => {
-        const filas = data.filas || []
-        const rv = data.resumen?.vigente || {}
-        const rt = data.resumen?.termino || {}
-        const grupos = []
-        if (verVigente) grupos.push({ g: 'vigente', titulo: 'Vigentes (S / SQ)', r: rv })
-        if (verTermino) grupos.push({ g: 'termino', titulo: 'En término (Q)', r: rt })
-
-        // Escalera: pendientes por moroso + worklist
-        const pendMap = {}
-        for (const f of filas) {
-          const dias = diasDesdeFecha(f.ultimo_abono)
-          pendMap[f.idadmon] = { dias, pend: f.clase === 'moroso' ? pendientesDe(dias, resumenMap[f.idadmon]) : [] }
-        }
-        const moros = filas.filter(f => f.clase === 'moroso')
-        const wl = LADDER.map(s => ({ ...s, n: moros.filter(f => pendMap[f.idadmon].pend.some(p => p.etapa === s.etapa && p.dest === s.dest)).length }))
-        const sinGestion = moros.filter(f => { const r = resumenMap[f.idadmon]; return !r || r.n === 0 }).length
-
-        return (
-          <>
-            {moros.length > 0 && (
-              <div style={{ border: '1px solid ' + C.line, borderRadius: 10, padding: '12px 16px', marginBottom: 16, background: '#fff' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.txt, marginBottom: 8 }}>
-                  Acciones pendientes hoy <span style={{ color: C.sub, fontWeight: 400 }}>· escalera de cobranza (plazos borrador, a validar por Legal)</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <WlChip label="Sin gestión" n={sinGestion} rojo />
-                  {wl.map(s => <WlChip key={s.etapa + s.dest} label={s.label + ' (≥' + s.dia + 'd)'} n={s.n} />)}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: 13 }}>
+      <div style={stickyCab}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 10, marginBottom: (data && moros.length > 0) ? 12 : 0, borderBottom: '1px solid ' + C.line }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{TITULO_TIPO[tipo]}</span>
+            <span style={{ fontSize: 12, color: C.sub }}>· situación al {fechaHoraLocal(data?.generado)}</span>
+          </div>
+          {data && (
+            <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <input type="checkbox" checked={verVigente} onChange={e => setVerVigente(e.target.checked)} />
                 Vigentes (S/SQ) · {rv.con_deuda || 0} con deuda
@@ -255,26 +242,45 @@ function VistaCobranza({ tipo }) {
                 En término (Q) · {rt.con_deuda || 0} con deuda
               </label>
             </div>
+          )}
+        </div>
 
-            {grupos.map(({ g, titulo, r }) => (
-              <div key={g} style={{ marginBottom: 26 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
-                  <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{titulo}</h2>
-                  <span style={{ fontSize: 12, color: C.sub }}>
-                    {r.con_deuda || 0} con deuda · {r.al_dia || 0} al día · {r.sobrepago || 0} a revisar · deuda total {money(r.total_deuda)}
-                  </span>
-                </div>
-                <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} grupo={g} onGestionar={setGestionar} pendMap={pendMap} />
-              </div>
-            ))}
-
-            <div style={{ fontSize: 11, color: C.sub, marginTop: 8 }}>
-              Umbral deuda: {money(data.parametros?.umbral)} · sobrepago a revisar: &gt; {money(data.parametros?.sobrepago)} a favor.
-              Saldo corrido a la fecha de hoy (mismo cálculo que la Cartola).
+        {data && moros.length > 0 && (
+          <div style={{ border: '1px solid ' + C.line, borderRadius: 10, padding: '12px 16px', marginBottom: 16, background: '#fff' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.txt, marginBottom: 8 }}>
+              Acciones pendientes hoy <span style={{ color: C.sub, fontWeight: 400 }}>· escalera de cobranza (plazos borrador, a validar por Legal)</span>
             </div>
-          </>
-        )
-      })()}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <WlChip label="Sin gestión" n={sinGestion} rojo />
+              {wl.map(s => <WlChip key={s.etapa + s.dest} label={s.label + ' (≥' + s.dia + 'd)'} n={s.n} />)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {loading && <div style={{ padding: 40, textAlign: 'center', color: C.sub }}>Calculando saldos…</div>}
+      {error && <div style={{ padding: 20, color: C.rojo, fontSize: 13 }}>Error: {error}</div>}
+
+      {data && (
+        <>
+          {grupos.map(({ g, titulo, r }) => (
+            <div key={g} style={{ marginBottom: 26 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{titulo}</h2>
+                <span style={{ fontSize: 12, color: C.sub }}>
+                  {r.con_deuda || 0} con deuda · {r.al_dia || 0} al día · {r.sobrepago || 0} a revisar · deuda total {money(r.total_deuda)}
+                </span>
+              </div>
+              <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} grupo={g} onGestionar={setGestionar} pendMap={pendMap} />
+            </div>
+          ))}
+
+          <div style={{ fontSize: 11, color: C.sub, marginTop: 8 }}>
+            Umbral deuda: {money(data.parametros?.umbral)} · sobrepago a revisar: &gt; {money(data.parametros?.sobrepago)} a favor.
+            Saldo corrido a la fecha de hoy (mismo cálculo que la Cartola).
+          </div>
+        </>
+      )}
 
       {gestionar && <CobranzaDrawer fila={gestionar} onClose={() => setGestionar(null)} />}
     </div>
