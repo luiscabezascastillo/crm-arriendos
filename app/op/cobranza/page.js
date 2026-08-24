@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v18 · 2026-08-24 · Saldos a favor: enlace al panel completo "Cartolas a auditar". Hereda v17.
 // VERSION: v17 · 2026-08-24 · Saldos a favor: sugerencias por contrato (Adalis/Fabiola proponen; trio marca atendida). El traslado a A00000 seguira gateado al trio. Hereda v16.
 // VERSION: v16 · 2026-08-24 · Pestaña "Saldos a favor": auditoría de saldos a favor del arrendatario (S/SQ y Q), IDADMON->Cartola, parejas mismo piso marcadas. Solo lectura (endpoint /api/cobranza/saldos-favor). Hereda v15.
 // VERSION: v15 · 2026-08-24 · Boton "📖 Manual" en la cabecera (abre /api/cobranza/manual, imprimible/PDF). Hereda v14.
@@ -1002,6 +1003,9 @@ function SaldosFavor() {
 
   return (
     <div>
+      <div style={{ marginBottom: 12 }}>
+        <a href="/procesos/cartolas/auditar" style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 8, border: '1px solid #EADFBD', background: '#FBF7EC', color: '#7a5b0b', textDecoration: 'none' }}>🔎 Abrir panel completo · Cartolas a auditar (incluye deudas) →</a>
+      </div>
       <div style={{ fontSize: 13, color: C.txt, marginBottom: 16, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
         Contratos con <b>saldo a favor del arrendatario</b> por encima de {money((data && data.tolerancia) || 10000)}: casi siempre un <b>abono asignado a un IDADMON equivocado</b> o duplicado. Adalis y Fabiola pueden <b>sugerir</b> aquí; el traslado al puente A00000 lo hace <b>solo Karina/Dirección</b>. El IDADMON abre su Cartola.
       </div>

@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v30 · 2026-08-24 · Boton "Cartolas a auditar" en la barra de la vista Tabla (-> /procesos/cartolas/auditar). Hereda v29.
 // VERSION: v29 · 2026-08-24 · Abre la cartola directamente via URL ?idadmon=A00xxx (p.ej. al pinchar el IDADMON en Cobranza). Cambio aditivo. Hereda v28.
 // VERSION: v28 · 2026-08-16 · La pestaña "Cartola por IDADMON" deja de ser botón: ahora es solo un texto
 //   "Cartola del Idadmon ⟶" que apunta al buscador. Se conserva "Tabla" como botón (para volver desde la
@@ -510,6 +511,10 @@ function TablaVista({ vista, setVista, abrirCartola }) {
           </button>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             {!puedeEditar && <span style={{ fontSize: 11, color: '#888780' }}>solo lectura</span>}
+            <a href="/procesos/cartolas/auditar" title="Cartolas con problema para auditar"
+              style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 8, border: '1px solid #EADFBD', background: '#FBF7EC', color: '#7a5b0b', cursor: 'pointer', textDecoration: 'none' }}>
+              🔎 Cartolas a auditar
+            </a>
             <button onClick={abrirDuplicados}
               title="Buscar filas duplicadas en CUENTAS (por rango de fechas)"
               style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#5F5E5A', cursor: 'pointer' }}>
