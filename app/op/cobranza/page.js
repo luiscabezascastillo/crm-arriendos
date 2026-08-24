@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v12 · 2026-08-24 · Boton ? Ayuda en la cabecera con modal explicativo del modulo (mora, escalera, semaforo, gestionar, expediente). Hereda v11.
 // VERSION: v11 · 2026-08-13 · Cartolas/Inicios: filtros tipo Excel por columna (mismo motor que CC1,
 //   lib/filtroExcel) en cada cabecera de la tabla, con orden y multiselección, y botón "Exportar Excel"
 //   que vuelca EXACTAMENTE lo filtrado (respetando filtros y orden) a .xlsx. Cada grupo (Vigentes/Término)
@@ -107,15 +108,31 @@ const TABS = [
 ]
 const TITULO_TIPO = { cartolas: 'Cobranza de Cartolas', inicios: 'Cobranza de Inicios' }
 
+// Contenido del boton "? Ayuda" — como funciona la cobranza (escueto y practico).
+const AYUDA_COBRANZA = [
+  { t: 'Como detecta la mora', d: 'Mira el saldo vivo de cada contrato en su cartola (lo cargado menos lo abonado). Si hay deuda y el contrato lo cobra FCR (no el dueno), sale como moroso. La deuda depende de que la cartola este limpia.' },
+  { t: 'Las pestanas', d: 'Cartolas: morosos, deuda y la Proxima accion de hoy, con el boton Gestionar. Casos: expedientes abiertos con semaforo al propietario y el Expediente en PDF. Servicios / Inicios / Bitacora: deudas de servicios, contratos recien iniciados y el registro global de gestiones.' },
+  { t: 'La escalera (que toca hoy)', d: 'Por dias desde el ultimo abono: 1er aviso al arrendatario (>=1 dia), 1a reclamacion + avisar al propietario (>=5), reclamar al aval (>=10), aviso pre-DICOM (>=15). Plazos en borrador, a validar por Legal.' },
+  { t: 'Siempre arrendatario Y aval', d: 'La solidaridad del aval se pierde si no se le reclama a tiempo y en forma. Por eso desde el 2o aviso entra tambien el aval.' },
+  { t: 'Semaforo al propietario', d: 'Verde: silencio (mora leve). Ambar: aviso proactivo (el riesgo crece). Rojo: decision/cargo con expediente. Regla de oro: el propietario nunca debe sorprenderse de un mal resultado.' },
+  { t: 'Gestionar (el boton)', d: 'Ves los contactos, los avisos obligatorios pendientes (aval/propietario) y registras la gestion con una plantilla; puedes enviarla por email y queda el acuse. Todo lo registrado es INMUTABLE: no se edita ni se borra.' },
+  { t: 'El expediente', d: 'En Casos generas un PDF con toda la secuencia de gestiones. Es la salida legal para el aval, el abogado o el respaldo al dueno.' },
+]
+
 export default function Cobranza() {
   const [tab, setTab] = useState('cartolas')
+  const [ayudaOpen, setAyudaOpen] = useState(false)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 20px', fontFamily: 'system-ui, -apple-system, sans-serif', color: C.txt }}>
       <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>
         <Link href="/procesos" style={{ color: C.sub, textDecoration: 'none' }}>← Procesos</Link> / Cobranza
       </div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px' }}>Cobranza</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px' }}>Cobranza</h1>
+        <button onClick={() => setAyudaOpen(true)} title="Como funciona la cobranza"
+          style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>? Ayuda</button>
+      </div>
       <div style={{ fontSize: 13, color: C.sub, marginBottom: 16 }}>Impago → gestión con constancia → pago o acción legal</div>
 
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid ' + C.line, marginBottom: 18 }}>
@@ -134,6 +151,31 @@ export default function Cobranza() {
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
       {tab === 'casos' && <CasosView />}
       {tab === 'bitacora' && <Bitacora />}
+
+      {ayudaOpen && (
+        <div onClick={() => setAyudaOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.25)', width: 'min(640px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Como funciona la Cobranza</h2>
+              <button onClick={() => setAyudaOpen(false)} style={{ border: 'none', background: 'transparent', fontSize: 20, color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: '#1a1a2e', background: '#EAF2FB', border: '1px solid #C9DEF5', borderRadius: 8, padding: '9px 12px', margin: '4px 0 14px' }}>
+              <b>Sin constancia, no existe.</b> El sistema empuja las acciones a tiempo (arrendatario, aval y propietario) y deja un rastro inmutable de todo.
+            </div>
+            {AYUDA_COBRANZA.map((a, i) => (
+              <div key={i} style={{ padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #F0EFEA' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{a.t}</div>
+                <div style={{ fontSize: 12.5, color: '#555', marginTop: 2 }}>{a.d}</div>
+              </div>
+            ))}
+            <div style={{ marginTop: 14, fontSize: 11.5, color: '#9ca3af' }}>
+              Nota: la deuda y la escalera salen de la cartola (cuentas). Si un cargo o abono esta mal, saldran mal; por eso conviene mantener las cartolas limpias.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

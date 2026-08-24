@@ -1,3 +1,6 @@
+// VERSION: v29 · 2026-08-24 · Pestaña JUSTIFICANTES: pega (Ctrl+V) o arrastra imágenes → se suben al CRM (Storage vía
+//   route) y se incrustan en la hoja Comprobantes del Excel. Rejilla con vista previa (URL firmada) y borrado.
+//   Opcionalmente se asocian a un contrato. Hereda v28.
 // VERSION: v28 · 2026-08-24 · Banner de estado del mes: "Liquidación enviada" (congelada al enviar, editable como
 //   rectificación) y "Mes congelado" (cierre oficial, solo lectura), leídos de paola_cierres vía el GET. Tras un
 //   envío real se refresca el estado. Hereda v27.
@@ -136,6 +139,11 @@ export default function LiquidacionPaolaPage() {
   const [bitacora, setBitacora] = useState([])
   const [bitCargando, setBitCargando] = useState(false)
   const [cierre, setCierre] = useState(null)   // estado del mes: enviado_en / congelado
+  // Justificantes (imágenes)
+  const [justificantes, setJustificantes] = useState([])
+  const [justSubiendo, setJustSubiendo] = useState(false)
+  const [justIdadmon, setJustIdadmon] = useState('')
+  const [justAviso, setJustAviso] = useState(null)
 
   useEffect(() => {
     const h = new Date()
@@ -341,6 +349,60 @@ export default function LiquidacionPaolaPage() {
       })
       const d = await res.json()
       if (d.ok) setGarantias(gs => gs.filter(g => g.id !== id))
+    } catch { /* silencioso */ }
+  }
+
+  // ── Justificantes (imágenes) ───────────────────────────────────────────────
+  async function cargarJustificantes() {
+    if (!mes) return
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'justificantes_list', mes }),
+      })
+      const d = await res.json()
+      if (d.ok) setJustificantes(d.justificantes || [])
+    } catch { /* silencioso */ }
+  }
+  useEffect(() => { if (tab === 'justificantes') cargarJustificantes() }, [tab, mes])
+
+  async function subirJustificante(file) {
+    if (!file || !/^image\//.test(file.type)) { setJustAviso('Solo imágenes'); return }
+    if (file.size > 8 * 1024 * 1024) { setJustAviso('Máx 8 MB por imagen'); return }
+    setJustSubiendo(true); setJustAviso(null)
+    try {
+      const base64 = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(file) })
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'justificante_upload', mes, idadmon: justIdadmon || null, nombre: file.name || 'imagen', mime: file.type, base64 }),
+      })
+      const d = await res.json()
+      if (!d.ok) { setJustAviso(d.error || 'No se pudo subir'); setJustSubiendo(false); return }
+      setJustificantes(js => [...js, d.justificante])
+      setJustAviso('Añadido')
+      setTimeout(() => setJustAviso(null), 2500)
+    } catch (e) { setJustAviso('Error: ' + e.message) }
+    setJustSubiendo(false)
+  }
+
+  function onPasteJustif(e) {
+    const items = e.clipboardData?.items || []
+    for (const it of items) { if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) subirJustificante(f) } }
+  }
+  function onDropJustif(e) {
+    e.preventDefault()
+    const files = e.dataTransfer?.files || []
+    for (const f of files) if (/^image\//.test(f.type)) subirJustificante(f)
+  }
+
+  async function borrarJustificante(id) {
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'justificante_delete', id }),
+      })
+      const d = await res.json()
+      if (d.ok) setJustificantes(js => js.filter(j => j.id !== id))
     } catch { /* silencioso */ }
   }
 
@@ -855,6 +917,7 @@ export default function LiquidacionPaolaPage() {
                 { key: 'revisar', label: `Revisar (${datos.resumen.revisar})` },
                 { key: 'radar', label: `Radar (${nRadar})` },
                 { key: 'garantias', label: 'Garantías' },
+                { key: 'justificantes', label: `📎 Justificantes${justificantes.length ? ' (' + justificantes.length + ')' : ''}` },
                 { key: 'sin_identificar', label: `Sin identificar (${datos.sinIdentificar.length})` },
                 { key: 'no_renta', label: `No es renta (${datos.noEsRenta.length})` },
                 ...(puedeBitacora ? [{ key: 'bitacora', label: '🗒 Bitácora' }] : []),
@@ -1248,6 +1311,56 @@ export default function LiquidacionPaolaPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── JUSTIFICANTES (imágenes) ──────────────────────────────────── */}
+            {tab === 'justificantes' && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                <div style={{ padding: 16 }}
+                  onPaste={onPasteJustif}
+                  onDrop={onDropJustif}
+                  onDragOver={e => e.preventDefault()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Asociar a contrato (opcional):&nbsp;
+                      <select value={justIdadmon} onChange={e => setJustIdadmon(e.target.value)} style={{ ...inpManual, width: 240, display: 'inline-block' }}>
+                        <option value="">— general del mes —</option>
+                        {(datos.contratos || []).map(c => <option key={c.idadmon} value={c.idadmon}>{c.idadmon} · {String(c.propiedad || '').replace('Pablo Urzúa 1481- ', '')}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 12, padding: '7px 14px', borderRadius: 8, border: '1px solid #1a56db', color: '#1a56db', background: '#EEF2FF', cursor: 'pointer', fontWeight: 600 }}>
+                      + Añadir imagen
+                      <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                        onChange={e => { for (const f of e.target.files) subirJustificante(f); e.target.value = '' }} />
+                    </label>
+                    {justSubiendo && <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>subiendo…</span>}
+                    {justAviso && <span style={{ fontSize: 11, color: justAviso === 'Añadido' ? '#16a34a' : '#dc2626' }}>{justAviso}</span>}
+                  </div>
+                  <div tabIndex={0} style={{ border: '2px dashed var(--border)', borderRadius: 10, padding: 18, textAlign: 'center', fontSize: 12, color: 'var(--gray-500)', background: 'var(--gray-50)', marginBottom: 16 }}>
+                    Pega aquí una captura (Ctrl+V) o arrastra imágenes. Se guardan en el CRM y se incrustan en la hoja
+                    <strong> Comprobantes</strong> del Excel que se manda a Paola.
+                  </div>
+                  {justificantes.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Aún no hay justificantes de {mesLabel()}.</div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                      {justificantes.map(j => (
+                        <div key={j.id} style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                          <a href={j.url} target="_blank" rel="noreferrer" style={{ display: 'block', height: 150, background: '#f8fafc' }}>
+                            {j.url ? <img src={j.url} alt={j.nombre} style={{ width: '100%', height: 150, objectFit: 'cover' }} /> : <div style={{ padding: 20, fontSize: 11, color: 'var(--gray-400)' }}>sin vista previa</div>}
+                          </a>
+                          <div style={{ padding: '6px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 10, color: 'var(--gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {j.idadmon ? <b style={{ color: '#1a56db' }}>{j.idadmon}</b> : '·'} {j.nombre || ''}
+                            </span>
+                            <button onClick={() => borrarJustificante(j.id)} title="Borrar"
+                              style={{ fontSize: 11, padding: '2px 7px', borderRadius: 6, border: '1px solid var(--border)', color: '#dc2626', background: '#fff', cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

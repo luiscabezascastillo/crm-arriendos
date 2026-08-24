@@ -1,8 +1,9 @@
 'use client'
-// VERSION: v1 · 2026-08-24 · Pantalla de gestión de correspondencias CF (/op/comunidad-feliz/correspondencias).
-//   Lista editable de cf_correspondencias enriquecida con datos_arriendos; buscador; resalta las problemáticas
-//   (sin comunidad / sin idadmon). Editar/crear/desactivar. Sugeridor de inmueble por nº de unidad (dep/est/bod)
-//   + búsqueda libre en el maestro. Cerrada por rol (Administración + Dirección + Karina), como el resto de CF.
+// VERSION: v2 · 2026-08-24 · Pantalla de gestión de correspondencias CF (/op/comunidad-feliz/correspondencias).
+//   v2: el idinmue es el ancla estable; marca en ROJO los idadmon terminados (Q/N) y ofrece "→ actualizar"
+//       con un clic al contrato activo del inmueble. Contadores de terminados/desactualizados.
+//   Lista editable de cf_correspondencias enriquecida con datos_arriendos; buscador; sugeridor por nº de unidad
+//   (dep/est/bod, solo contratos activos) + búsqueda libre. Cerrada por rol (Administración + Dirección + Karina).
 //   API: /api/comunidad-feliz/correspondencias-admin.
 import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
@@ -62,6 +63,30 @@ export default function CorrespondenciasCF() {
   }, [filas, q])
 
   const nProblemas = filas.filter((f) => f.problema).length
+  const nTerminados = filas.filter((f) => f.problema === 'idadmon_terminado').length
+  const nDesactualizados = filas.filter((f) => f.problema === 'idadmon_desactualizado').length
+
+  const bgFila = (f) => {
+    if (!f.activo) return '#f1f5f9'
+    if (f.problema === 'idadmon_terminado') return '#FEE2E2'
+    if (f.problema === 'idadmon_desactualizado') return '#FFEDD5'
+    if (f.problema) return '#FEF3C7'
+    return '#fff'
+  }
+
+  async function actualizarIdadmon(f) {
+    if (!f.idadmon_activo_sugerido) return
+    if (!confirm(`Actualizar el IDADMON de ${f.comunidad_cf || '(sin comunidad)'} / ${f.inmueble_cf}\nde ${f.idadmon || '—'} → ${f.idadmon_activo_sugerido} (contrato activo del inmueble)?`)) return
+    setBusy(true); setMsg('')
+    try {
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'guardar', id: f.id, comunidad_cf: f.comunidad_cf, inmueble_cf: f.inmueble_cf, idadmon: f.idadmon_activo_sugerido, idinmue: f.idinmue, estado: f.estado, propietario: f.propietario, notas: f.notas, activo: f.activo }) })
+      const d = await r.json()
+      if (!d.ok) throw new Error(d.error || 'Error')
+      await cargar(); setMsg(`✓ IDADMON actualizado a ${f.idadmon_activo_sugerido}.`)
+    } catch (e) { setMsg('✗ ' + e.message) }
+    setBusy(false)
+  }
 
   function abrirNueva() { setForm({ ...vacio }); setSugs([]); setBres([]); setBq('') }
   function abrirEditar(f) {
@@ -135,7 +160,9 @@ export default function CorrespondenciasCF() {
           <input style={s.input} placeholder="Buscar por comunidad, unidad, idadmon, propietario, dirección…" value={q} onChange={(e) => setQ(e.target.value)} />
           <label style={s.check}><input type="checkbox" checked={verInactivas} onChange={(e) => setVerInactivas(e.target.checked)} /> Ver inactivas</label>
           <span style={s.contador}>{filtradas.length} de {filas.length}</span>
-          {nProblemas > 0 && <span style={s.alerta}>⚠ {nProblemas} a revisar (sin comunidad o sin idadmon)</span>}
+          {nTerminados > 0 && <span style={{ ...s.alerta, color: '#991b1b', background: '#FEE2E2', borderColor: '#FCA5A5' }}>⛔ {nTerminados} con IDADMON terminado — actualizar YA</span>}
+          {nDesactualizados > 0 && <span style={{ ...s.alerta, color: '#9a3412', background: '#FFEDD5', borderColor: '#FDBA74' }}>↻ {nDesactualizados} con IDADMON desactualizado</span>}
+          {nProblemas - nTerminados - nDesactualizados > 0 && <span style={s.alerta}>⚠ {nProblemas - nTerminados - nDesactualizados} sin comunidad/idadmon</span>}
         </div>
 
         {msg && <div style={s.msg}>{msg}</div>}
@@ -150,15 +177,23 @@ export default function CorrespondenciasCF() {
             <tbody>
               {cargando && <tr><td colSpan={8} style={s.td}>Cargando…</td></tr>}
               {!cargando && filtradas.map((f) => (
-                <tr key={f.id} style={{ background: f.problema ? '#FEF3C7' : (f.activo ? '#fff' : '#f1f5f9') }}>
+                <tr key={f.id} style={{ background: bgFila(f) }}>
                   <td style={s.td}>{f.comunidad_cf || <em style={s.falta}>— sin comunidad —</em>}</td>
                   <td style={s.td}>{f.inmueble_cf}</td>
-                  <td style={{ ...s.td, fontWeight: 600 }}>{f.idadmon || <em style={s.falta}>—</em>}</td>
-                  <td style={s.td}>{f.idinmue || '—'}</td>
+                  <td style={{ ...s.td, fontWeight: 600 }}>
+                    {f.idadmon
+                      ? <span style={f.idadmon_terminado ? { color: '#b91c1c', textDecoration: 'line-through' } : {}}>{f.idadmon}</span>
+                      : <em style={s.falta}>—</em>}
+                    {f.idadmon_terminado && <span style={s.tagRojo}>terminado</span>}
+                  </td>
+                  <td style={{ ...s.td, fontWeight: 500 }}>{f.idinmue || '—'}</td>
                   <td style={s.td}>{f.propietario || '—'}</td>
                   <td style={{ ...s.td, color: '#64748b', fontSize: 12 }}>{f.direccion_maestro || '—'}</td>
                   <td style={s.td}>{f.estado}</td>
                   <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                    {f.idadmon_activo_sugerido &&
+                      <button style={{ ...s.btnMini, color: '#fff', background: '#dc2626', border: '1px solid #dc2626' }} disabled={busy}
+                        onClick={() => actualizarIdadmon(f)} title="Actualizar al contrato activo del inmueble">→ {f.idadmon_activo_sugerido}</button>}
                     <button style={s.btnMini} onClick={() => abrirEditar(f)}>Editar</button>
                     {f.activo
                       ? <button style={{ ...s.btnMini, color: '#b91c1c' }} onClick={() => cambiarActivo(f, false)}>Baja</button>
@@ -279,6 +314,7 @@ const s = {
   th: { textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', position: 'sticky', top: 0, background: '#f8fafc' },
   td: { padding: '9px 12px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' },
   falta: { color: '#b45309', fontStyle: 'italic' },
+  tagRojo: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: '#dc2626', padding: '1px 6px', borderRadius: 20 },
   btnMini: { background: 'none', border: '1px solid #cbd5e1', color: '#334155', padding: '3px 9px', borderRadius: 6, cursor: 'pointer', fontSize: 12, marginRight: 5 },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto', zIndex: 50 },
   modal: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' },

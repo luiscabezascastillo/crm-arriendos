@@ -1,9 +1,12 @@
-// VERSION: v1 · 2026-08-24 · Admin de cf_correspondencias para /op/comunidad-feliz/correspondencias.
-//   GET  ?modo=lista            → correspondencias enriquecidas con datos_arriendos (direccion/propietario).
-//   GET  ?modo=sugerir&comunidad=&inmueble= → candidatos del maestro por nº de unidad (dep/est/bod).
-//   GET  ?modo=buscar&q=        → busqueda libre en el maestro (propietario/direccion/idadmon).
-//   POST {accion:'guardar'|'desactivar'|'activar', ...} → alta/edicion por id, o baja/alta logica.
-//   NOTA seguridad: como el resto del circuito CF, usa service-role y NO valida sesion/rol (control solo en UI).
+// VERSION: v2 · 2026-08-24 · Admin de cf_correspondencias para /op/comunidad-feliz/correspondencias.
+//   v2: el idinmue es el ancla estable y el idadmon rota (contratos). Se DETECTA idadmon terminado
+//       (empieza por Q/N o estado Q/N) y se resuelve el idadmon ACTIVO a partir del idinmue para corregirlo.
+//       El sugeridor excluye contratos terminados (solo propone el activo).
+//   GET ?modo=lista  → correspondencias enriquecidas (dirección, idadmon terminado, idadmon activo sugerido).
+//   GET ?modo=sugerir&comunidad=&inmueble= → candidatos activos por nº de unidad (dep/est/bod).
+//   GET ?modo=buscar&q= → búsqueda libre en el maestro (solo activos primero).
+//   POST {accion:'guardar'|'desactivar'|'activar', ...}.
+//   NOTA seguridad: usa service-role y NO valida sesión/rol (control solo en UI), como el resto del circuito CF.
 // app/api/comunidad-feliz/correspondencias-admin/route.js
 import { createClient } from '@supabase/supabase-js'
 
@@ -16,14 +19,14 @@ const supabase = createClient(
 const J = (o, s = 200) => Response.json(o, { status: s })
 const soloAlnum = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-// tokens "de nombre" (>=4 chars) para medir solape calle/comunidad
+// idadmon terminado: el propio código empieza por Q/N, o su estado empieza por Q/N.
+const esTerminado = (idadmon, estado) => /^[qn]/i.test(String(idadmon || '')) || /^[qn]/i.test(String(estado || ''))
+
 function tokensNombre(s) {
   return String(s || '').toLowerCase()
     .replace(/comunidad|edificio|condominio|proyecto|torre/g, ' ')
     .split(/[^a-z0-9]+/).filter((t) => t.length >= 4)
 }
-
-// extrae numeros de dep/est/bod de una direccion tipo "Calle 12- dep 507- est 12- bod 3"
 function unidadesDireccion(inm) {
   const t = String(inm || '').toLowerCase()
   const grab = (re) => { const out = []; let m; while ((m = re.exec(t))) out.push(soloAlnum(m[1])); return out }
@@ -33,20 +36,17 @@ function unidadesDireccion(inm) {
     bod: grab(/bod\s*([0-9]+\s*[a-z]?)/g),
   }
 }
-
-// normaliza el inmueble_cf a su nº de unidad: "Departamento 507"->507, "2208-B"->2208b, "D508"->508
 function unidadCF(s) {
   let t = soloAlnum(s)
   t = t.replace(/^(departamento|depto|dep|estacionamiento|estac|est|bodega|bod)/, '')
-  t = t.replace(/^[a-z]+(?=[0-9])/, '') // "d508"->"508", "td4086"->"4086"
+  t = t.replace(/^[a-z]+(?=[0-9])/, '')
   return t
 }
 
-// dedup del maestro por idadmon+idinmue
 async function cargarMaestro() {
   const { data, error } = await supabase
     .from('datos_arriendos')
-    .select('idadmon, idinmue, propietario, inmueble')
+    .select('idadmon, idinmue, propietario, inmueble, estado')
     .limit(20000)
   if (error) throw new Error(error.message)
   const vistos = new Set(); const out = []
@@ -59,12 +59,30 @@ async function cargarMaestro() {
   return out
 }
 
+// Índices útiles a partir del maestro.
+function indexar(maestro) {
+  const dirPorIdadmon = new Map()   // idadmon → dirección (primera)
+  const estadoPorIdadmon = new Map()// idadmon → estado
+  const activoPorComp = new Map()   // componente de idinmue → idadmon ACTIVO
+  for (const r of maestro) {
+    if (r.idadmon && !dirPorIdadmon.has(r.idadmon)) dirPorIdadmon.set(r.idadmon, r.inmueble)
+    if (r.idadmon && !estadoPorIdadmon.has(r.idadmon)) estadoPorIdadmon.set(r.idadmon, r.estado || '')
+    if (!esTerminado(r.idadmon, r.estado)) {
+      for (const comp of String(r.idinmue || '').split(/\s+/).filter(Boolean)) {
+        if (!activoPorComp.has(comp)) activoPorComp.set(comp, r.idadmon)
+      }
+    }
+  }
+  return { dirPorIdadmon, estadoPorIdadmon, activoPorComp }
+}
+
 function sugerir(comunidad_cf, inmueble_cf, maestro) {
   const u = unidadCF(inmueble_cf)
   if (!u) return []
   const toksCom = tokensNombre(comunidad_cf)
   const cands = []
   for (const r of maestro) {
+    if (esTerminado(r.idadmon, r.estado)) continue // solo contratos activos
     const { dep, est, bod } = unidadesDireccion(r.inmueble)
     let tipo = null, base = 0
     if (dep.includes(u)) { tipo = 'dep'; base = 0.75 }
@@ -73,10 +91,7 @@ function sugerir(comunidad_cf, inmueble_cf, maestro) {
     if (!tipo) continue
     const overlap = toksCom.length ? tokensNombre(r.inmueble).some((t) => toksCom.includes(t)) : false
     const score = Math.min(0.98, base + (overlap ? 0.2 : 0))
-    cands.push({
-      idadmon: r.idadmon, idinmue: r.idinmue, propietario: r.propietario, inmueble: r.inmueble,
-      score, motivo: tipo + (overlap ? '+nombre' : ''),
-    })
+    cands.push({ idadmon: r.idadmon, idinmue: r.idinmue, propietario: r.propietario, inmueble: r.inmueble, score, motivo: tipo + (overlap ? '+nombre' : '') })
   }
   cands.sort((a, b) => b.score - a.score)
   return cands.slice(0, 6)
@@ -86,6 +101,7 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url)
     const modo = searchParams.get('modo') || 'lista'
+    const maestro = await cargarMaestro()
 
     if (modo === 'lista') {
       const soloActivas = searchParams.get('todas') !== '1'
@@ -96,18 +112,29 @@ export async function GET(req) {
       const { data, error } = await q
       if (error) return J({ error: error.message }, 500)
 
-      // enriquecer con la direccion del maestro (por idadmon)
-      const maestro = await cargarMaestro()
-      const mapDir = new Map()
-      for (const r of maestro) if (r.idadmon && !mapDir.has(r.idadmon)) mapDir.set(r.idadmon, r.inmueble)
+      const { dirPorIdadmon, estadoPorIdadmon, activoPorComp } = indexar(maestro)
 
-      const filas = (data || []).map((c) => ({
-        ...c,
-        direccion_maestro: c.idadmon ? (mapDir.get(c.idadmon) || null) : null,
-        problema: !c.comunidad_cf?.trim() ? 'sin_comunidad' : (!c.idadmon ? 'sin_idadmon' : null),
-      }))
-      // primero las problematicas
-      filas.sort((a, b) => (a.problema ? 0 : 1) - (b.problema ? 0 : 1))
+      const filas = (data || []).map((c) => {
+        const estadoDA = c.idadmon ? (estadoPorIdadmon.get(c.idadmon) || '') : ''
+        const terminado = c.idadmon ? esTerminado(c.idadmon, estadoDA) : false
+        const primeraComp = String(c.idinmue || '').split(/\s+/).filter(Boolean)[0] || null
+        const activoSug = primeraComp ? (activoPorComp.get(primeraComp) || null) : null
+        let problema = null
+        if (!c.comunidad_cf?.trim()) problema = 'sin_comunidad'
+        else if (!c.idadmon) problema = 'sin_idadmon'
+        else if (terminado) problema = 'idadmon_terminado'
+        else if (activoSug && activoSug !== c.idadmon) problema = 'idadmon_desactualizado'
+        return {
+          ...c,
+          direccion_maestro: c.idadmon ? (dirPorIdadmon.get(c.idadmon) || null) : null,
+          idadmon_terminado: terminado,
+          idadmon_activo_sugerido: (terminado || (activoSug && activoSug !== c.idadmon)) ? activoSug : null,
+          problema,
+        }
+      })
+      // prioridad de revisión: terminado > desactualizado > sin idadmon > sin comunidad > ok
+      const peso = { idadmon_terminado: 0, idadmon_desactualizado: 1, sin_idadmon: 2, sin_comunidad: 3 }
+      filas.sort((a, b) => (a.problema ? peso[a.problema] : 9) - (b.problema ? peso[b.problema] : 9))
       return J({ correspondencias: filas })
     }
 
@@ -115,20 +142,17 @@ export async function GET(req) {
       const comunidad = searchParams.get('comunidad') || ''
       const inmueble = searchParams.get('inmueble') || ''
       if (!inmueble.trim()) return J({ candidatos: [] })
-      const maestro = await cargarMaestro()
       return J({ candidatos: sugerir(comunidad, inmueble, maestro) })
     }
 
     if (modo === 'buscar') {
       const qtext = soloAlnum(searchParams.get('q') || '')
       if (qtext.length < 2) return J({ candidatos: [] })
-      const maestro = await cargarMaestro()
-      const res = maestro.filter((r) =>
-        soloAlnum(r.propietario).includes(qtext) ||
-        soloAlnum(r.inmueble).includes(qtext) ||
-        soloAlnum(r.idadmon).includes(qtext) ||
-        soloAlnum(r.idinmue).includes(qtext)
-      ).slice(0, 30).map((r) => ({ idadmon: r.idadmon, idinmue: r.idinmue, propietario: r.propietario, inmueble: r.inmueble }))
+      const res = maestro
+        .filter((r) => !esTerminado(r.idadmon, r.estado))
+        .filter((r) => soloAlnum(r.propietario).includes(qtext) || soloAlnum(r.inmueble).includes(qtext) || soloAlnum(r.idadmon).includes(qtext) || soloAlnum(r.idinmue).includes(qtext))
+        .slice(0, 30)
+        .map((r) => ({ idadmon: r.idadmon, idinmue: r.idinmue, propietario: r.propietario, inmueble: r.inmueble }))
       return J({ candidatos: res })
     }
 
@@ -153,7 +177,6 @@ export async function POST(req) {
       return J({ ok: true })
     }
 
-    // guardar (alta o edicion por id)
     const fila = {
       comunidad_cf: String(body.comunidad_cf || '').trim(),
       inmueble_cf: String(body.inmueble_cf || '').trim(),
@@ -168,6 +191,7 @@ export async function POST(req) {
     if (!fila.comunidad_cf) return J({ error: 'Falta la Comunidad CF (es la que hace casar el dato con el portal).' }, 400)
     if (!fila.inmueble_cf) return J({ error: 'Falta el Inmueble CF (la unidad).' }, 400)
     if (!['S', 'P'].includes(fila.estado)) return J({ error: 'Estado inválido (S o P).' }, 400)
+    if (fila.idadmon && esTerminado(fila.idadmon, '')) return J({ error: 'Ese IDADMON es un contrato terminado (Q/N). Asigna el contrato activo del inmueble.' }, 400)
 
     if (body.id) {
       const { data, error } = await supabase.from('cf_correspondencias').update(fila).eq('id', body.id).select('*').maybeSingle()

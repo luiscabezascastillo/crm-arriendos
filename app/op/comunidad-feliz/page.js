@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v5 · 2026-08-24 · Añade botón "🗂️ Gestionar correspondencias" (→ /op/comunidad-feliz/correspondencias)
+//   en el bloque de acceso, junto a "No asociados". Hereda v4.
 // VERSION: v4 · 2026-08-17 · (1) Pantalla CERRADA POR ROL: solo Administración (Adalis/Fabiola), Karina y
 //   Dirección (Luis/Alberto); el resto se redirige. (2) Dos botones en el bloque de acceso: "No asociados"
 //   (los "Nuevos" del análisis + visor/edición de cf_correspondencias) y "Ver GGCC cargado" (modal con
@@ -360,6 +362,7 @@ export default function ComunidadFeliz() {
           <a href="https://app2.comunidadfeliz.com/" target="_blank" rel="noopener noreferrer"
              style={linkBtn}>🔗 App administración ↗</a>
           <button onClick={abrirNoAsoc} style={accionBtn}>🧩 No asociados</button>
+          <button onClick={() => router.push('/op/comunidad-feliz/correspondencias')} style={accionBtn}>🗂️ Gestionar correspondencias</button>
           <button onClick={abrirGgcc} style={accionBtn}>📄 Ver GGCC cargado</button>
         </div>
 

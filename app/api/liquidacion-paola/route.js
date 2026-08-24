@@ -1,3 +1,7 @@
+// VERSION: v26 · 2026-08-24 · JUSTIFICANTES (imágenes). Acciones justificante_upload/_list/_delete: se suben a
+//   Supabase Storage (bucket privado paola-justificantes) con service-role y se referencian en paola_justificantes;
+//   la pantalla las ve por URL firmada. Al generar el Excel se descargan y se pasan a generarExcelPaola para
+//   incrustarlas en la hoja Comprobantes. Cada alta/baja queda en la bitácora. Hereda v25.
 // VERSION: v25 · 2026-08-24 · CONGELAR al enviar. En el envío REAL a Paola: guarda un snapshot de lo enviado
 //   (paola_envios.snapshot), marca la liquidación como ENVIADA/CONGELADA (paola_cierres.enviado_en/por/ultimo_envio,
 //   sin bloquear la rectificación) y lo registra en la bitácora. El arrastre dentro del mes ya funciona (la foto
@@ -88,6 +92,25 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
 const IDPROP_PAOLA = 'P001'
 const ESTADOS_LIQUIDABLES = ['S', 'SQ', 'P', 'Q']
+const BUCKET_JUSTIF = 'paola-justificantes'
+
+// Descarga los justificantes (imágenes) del mes desde Storage, para incrustarlos en la hoja Comprobantes.
+async function cargarJustificantesBytes(mesYM) {
+  try {
+    const { data: rows } = await admin.from('paola_justificantes').select('*').eq('mes', mesYM).order('creado_en', { ascending: true })
+    const out = []
+    for (const j of rows || []) {
+      try {
+        const { data: blob } = await admin.storage.from(BUCKET_JUSTIF).download(j.path)
+        if (!blob) continue
+        const buffer = Buffer.from(await blob.arrayBuffer())
+        const ext = (j.mime || '').includes('png') ? 'png' : (j.mime || '').includes('webp') ? 'png' : 'jpeg'
+        out.push({ buffer, nombre: j.nombre || '', idadmon: j.idadmon || '', ext })
+      } catch (e) { /* una imagen que falle no rompe el Excel */ }
+    }
+    return out
+  } catch (e) { console.error('cargarJustificantesBytes:', e.message); return [] }
+}
 
 // Lectura de la bitácora: solo Dirección/Karina (los mismos de las acciones sensibles).
 const ACCESO_BITACORA = [
@@ -570,6 +593,53 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, log: data || [] })
     }
 
+    // ── JUSTIFICANTES (imágenes) ─────────────────────────────────────────────
+    if (body.accion === 'justificante_upload') {
+      const { mes, idadmon, nombre, mime, base64 } = body
+      if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      if (!base64) return NextResponse.json({ error: 'Falta la imagen' }, { status: 400 })
+      const mesYM = aYYYYMM(mes)
+      const autor = await autorSesion()
+      const raw = String(base64).replace(/^data:[^;]+;base64,/, '')
+      const buffer = Buffer.from(raw, 'base64')
+      if (buffer.length > 8 * 1024 * 1024) return NextResponse.json({ error: 'Imagen demasiado grande (máx 8 MB).' }, { status: 400 })
+      const ext = (mime || '').includes('png') ? 'png' : (mime || '').includes('webp') ? 'webp' : 'jpg'
+      const path = `${mesYM}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
+      const { error: eUp } = await admin.storage.from(BUCKET_JUSTIF).upload(path, buffer, { contentType: mime || 'image/jpeg', upsert: false })
+      if (eUp) return NextResponse.json({ error: 'No se pudo subir la imagen: ' + eUp.message }, { status: 500 })
+      const { data: row, error: eIns } = await admin.from('paola_justificantes')
+        .insert({ mes: mesYM, idadmon: idadmon || null, path, nombre: nombre || null, mime: mime || null, tamano: buffer.length, subido_por: autor })
+        .select().maybeSingle()
+      if (eIns) return NextResponse.json({ error: eIns.message }, { status: 500 })
+      const { data: signed } = await admin.storage.from(BUCKET_JUSTIF).createSignedUrl(path, 3600)
+      await logPaola({ mes: mesYM, idadmon: idadmon || null, campo: 'Justificante', evento: 'alta', valor_nuevo: nombre || path, autor })
+      return NextResponse.json({ ok: true, justificante: { ...row, url: signed?.signedUrl || null } })
+    }
+
+    if (body.accion === 'justificantes_list') {
+      if (!body.mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      const mesYM = aYYYYMM(body.mes)
+      const { data, error } = await admin.from('paola_justificantes').select('*').eq('mes', mesYM).order('creado_en', { ascending: true })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      const out = []
+      for (const j of data || []) {
+        const { data: s } = await admin.storage.from(BUCKET_JUSTIF).createSignedUrl(j.path, 3600)
+        out.push({ ...j, url: s?.signedUrl || null })
+      }
+      return NextResponse.json({ ok: true, justificantes: out })
+    }
+
+    if (body.accion === 'justificante_delete') {
+      if (!body.id) return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
+      const { data: j } = await admin.from('paola_justificantes').select('*').eq('id', body.id).maybeSingle()
+      if (j) {
+        try { await admin.storage.from(BUCKET_JUSTIF).remove([j.path]) } catch (e) { /* secundario */ }
+        await admin.from('paola_justificantes').delete().eq('id', body.id)
+        await logPaola({ mes: j.mes, idadmon: j.idadmon || null, campo: 'Justificante', evento: 'borrar', valor_anterior: j.nombre || j.path, autor: await autorSesion() })
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     // ── acción: ABRIR el mes ya GUARDADO (sin re-procesar la cartola) ────────────
     //   Para que otra persona (p.ej. Fabiola) entre a revisar/continuar lo que dejó Adalis.
     if (body.accion === 'cargar_guardado') {
@@ -639,7 +709,8 @@ export async function POST(request) {
       }
 
       const garantiasRoster = await cargarGarantiasRoster()
-      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantiasRoster })
+      const justificantes = await cargarJustificantesBytes(aYYYYMM(mes))
+      const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantiasRoster, justificantes })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
 
       let drive = null, errorDrive = null
@@ -694,11 +765,12 @@ export async function POST(request) {
       }
 
       const garantiasRoster = await cargarGarantiasRoster()
+      const justificantes = await cargarJustificantesBytes(aYYYYMM(mes))
       const buffer = await generarExcelPaola({
         mes, filas,
         movimientos: Array.isArray(movimientos) ? movimientos : [],
         cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [],
-        garantiasRoster,
+        garantiasRoster, justificantes,
       })
       const nombreBase = nombreArchivo(mes, 'Control', '', n)   // 2026-08-1-Control Ago 2026.xlsx
       const nombre = esPrueba ? `PRUEBA-${nombreBase}` : nombreBase   // en prueba, prefijo para borrarlo luego
