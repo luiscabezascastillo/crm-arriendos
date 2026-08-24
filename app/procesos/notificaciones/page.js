@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v9 · 2026-08-24 · (1) Nueva columna "Ajuste" (importe del reajuste vigente) y columna "Envío" más estrecha,
+//   sin scroll horizontal. (2) Fondo del IDADMON coloreado si tiene "Especial primeros meses": azul fuerte si aún
+//   vigente, azul claro si ya pasó; tooltip (~1s) con meses/cuantía/comentario (comentario2b). Hereda v8.
 // VERSION: v8 · 2026-08-01 · "Especial primeros meses" (campos meses/cantidad): la notificación aplica la MISMA regla que la
 //   liquidación (RPC calcular_liquidacion): si 1<=n_mes<=meses y cantidad>0, el importe es esa cantidad plana (sin UF/IPC).
 // VERSION: v7 · 2026-08-01 · Buscador subido a la fila de controles (derecha) + barra de controles y cabecera de tabla STICKY bajo el TopNav (top 52 / 110).
@@ -173,14 +176,15 @@ function RevBadge({ revision }) {
 
 const COLS = [
   { key: 'idadmon',           label: 'IDADMON',      w: '6%',   align: 'left',  val: (c) => c.idadmon || '' },
-  { key: 'envioEstado',       label: 'Envío',        w: '11%',  align: 'left',  val: (c) => c.envioEstado || '' },
-  { key: 'fecha_inicio',      label: 'Inicio',       w: '8%',   align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
-  { key: 'propietario',       label: 'Propietario',  w: '12%',  align: 'left',  val: (c) => c.propietario || '' },
-  { key: 'inmueble',          label: 'Propiedad',    w: '13%',  align: 'left',  val: (c) => c.inmueble || '' },
-  { key: 'arrendatario',      label: 'Arrendatario', w: '12%',  align: 'left',  val: (c) => c.arrendatario || '' },
+  { key: 'envioEstado',       label: 'Envío',        w: '7%',   align: 'left',  val: (c) => c.envioEstado || '' },
+  { key: 'fecha_inicio',      label: 'Inicio',       w: '7.5%', align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
+  { key: 'propietario',       label: 'Propietario',  w: '11%',  align: 'left',  val: (c) => c.propietario || '' },
+  { key: 'inmueble',          label: 'Propiedad',    w: '11.5%',align: 'left',  val: (c) => c.inmueble || '' },
+  { key: 'arrendatario',      label: 'Arrendatario', w: '11.5%',align: 'left',  val: (c) => c.arrendatario || '' },
   { key: 'revision',          label: 'Revisión',     w: '7.5%', align: 'left',  val: (c) => (c.revision || '').trim() },
   { key: 'apagar',            label: 'A pagar',      w: '8%',   align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
-  { key: 'tipoCom',           label: 'Comunic.',     w: '6%',   align: 'left',  val: (c) => c.tipoCom || '' },
+  { key: 'ajuste',            label: 'Ajuste',       w: '7%',   align: 'right', val: (c) => String(c.ajusteMonto || ''), numeric: true },
+  { key: 'tipoCom',           label: 'Comunic.',     w: '5.5%', align: 'left',  val: (c) => c.tipoCom || '' },
   { key: 'mail_arrendatario', label: 'email',        w: '7%',   align: 'left',  val: (c) => c.mail_arrendatario || '' },
 ]
 
@@ -299,7 +303,7 @@ export default function NotificacionesPage() {
           .select('mes, valor_uf, ipc_3m, ipc_6m, ipc_12m, uf_3m, uf_6m, uf_12m')
           .order('mes', { ascending: false }),
         supabase.from('datos_arriendos')
-          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+          .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6, comentario2b')
           .eq('estado', 'S'),
       ])
       const idxList = (idx || []).map(i => ({ ...i, mes: String(i.mes).slice(0, 10) }))
@@ -358,7 +362,7 @@ export default function NotificacionesPage() {
           setReajMsg(`✅ Guardados ${j.escritas} reajuste${j.escritas === 1 ? '' : 's'}. Recargando importes…`)
           await cargarNoti(mesSel)
           const { data: arr } = await supabase.from('datos_arriendos')
-            .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6')
+            .select('idadmon, propietario, inmueble, arrendatario, mail_arrendatario, revision, cuota, uf_peso_factor, fecha_inicio, meses, cantidad, cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6, comentario2b')
             .eq('estado', 'S')
           if (arr) setContratos(arr)
         }
@@ -390,8 +394,15 @@ export default function NotificacionesPage() {
       else if (control !== '') { envioEstado = ENVIO.BLOQUEADO; sendable = false }
       else { envioEstado = ENVIO.PENDIENTE; sendable = true }
 
+      // Especial primeros meses (meses + cantidad + comentario2b): para colorear/tooltip del IDADMON.
+      const cantEsp = num(c.cantidad), mesesEsp = num(c.meses)
+      const nMesEsp = nMesDesdeInicio(c.fecha_inicio, mesSel)
+      const tieneEsp = cantEsp > 0 && mesesEsp > 0
+      const espVigente = tieneEsp && nMesEsp != null && nMesEsp >= 1 && nMesEsp <= mesesEsp
+
       return {
         ...c, apagar, apagarCalc, tieneOverride, tipoCom, envioEstado, sendable,
+        esp: tieneEsp ? { meses: mesesEsp, cantidad: cantEsp, comentario: c.comentario2b || '', vigente: espVigente } : null,
         control,                                   // texto de la columna C (fecha o motivo)
         controlEsFecha,
         comentario: noti?.comentario || '',        // columna W (nota informativa)
@@ -1101,6 +1112,8 @@ export default function NotificacionesPage() {
                 <tr><td colSpan={COLS.length + 1} style={{ padding: 32, textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>No hay contratos que mostrar</td></tr>
               ) : filas.map((c, i) => {
                 const sel = seleccionados.has(c.idadmon)
+                const espBg = c.esp ? (c.esp.vigente ? '#93C5FD' : '#DBEAFE') : null
+                const espTitle = c.esp ? `Especial primeros meses${c.esp.vigente ? ' — VIGENTE' : ' — ya pasó'}\nMeses: ${c.esp.meses}\nCuantía: $${fmtMiles(c.esp.cantidad)}\nComentario: ${c.esp.comentario || '—'}` : undefined
                 return (
                   <tr key={c.idadmon} style={{ background: sel ? '#EFF6FF' : (i % 2 ? '#FCFCFB' : '#fff') }}>
                     <td style={{ padding: '9px 10px', textAlign: 'center', borderBottom: '1px solid #F0EEE8' }}>
@@ -1108,7 +1121,7 @@ export default function NotificacionesPage() {
                         onChange={() => toggleFila(c.idadmon)}
                         style={{ cursor: c.sendable ? 'pointer' : 'not-allowed', opacity: c.sendable ? 1 : 0.35 }} />
                     </td>
-                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, fontWeight: 600, color: '#2C2C2A' }}>{c.idadmon}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, fontWeight: 600, color: '#2C2C2A', background: espBg || undefined, cursor: c.esp ? 'help' : 'default' }} title={espTitle}>{c.idadmon}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8' }}><CeldaEnvio f={c} /></td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha_inicio) || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.propietario || ''}>{c.propietario || '—'}</td>
@@ -1118,6 +1131,8 @@ export default function NotificacionesPage() {
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 13, fontWeight: 600, color: c.tieneOverride ? '#1a56db' : '#2C2C2A', textAlign: 'right' }}
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
                       ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, textAlign: 'right', fontWeight: c.ajusteMonto > 0 ? 600 : 400, color: c.ajusteMonto > 0 ? '#b45309' : '#CBD5E1' }}
+                      title={c.ajusteMonto > 0 ? `Reajuste vigente (${c.ajusteTipo || ''})` : ''}>{c.ajusteMonto > 0 ? '$' + fmtMiles(c.ajusteMonto) : '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom === 'AJUSTE' || c.tipoCom === 'UF' ? c.tipoCom : '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
                     <td style={{ padding: '9px 6px', borderBottom: '1px solid #F0EEE8', textAlign: 'center' }}>

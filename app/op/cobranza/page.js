@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v16 · 2026-08-24 · Pestaña "Saldos a favor": auditoría de saldos a favor del arrendatario (S/SQ y Q), IDADMON->Cartola, parejas mismo piso marcadas. Solo lectura (endpoint /api/cobranza/saldos-favor). Hereda v15.
 // VERSION: v15 · 2026-08-24 · Boton "📖 Manual" en la cabecera (abre /api/cobranza/manual, imprimible/PDF). Hereda v14.
 // VERSION: v14 · 2026-08-24 · Panel Gestionar: compositor de email por DEPARTAMENTO (Cobranzas/Legal) con destinatarios por check + CC/CCO + CCO al propietario (anade bloque), adjuntos, PRUEBA y Revisar->Aceptar y enviar; registro rapido llamada/WhatsApp/presencial; IDADMON abre la Cartola (pestana nueva). Hereda v13.
 // VERSION: v13 · 2026-08-24 · Cartolas: toggles Vigentes/Término suben a la línea de cabecera (junto a "situación al"); cabecera + "Acciones pendientes hoy" quedan STICKY bajo el TopNav (top:52) y no se ocultan. Hereda v12.
@@ -104,6 +105,7 @@ const COB_COLS = [
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
   { k: 'casos', label: 'Casos' },
+  { k: 'saldos', label: 'Saldos a favor' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
   { k: 'inicios', label: 'Inicios' },
   { k: 'bitacora', label: 'Bitácora' },
@@ -156,6 +158,7 @@ export default function Cobranza() {
 
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
       {tab === 'casos' && <CasosView />}
+      {tab === 'saldos' && <SaldosFavor />}
       {tab === 'bitacora' && <Bitacora />}
 
       {ayudaOpen && (
@@ -881,6 +884,78 @@ function CobranzaDrawer({ fila, onClose }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+function SaldosFavor() {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let vivo = true
+    setLoading(true)
+    fetch('/api/cobranza/saldos-favor')
+      .then(r => r.json())
+      .then(j => { if (!vivo) return; if (j.error) setError(j.error); else setData(j); setLoading(false) })
+      .catch(e => { if (!vivo) return; setError(String(e)); setLoading(false) })
+    return () => { vivo = false }
+  }, [])
+
+  const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
+  const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
+
+  const Grupo = ({ titulo, filas, resumen }) => (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{titulo}</h2>
+        <span style={{ fontSize: 12, color: C.sub }}>{resumen.n} contratos · a favor {money(Math.abs(resumen.total))}</span>
+      </div>
+      {filas.length === 0 ? <div style={{ fontSize: 13, color: C.sub, padding: '8px 0' }}>Sin casos.</div> : (
+        <div style={{ border: '1px solid ' + C.line, borderRadius: 10, overflow: 'hidden' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr>
+              <th style={th}>IDADMON</th><th style={th}>Propietario</th><th style={th}>Inmueble</th>
+              <th style={th}>Arrendatario</th><th style={{ ...th, textAlign: 'right' }}>Saldo a favor</th>
+              <th style={{ ...th, textAlign: 'right' }}>N&ordm; mov</th>
+            </tr></thead>
+            <tbody>
+              {filas.map(f => (
+                <tr key={f.idadmon}>
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
+                    {f.mismo_piso && f.mismo_piso.length > 0 && (
+                      <div style={{ fontSize: 10, color: C.ambar, marginTop: 2 }}>&#9888; mismo piso: {f.mismo_piso.join(', ')}</div>
+                    )}
+                  </td>
+                  <td style={td}>{f.propietario || '—'}</td>
+                  <td style={{ ...td, color: C.sub }}>{f.inmueble || '—'}</td>
+                  <td style={td}>{f.arrendatario || '—'}</td>
+                  <td style={{ ...td, textAlign: 'right', color: C.rojo, fontWeight: 700 }}>{money(Math.abs(f.saldo))}</td>
+                  <td style={{ ...td, textAlign: 'right', color: C.sub }}>{f.n_mov}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: C.txt, marginBottom: 16, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
+        Contratos con <b>saldo a favor del arrendatario</b> por encima de {money((data && data.tolerancia) || 10000)}: situaci&oacute;n an&oacute;mala, casi siempre un <b>abono asignado a un IDADMON equivocado</b> o duplicado. El IDADMON abre su Cartola. <b>Solo lectura</b> por ahora (el traslado al puente A00000 llega despu&eacute;s).
+      </div>
+      {loading && <div style={{ padding: 30, color: C.sub }}>Calculando&hellip;</div>}
+      {error && <div style={{ padding: 16, color: C.rojo, fontSize: 13 }}>Error: {error}</div>}
+      {data && (
+        <>
+          <Grupo titulo="Vigentes (S / SQ)" filas={data.vigente} resumen={data.resumen.vigente} />
+          <Grupo titulo="En t&eacute;rmino (Q)" filas={data.termino} resumen={data.resumen.termino} />
+        </>
       )}
     </div>
   )

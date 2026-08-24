@@ -1,3 +1,5 @@
+// VERSION: v4 · 2026-08-24 · Filtros tipo Excel (embudo, multiseleccion, orden) por columna, igual que SA/Cobranza (lib/filtroExcel). Reemplaza los inputs de texto de v3. Export y contador respetan el filtro. Hereda v3.
+// VERSION: v3 · 2026-08-24 · Filtros por columna (sustituidos en v4). Hereda v2.
 // VERSION: v2 · 2026-08-19 · Encabezado de tabla sticky, clavado bajo TopNav + FinancieroNav (altura medida). Hereda v1.
 // VERSION: v1 · 2026-08-19 · Vista "Pendiente de clasificar": lo que cae en el puente 1104-98, por unidad, con export a Excel (CSV).
 'use client'
@@ -7,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 
 const VERDE = '#085041'
 const BORDE = '#E5E4DF'
@@ -21,6 +24,17 @@ function fechaCL(f) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
+// Filtro tipo Excel por columna (mismo motor que SA/Cobranza: lib/filtroExcel).
+const PEND_COLS = [
+  { key: 'unidad', label: 'Unidad', tipo: 'texto', fkey: it => it.origen || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'periodo', label: 'Periodo', tipo: 'texto', fkey: it => it.periodo || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'fecha', label: 'Fecha', tipo: 'fecha', fkey: it => String(it.fecha || '').slice(0, 10), flabel: k => (k === '' ? '(vacías)' : fechaCL(k)) },
+  { key: 'folio', label: 'Folio', tipo: 'num', fkey: it => String(it.orden ?? ''), flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'glosa', label: 'Glosa', tipo: 'texto', fkey: it => it.glosa || '', flabel: k => (k === '' ? '(vacías)' : k) },
+  { key: 'ccb', label: 'CCB', tipo: 'texto', fkey: it => it.ccb || '', flabel: k => (k === '' ? '(sin CCB)' : k) },
+  { key: 'monto', label: 'Monto', tipo: 'num', fkey: it => String(it.monto ?? ''), flabel: k => (k === '' ? '(vacías)' : clp(Number(k))) },
+]
+
 export default function PendientePage() {
   const { status } = useSession()
   const router = useRouter()
@@ -30,6 +44,14 @@ export default function PendientePage() {
   const [error, setError] = useState(null)
   const contentRef = useRef(null)
   const [stickyTop, setStickyTop] = useState(96)
+
+  // Filtros estilo Excel
+  const [filters, setFilters] = useState({})
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
+  const hayAlguno = PEND_COLS.some(c => filtroActivo(filters[c.key])) || !!orden?.key
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/') }, [status, router])
 
@@ -70,9 +92,19 @@ export default function PendientePage() {
     return Object.values(m).sort((a, b) => b.monto - a.monto)
   }, [items])
 
+  const itemsVis = useMemo(() => aplicarFiltros(items, PEND_COLS, filters, orden), [items, filters, orden])
+  const totalVis = itemsVis.reduce((acc, it) => acc + (Number(it.monto) || 0), 0)
+
+  const HF = (key) => (
+    <HeaderFilter col={PEND_COLS.find(c => c.key === key)} movs={items}
+      state={filters[key]} setState={v => setFiltroCol(key, v)}
+      open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
+      limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} />
+  )
+
   const exportarExcel = () => {
     const cab = ['Unidad', 'Periodo', 'Fecha', 'Folio', 'Glosa', 'CCB', 'Monto', 'Cuenta a asignar']
-    const filas = items.map(it => [it.origen, it.periodo, fechaCL(it.fecha), it.orden, it.glosa, it.ccb || '', it.monto, ''])
+    const filas = itemsVis.map(it => [it.origen, it.periodo, fechaCL(it.fecha), it.orden, it.glosa, it.ccb || '', it.monto, ''])
     const esc = (v) => { const s = String(v == null ? '' : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
     const csv = [cab, ...filas].map(r => r.map(esc).join(';')).join('\r\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -119,17 +151,28 @@ export default function PendientePage() {
           )}
         </div>
 
+        {items.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, fontSize: 13, color: TENUE }}>
+            <span>{itemsVis.length}{itemsVis.length !== items.length ? ` de ${items.length}` : ''} movimientos · total <b style={{ color: ROJO }}>{clp(totalVis)}</b></span>
+            {hayAlguno && <button onClick={limpiarTodo} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: `1px solid ${BORDE}`, background: '#fff', color: VERDE, cursor: 'pointer', fontWeight: 600 }}>Quitar filtros</button>}
+          </div>
+        )}
         {cargando ? (
           <div style={{ padding: 40, color: TENUE }}>Cargando…</div>
         ) : items.length > 0 && (
           <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
-                <th style={thSticky}>Unidad</th><th style={thSticky}>Periodo</th><th style={thSticky}>Fecha</th><th style={thSticky}>Folio</th>
-                <th style={thSticky}>Glosa</th><th style={thSticky}>CCB</th><th style={{ ...thSticky, textAlign: 'right' }}>Monto</th>
+                <th style={thSticky}><span style={hd}>Unidad{HF('unidad')}</span></th>
+                <th style={thSticky}><span style={hd}>Periodo{HF('periodo')}</span></th>
+                <th style={thSticky}><span style={hd}>Fecha{HF('fecha')}</span></th>
+                <th style={thSticky}><span style={hd}>Folio{HF('folio')}</span></th>
+                <th style={thSticky}><span style={hd}>Glosa{HF('glosa')}</span></th>
+                <th style={thSticky}><span style={hd}>CCB{HF('ccb')}</span></th>
+                <th style={{ ...thSticky, textAlign: 'right' }}><span style={{ ...hd, justifyContent: 'flex-end' }}>Monto{HF('monto')}</span></th>
               </tr></thead>
               <tbody>
-                {items.map((it, i) => (
+                {itemsVis.map((it, i) => (
                   <tr key={i}>
                     <td style={{ ...td, textTransform: 'uppercase', color: TENUE }}>{it.origen}</td>
                     <td style={td}>{it.periodo}</td>
@@ -140,6 +183,7 @@ export default function PendientePage() {
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{clp(it.monto)}</td>
                   </tr>
                 ))}
+                {!itemsVis.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: TENUE }}>Sin coincidencias con los filtros.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -150,5 +194,6 @@ export default function PendientePage() {
 }
 
 const selStyle = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDE}`, fontSize: 15, fontWeight: 600, color: VERDE, background: '#fff' }
+const hd = { display: 'inline-flex', alignItems: 'center', gap: 6 }
 const th = { textAlign: 'left', padding: '10px 12px', fontSize: 12, fontWeight: 600, color: TENUE, borderBottom: `1px solid ${BORDE}`, whiteSpace: 'nowrap', background: '#FBFBF9' }
 const td = { padding: '9px 12px', fontSize: 13, color: '#1A1A17', borderBottom: `1px solid ${BORDE}`, whiteSpace: 'nowrap' }
