@@ -1,3 +1,6 @@
+// VERSION: v28 · 2026-08-24 · Banner de estado del mes: "Liquidación enviada" (congelada al enviar, editable como
+//   rectificación) y "Mes congelado" (cierre oficial, solo lectura), leídos de paola_cierres vía el GET. Tras un
+//   envío real se refresca el estado. Hereda v27.
 // VERSION: v27 · 2026-08-24 · Pestaña BITÁCORA (solo Dirección/Karina, según puedeBitacora del GET): registro de
 //   cambios de la liquidación (fecha/hora, autor, idadmon, campo, antes→después) leído de paola_liquidacion_log.
 //   Hereda v26.
@@ -132,6 +135,7 @@ export default function LiquidacionPaolaPage() {
   const [puedeBitacora, setPuedeBitacora] = useState(false)
   const [bitacora, setBitacora] = useState([])
   const [bitCargando, setBitCargando] = useState(false)
+  const [cierre, setCierre] = useState(null)   // estado del mes: enviado_en / congelado
 
   useEffect(() => {
     const h = new Date()
@@ -147,6 +151,7 @@ export default function LiquidacionPaolaPage() {
       .then(d => {
         if (!d.ok) return
         setPuedeBitacora(!!d.puedeBitacora)
+        setCierre(d.cierre || null)
         const files = d.files || []
         setArchivosDrive(files)
         setErrorDrive(d.errorDrive || null)
@@ -391,6 +396,10 @@ export default function LiquidacionPaolaPage() {
       if (!d.ok) { setError(d.error || 'No se pudo enviar'); setEnviando(false); return }
       setAvisoEnvio(`✓ Enviado (${envioNum}º) a ${d.enviado_a}${d.esPrueba ? ' [prueba]' : ''}`)
       cargarEnvios()
+      // Envío real → refrescar el estado del mes para que salga el banner "enviada/congelada".
+      if (!d.esPrueba) {
+        try { const rr = await fetch(`/api/liquidacion-paola?mes=${mes}`).then(r => r.json()); if (rr?.ok) setCierre(rr.cierre || null) } catch { /* secundario */ }
+      }
     } catch (e) { setError('Error de conexión al enviar: ' + e.message) }
     setEnviando(false)
   }
@@ -686,6 +695,19 @@ export default function LiquidacionPaolaPage() {
 
         {datos && (
           <>
+            {cierre?.enviado_en && !cierre?.congelado && (
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#1e40af' }}>
+                🔒 <strong>Liquidación enviada</strong> el {new Date(cierre.enviado_en).toLocaleString('es-CL')}
+                {cierre.enviado_por ? ' por ' + String(cierre.enviado_por).replace('@fondocapital.com', '') : ''}
+                {cierre.ultimo_envio ? ` (envío nº ${cierre.ultimo_envio})` : ''}. Los cambios que hagas ahora son una
+                <strong> rectificación</strong>: quedan en la bitácora y se mandarán en el próximo envío.
+              </div>
+            )}
+            {cierre?.congelado && (
+              <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#334155' }}>
+                🔒 <strong>Mes congelado</strong> (cierre oficial). La liquidación es de solo lectura.
+              </div>
+            )}
             {datos.avisos?.resincronizarCartas && (
               <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#92400e' }}>
                 ⚠ CARTAS no conoce {datos.avisos.vacantesNuevas.join(', ')}. La foto del mes es anterior:

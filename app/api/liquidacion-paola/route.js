@@ -1,3 +1,7 @@
+// VERSION: v25 · 2026-08-24 · CONGELAR al enviar. En el envío REAL a Paola: guarda un snapshot de lo enviado
+//   (paola_envios.snapshot), marca la liquidación como ENVIADA/CONGELADA (paola_cierres.enviado_en/por/ultimo_envio,
+//   sin bloquear la rectificación) y lo registra en la bitácora. El arrastre dentro del mes ya funciona (la foto
+//   persiste en liquidacion_paola). El autor del envío también sale de sesión. Hereda v24.
 // VERSION: v24 · 2026-08-24 · BITÁCORA de la liquidación de Paola (paola_liquidacion_log, append-only). El autor sale
 //   de la SESIÓN del servidor (getServerSession), no del navegador. 'guardar' registra el diff campo a campo
 //   (Recibido, comentarios, multas, estado pago…) antes→después; garantias_upsert/_delete también. Acción 'bitacora'
@@ -715,15 +719,40 @@ export async function POST(request) {
       let drive = null, errorDrive = null
       try { drive = await subirADrive(nombre, buffer) } catch (e) { errorDrive = e.message }
 
+      const mesYM = aYYYYMM(mes)
+      const autorEnv = (await autorSesion()) || email || null
+
+      // Snapshot de lo ENVIADO (solo envío real): foto de la liquidación tal cual se mandó, para poder
+      // comparar una rectificación posterior. En prueba no se guarda snapshot ni se marca enviada.
+      let snapshot = null
+      if (!esPrueba) {
+        try { const { data: foto } = await admin.from('liquidacion_paola').select('*').eq('mes', mesYM); snapshot = foto || null } catch (e) { /* secundario */ }
+      }
+
       // Registro del envío (no rompe el flujo si falla).
       try {
         await admin.from('paola_envios').insert({
-          mes: aYYYYMM(mes), numero: n, email_dest: dest, asunto,
+          mes: mesYM, numero: n, email_dest: dest, asunto,
           a_cobrar: Math.round(aCobrar), recibido: Math.round(recibido), falta: Math.round(falta),
           morosos, multas: Math.round(multas),
-          enviado_por: email || null, es_prueba: esPrueba,
+          enviado_por: autorEnv, es_prueba: esPrueba,
+          ...(snapshot ? { snapshot } : {}),
         })
       } catch (e) { /* registro secundario */ }
+
+      // Envío REAL → marca la liquidación como ENVIADA/CONGELADA (no bloquea: permite rectificación) y lo
+      // deja en la bitácora. El candado duro (paola_cierres.congelado del día 23) es aparte.
+      if (!esPrueba) {
+        try {
+          await admin.from('paola_cierres').upsert(
+            { mes: mesYM, enviado_en: new Date().toISOString(), enviado_por: autorEnv, ultimo_envio: n },
+            { onConflict: 'mes' })
+        } catch (e) { /* secundario */ }
+        await logPaola({
+          mes: mesYM, idadmon: null, campo: `ENVÍO Nº ${n} a Paola`, evento: 'envio',
+          valor_anterior: null, valor_nuevo: `${dest} · recibido ${Math.round(recibido)}/${Math.round(aCobrar)}`, autor: autorEnv,
+        })
+      }
 
       return NextResponse.json({ ok: true, enviado_a: dest, numero: n, esPrueba, drive, errorDrive, resumen: carta.resumen })
     }
