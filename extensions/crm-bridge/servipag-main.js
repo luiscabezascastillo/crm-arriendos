@@ -1,6 +1,9 @@
 // ============================================================
 // CRM Bridge - servipag-main.js
-// VERSION: v12-servipag-ui  (2026-08-23)
+// VERSION: v14-servipag-ui  (2026-08-24)
+//   v14: maneja el modal "Cliente no posee saldo deudor" (deuda 0) y otros modales de
+//        error: los cierra con "Aceptar" y sigue, en vez de quedar colgado esperando el "+".
+//   v13: selector del boton "+" por id btnIconAddToCart + icono bi-plus.
 // Corre en el MUNDO MAIN de portal.servipag.com ("world": "MAIN").
 // La API de Servipag rechaza cualquier peticion "copiada" (Cloudflare bot),
 // asi que consultamos CONDUCIENDO LA PROPIA WEB, como un humano:
@@ -62,19 +65,34 @@
     if (!cont) throw new Error(ident + ': no encuentro el boton Continuar')
     cont.click()
 
-    // 3) esperar resultado y localizar el "+"
-    const mas = await esperar(botonMas, 40, 500) // hasta ~20s (la web hace su propio polling)
-    // vencimiento (opcional; la pagina del CRM guarda la fecha de consulta, no esta)
+    // 3) esperar el desenlace, que puede ser:
+    //    (a) boton "+"  -> el cliente TIENE deuda
+    //    (b) modal "Cliente no posee saldo deudor" -> SIN deuda (deuda 0)
+    //    (c) otro modal de error (cuenta no encontrada, etc.) con boton Aceptar/Cerrar
+    const fin = await esperar(() => {
+      const mas = botonMas()
+      if (mas) return { tipo: 'deuda', mas }
+      const txt = document.body.innerText || ''
+      if (/no posee saldo deudor|no posee saldo|sin saldo deudor|no registra deuda|no posee deuda/i.test(txt)) return { tipo: 'sinsaldo' }
+      if (/no.*(encontr|existe|disponible|valid)/i.test(txt) && botonPorTexto(/aceptar|entendido|cerrar/i)) return { tipo: 'error', txt }
+      return null
+    }, 44, 500) // ~22s (la web hace su propio polling)
+
+    if (!fin) throw new Error(ident + ': no aparecio ni resultado ni mensaje (timeout)')
+
+    // Casos SIN monto: cerrar el modal y devolver deuda 0
+    if (fin.tipo === 'sinsaldo' || fin.tipo === 'error') {
+      await cerrarModal()
+      await resetear()
+      return { deuda: 0, fecha: null, nota: fin.tipo }
+    }
+
+    // Caso CON deuda: leer vencimiento (opcional) y pulsar "+"
     let venc = null
     const vEl = [...document.querySelectorAll('div,span')].find((e) => e.childElementCount === 0 && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test((e.textContent || '').trim()))
     if (vEl) { const m = (vEl.textContent || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (m) venc = m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') }
 
-    if (!mas) {
-      const txt = (document.body.innerText || '')
-      if (/no.*(encontr|existe|resultado|disponible)/i.test(txt)) { await resetear(); return { deuda: 0, fecha: venc, nota: 'no encontrado' } }
-      throw new Error(ident + ': no aparecio el resultado (boton "+" no encontrado)')
-    }
-    mas.click()
+    fin.mas.click()
 
     // 4) panel "Ultima anadida" con "Monto: $..."
     const panel = await esperar(() => [...document.querySelectorAll('*')].find((e) => /Monto:\s*\$/i.test(e.textContent || '') && /Identificador:/i.test(e.textContent || '')), 30, 500)
@@ -89,7 +107,15 @@
     return { deuda: isNaN(deuda) ? 0 : deuda, fecha: venc }
   }
 
-  // Vuelve al formulario pulsando "Agregar otra cuenta" y espera a que reaparezca el campo.
+  // Cierra un modal (ej. "Cliente no posee saldo deudor") pulsando Aceptar/Entendido/Cerrar o la X.
+  async function cerrarModal() {
+    let btn = botonPorTexto(/aceptar|entendido|cerrar/i)
+    if (!btn) btn = document.querySelector('[role="dialog"] button, .modal button, .modal-content button, .modal-footer button')
+    if (btn) { btn.click() }
+    await sleep(700)
+  }
+
+  // Vuelve al formulario pulsando "Agregar otra cuenta" (si existe) y espera a que reaparezca el campo.
   async function resetear() {
     const reset = botonPorTexto(/agregar otra cuenta/i)
     if (reset) { reset.click() }
@@ -111,5 +137,5 @@
     }
   })
 
-  console.log('[CRM Bridge v13] servipag-main.js (UI, MAIN world) activo en', location.href)
+  console.log('[CRM Bridge v14] servipag-main.js (UI, MAIN world) activo en', location.href)
 })()
