@@ -1,3 +1,6 @@
+// VERSION: v31 · 2026-08-24 · MANUAL de uso del módulo: botón "📖 Manual" en la cabecera que abre un panel con la
+//   guía completa (proceso, columnas, pestañas, envío/congelado, garantías editable, justificantes, bitácora, reglas).
+//   Hereda v30.
 // VERSION: v30 · 2026-08-24 · Pestaña GARANTÍAS rehecha: roster EDITABLE del mes (maestro datos_arriendos + ajustes),
 //   igual que la hoja del Excel. Se editan pedida, quién, deuda y las cuotas (fecha/monto/cobrado); el ajuste se guarda
 //   como override del mes (no toca el maestro), marca la fila (✎) y permite revertir. Hereda v29.
@@ -96,6 +99,91 @@ const num = n => (n == null ? '—' : Number(n).toLocaleString('es-CL'))
 const aNum = v => { const n = Number(String(v ?? '').replace(/[.\s$]/g, '').replace(/[^\d-]/g, '')); return isNaN(n) ? 0 : n }
 const fecha = s => (s ? String(s).split('-').reverse().join('-') : '—')
 
+// Manual de uso del módulo (se abre desde el botón "📖 Manual"). Contenido en un overlay desplazable.
+function ManualPaola({ onClose }) {
+  const H = ({ children }) => <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1a56db', margin: '22px 0 8px' }}>{children}</h3>
+  const P = ({ children }) => <p style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--gray-700)', margin: '0 0 10px' }}>{children}</p>
+  const Li = ({ children }) => <li style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--gray-700)', marginBottom: 5 }}>{children}</li>
+  const Chip = ({ children, c = '#1a56db', bg = '#eef2ff' }) => <span style={{ fontSize: 11, fontWeight: 700, color: c, background: bg, borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>{children}</span>
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 200, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '4vh 16px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 860, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg,#1D4E8F,#143A6B)', color: '#fff', padding: '16px 22px', borderRadius: '14px 14px 0 0', display: 'flex', alignItems: 'center', gap: 10, zIndex: 1 }}>
+          <span style={{ fontSize: 18 }}>📖</span>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Manual · Liquidación de Paola</div>
+          <button onClick={onClose} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.4)', borderRadius: 8, padding: '5px 12px', cursor: 'pointer' }}>Cerrar ✕</button>
+        </div>
+        <div style={{ padding: '6px 26px 30px' }}>
+          <P>Este módulo prepara la <b>liquidación mensual de Paola</b> (propietaria P001): cruza los pagos de su cartola con cada arrendatario, trae deudas de servicios, y genera el Excel que se le envía. Tú decides y ajustas; el CRM hace el trabajo repetitivo. <b>Objetivo:</b> enviarlo desde aquí, un par de días después de recibir la cartola.</P>
+
+          <H>1 · El proceso, de principio a fin</H>
+          <ol style={{ margin: '0 0 6px', paddingLeft: 20 }}>
+            <Li><b>Elige el mes</b> arriba (por defecto, el actual).</Li>
+            <Li><b>La cartola de Paola:</b> si está en Drive, se detecta sola; si no, arrástrala (.xlsx) o pincha para buscarla en el equipo. Sin cartola también se genera, pero sin la columna Recibido.</Li>
+            <Li>Pulsa <Chip c="#fff" bg="#1a56db">⚡ Procesar liquidación</Chip>. Sale la tabla con A cobrar, Recibido (cruce con la cartola) y las deudas.</Li>
+            <Li><b>Revisa y ajusta</b> (ver abajo): pagos que no cuadran, comentarios, garantías, justificantes.</Li>
+            <Li><Chip c="#fff" bg="#6b4423">💾 Guardar cambios</Chip> para que no se pierda nada.</Li>
+            <Li><Chip c="#fff" bg="#1a56db">⬇ Descargar Control</Chip> (a tu equipo) o <Chip c="#fff" bg="#16a34a">✉ Email a Paola</Chip> para enviárselo.</Li>
+          </ol>
+          <P><b>Sin cartola en Drive:</b> también puedes <Chip c="#6b4423" bg="#fff7ed">📂 Abrir lo guardado</Chip> para retomar lo que dejó otra persona sin recalcular.</P>
+
+          <H>2 · La tabla y sus columnas</H>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Li><b>A cobrar / Recibido / Falta:</b> lo que toca cobrar, lo que entró por la cartola y la diferencia. <b>Recibido es editable</b>: si ves un pago en el justificante que aún no se ha cruzado, corrígelo a mano y la Falta se recalcula sola. Ese valor se guarda y se manda al Excel.</Li>
+            <Li>Chip <Chip c="#d97706" bg="#fef3c7">tope</Chip>: pago combinado (arriendo + garantía/bodega). El Recibido se topa al arriendo y el desglose queda en Comentario 1.</Li>
+            <Li><b>Multas/Deudas, Especial, Cantidad, Comentarios 1 y 2, Estado pago, Nota pago:</b> los rellenas tú; se guardan y salen en el Excel.</Li>
+            <Li>Las <b>vacantes</b> (en captación) salen en beige, sin importes.</Li>
+          </ul>
+
+          <H>3 · Las pestañas</H>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Li><b>Liquidación:</b> todas las filas del mes.</Li>
+            <Li><b>Revisar:</b> filas donde se cobró de más (para confirmar).</Li>
+            <Li><b>Radar:</b> descuadres del mes — sobrepagos sin atribuir y pagos parciales, para cazarlos antes de enviar.</Li>
+            <Li><b>Garantías:</b> las garantías de los contratos vigentes, <b>editables</b> (ver punto 5).</Li>
+            <Li><b>📎 Justificantes:</b> las imágenes de los pagos (ver punto 6).</Li>
+            <Li><b>Sin identificar:</b> abonos de la cartola que no se pudieron asignar; aquí los asignas a un contrato o los marcas como "no es renta".</Li>
+            <Li><b>No es renta:</b> ingresos de Paola ajenos al arriendo.</Li>
+            <Li><b>🗒 Bitácora</b> (solo Dirección/Karina): quién cambió qué y cuándo.</Li>
+          </ul>
+
+          <H>4 · Enviar a Paola y el "congelado"</H>
+          <P>Con <Chip c="#fff" bg="#16a34a">✉ Email a Paola</Chip> mandas la liquidación (1º rápido / 2º semanal / 3º definitivo). Antes de enviar puedes <b>revisar y editar la carta</b>. Puedes probar con un correo de prueba (no le llega a Paola; el archivo se guarda con prefijo <b>PRUEBA-</b>).</P>
+          <P>Cuando envías <b>de verdad</b>, la liquidación queda <b>enviada/congelada</b>: se guarda una copia de lo enviado y sale un aviso azul. No se bloquea — si a la semana hay que rectificar, editas, vuelves a guardar y reenvías; cada envío deja su copia. Los datos se mantienen dentro del mes; al cambiar de mes, se empieza limpio.</P>
+
+          <H>5 · Garantías (editable)</H>
+          <P>La pestaña Garantías muestra las garantías de los contratos vigentes tal como salen en la hoja del Excel. Puedes <b>ajustar</b> pedida, quién la tiene, deuda y las cuotas (fecha/monto/cobrado) para ese mes. Ejemplo típico: cuando confirmas que se pagó la cuota del mes, pones el importe en "C… cobr.".</P>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Li>El ajuste es <b>solo del mes</b> y <b>no toca el contrato maestro</b>. La fila ajustada se marca con <Chip c="#d97706" bg="#fffbeb">✎</Chip>.</Li>
+            <Li>Botón <Chip c="#6b7280" bg="#fff">↩ revertir</Chip>: quita los ajustes y vuelve al dato original.</Li>
+            <Li>Todo ajuste va al Excel, queda en la bitácora y se congela con la liquidación.</Li>
+          </ul>
+
+          <H>6 · Justificantes (imágenes)</H>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Li><b>Pega</b> una captura con <b>Ctrl+V</b>, <b>arrastra</b> imágenes o usa <Chip>+ Añadir imagen</Chip>.</Li>
+            <Li>Puedes asociarlas a un contrato o dejarlas generales del mes.</Li>
+            <Li>Se guardan en el CRM y se <b>incrustan en la hoja Comprobantes</b> del Excel que se manda a Paola.</Li>
+            <Li>PNG o JPG, hasta 8 MB por imagen. Se pueden borrar con la ✕.</Li>
+          </ul>
+
+          <H>7 · Reglas de oro</H>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Li>Guarda a menudo (💾). El chip <Chip c="#166534" bg="#dcfce7">✓ Guardado</Chip> / <Chip c="#92400e" bg="#fef3c7">● Sin guardar</Chip> te dice cómo estás.</Li>
+            <Li>Antes de enviar, pásate por <b>Radar</b> y <b>Sin identificar</b>: que no quede nada suelto.</Li>
+            <Li>Todo lo que cambies queda registrado con tu nombre en la <b>bitácora</b>.</Li>
+            <Li>Si algo no cuadra en el origen (un contrato mal), se corrige en su ficha, no a la fuerza aquí.</Li>
+          </ul>
+
+          <div style={{ marginTop: 24, paddingTop: 14, borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--gray-400)' }}>
+            ¿Dudas o algo que mejorar? Díselo a Luis. · FCR · Liquidación de Paola
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LiquidacionPaolaPage() {
   const router = useRouter()
   const inputRef = useRef(null)
@@ -116,6 +204,7 @@ export default function LiquidacionPaolaPage() {
   const [generando, setGenerando] = useState(false)
   const [avisoExcel, setAvisoExcel] = useState(null)
   const [ayuda, setAyuda] = useState(false)
+  const [manual, setManual] = useState(false)
   const [guardandoMes, setGuardandoMes] = useState(false)
   const [avisoGuardado, setAvisoGuardado] = useState(null)
   const [edits, setEdits] = useState({})   // buffer de las columnas manuales por idadmon (no toca `datos` al teclear)
@@ -618,12 +707,19 @@ export default function LiquidacionPaolaPage() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="white" strokeWidth="2" /><polyline points="14 2 14 8 20 8" stroke="white" strokeWidth="2" /></svg>
         </div>
         <h1 style={{ fontSize: 16, fontWeight: 600, color: 'var(--gray-900)', margin: 0 }}>Preparación Liquidación de Paola</h1>
+        <button onClick={() => setManual(true)}
+          title="Manual de uso del módulo: qué hace cada botón y cómo se hace la liquidación de principio a fin"
+          style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 600, padding: '7px 13px', borderRadius: 8, border: '1px solid #1a56db', background: '#fff', color: '#1a56db', cursor: 'pointer' }}>
+          📖 Manual
+        </button>
         <button onClick={() => router.push('/op/liquidacion-paola/historico')}
           title="Ver todas las liquidaciones de Paola (histórico A cobrar por mes) y la relación RUT ↔ idadmon"
-          style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 600, padding: '7px 13px', borderRadius: 8, border: '1px solid #c2410c', background: '#fff', color: '#c2410c', cursor: 'pointer' }}>
+          style={{ fontSize: 12.5, fontWeight: 600, padding: '7px 13px', borderRadius: 8, border: '1px solid #c2410c', background: '#fff', color: '#c2410c', cursor: 'pointer' }}>
           📊 Histórico / hojas
         </button>
       </div>
+
+      {manual && <ManualPaola onClose={() => setManual(false)} />}
 
       <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
 
