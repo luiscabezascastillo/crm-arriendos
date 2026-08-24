@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-08-24 · Añade botón "❓ Cómo se usa" con el manual de la pantalla en un panel. Hereda v3.
 // VERSION: v3 · 2026-08-24 · Pantalla de gestión de correspondencias CF (/op/comunidad-feliz/correspondencias).
 //   v3: estados válidos S/SQ/P; marca en ROJO los idadmon cuyo contrato NO es válido (Q*/N*/otros) mostrando
 //       el estado real, y ofrece "→ actualizar" al contrato válido del inmueble. Hereda v2.
@@ -35,6 +36,7 @@ export default function CorrespondenciasCF() {
   const [q, setQ] = useState('')
   const [verInactivas, setVerInactivas] = useState(false)
   const [msg, setMsg] = useState('')
+  const [ayuda, setAyuda] = useState(false)
 
   // modal edición
   const vacio = { id: null, comunidad_cf: '', inmueble_cf: '', idadmon: '', idinmue: '', propietario: '', estado: 'S', notas: '', activo: true }
@@ -154,7 +156,10 @@ export default function CorrespondenciasCF() {
             <h1 style={s.h1}>Correspondencias CF ↔ inmuebles</h1>
             <p style={s.sub}>Puente entre lo que muestra Comunidad Feliz (comunidad + unidad) y tus inmuebles (idadmon/idinmue). Edítalo aquí para que los datos casen.</p>
           </div>
-          <button style={s.btnPri} onClick={abrirNueva}>+ Nueva correspondencia</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+            <button style={s.btnPri} onClick={abrirNueva}>+ Nueva correspondencia</button>
+            <button style={s.btnSec} onClick={() => setAyuda(true)}>❓ Cómo se usa</button>
+          </div>
         </div>
 
         <div style={s.barra}>
@@ -291,6 +296,58 @@ export default function CorrespondenciasCF() {
           </div>
         </div>
       )}
+
+      {ayuda && (
+        <div style={s.overlay} onClick={(e) => { if (e.target === e.currentTarget) setAyuda(false) }}>
+          <div style={{ ...s.modal, maxWidth: 800 }}>
+            <div style={s.modalHead}>
+              <strong style={{ fontSize: 16 }}>❓ Cómo usar esta pantalla</strong>
+              <button style={s.back} onClick={() => setAyuda(false)}>Cerrar</button>
+            </div>
+            <div style={s.ayuda}>
+              <p style={s.aP}><b>¿Para qué sirve?</b> Comunidad Feliz (CF) muestra la deuda de gastos comunes por <i>comunidad</i> y <i>unidad</i> (ej. “Comunidad Edificio Adagio”, unidad “1608”). Nuestro sistema identifica cada inmueble con un código propio. Esta pantalla mantiene el <b>puente</b> entre ambos, para que la deuda de CF entre sola cada mes en el inmueble correcto.</p>
+
+              <div style={s.aH}>Conceptos rápidos</div>
+              <ul style={s.aUl}>
+                <li><b>Comunidad CF / Unidad CF</b>: el nombre y la unidad tal como salen en el portal de CF. Son los que hacen que el dato del portal <i>case</i>.</li>
+                <li><b>IDINMUE</b> (P0xx-yy): el código del inmueble. Es <b>fijo</b>, no cambia.</li>
+                <li><b>IDADMON</b> (A00xxx): el código del <i>contrato</i>. <b>Cambia con el tiempo</b> (los contratos terminan y entran otros). Hay que mantenerlo al día.</li>
+                <li><b>Estados del contrato</b>: válidos <b>S</b> y <b>SQ</b> (activos) y <b>P</b> (vacío — lo paga el propietario, pero hay que conocerlo). Terminados <b>Q</b> y <b>N</b>: esos <b>no pueden</b> estar en una correspondencia.</li>
+              </ul>
+
+              <div style={s.aH}>La lista y los colores</div>
+              <ul style={s.aUl}>
+                <li><span style={{ background: '#FEE2E2', padding: '0 6px', borderRadius: 4 }}>Rojo</span>: el contrato (IDADMON) está terminado o no es válido → <b>actualízalo ya</b>. Verás su estado real (Q1, N2…) y un botón rojo <b>“→ A00xxx”</b> que lo cambia al contrato vigente del inmueble de un clic.</li>
+                <li><span style={{ background: '#FFEDD5', padding: '0 6px', borderRadius: 4 }}>Naranja</span>: hay un contrato activo distinto al guardado (desactualizado).</li>
+                <li><span style={{ background: '#FEF3C7', padding: '0 6px', borderRadius: 4 }}>Amarillo</span>: falta la comunidad o el IDADMON.</li>
+              </ul>
+              <p style={s.aP}>El buscador de arriba filtra por comunidad, unidad, propietario, código o dirección. “Ver inactivas” muestra también las dadas de baja.</p>
+
+              <div style={s.aH}>Asociar un inmueble (o corregir uno)</div>
+              <ol style={s.aUl}>
+                <li>Pulsa <b>Editar</b> en una fila, o <b>+ Nueva correspondencia</b>.</li>
+                <li>Rellena <b>Comunidad CF</b> y <b>Unidad CF</b> (obligatorias: son las que hacen casar el dato del portal).</li>
+                <li>Pulsa <b>💡 Sugerir por unidad</b>: el sistema busca inmuebles cuyo número de unidad (dep/est/bod) coincida y te los propone con un <b>% de confianza</b> (verde = alta, ámbar = media). Pulsa el candidato correcto y se rellenan IDADMON / IDINMUE / propietario.</li>
+                <li>Si hay <b>varios candidatos</b> (la misma unidad se repite en varios edificios), fíjate en la dirección y el propietario para elegir; el que además coincide en nombre sube al 95%.</li>
+                <li>Si el sugeridor no acierta, usa el <b>buscador de abajo</b> (por propietario, dirección o código) y elige a mano.</li>
+                <li><b>Guardar</b>. Solo admite contratos válidos (S/SQ/P); si eliges uno terminado, lo rechaza.</li>
+              </ol>
+
+              <div style={s.aH}>Actualizar un contrato terminado (fila roja)</div>
+              <p style={s.aP}>Cuando una fila sale en rojo, el IDADMON guardado ya no vale (el contrato terminó). Pulsa <b>“→ A00xxx”</b>: cambia al contrato vigente del inmueble, que el sistema resuelve por el IDINMUE (que es lo que no cambia). Antes de hacerlo en muchos a la vez, <b>verifica un par de casos</b> que conozcas.</p>
+
+              <div style={s.aH}>Baja / Alta</div>
+              <p style={s.aP}>“Baja” desactiva una correspondencia (no se borra). Con “Ver inactivas” la ves y puedes reactivarla con “Alta”.</p>
+
+              <div style={{ ...s.aH, color: '#166534' }}>Regla de oro</div>
+              <p style={{ ...s.aP, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px' }}>Una correspondencia debe tener siempre: <b>comunidad + unidad de CF</b>, y un <b>IDADMON con estado S, SQ o P</b>. Nunca Q ni N.</p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button style={s.btnPri} onClick={() => setAyuda(false)}>Entendido</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -329,4 +386,8 @@ const s = {
   sugTit: { fontSize: 12, color: '#64748b', padding: '6px 10px', background: '#f1f5f9' },
   sugRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderTop: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13 },
   pill: { color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, minWidth: 36, textAlign: 'center' },
+  ayuda: { fontSize: 13.5, lineHeight: 1.6, color: '#1e293b', maxHeight: '68vh', overflowY: 'auto', paddingRight: 6 },
+  aH: { fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '16px 0 6px' },
+  aP: { margin: '0 0 8px' },
+  aUl: { margin: '0 0 8px', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 5 },
 }
