@@ -1,3 +1,5 @@
+// VERSION: v32 · 2026-08-24 · FIX Garantías: la columna "C… cobr." es un ESTADO ("PAGADA"), no un número — ya se puede
+//   marcar (doble clic = PAGADA), se guarda como texto y Entregada/Pendiente suman la cuota pagada. Hereda v31.
 // VERSION: v31 · 2026-08-24 · MANUAL de uso del módulo: botón "📖 Manual" en la cabecera que abre un panel con la
 //   guía completa (proceso, columnas, pestañas, envío/congelado, garantías editable, justificantes, bitácora, reglas).
 //   Hereda v30.
@@ -1370,7 +1372,10 @@ export default function LiquidacionPaolaPage() {
                         {[...garRoster].sort((a, b) => String(a.inmueble || '').localeCompare(String(b.inmueble || ''), 'es', { numeric: true })).map(r => {
                           const g = (c) => garEdits[`${r.idadmon}|${c}`] ?? ''
                           const setG = (c, v) => setGarEdits(e => ({ ...e, [`${r.idadmon}|${c}`]: v }))
-                          const entregada = [1, 2, 3, 4].reduce((s, i) => s + aNum(g('cobrada' + i)), 0)
+                          // "cobrada" es un estado: si está marcada (PAGADA o cualquier texto) cuenta como pagada la cuota;
+                          // si trae un número, ese número; si está vacía, 0.
+                          const pagadoCuota = (i) => { const cob = String(g('cobrada' + i) || '').trim(); if (!cob) return 0; const n = aNum(cob); return n > 0 ? n : aNum(g('cuota' + i)) }
+                          const entregada = [1, 2, 3, 4].reduce((s, i) => s + pagadoCuota(i), 0)
                           const pedida = aNum(g('garantia_pedida'))
                           const pendiente = Math.max(pedida - entregada, 0)
                           const ajustado = garAjustados.includes(r.idadmon)
@@ -1389,13 +1394,23 @@ export default function LiquidacionPaolaPage() {
                               <td style={{ ...td, textAlign: 'right', color: pendiente > 0 ? '#d97706' : 'var(--gray-400)' }}>{pendiente ? num(pendiente) : '—'}</td>
                               <td style={td} onClick={e => e.stopPropagation()}>{campoTexto('quien_tiene_garantia', { ...inpManual, width: 110, minWidth: 110, fontSize: 11 })}</td>
                               <td style={td} onClick={e => e.stopPropagation()}>{campoTexto('deuda_garantia', inpN)}</td>
-                              {[1, 2, 3, 4].map(i => (
+                              {[1, 2, 3, 4].map(i => {
+                                const cobSet = String(g('cobrada' + i) || '').trim() !== ''
+                                return (
                                 <Fragment key={i}>
                                   <td style={td} onClick={e => e.stopPropagation()}>{campoTexto('fecha' + i, inpF)}</td>
                                   <td style={td} onClick={e => e.stopPropagation()}>{campoTexto('cuota' + i, inpN)}</td>
-                                  <td style={td} onClick={e => e.stopPropagation()}>{campoTexto('cobrada' + i, inpN)}</td>
+                                  <td style={td} onClick={e => e.stopPropagation()}>
+                                    <input value={g('cobrada' + i)} placeholder="PAGADA"
+                                      onChange={e => setG('cobrada' + i, e.target.value)}
+                                      onBlur={() => guardarOverride(r.idadmon, 'cobrada' + i, g('cobrada' + i))}
+                                      onDoubleClick={() => { setG('cobrada' + i, 'PAGADA'); guardarOverride(r.idadmon, 'cobrada' + i, 'PAGADA') }}
+                                      title="Escribe PAGADA (o el importe cobrado). Doble clic = PAGADA."
+                                      style={{ ...inpManual, width: 82, minWidth: 82, fontSize: 11, textAlign: 'center', fontWeight: 600, color: cobSet ? '#16a34a' : 'var(--gray-400)', background: cobSet ? '#f0fdf4' : '#fff' }} />
+                                  </td>
                                 </Fragment>
-                              ))}
+                                )
+                              })}
                               <td style={{ ...td, textAlign: 'center' }}>
                                 {ajustado && <button onClick={() => revertirGarantia(r.idadmon)} title="Quitar los ajustes de este mes (volver al maestro)"
                                   style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, border: '1px solid var(--border)', color: '#6b7280', background: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>↩ revertir</button>}

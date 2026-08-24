@@ -1,3 +1,6 @@
+// VERSION: v28 · 2026-08-24 · FIX garantías: "cobrada" (C… cobr.) es un ESTADO de texto ("PAGADA"), no un número;
+//   garantias_override_set ya no lo fuerza a número (solo cuota/pedida/deuda son numéricos). Así se puede marcar PAGADA.
+//   Hereda v27.
 // VERSION: v27 · 2026-08-24 · GARANTÍAS EDITABLES por mes (capa override paola_garantias_override, sin tocar el maestro
 //   datos_arriendos). cargarGarantiasRoster(mesYM) pinta el ajuste encima → sale en el Excel. Acciones garantias_roster
 //   (efectivo del mes), garantias_override_set (ajusta un campo, con bitácora antes→después) y _clear. Hereda v26.
@@ -617,8 +620,9 @@ export async function POST(request) {
       if (!GAR_CAMPOS_OVR.includes(campo)) return NextResponse.json({ error: 'Campo no editable: ' + campo }, { status: 400 })
       const mesYM = aYYYYMM(mes)
       const autor = await autorSesion()
-      const esFecha = /^fecha/.test(campo)
-      const valor = esFecha ? (body.valor || null) : (body.valor === '' || body.valor == null ? null : aNumero(body.valor))
+      // Solo son NUMÉRICOS los importes; "cobrada" es un estado (texto "PAGADA"), "quien" y "fecha" son texto.
+      const esNum = /^(cuota\d|garantia_pedida|deuda_garantia)$/.test(campo)
+      const valor = (body.valor === '' || body.valor == null) ? null : (esNum ? aNumero(body.valor) : String(body.valor).trim())
       // valor base del maestro (para la bitácora: antes → después)
       let base = null
       try { const { data: dr } = await admin.from('datos_arriendos').select(campo).eq('idadmon', idadmon).maybeSingle(); base = dr ? dr[campo] : null } catch (e) { /* */ }
@@ -626,7 +630,7 @@ export async function POST(request) {
       const { data: prevO } = await admin.from('paola_garantias_override').select('patch').eq('mes', mesYM).eq('idadmon', idadmon).maybeSingle()
       const patch = { ...(prevO?.patch || {}) }
       const antesEfectivo = (campo in patch) ? patch[campo] : base
-      const vuelveABase = valor == null || (!esFecha && Number(valor) === Number(base)) || (esFecha && String(valor) === String(base || ''))
+      const vuelveABase = valor == null || (esNum ? Number(valor) === Number(base) : String(valor) === String(base ?? ''))
       if (vuelveABase) delete patch[campo]   // si coincide con el maestro, no hace falta override
       else patch[campo] = valor
       const { error } = await admin.from('paola_garantias_override')
