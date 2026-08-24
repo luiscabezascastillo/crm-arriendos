@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-24 · Añade sugerencias de Cobranza (POST crear / atender) y puedeMover (trio sensible). Hereda v1.
 // VERSION: v1 · 2026-08-24 · Auditoria de saldos A FAVOR del arrendatario (posible abono mal asignado).
 //   GET -> dos grupos: vigente (S/SQ) y termino (Q). Saldo vivo = Σ(cargo - abono) por idadmon.
 //   Filtra saldo < -tolerancia (10.000), excluye quien_cobra=DUENO y propietario vacio.
@@ -13,6 +14,7 @@ export const maxDuration = 60
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 const TOLERANCIA = 10000
+const TRIO = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const normInmueble = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -20,7 +22,8 @@ const normInmueble = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g,
 export async function GET() {
   const session = await getServerSession(authOptions)
   const rol = session?.user?.role
-  if (!session?.user?.email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
   if (!PUEDEN_VER.includes(rol)) return Response.json({ error: 'No autorizado' }, { status: 403 })
 
   // 1) Saldo por idadmon (paginado)
@@ -84,12 +87,47 @@ export async function GET() {
   const termino = filas.filter(f => f.grupo === 'termino').sort(cmp)
   const tot = (arr) => arr.reduce((x, f) => x + f.saldo, 0)
 
+  // 6) Sugerencias de Cobranza (Adalis/Fabiola) por idadmon
+  const idset = new Set([...vigente, ...termino].map(f => f.idadmon))
+  const { data: sug } = await admin.from('saldos_favor_sugerencias').select('*').order('created_at', { ascending: true })
+  const sugerencias = {}
+  for (const g of (sug || [])) { if (!idset.has(g.idadmon)) continue; (sugerencias[g.idadmon] ||= []).push(g) }
+
   return Response.json({
     ok: true, tolerancia: TOLERANCIA,
-    vigente, termino,
+    vigente, termino, sugerencias,
+    yo: email, puedeMover: TRIO.includes(email),
     resumen: {
       vigente: { n: vigente.length, total: tot(vigente) },
       termino: { n: termino.length, total: tot(termino) },
     },
   })
+}
+
+export async function POST(req) {
+  const session = await getServerSession(authOptions)
+  const rol = session?.user?.role
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!PUEDEN_VER.includes(rol)) return Response.json({ error: 'No autorizado' }, { status: 403 })
+
+  let b
+  try { b = await req.json() } catch { return Response.json({ error: 'JSON invalido' }, { status: 400 }) }
+
+  if (b && b.accion === 'atender') {
+    if (!TRIO.includes(email)) return Response.json({ error: 'Solo Karina/Direccion pueden marcar atendida' }, { status: 403 })
+    const { error } = await admin.from('saldos_favor_sugerencias')
+      .update({ atendida: true, atendida_por: email, atendida_at: new Date().toISOString() })
+      .eq('id', b.id)
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    return Response.json({ ok: true })
+  }
+
+  const idadmon = String((b && b.idadmon) || '').trim()
+  const texto = String((b && b.texto) || '').trim()
+  if (!idadmon || !texto) return Response.json({ error: 'Falta idadmon o texto' }, { status: 400 })
+  const { data, error } = await admin.from('saldos_favor_sugerencias')
+    .insert({ idadmon, texto, autor: email }).select().single()
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ok: true, sugerencia: data })
 }

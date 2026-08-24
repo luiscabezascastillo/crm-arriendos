@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v17 · 2026-08-24 · Saldos a favor: sugerencias por contrato (Adalis/Fabiola proponen; trio marca atendida). El traslado a A00000 seguira gateado al trio. Hereda v16.
 // VERSION: v16 · 2026-08-24 · Pestaña "Saldos a favor": auditoría de saldos a favor del arrendatario (S/SQ y Q), IDADMON->Cartola, parejas mismo piso marcadas. Solo lectura (endpoint /api/cobranza/saldos-favor). Hereda v15.
 // VERSION: v15 · 2026-08-24 · Boton "📖 Manual" en la cabecera (abre /api/cobranza/manual, imprimible/PDF). Hereda v14.
 // VERSION: v14 · 2026-08-24 · Panel Gestionar: compositor de email por DEPARTAMENTO (Cobranzas/Legal) con destinatarios por check + CC/CCO + CCO al propietario (anade bloque), adjuntos, PRUEBA y Revisar->Aceptar y enviar; registro rapido llamada/WhatsApp/presencial; IDADMON abre la Cartola (pestana nueva). Hereda v13.
@@ -893,21 +894,92 @@ function SaldosFavor() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [abierto, setAbierto] = useState(null)
+  const [nota, setNota] = useState('')
+  const [enviando, setEnviando] = useState(false)
 
-  useEffect(() => {
-    let vivo = true
-    setLoading(true)
+  function cargar() {
     fetch('/api/cobranza/saldos-favor')
       .then(r => r.json())
-      .then(j => { if (!vivo) return; if (j.error) setError(j.error); else setData(j); setLoading(false) })
-      .catch(e => { if (!vivo) return; setError(String(e)); setLoading(false) })
-    return () => { vivo = false }
-  }, [])
+      .then(j => { if (j.error) setError(j.error); else { setData(j); setError(null) }; setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }
+  useEffect(() => { cargar() }, [])
+
+  const puedeMover = !!(data && data.puedeMover)
+  const sugs = (id) => (data && data.sugerencias && data.sugerencias[id]) || []
+
+  async function enviarSugerencia(idadmon) {
+    if (!nota.trim()) return
+    setEnviando(true)
+    const r = await fetch('/api/cobranza/saldos-favor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idadmon, texto: nota }),
+    }).then(r => r.json()).catch(e => ({ error: String(e) }))
+    setEnviando(false)
+    if (!r.error) { setNota(''); cargar() }
+  }
+  async function atender(id) {
+    await fetch('/api/cobranza/saldos-favor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'atender', id }),
+    }).then(r => r.json()).catch(() => {})
+    cargar()
+  }
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
   const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
 
-  const Grupo = ({ titulo, filas, resumen }) => (
+  const renderFila = (f) => {
+    const lista = sugs(f.idadmon)
+    const abiertas = lista.filter(x => !x.atendida).length
+    const open = abierto === f.idadmon
+    return (
+      <>
+        <tr key={f.idadmon}>
+          <td style={{ ...td, fontWeight: 600 }}>
+            <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
+            {f.mismo_piso && f.mismo_piso.length > 0 && <div style={{ fontSize: 10, color: C.ambar, marginTop: 2 }}>⚠ mismo piso: {f.mismo_piso.join(', ')}</div>}
+          </td>
+          <td style={td}>{f.propietario || '—'}</td>
+          <td style={{ ...td, color: C.sub }}>{f.inmueble || '—'}</td>
+          <td style={td}>{f.arrendatario || '—'}</td>
+          <td style={{ ...td, textAlign: 'right', color: C.rojo, fontWeight: 700 }}>{money(Math.abs(f.saldo))}</td>
+          <td style={{ ...td, textAlign: 'center' }}>
+            <button onClick={() => { setAbierto(open ? null : f.idadmon); setNota('') }} style={{
+              fontSize: 11, padding: '4px 9px', borderRadius: 6, cursor: 'pointer',
+              border: '1px solid ' + (abiertas ? '#CFE0FF' : C.line), background: abiertas ? '#EEF4FF' : '#fff', color: abiertas ? '#1D4ED8' : C.sub, fontWeight: 600,
+            }}>💬 {lista.length ? lista.length : 'Sugerir'}</button>
+          </td>
+        </tr>
+        {open && (
+          <tr key={f.idadmon + '-det'}>
+            <td colSpan={6} style={{ ...td, background: '#FBFBF9' }}>
+              {lista.map(x => (
+                <div key={x.id} style={{ fontSize: 12, padding: '5px 0', borderBottom: '1px solid #F0EFEA', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ color: x.atendida ? C.sub : C.txt, textDecoration: x.atendida ? 'line-through' : 'none' }}>
+                    <b>{String(x.autor || '').split('@')[0]}:</b> {x.texto}{x.atendida ? ' · atendida' : ''}
+                  </span>
+                  {puedeMover && !x.atendida && <button onClick={() => atender(x.id)} style={{ fontSize: 10, border: 'none', background: 'none', color: C.verde, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}>✓ atendida</button>}
+                </div>
+              ))}
+              {!lista.length && <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>Sin sugerencias todavía.</div>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Sugerencia para Karina (ej: posible abono de A00xxx / duplicado)…"
+                  style={{ flex: 1, fontSize: 12, padding: '7px 9px', border: '1px solid ' + C.line, borderRadius: 6 }} />
+                <button onClick={() => enviarSugerencia(f.idadmon)} disabled={enviando || !nota.trim()} style={{
+                  fontSize: 12, padding: '7px 12px', borderRadius: 6, border: 'none', background: (enviando || !nota.trim()) ? '#ccc' : C.acento, color: '#fff', fontWeight: 700, cursor: 'pointer',
+                }}>Enviar</button>
+              </div>
+              {puedeMover && <div style={{ fontSize: 11, color: C.sub, marginTop: 8 }}>El traslado del importe al puente A00000 (solo Karina/Dirección) se añadirá aquí.</div>}
+            </td>
+          </tr>
+        )}
+      </>
+    )
+  }
+
+  const renderGrupo = (titulo, filas, resumen) => (
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{titulo}</h2>
@@ -919,25 +991,9 @@ function SaldosFavor() {
             <thead><tr>
               <th style={th}>IDADMON</th><th style={th}>Propietario</th><th style={th}>Inmueble</th>
               <th style={th}>Arrendatario</th><th style={{ ...th, textAlign: 'right' }}>Saldo a favor</th>
-              <th style={{ ...th, textAlign: 'right' }}>N&ordm; mov</th>
+              <th style={{ ...th, textAlign: 'center' }}>Sugerencias</th>
             </tr></thead>
-            <tbody>
-              {filas.map(f => (
-                <tr key={f.idadmon}>
-                  <td style={{ ...td, fontWeight: 600 }}>
-                    <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
-                    {f.mismo_piso && f.mismo_piso.length > 0 && (
-                      <div style={{ fontSize: 10, color: C.ambar, marginTop: 2 }}>&#9888; mismo piso: {f.mismo_piso.join(', ')}</div>
-                    )}
-                  </td>
-                  <td style={td}>{f.propietario || '—'}</td>
-                  <td style={{ ...td, color: C.sub }}>{f.inmueble || '—'}</td>
-                  <td style={td}>{f.arrendatario || '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', color: C.rojo, fontWeight: 700 }}>{money(Math.abs(f.saldo))}</td>
-                  <td style={{ ...td, textAlign: 'right', color: C.sub }}>{f.n_mov}</td>
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{filas.map(renderFila)}</tbody>
           </table>
         </div>
       )}
@@ -947,16 +1003,14 @@ function SaldosFavor() {
   return (
     <div>
       <div style={{ fontSize: 13, color: C.txt, marginBottom: 16, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
-        Contratos con <b>saldo a favor del arrendatario</b> por encima de {money((data && data.tolerancia) || 10000)}: situaci&oacute;n an&oacute;mala, casi siempre un <b>abono asignado a un IDADMON equivocado</b> o duplicado. El IDADMON abre su Cartola. <b>Solo lectura</b> por ahora (el traslado al puente A00000 llega despu&eacute;s).
+        Contratos con <b>saldo a favor del arrendatario</b> por encima de {money((data && data.tolerancia) || 10000)}: casi siempre un <b>abono asignado a un IDADMON equivocado</b> o duplicado. Adalis y Fabiola pueden <b>sugerir</b> aquí; el traslado al puente A00000 lo hace <b>solo Karina/Dirección</b>. El IDADMON abre su Cartola.
       </div>
-      {loading && <div style={{ padding: 30, color: C.sub }}>Calculando&hellip;</div>}
+      {loading && <div style={{ padding: 30, color: C.sub }}>Calculando…</div>}
       {error && <div style={{ padding: 16, color: C.rojo, fontSize: 13 }}>Error: {error}</div>}
-      {data && (
-        <>
-          <Grupo titulo="Vigentes (S / SQ)" filas={data.vigente} resumen={data.resumen.vigente} />
-          <Grupo titulo="En t&eacute;rmino (Q)" filas={data.termino} resumen={data.resumen.termino} />
-        </>
-      )}
+      {data && (<>
+        {renderGrupo('Vigentes (S / SQ)', data.vigente, data.resumen.vigente)}
+        {renderGrupo('En término (Q)', data.termino, data.resumen.termino)}
+      </>)}
     </div>
   )
 }
