@@ -1,3 +1,6 @@
+// VERSION: v27 · 2026-08-24 · GARANTÍAS EDITABLES por mes (capa override paola_garantias_override, sin tocar el maestro
+//   datos_arriendos). cargarGarantiasRoster(mesYM) pinta el ajuste encima → sale en el Excel. Acciones garantias_roster
+//   (efectivo del mes), garantias_override_set (ajusta un campo, con bitácora antes→después) y _clear. Hereda v26.
 // VERSION: v26 · 2026-08-24 · JUSTIFICANTES (imágenes). Acciones justificante_upload/_list/_delete: se suben a
 //   Supabase Storage (bucket privado paola-justificantes) con service-role y se referencian en paola_justificantes;
 //   la pantalla las ve por URL firmada. Al generar el Excel se descargan y se pasan a generarExcelPaola para
@@ -137,7 +140,14 @@ const _s = v => (v == null || v === '' ? null : String(v))
 // Roster de garantías para la hoja "Garantías" del Excel: TODOS los contratos S/SQ de Paola con sus
 // datos de garantía tal como viven en datos_arriendos (pedida, cuotas 1-4 con fecha/monto/cobrado, quién,
 // deuda, contacto). La hoja lo ordena por inmueble. Fuente única = datos_arriendos.
-async function cargarGarantiasRoster() {
+// Campos de garantía que Adalis puede AJUSTAR por mes (capa override sobre datos_arriendos).
+const GAR_CAMPOS_OVR = [
+  'garantia_pedida', 'deuda_garantia', 'quien_tiene_garantia',
+  'fecha1', 'cuota1', 'cobrada1', 'fecha2', 'cuota2', 'cobrada2',
+  'fecha3', 'cuota3', 'cobrada3', 'fecha4', 'cuota4', 'cobrada4',
+]
+
+async function cargarGarantiasRoster(mesYM = null) {
   const { data, error } = await admin.from('datos_arriendos')
     .select('idadmon, estado, inmueble, idinmue, unid, cuota, uf_peso_factor, ' +
       'cantidad_reajuste1, cantidad_reajuste2, cantidad_reajuste3, cantidad_reajuste4, cantidad_reajuste5, cantidad_reajuste6, ' +
@@ -147,8 +157,19 @@ async function cargarGarantiasRoster() {
     .eq('idprop', IDPROP_PAOLA)
   if (error) { console.error('cargarGarantiasRoster:', error.message); return [] }
   // Solo arriendos VIGENTES (S/SQ). Los N (terminados) son histórico y NO salen en la hoja.
-  // (Mejora futura: un bloque aparte con los N cuya garantía se está usando en la liquidación de término.)
-  return (data || []).filter(r => ['S', 'SQ'].includes(String(r.estado || '').toUpperCase().trim()))
+  let rows = (data || []).filter(r => ['S', 'SQ'].includes(String(r.estado || '').toUpperCase().trim()))
+
+  // Ajustes del mes (override): se pintan ENCIMA del maestro solo para ese mes. El maestro no se toca.
+  if (mesYM) {
+    try {
+      const { data: ovrs } = await admin.from('paola_garantias_override').select('idadmon, patch').eq('mes', mesYM)
+      if (ovrs && ovrs.length) {
+        const map = {}; for (const o of ovrs) map[o.idadmon] = o.patch || {}
+        rows = rows.map(r => map[r.idadmon] ? { ...r, ...map[r.idadmon] } : r)
+      }
+    } catch (e) { /* sin override si la tabla no existe todavía */ }
+  }
+  return rows
 }
 const TOLERANCIA_MONTO = 500
 const TOLERANCIA_EXCESO = 1000
@@ -579,6 +600,52 @@ export async function POST(request) {
       return NextResponse.json({ ok: true })
     }
 
+    // ── GARANTÍAS EDITABLES: roster efectivo del mes (maestro + override) para la pantalla ──
+    if (body.accion === 'garantias_roster') {
+      if (!body.mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
+      const roster = await cargarGarantiasRoster(aYYYYMM(body.mes))
+      // qué idadmon tienen ajuste este mes (para marcarlos en pantalla)
+      let ajustados = []
+      try { const { data: o } = await admin.from('paola_garantias_override').select('idadmon').eq('mes', aYYYYMM(body.mes)); ajustados = (o || []).map(x => x.idadmon) } catch (e) { /* sin tabla */ }
+      return NextResponse.json({ ok: true, roster, ajustados })
+    }
+
+    // Guardar un ajuste de garantía del mes (override sobre datos_arriendos; el maestro NO se toca).
+    if (body.accion === 'garantias_override_set') {
+      const { mes, idadmon, campo } = body
+      if (!mes || !idadmon || !campo) return NextResponse.json({ error: 'Faltan datos (mes, idadmon, campo)' }, { status: 400 })
+      if (!GAR_CAMPOS_OVR.includes(campo)) return NextResponse.json({ error: 'Campo no editable: ' + campo }, { status: 400 })
+      const mesYM = aYYYYMM(mes)
+      const autor = await autorSesion()
+      const esFecha = /^fecha/.test(campo)
+      const valor = esFecha ? (body.valor || null) : (body.valor === '' || body.valor == null ? null : aNumero(body.valor))
+      // valor base del maestro (para la bitácora: antes → después)
+      let base = null
+      try { const { data: dr } = await admin.from('datos_arriendos').select(campo).eq('idadmon', idadmon).maybeSingle(); base = dr ? dr[campo] : null } catch (e) { /* */ }
+      // merge del patch existente
+      const { data: prevO } = await admin.from('paola_garantias_override').select('patch').eq('mes', mesYM).eq('idadmon', idadmon).maybeSingle()
+      const patch = { ...(prevO?.patch || {}) }
+      const antesEfectivo = (campo in patch) ? patch[campo] : base
+      const vuelveABase = valor == null || (!esFecha && Number(valor) === Number(base)) || (esFecha && String(valor) === String(base || ''))
+      if (vuelveABase) delete patch[campo]   // si coincide con el maestro, no hace falta override
+      else patch[campo] = valor
+      const { error } = await admin.from('paola_garantias_override')
+        .upsert({ mes: mesYM, idadmon, patch, updated_por: autor, updated_at: new Date().toISOString() }, { onConflict: 'mes,idadmon' })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      await logPaola({ mes: mesYM, idadmon, campo: 'Garantía · ' + campo, evento: 'edit', valor_anterior: _s(antesEfectivo), valor_nuevo: _s(valor), autor })
+      return NextResponse.json({ ok: true, patch })
+    }
+
+    // Quitar todos los ajustes de un contrato en el mes (vuelve al maestro).
+    if (body.accion === 'garantias_override_clear') {
+      const { mes, idadmon } = body
+      if (!mes || !idadmon) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
+      const mesYM = aYYYYMM(mes)
+      await admin.from('paola_garantias_override').delete().eq('mes', mesYM).eq('idadmon', idadmon)
+      await logPaola({ mes: mesYM, idadmon, campo: 'Garantía · ajustes', evento: 'borrar', valor_anterior: 'ajustes del mes', valor_nuevo: null, autor: await autorSesion() })
+      return NextResponse.json({ ok: true })
+    }
+
     // ── acción: LEER la BITÁCORA de la liquidación (append-only). Solo Dirección/Karina. ──
     if (body.accion === 'bitacora') {
       const email = await autorSesion()
@@ -708,7 +775,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede sobrescribir en Drive' }, { status: 409 })
       }
 
-      const garantiasRoster = await cargarGarantiasRoster()
+      const garantiasRoster = await cargarGarantiasRoster(aYYYYMM(mes))
       const justificantes = await cargarJustificantesBytes(aYYYYMM(mes))
       const buffer = await generarExcelPaola({ mes, filas, movimientos: Array.isArray(movimientos) ? movimientos : [], cartolaRows: Array.isArray(cartolaRows) ? cartolaRows : [], garantiasRoster, justificantes })
       const nombre = nombreArchivo(mes, 'Control', sufijo || '')
@@ -764,7 +831,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'No hay un email válido de Paola (propietarios P001). Ponlo o usa un correo de prueba.' }, { status: 400 })
       }
 
-      const garantiasRoster = await cargarGarantiasRoster()
+      const garantiasRoster = await cargarGarantiasRoster(aYYYYMM(mes))
       const justificantes = await cargarJustificantesBytes(aYYYYMM(mes))
       const buffer = await generarExcelPaola({
         mes, filas,
