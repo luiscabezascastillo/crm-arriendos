@@ -18,7 +18,7 @@
 //   { type: 'SENCILLITO_FETCH', codigo } -> { ok, deuda, fecha }
 // ============================================================
 
-console.log('[CRM Bridge v12] content script (isolated) activo en', window.location.href)
+console.log('[CRM Bridge v15] content script (isolated) activo en', window.location.href)
 
 try {
   chrome.runtime.sendMessage({ type: 'ENEL_TAB_READY', url: window.location.href })

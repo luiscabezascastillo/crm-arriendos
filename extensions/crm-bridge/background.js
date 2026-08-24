@@ -19,7 +19,7 @@
 //   /op/servicios/agua/page.js  -> PING, CONSULTAR_AGUA {codigo} -> {ok, deuda}
 // ============================================================
 
-const VERSION = 'v14-servipag-ui'
+const VERSION = 'v15-servipag-ui'
 
 // ============================================================
 // LISTENER PRINCIPAL - mensajes desde el CRM (pagina web)
@@ -57,29 +57,47 @@ chrome.runtime.onMessage.addListener((msg) => {
 })
 
 // ============================================================
-// ENEL (via Servipag) - delega el fetch al content.js de la pestana
+// ENEL (via Servipag) - RESET DETERMINISTA por navegacion.
+// Antes de cada consulta navegamos la pestana al formulario limpio de Enel
+// (carrito vacio, Enel siempre seleccionado) y luego el servipag-main escribe,
+// pulsa Continuar y LEE el monto del resultado (sin pulsar "+", sin ensuciar el carrito).
 // ============================================================
+const ENEL_URL = 'https://portal.servipag.com/paymentexpress/category/luz/company/enel'
+
+function esperarTabCompleta(tabId, timeoutMs = 25000) {
+  return new Promise((resolve) => {
+    let done = false
+    const fin = () => { if (done) return; done = true; try { chrome.tabs.onUpdated.removeListener(listener) } catch (e) {}; resolve() }
+    const listener = (id, info) => { if (id === tabId && info.status === 'complete') fin() }
+    chrome.tabs.onUpdated.addListener(listener)
+    setTimeout(fin, timeoutMs)
+  })
+}
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
+
 async function consultarEnel(codigo) {
   if (!codigo) throw new Error('Falta el codigo de Enel')
 
-  // Localizar la pestana de Servipag
   const tabs = await chrome.tabs.query({ url: '*://portal.servipag.com/*' })
   if (!tabs.length) {
-    throw new Error('Abre una pestana de Servipag (portal.servipag.com/paymentexpress/category/luz/company/enel) y espera a que cargue del todo')
+    throw new Error('Abre una pestana de Servipag (portal.servipag.com/paymentexpress/category/luz/company/enel) y dejala visible')
   }
   const tabId = tabs[0].id
 
-  let resp
-  try {
-    resp = await chrome.tabs.sendMessage(tabId, { type: 'SERVIPAG_FETCH', codigo })
-  } catch (e) {
-    throw new Error(
-      'No respondio el content script en la pestana de Servipag. ' +
-      'Recarga esa pestana (F5) y reintenta. Detalle: ' + (e.message || e)
-    )
-  }
+  // 1) Reset limpio: navegar al formulario de Enel y esperar a que cargue + asiente.
+  await chrome.tabs.update(tabId, { url: ENEL_URL })
+  await esperarTabCompleta(tabId)
+  await dormir(3200) // render de Angular + inyeccion del content script
 
-  if (!resp) throw new Error('Respuesta vacia del content script (Servipag)')
+  // 2) Enviar la orden con reintentos (el content script puede tardar en estar listo).
+  let resp, lastErr
+  for (let intento = 0; intento < 4; intento++) {
+    try { resp = await chrome.tabs.sendMessage(tabId, { type: 'SERVIPAG_FETCH', codigo }); break }
+    catch (e) { lastErr = e; await dormir(1500) }
+  }
+  if (!resp) {
+    throw new Error('No respondio el content script en Servipag tras navegar (¿pestana visible y cargada?). ' + ((lastErr && lastErr.message) || ''))
+  }
   if (!resp.ok) throw new Error(resp.error || 'Error desconocido en la consulta de Enel')
   return { deuda: resp.deuda, fecha: resp.fecha }
 }
