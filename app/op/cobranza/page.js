@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v14 · 2026-08-24 · Panel Gestionar: compositor de email por DEPARTAMENTO (Cobranzas/Legal) con destinatarios por check + CC/CCO + CCO al propietario (anade bloque), adjuntos, PRUEBA y Revisar->Aceptar y enviar; registro rapido llamada/WhatsApp/presencial; IDADMON abre la Cartola (pestana nueva). Hereda v13.
 // VERSION: v13 · 2026-08-24 · Cartolas: toggles Vigentes/Término suben a la línea de cabecera (junto a "situación al"); cabecera + "Acciones pendientes hoy" quedan STICKY bajo el TopNav (top:52) y no se ocultan. Hereda v12.
 // VERSION: v11 · 2026-08-13 · Cartolas/Inicios: filtros tipo Excel por columna (mismo motor que CC1,
 //   lib/filtroExcel) en cada cabecera de la tabla, con orden y multiselección, y botón "Exportar Excel"
@@ -389,7 +390,10 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
               const aviso = f.sin_cobrador
               return (
                 <tr key={f.idadmon} style={{ background: bg, boxShadow: aviso ? 'inset 3px 0 0 ' + C.ambar : 'none' }}>
-                  <td style={{ ...td, fontWeight: 600 }}>{f.idadmon}</td>
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer"
+                      title="Abrir la Cartola de este contrato" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
+                  </td>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>{f.propietario || '—'}</div>
                     <div style={{ color: C.sub, fontSize: 11 }}>{f.inmueble || ''}</div>
@@ -438,18 +442,35 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
 function CobranzaDrawer({ fila, onClose }) {
   const [info, setInfo] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [dest, setDest] = useState('arrendatario')
-  const [canal, setCanal] = useState('email')
+
+  const [departamento, setDepartamento] = useState('cobranza')
   const [plantillaId, setPlantillaId] = useState('')
   const [asunto, setAsunto] = useState('')
   const [contenido, setContenido] = useState('')
-  const [acuse, setAcuse] = useState('')
+  const [pct, setPct] = useState(1)
+
+  const [toArr, setToArr] = useState(true)
+  const [toAval, setToAval] = useState(false)
+  const [toProp, setToProp] = useState(false)
+  const [emailArr, setEmailArr] = useState('')
+  const [emailAval, setEmailAval] = useState('')
+  const [emailProp, setEmailProp] = useState('')
+  const [cc, setCc] = useState('')
+  const [cco, setCco] = useState('')
+  const [ccoProp, setCcoProp] = useState(false)
+
   const [resultado, setResultado] = useState('enviado')
-  const [emailDestino, setEmailDestino] = useState('')
-  const [enviarEmail, setEnviarEmail] = useState(true)
-  const [pct, setPct] = useState(1)   // % diario de multa/interés
+  const [acuse, setAcuse] = useState('')
+  const [adjuntos, setAdjuntos] = useState([])
+  const [subiendo, setSubiendo] = useState(false)
+  const [toTest, setToTest] = useState('')
+
+  const [fase, setFase] = useState('compose')
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+
+  const [rapParty, setRapParty] = useState('arrendatario')
+  const [rapNota, setRapNota] = useState('')
 
   const tipo = fila.grupo === 'termino' ? 'termino' : 'vigente'
   const deuda = num(fila.deuda)
@@ -466,13 +487,12 @@ function CobranzaDrawer({ fila, onClose }) {
   }
   useEffect(() => { cargar() }, [fila.idadmon])
 
-  // email destino por defecto según destinatario (propietario: sin mail en el contrato → se completa a mano)
   useEffect(() => {
     const c = info?.contrato || {}
-    setEmailDestino(dest === 'aval' ? (c.mail_avalista || '') : dest === 'propietario' ? '' : (c.mail_arrendatario || ''))
-  }, [dest, info])
+    setEmailArr(c.mail_arrendatario || '')
+    setEmailAval(c.mail_avalista || '')
+  }, [info])
 
-  // % de multa prefijado desde el contrato si parece un porcentaje razonable
   useEffect(() => {
     const md = Number(info?.contrato?.multa_diaria)
     if (md && md > 0 && md <= 10) setPct(md)
@@ -482,7 +502,6 @@ function CobranzaDrawer({ fila, onClose }) {
   const gestiones = info?.gestiones || []
   const plantillas = info?.plantillas || []
 
-  // avisos obligatorios
   const yaAval = gestiones.some(g => g.destinatario === 'aval')
   const yaProp = gestiones.some(g => g.destinatario === 'propietario')
   const avalPendiente = deuda > 0 && !yaAval
@@ -503,61 +522,135 @@ function CobranzaDrawer({ fila, onClose }) {
   }
   function render(t) { let s = String(t || ''); const v = valores(); for (const k in v) s = s.split(k).join(v[k]); return s }
 
-  // recomputar el texto de la plantilla si cambia el % (para que la multa/total salgan al día)
+  const bloqueCco = (plantillas.find(p => p.destinatario === 'propietario_cco' && (p.departamento || 'cobranza') === departamento)?.cuerpo) || ''
+
+  const plantillasDep = plantillas.filter(p =>
+    (p.departamento || 'cobranza') === departamento && p.canal === 'email' &&
+    (p.destinatario === 'arrendatario' || p.destinatario === 'aval'))
+
+  function aplicarPlantilla(id) {
+    setPlantillaId(id)
+    const p = plantillas.find(x => String(x.id) === String(id))
+    if (!p) return
+    let cuerpo = render(p.cuerpo)
+    if (ccoProp && bloqueCco) cuerpo = cuerpo.trimEnd() + '\n\n' + bloqueCco
+    setAsunto(render(p.asunto)); setContenido(cuerpo)
+    if (p.destinatario === 'aval') { setToAval(true); setToArr(false); if (emailArr) setCc(emailArr) }
+    else { setToArr(true) }
+  }
+
   useEffect(() => {
     if (!plantillaId) return
     const p = plantillas.find(x => String(x.id) === String(plantillaId))
-    if (p) { setAsunto(render(p.asunto)); setContenido(render(p.cuerpo)) }
+    if (!p) return
+    let cuerpo = render(p.cuerpo)
+    if (ccoProp && bloqueCco) cuerpo = cuerpo.trimEnd() + '\n\n' + bloqueCco
+    setAsunto(render(p.asunto)); setContenido(cuerpo)
   }, [pct]) // eslint-disable-line
 
-  function elegirPlantilla(id) {
-    setPlantillaId(id)
-    const p = plantillas.find(x => String(x.id) === String(id))
-    if (p) {
-      if (p.destinatario) setDest(p.destinatario)
-      if (p.canal) setCanal(p.canal)
-      setAsunto(render(p.asunto))
-      setContenido(render(p.cuerpo))
-    }
+  function toggleCcoProp(on) {
+    setCcoProp(on)
+    if (!bloqueCco) return
+    if (on) { setContenido(c => (c && c.includes(bloqueCco)) ? c : ((c || '').trimEnd() + '\n\n' + bloqueCco).trim()) }
+    else { setContenido(c => (c || '').split('\n\n' + bloqueCco).join('').split(bloqueCco).join('').trimEnd()) }
   }
 
-  const plantillasDest = plantillas.filter(p => p.destinatario === dest)
+  async function onFiles(e) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setSubiendo(true); setMsg(null)
+    for (const f of files) {
+      const fd = new FormData(); fd.append('file', f); fd.append('idadmon', fila.idadmon)
+      const r = await fetch('/api/cobranza/adjunto', { method: 'POST', body: fd }).then(r => r.json()).catch(e => ({ error: String(e) }))
+      if (r.error) { setMsg('Adjunto: ' + r.error); continue }
+      setAdjuntos(a => [...a, { path: r.path, nombre: r.nombre, size: r.size }])
+    }
+    setSubiendo(false); e.target.value = ''
+  }
 
-  const vaAEnviar = enviarEmail && canal === 'email'
+  const contratoPayload = {
+    propietario: contrato.propietario || fila.propietario, inmueble: contrato.inmueble || fila.inmueble,
+    arrendatario: contrato.arrendatario || fila.arrendatario, rut: contrato.rut,
+    avalista: contrato.avalista, rut_avalista: contrato.rut_avalista,
+  }
 
-  async function guardar() {
-    if (!contenido.trim()) { setMsg('Escribe o elige el contenido de la gestión.'); return }
-    if (vaAEnviar && !emailDestino.trim()) { setMsg('Falta el email de destino para enviar.'); return }
+  async function registrarRapido(canal) {
+    const nota = rapNota.trim() || ('Contacto por ' + canal)
     setGuardando(true); setMsg(null)
-    const destNombre = dest === 'aval' ? contrato.avalista : dest === 'propietario' ? contrato.propietario : contrato.arrendatario
-    const destRut = dest === 'aval' ? contrato.rut_avalista : dest === 'propietario' ? null : contrato.rut
-    const p = plantillas.find(x => String(x.id) === String(plantillaId))
     const res = await fetch('/api/cobranza/gestion', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        idadmon: fila.idadmon, tipo, destinatario: dest, canal,
-        etapa: p?.etapa || null, asunto, contenido, resultado, acuse,
-        plantilla_id: plantillaId || null,
-        destinatario_nombre: destNombre || null, destinatario_rut: destRut || null,
-        monto_adeudado: deuda, dias_mora: dias ?? null, monto_reclamado: total,
-        enviar: vaAEnviar, email_destino: emailDestino,
-        contrato: { propietario: contrato.propietario || fila.propietario, inmueble: contrato.inmueble || fila.inmueble,
-          arrendatario: contrato.arrendatario || fila.arrendatario, rut: contrato.rut, avalista: contrato.avalista, rut_avalista: contrato.rut_avalista },
+        idadmon: fila.idadmon, tipo, departamento, canal,
+        destinos: [{ party: rapParty, email: null }],
+        contenido: nota, resultado: 'registrado',
+        monto_adeudado: deuda, dias_mora: dias ?? null, contrato: contratoPayload,
+        enviar: false,
       }),
     }).then(r => r.json()).catch(e => ({ error: String(e) }))
     setGuardando(false)
     if (res.error) { setMsg('Error: ' + res.error); return }
-    setMsg(res.enviado ? '✓ Enviado y registrado' : '✓ Gestión registrada'); setContenido(''); setAsunto(''); setPlantillaId('')
+    setMsg('✓ ' + canal + ' registrada'); setRapNota(''); cargar()
+  }
+
+  async function probar() {
+    if (!contenido.trim()) { setMsg('Escribe el contenido antes de probar.'); return }
+    setGuardando(true); setMsg(null)
+    const res = await fetch('/api/cobranza/gestion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ test: true, toTest, departamento, asunto, contenido, adjuntos }),
+    }).then(r => r.json()).catch(e => ({ error: String(e) }))
+    setGuardando(false)
+    if (res.error) { setMsg('Error prueba: ' + res.error); return }
+    setMsg('✓ Prueba enviada a ' + res.enviadoA + (res.adjuntos ? ' (' + res.adjuntos + ' adjunto/s)' : ''))
+  }
+
+  function destinosSel() {
+    const d = []
+    if (toArr && emailArr.trim()) d.push({ party: 'arrendatario', email: emailArr.trim() })
+    if (toAval && emailAval.trim()) d.push({ party: 'aval', email: emailAval.trim() })
+    if (toProp && emailProp.trim() && !ccoProp) d.push({ party: 'propietario', email: emailProp.trim() })
+    return d
+  }
+
+  function revisar() {
+    if (!contenido.trim()) { setMsg('Falta el contenido.'); return }
+    const d = destinosSel()
+    if (!d.length && !cc.trim()) { setMsg('Elige al menos un destinatario (o pon un CC).'); return }
+    setMsg(null); setFase('confirm')
+  }
+
+  async function enviarReal() {
+    setGuardando(true); setMsg(null)
+    const p = plantillas.find(x => String(x.id) === String(plantillaId))
+    const res = await fetch('/api/cobranza/gestion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idadmon: fila.idadmon, tipo, departamento, canal: 'email',
+        destinos: destinosSel(), asunto, contenido,
+        etapa: p?.etapa || null, plantilla_id: plantillaId || null,
+        cc, cco, cco_propietario: ccoProp, propietario_email: emailProp,
+        resultado, acuse, adjuntos,
+        monto_adeudado: deuda, dias_mora: dias ?? null, monto_reclamado: total,
+        contrato: contratoPayload, enviar: true,
+      }),
+    }).then(r => r.json()).catch(e => ({ error: String(e) }))
+    setGuardando(false)
+    if (res.error) { setMsg('Error: ' + res.error); setFase('compose'); return }
+    setMsg('✓ Enviado y registrado')
+    setFase('compose'); setContenido(''); setAsunto(''); setPlantillaId(''); setAdjuntos([]); setCcoProp(false); setCc(''); setCco('')
     cargar()
   }
 
   const s = {
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 300, display: 'flex', justifyContent: 'flex-end' },
-    panel: { width: 560, maxWidth: '96vw', background: '#fff', height: '100vh', overflowY: 'auto', boxShadow: '-4px 0 32px rgba(0,0,0,0.12)' },
+    panel: { width: 580, maxWidth: '96vw', background: '#fff', height: '100vh', overflowY: 'auto', boxShadow: '-4px 0 32px rgba(0,0,0,0.12)' },
     section: { padding: '14px 22px', borderBottom: '1px solid #F0EEE8' },
     lbl: { fontSize: 10, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 },
     inp: { width: '100%', padding: '8px 10px', border: '1px solid #E0DDD8', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
+    chk: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' },
+    mini: { fontSize: 11, color: '#888', marginBottom: 3 },
   }
+  const btnSec = { fontSize: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid ' + C.line, background: '#fff', color: C.txt, cursor: 'pointer', fontWeight: 600 }
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -580,7 +673,6 @@ function CobranzaDrawer({ fila, onClose }) {
           </div>
         </div>
 
-        {/* Avisos obligatorios */}
         <div style={{ ...s.section, background: '#FFFDF6' }}>
           <div style={s.lbl}>Acciones que exige el sistema</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -589,7 +681,6 @@ function CobranzaDrawer({ fila, onClose }) {
           </div>
         </div>
 
-        {/* Datos de contacto */}
         <div style={s.section}>
           <div style={s.lbl}>Contactos</div>
           {loading ? <div style={{ color: '#bbb', fontSize: 12 }}>Cargando…</div> : (
@@ -601,30 +692,43 @@ function CobranzaDrawer({ fila, onClose }) {
           )}
         </div>
 
-        {/* Registrar gestión */}
-        <div style={s.section}>
-          <div style={s.lbl}>Registrar gestión</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Destinatario</div>
-              <select style={s.inp} value={dest} onChange={e => { setDest(e.target.value); setPlantillaId('') }}>
-                {['arrendatario', 'aval', 'propietario'].map(d => <option key={d} value={d}>{DEST_LBL[d]}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Canal</div>
-              <select style={s.inp} value={canal} onChange={e => setCanal(e.target.value)}>
-                {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+        <div style={{ ...s.section, background: '#FBFBF9' }}>
+          <div style={s.lbl}>Registro rápido (constancia, sin email)</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+            <select style={{ ...s.inp, width: 140 }} value={rapParty} onChange={e => setRapParty(e.target.value)}>
+              {['arrendatario', 'aval', 'propietario'].map(d => <option key={d} value={d}>{DEST_LBL[d]}</option>)}
+            </select>
+            <input style={{ ...s.inp, flex: 1, minWidth: 160 }} value={rapNota} onChange={e => setRapNota(e.target.value)} placeholder="Nota (ej: llamé, no contesta / paga el viernes)" />
           </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => registrarRapido('llamada')} disabled={guardando} style={btnSec}>☎ Llamada</button>
+            <button onClick={() => registrarRapido('whatsapp')} disabled={guardando} style={btnSec}>WhatsApp</button>
+            <button onClick={() => registrarRapido('presencial')} disabled={guardando} style={btnSec}>Presencial</button>
+          </div>
+        </div>
+
+        <div style={s.section}>
+          <div style={s.lbl}>Enviar comunicación (email)</div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {[['cobranza', 'Cobranzas'], ['legal', 'Área Legal']].map(([k, lb]) => (
+              <button key={k} onClick={() => { setDepartamento(k); setPlantillaId('') }} style={{
+                flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: '1px solid ' + (departamento === k ? (k === 'legal' ? '#9B1C1C' : C.acento) : C.line),
+                background: departamento === k ? (k === 'legal' ? C.rojoBg : '#E9F4E4') : '#fff',
+                color: departamento === k ? (k === 'legal' ? C.rojo : C.verde) : C.sub,
+              }}>{lb}</button>
+            ))}
+          </div>
+
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Plantilla</div>
-            <select style={s.inp} value={plantillaId} onChange={e => elegirPlantilla(e.target.value)}>
+            <div style={s.mini}>Plantilla ({departamento === 'legal' ? 'tono jurídico' : 'tono cobranza'})</div>
+            <select style={s.inp} value={plantillaId} onChange={e => aplicarPlantilla(e.target.value)}>
               <option value="">— elegir plantilla —</option>
-              {plantillasDest.map(p => <option key={p.id} value={p.id}>{p.etapa}</option>)}
+              {plantillasDep.map(p => <option key={p.id} value={p.id}>{DEST_LBL[p.destinatario] || p.destinatario} · {p.etapa}</option>)}
             </select>
           </div>
+
           {dias > 0 && (
             <div style={{ marginBottom: 10, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -637,64 +741,142 @@ function CobranzaDrawer({ fila, onClose }) {
                     style={{ width: 64, padding: '5px 7px', border: '1px solid #E0DDD8', borderRadius: 6, fontSize: 12 }} />
                 </label>
               </div>
-              <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>Informativo; usa {'{{multa}}'} y {'{{total}}'} en las plantillas. Aplicar el cargo a la cuenta sigue en Morosidad.</div>
+              <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>Usa {'{{multa}}'} y {'{{total}}'} en las plantillas. El cargo a la cuenta sigue en Morosidad.</div>
             </div>
           )}
+
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Asunto</div>
+            <div style={s.mini}>Para (destinatarios)</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ ...s.chk, width: 120 }}><input type="checkbox" checked={toArr} onChange={e => setToArr(e.target.checked)} /> Arrendatario</label>
+                <input style={{ ...s.inp, flex: 1 }} value={emailArr} onChange={e => setEmailArr(e.target.value)} placeholder="email arrendatario" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ ...s.chk, width: 120 }}><input type="checkbox" checked={toAval} onChange={e => setToAval(e.target.checked)} /> Aval</label>
+                <input style={{ ...s.inp, flex: 1 }} value={emailAval} onChange={e => setEmailAval(e.target.value)} placeholder="email aval" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ ...s.chk, width: 120 }}><input type="checkbox" checked={toProp} onChange={e => setToProp(e.target.checked)} disabled={ccoProp} /> Propietario</label>
+                <input style={{ ...s.inp, flex: 1 }} value={emailProp} onChange={e => setEmailProp(e.target.value)} placeholder="email propietario" />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+            <div>
+              <div style={s.mini}>CC (copia visible)</div>
+              <input style={s.inp} value={cc} onChange={e => setCc(e.target.value)} placeholder="correos separados por coma" />
+            </div>
+            <div>
+              <div style={s.mini}>CCO (copia oculta)</div>
+              <input style={s.inp} value={cco} onChange={e => setCco(e.target.value)} placeholder="correos separados por coma" />
+            </div>
+          </div>
+          <label style={{ ...s.chk, marginBottom: 10, color: ccoProp ? C.rojo : C.txt, fontWeight: 600 }}>
+            <input type="checkbox" checked={ccoProp} onChange={e => toggleCcoProp(e.target.checked)} />
+            CCO al propietario (demostrarle que estamos gestionando){ccoProp && !emailProp.trim() ? ' — pon su email arriba' : ''}
+          </label>
+
+          <div style={{ marginBottom: 10 }}>
+            <div style={s.mini}>Asunto</div>
             <input style={s.inp} value={asunto} onChange={e => setAsunto(e.target.value)} placeholder="Asunto" />
           </div>
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Contenido (queda como constancia exacta)</div>
-            <textarea style={{ ...s.inp, height: 120, resize: 'vertical' }} value={contenido} onChange={e => setContenido(e.target.value)} placeholder="Texto de la gestión…" />
+            <div style={s.mini}>Contenido (editable; queda como constancia exacta)</div>
+            <textarea style={{ ...s.inp, height: 150, resize: 'vertical' }} value={contenido} onChange={e => setContenido(e.target.value)} placeholder="Texto del correo…" />
           </div>
-          {canal === 'email' && (
-            <div style={{ marginBottom: 10, background: '#F6FBF9', border: '1px solid #D7EDE4', borderRadius: 8, padding: '10px 12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: enviarEmail ? 8 : 0 }}>
-                <input type="checkbox" checked={enviarEmail} onChange={e => setEnviarEmail(e.target.checked)} />
-                Enviar por email ahora (desde el CRM, con copia a info@)
-              </label>
-              {enviarEmail && (
-                <input style={s.inp} value={emailDestino} onChange={e => setEmailDestino(e.target.value)}
-                  placeholder={dest === 'propietario' ? 'Email del propietario (completar)' : 'Email de destino'} />
-              )}
-            </div>
-          )}
+
+          <div style={{ marginBottom: 10 }}>
+            <div style={s.mini}>Adjuntos (viajan incrustados en el correo)</div>
+            <input type="file" multiple onChange={onFiles} style={{ fontSize: 12 }} />
+            {subiendo && <span style={{ fontSize: 12, color: C.sub, marginLeft: 8 }}>subiendo…</span>}
+            {adjuntos.length > 0 && (
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {adjuntos.map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#444' }}>
+                    <span>📎 {a.nombre} <span style={{ color: C.sub }}>({Math.round((a.size || 0) / 1024)} KB)</span></span>
+                    <button onClick={() => setAdjuntos(x => x.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: C.rojo, cursor: 'pointer', fontSize: 14 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Resultado</div>
+              <div style={s.mini}>Resultado</div>
               <select style={s.inp} value={resultado} onChange={e => setResultado(e.target.value)}>
                 {['enviado', 'entregado', 'leido', 'compromiso', 'sin_respuesta', 'rechazado'].map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>Acuse / referencia</div>
-              <input style={s.inp} value={acuse} onChange={e => setAcuse(e.target.value)} placeholder="nº carta, captura, etc." />
+              <div style={s.mini}>Acuse / referencia</div>
+              <input style={s.inp} value={acuse} onChange={e => setAcuse(e.target.value)} placeholder="opcional" />
             </div>
           </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <input style={{ ...s.inp, flex: 1 }} value={toTest} onChange={e => setToTest(e.target.value)} placeholder="correo de prueba (vacío = a ti mismo)" />
+            <button onClick={probar} disabled={guardando} style={btnSec}>Probar</button>
+          </div>
+
           {msg && <div style={{ fontSize: 12, marginBottom: 8, color: msg.startsWith('✓') ? C.verde : C.rojo }}>{msg}</div>}
-          <button onClick={guardar} disabled={guardando} style={{
+
+          <button onClick={revisar} disabled={guardando} style={{
             width: '100%', padding: '11px 0', borderRadius: 8, border: 'none',
-            background: guardando ? '#ccc' : C.acento, color: '#fff', fontSize: 14, fontWeight: 700, cursor: guardando ? 'default' : 'pointer',
-          }}>{guardando ? (vaAEnviar ? 'Enviando…' : 'Guardando…') : (vaAEnviar ? 'Enviar y registrar' : 'Registrar gestión (constancia)')}</button>
+            background: departamento === 'legal' ? C.rojo : C.acento, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }}>Revisar y enviar…</button>
         </div>
 
-        {/* Historial */}
         <div style={s.section}>
           <div style={s.lbl}>Historial de gestiones ({gestiones.length})</div>
           {gestiones.length === 0 ? <div style={{ fontSize: 12, color: '#bbb' }}>Aún sin gestiones registradas.</div> : gestiones.map(g => (
             <div key={g.id} style={{ padding: '9px 0', borderBottom: '1px solid #F5F3EF' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{DEST_LBL[g.destinatario] || g.destinatario} · {g.canal}</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>
+                  {DEST_LBL[g.destinatario] || g.destinatario} · {g.canal}
+                  {g.departamento ? <span style={{ fontSize: 10, color: g.departamento === 'legal' ? C.rojo : C.verde, marginLeft: 6, fontWeight: 700 }}>{g.departamento === 'legal' ? 'LEGAL' : 'COBR.'}</span> : null}
+                </span>
                 <span style={{ fontSize: 11, color: C.sub }}>{fechaHoraLocal(g.fecha)}</span>
               </div>
               {g.asunto && <div style={{ fontSize: 12, color: '#444', marginTop: 2 }}>{g.asunto}</div>}
               <div style={{ fontSize: 11, color: '#777', marginTop: 2, whiteSpace: 'pre-wrap' }}>{g.contenido_snapshot}</div>
-              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>{g.etapa || ''} · {g.resultado || ''} · {g.usuario}{g.acuse ? ' · acuse: ' + g.acuse : ''}</div>
+              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>
+                {g.etapa || ''} · {g.resultado || ''} · {g.usuario}
+                {g.destino_email ? ' · → ' + g.destino_email : ''}
+                {Array.isArray(g.adjuntos) && g.adjuntos.length ? ' · 📎 ' + g.adjuntos.length : ''}
+                {g.acuse ? ' · acuse: ' + g.acuse : ''}
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {fase === 'confirm' && (
+        <div onClick={() => setFase('compose')} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.25)', width: 'min(560px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 22 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Revisa antes de enviar</div>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 12 }}>Nada sale hasta que pulses “Aceptar y enviar”.</div>
+            <div style={{ fontSize: 13, lineHeight: 1.7, background: '#F8F8F6', border: '1px solid #ECEAE3', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+              <div><b>Desde:</b> {departamento === 'legal' ? 'Área Legal (legal@fondocapital.com)' : 'Cobranzas (cobranza@fondocapital.com)'}</div>
+              <div><b>Para:</b> {destinosSel().map(d => DEST_LBL[d.party] + ' ‹' + d.email + '›').join(', ') || '—'}</div>
+              {cc.trim() ? <div><b>CC:</b> {cc}</div> : null}
+              {(cco.trim() || ccoProp) ? <div><b>CCO:</b> {[cco.trim(), ccoProp ? (emailProp.trim() || 'propietario (falta email)') : ''].filter(Boolean).join(', ')}</div> : null}
+              <div><b>Asunto:</b> {asunto || '—'}</div>
+              {adjuntos.length ? <div><b>Adjuntos:</b> {adjuntos.map(a => a.nombre).join(', ')}</div> : null}
+            </div>
+            <div style={{ fontSize: 12, color: '#555', whiteSpace: 'pre-wrap', maxHeight: 220, overflowY: 'auto', border: '1px solid #F0EEE8', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>{contenido}</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setFase('compose')} disabled={guardando} style={{ ...btnSec, padding: '10px 16px' }}>Cancelar / volver</button>
+              <button onClick={enviarReal} disabled={guardando} style={{
+                padding: '10px 18px', borderRadius: 8, border: 'none',
+                background: guardando ? '#ccc' : (departamento === 'legal' ? C.rojo : C.acento), color: '#fff', fontSize: 14, fontWeight: 700, cursor: guardando ? 'default' : 'pointer',
+              }}>{guardando ? 'Enviando…' : 'Aceptar y enviar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

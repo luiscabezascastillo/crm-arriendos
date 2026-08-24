@@ -1,16 +1,13 @@
-// VERSION: v5 · 2026-08-10 · GET ?idadmon= ahora incluye datos de multa del contrato (multa_diaria, etc.)
-//   para calcular multa/interés automático en la reclamación. Hereda v4/v3/v2/v1.
-// VERSION: v4 · 2026-08-10 · Añade GET ?casos=1 (casos abiertos) y POST {accion:'sync_terminos'} que abre
-//   automáticamente un caso de cobranza por cada término con déficit (vw_termino_resultado.resultado<0),
-//   contra arrendatario + aval. Para el semáforo del propietario. Hereda v3/v2/v1.
-// VERSION: v3 · 2026-08-10 · Añade GET ?resumen=1 (gestiones agregadas por idadmon: destinatarios/etapas/última)
-//   para la escalera automática y la worklist. Hereda v2 (envío real por email) y v1 (constancia).
-// VERSION: v2 · 2026-08-10 · Cobranza · gestiones (CONSTANCIA) + ENVÍO real por email.
-//   GET ?idadmon=  -> contrato + caso abierto + gestiones + plantillas (para el panel).
-//   GET ?log=1     -> últimas gestiones (Bitácora global).
-//   POST           -> si {enviar:true, canal:'email'} manda el correo (nodemailer/Gmail, BCC info@,
-//                     marca 'enviado' solo si Gmail acepta) y luego registra la gestión con el acuse real.
-//                     Si no, solo registra la constancia (canal manual). Crea el caso si no existe.
+// VERSION: v6 · 2026-08-24 · Compositor de email por DEPARTAMENTO (Cobranzas/Legal).
+//   - `from` segun departamento (alias de info@: cobranza@ / legal@; override por env EMAIL_COBRANZA/EMAIL_LEGAL).
+//   - MODO PRUEBA (test:true): manda [PRUEBA] solo a `toTest` (o al que envia), con adjuntos, SIN dejar constancia.
+//   - MULTIDESTINATARIO: `destinos`=[{party,email}] (arrendatario/aval/propietario). Se envia UN correo (to=todos)
+//     y se registra UNA constancia POR PARTE (para que la escalera/semaforo marquen a cada uno).
+//   - CC / CCO: copias visibles y ocultas. Si cco_propietario -> el propietario va en CCO y se registra su constancia
+//     (resultado 'cco'), para demostrar diligencia al dueno. BCC de archivo a info@ siempre.
+//   - ADJUNTOS: `adjuntos`=[{path,nombre}] alojados en el bucket privado 'cobranza-adjuntos'; se descargan e
+//     INCRUSTAN en el correo (viajan con el, el receptor los abre aunque el bucket sea privado).
+//   Hereda v5/v4/v3/v2/v1 (GET idadmon/log/resumen/casos, POST sync_terminos, caso append-only).
 // Ruta real: app/api/cobranza/gestion/route.js
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
@@ -23,6 +20,17 @@ export const maxDuration = 60
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 const BCC_ARCHIVO = 'info@fondocapital.com'
+const BUCKET_ADJ = 'cobranza-adjuntos'
+
+// Remitente por departamento. Son alias de info@ (Google Workspace), asi que salen con la MISMA
+// contraseña de aplicacion; solo cambia el From/replyTo. Se pueden sobreescribir por variable de entorno.
+const EMAIL_COBRANZA = process.env.EMAIL_COBRANZA || 'cobranza@fondocapital.com'
+const EMAIL_LEGAL = process.env.EMAIL_LEGAL || 'legal@fondocapital.com'
+const DEPT = {
+  cobranza: { from: `"Fondo Capital · Cobranzas" <${EMAIL_COBRANZA}>`, replyTo: EMAIL_COBRANZA },
+  legal:    { from: `"Fondo Capital · Area Legal" <${EMAIL_LEGAL}>`, replyTo: EMAIL_LEGAL },
+}
+const deptOf = (d) => (d === 'legal' ? 'legal' : 'cobranza')
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -35,6 +43,27 @@ const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '
 const textoAHtml = (t) =>
   '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;line-height:1.6">' +
   escapeHtml(t).replace(/\n/g, '<br>') + '</div>'
+
+// Descarga los adjuntos del bucket privado y los devuelve como attachments Nodemailer ({filename, content}).
+async function construirAdjuntos(adjuntos) {
+  if (!Array.isArray(adjuntos) || !adjuntos.length) return []
+  const out = []
+  for (const a of adjuntos) {
+    if (!a || !a.path) continue
+    const { data, error } = await admin.storage.from(BUCKET_ADJ).download(a.path)
+    if (error || !data) continue
+    const buf = Buffer.from(await data.arrayBuffer())
+    const nombre = String(a.nombre || 'adjunto').replace(/[^\w.\- ]/g, '').trim() || 'adjunto'
+    out.push({ filename: nombre, content: buf })
+  }
+  return out
+}
+
+function datosParte(party, contrato) {
+  if (party === 'aval') return { nombre: contrato.avalista || null, rut: contrato.rut_avalista || null }
+  if (party === 'propietario') return { nombre: contrato.propietario || null, rut: null }
+  return { nombre: contrato.arrendatario || null, rut: contrato.rut || null }
+}
 
 function guard(session) {
   const rol = session?.user?.role
@@ -63,7 +92,6 @@ export async function GET(req) {
   }
 
   if (resumen) {
-    // Agregación por idadmon: qué destinatarios/etapas ya se gestionaron (para la worklist/escalera).
     const { data, error } = await admin.from('cobranza_gestiones').select('idadmon, destinatario, etapa, fecha')
     if (error) return Response.json({ error: error.message }, { status: 500 })
     const map = {}
@@ -120,7 +148,7 @@ export async function POST(req) {
   let b
   try { b = await req.json() } catch { return Response.json({ error: 'JSON invalido' }, { status: 400 }) }
 
-  // Acción: abrir casos de cobranza para todos los términos con déficit (idempotente).
+  // Accion: abrir casos de cobranza para todos los terminos con deficit (idempotente).
   if (b && b.accion === 'sync_terminos') {
     const { data: vt, error: eVt } = await admin.from('vw_termino_resultado').select('idadmon, resultado').lt('resultado', 0)
     if (eVt) return Response.json({ error: 'vw_termino_resultado: ' + eVt.message }, { status: 500 })
@@ -146,37 +174,75 @@ export async function POST(req) {
   }
 
   const {
-    idadmon, tipo = 'vigente', destinatario, canal, etapa, asunto, contenido,
-    resultado, monto_reclamado, acuse, plantilla_id,
-    destinatario_rut, destinatario_nombre, monto_adeudado, dias_mora, contrato = {},
-    enviar = false, email_destino = '',
+    idadmon, tipo = 'vigente', departamento = 'cobranza', canal = 'email',
+    destinos = [], asunto, contenido, etapa, plantilla_id,
+    cc = '', cco = '', cco_propietario = false, propietario_email = '',
+    resultado, monto_reclamado, acuse, adjuntos = [],
+    monto_adeudado, dias_mora, contrato = {},
+    enviar = false, test = false, toTest = '',
   } = b || {}
 
-  if (!idadmon || !destinatario || !canal || !contenido) {
-    return Response.json({ error: 'Faltan campos: idadmon, destinatario, canal, contenido' }, { status: 400 })
+  const dept = deptOf(departamento)
+  const remit = DEPT[dept]
+
+  // ── MODO PRUEBA: solo al que prueba, con adjuntos, sin constancia ni caso. ──
+  if (test) {
+    const toFinal = (toTest && /@/.test(String(toTest))) ? String(toTest).trim() : email
+    if (!/@/.test(toFinal)) return Response.json({ error: 'Correo de prueba no valido: ' + toFinal }, { status: 400 })
+    try {
+      const attachments = await construirAdjuntos(adjuntos)
+      await transporter.sendMail({
+        from: remit.from, replyTo: remit.replyTo, to: toFinal,
+        subject: '[PRUEBA] ' + (asunto || 'Comunicacion — Fondo Capital'),
+        html: textoAHtml(contenido || ''), attachments,
+      })
+      return Response.json({ ok: true, test: true, enviadoA: toFinal, adjuntos: attachments.length })
+    } catch (err) {
+      return Response.json({ error: 'No se pudo enviar la prueba: ' + ((err && err.message) || 'error') }, { status: 502 })
+    }
   }
 
-  // 0) Envío real (si corresponde). Si Gmail no acepta, no se registra nada (sin falsos "enviado").
+  if (!idadmon || !contenido) {
+    return Response.json({ error: 'Faltan campos: idadmon, contenido' }, { status: 400 })
+  }
+
+  // Partes a las que se dirige (constancia por cada una). Copia oculta al propietario = tambien constancia.
+  const partes = []
+  for (const d of (destinos || [])) {
+    if (d && d.party) partes.push({ party: d.party, email: (d.email || '').trim(), viaCco: false })
+  }
+  if (cco_propietario) partes.push({ party: 'propietario', email: String(propietario_email || '').trim(), viaCco: true })
+  if (!partes.length) return Response.json({ error: 'Elige al menos un destinatario' }, { status: 400 })
+
+  const vaAEnviar = enviar && canal === 'email'
   let acuseFinal = acuse || null
-  let resultadoFinal = resultado || 'enviado'
-  if (enviar && canal === 'email') {
-    const dest = splitEmails(email_destino)
-    if (!dest.length) return Response.json({ error: 'No hay email de destino para enviar' }, { status: 400 })
+  let resultadoBase = resultado || (vaAEnviar ? 'enviado' : 'registrado')
+
+  // ── Envio real (una sola vez) ──
+  if (vaAEnviar) {
+    const toList = partes.filter(p => !p.viaCco).map(p => p.email).filter(e => /@/.test(e))
+    const ccList = splitEmails(cc)
+    if (!toList.length && !ccList.length) {
+      return Response.json({ error: 'No hay email de destino (To/CC) para enviar' }, { status: 400 })
+    }
+    const bccList = [BCC_ARCHIVO, ...splitEmails(cco)]
+    if (cco_propietario && /@/.test(String(propietario_email))) bccList.push(String(propietario_email).trim())
     try {
+      const attachments = await construirAdjuntos(adjuntos)
       const infoMail = await transporter.sendMail({
-        from: `"Fondo Capital" <${process.env.GMAIL_USER}>`,
-        to: dest.join(', '),
-        bcc: BCC_ARCHIVO,
-        subject: asunto || 'Comunicación — Fondo Capital',
-        html: textoAHtml(contenido),
+        from: remit.from, replyTo: remit.replyTo,
+        to: toList.join(', ') || undefined,
+        cc: ccList.length ? ccList.join(', ') : undefined,
+        bcc: bccList.join(', '),
+        subject: asunto || 'Comunicacion — Fondo Capital',
+        html: textoAHtml(contenido), attachments,
       })
       const accepted = ((infoMail && infoMail.accepted) || []).map(norm)
-      const okDest = dest.some(d => accepted.includes(norm(d)))
+      const okDest = toList.concat(ccList).some(d => accepted.includes(norm(d)))
       if (!okDest) {
-        return Response.json({ error: 'Gmail no aceptó el destinatario (' + (infoMail?.response || 's/r') + ')' }, { status: 502 })
+        return Response.json({ error: 'Gmail no acepto el destinatario (' + (infoMail?.response || 's/r') + ')' }, { status: 502 })
       }
-      acuseFinal = 'email · msgId=' + (infoMail.messageId || '') + ' · smtp=' + (infoMail.response || '')
-      resultadoFinal = 'enviado'
+      acuseFinal = 'email · dep=' + dept + ' · msgId=' + (infoMail.messageId || '') + ' · smtp=' + (infoMail.response || '')
     } catch (err) {
       return Response.json({ error: 'Error enviando email: ' + ((err && err.message) || 'desconocido') }, { status: 502 })
     }
@@ -200,14 +266,24 @@ export async function POST(req) {
     caso = nuevo
   }
 
-  // 2) gestión = constancia (append-only)
-  const { data: gestion, error: e2 } = await admin.from('cobranza_gestiones').insert({
-    caso_id: caso.id, idadmon, canal, destinatario,
-    destinatario_rut: destinatario_rut || null, destinatario_nombre: destinatario_nombre || null,
-    plantilla_id: plantilla_id || null, etapa: etapa || null, asunto: asunto || null,
-    contenido_snapshot: contenido, acuse: acuseFinal, resultado: resultadoFinal,
-    monto_reclamado: monto_reclamado || null, usuario: email,
-  }).select().single()
+  // 2) constancia (append-only) — UNA por parte
+  const adjMeta = Array.isArray(adjuntos) ? adjuntos.map(a => ({ path: a.path, nombre: a.nombre })) : []
+  const filas = []
+  for (const p of partes) {
+    const dd = datosParte(p.party, contrato)
+    filas.push({
+      caso_id: caso.id, idadmon, canal,
+      departamento: dept, remitente: remit.replyTo,
+      destinatario: p.party, destino_email: p.email || null,
+      destinatario_rut: dd.rut, destinatario_nombre: dd.nombre,
+      cc: cc || null, cco: cco || (p.viaCco ? p.email : null) || null,
+      plantilla_id: plantilla_id || null, etapa: etapa || null, asunto: asunto || null,
+      contenido_snapshot: contenido, adjuntos: adjMeta.length ? adjMeta : null,
+      acuse: acuseFinal, resultado: p.viaCco ? 'cco' : resultadoBase,
+      monto_reclamado: monto_reclamado || null, usuario: email,
+    })
+  }
+  const { data: gestion, error: e2 } = await admin.from('cobranza_gestiones').insert(filas).select()
   if (e2) return Response.json({ error: 'No se pudo registrar la gestion: ' + e2.message }, { status: 500 })
 
   // 3) refrescar el caso
@@ -217,5 +293,5 @@ export async function POST(req) {
     updated_at: new Date().toISOString(),
   }).eq('id', caso.id)
 
-  return Response.json({ ok: true, caso_id: caso.id, gestion, enviado: (enviar && canal === 'email') })
+  return Response.json({ ok: true, caso_id: caso.id, gestiones: gestion, enviado: vaAEnviar })
 }

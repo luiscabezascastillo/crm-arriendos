@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v29 · 2026-08-24 · Abre la cartola directamente via URL ?idadmon=A00xxx (p.ej. al pinchar el IDADMON en Cobranza). Cambio aditivo. Hereda v28.
 // VERSION: v28 · 2026-08-16 · La pestaña "Cartola por IDADMON" deja de ser botón: ahora es solo un texto
 //   "Cartola del Idadmon ⟶" que apunta al buscador. Se conserva "Tabla" como botón (para volver desde la
 //   cartola). Con esto ya no se puede llegar al selector vacío de la vista IDADMON (se entra solo tecleando
@@ -167,6 +168,10 @@ export default function CartolasPage() {
     if (!v) return
     setIdadmonReq(v); setVista('idadmon')
   }
+  // Permite abrir directamente la cartola de un IDADMON via URL (?idadmon=A00xxx), p.ej. desde Cobranza.
+  useEffect(() => {
+    try { const q = new URLSearchParams(window.location.search).get('idadmon'); if (q) abrirCartola(q) } catch {}
+  }, [])  // eslint-disable-line
   return (
     <>
       <TopNav />
