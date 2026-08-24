@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v15 · 2026-08-24 · Boton "📖 Manual" en la cabecera (abre /api/cobranza/manual, imprimible/PDF). Hereda v14.
 // VERSION: v14 · 2026-08-24 · Panel Gestionar: compositor de email por DEPARTAMENTO (Cobranzas/Legal) con destinatarios por check + CC/CCO + CCO al propietario (anade bloque), adjuntos, PRUEBA y Revisar->Aceptar y enviar; registro rapido llamada/WhatsApp/presencial; IDADMON abre la Cartola (pestana nueva). Hereda v13.
 // VERSION: v13 · 2026-08-24 · Cartolas: toggles Vigentes/Término suben a la línea de cabecera (junto a "situación al"); cabecera + "Acciones pendientes hoy" quedan STICKY bajo el TopNav (top:52) y no se ocultan. Hereda v12.
 // VERSION: v11 · 2026-08-13 · Cartolas/Inicios: filtros tipo Excel por columna (mismo motor que CC1,
@@ -131,8 +132,12 @@ export default function Cobranza() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px' }}>Cobranza</h1>
-        <button onClick={() => setAyudaOpen(true)} title="Como funciona la cobranza"
-          style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>? Ayuda</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => window.open('/api/cobranza/manual', '_blank')} title="Manual de uso del modulo"
+            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #CBE6BE', background: '#E9F4E4', color: '#085041', whiteSpace: 'nowrap' }}>📖 Manual</button>
+          <button onClick={() => setAyudaOpen(true)} title="Como funciona la cobranza"
+            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>? Ayuda</button>
+        </div>
       </div>
       <div style={{ fontSize: 13, color: C.sub, marginBottom: 16 }}>Impago → gestión con constancia → pago o acción legal</div>
 
