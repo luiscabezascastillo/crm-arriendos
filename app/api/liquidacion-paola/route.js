@@ -1,3 +1,7 @@
+// VERSION: v24 · 2026-08-24 · BITÁCORA de la liquidación de Paola (paola_liquidacion_log, append-only). El autor sale
+//   de la SESIÓN del servidor (getServerSession), no del navegador. 'guardar' registra el diff campo a campo
+//   (Recibido, comentarios, multas, estado pago…) antes→después; garantias_upsert/_delete también. Acción 'bitacora'
+//   la lee (solo Dirección/Karina); el GET expone puedeBitacora. Hereda v23.
 // VERSION: v23 · 2026-08-23 · Roster de garantías = solo arriendos VIGENTES (S/SQ) desde datos_arriendos. Los N
 //   (terminados) son histórico y no salen (mejora futura: bloque aparte con los N cuya garantía está en uso en la
 //   liquidación de término). Hereda v22.
@@ -70,6 +74,8 @@ import { supabase } from '../../../lib/supabaseClient'
 import { google } from 'googleapis'
 import { generarExcelPaola, nombreArchivo, etiquetaMes } from '../../../lib/paolaExcel'
 import { enviarNotificacion } from '../../../lib/cc1Email'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '../auth/[...nextauth]/route'
 
 // Cliente de servicio (service_role) SOLO para escrituras server-side: evita que RLS bloquee en
 // silencio el guardado del mes (mismo patrón que Global 66 / Tarjeta / SA). Nunca sale al navegador.
@@ -78,6 +84,28 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const FOLDER_ID = '1zg3-H02UMhkVVDlF3OZjoE18x0eLLiXh'
 const IDPROP_PAOLA = 'P001'
 const ESTADOS_LIQUIDABLES = ['S', 'SQ', 'P', 'Q']
+
+// Lectura de la bitácora: solo Dirección/Karina (los mismos de las acciones sensibles).
+const ACCESO_BITACORA = [
+  'alberto.cabezas@fondocapital.com',
+  'luis.cabezas@fondocapital.com',
+  'karina.morales@fondocapital.com',
+]
+
+// Autor real de la acción, tomado de la SESIÓN del servidor (no de lo que mande el navegador).
+async function autorSesion() {
+  try { const s = await getServerSession(authOptions); return (s?.user?.email || '').toLowerCase() || null }
+  catch { return null }
+}
+
+// Bitácora append-only de la liquidación de Paola. Nunca rompe la acción principal si falla el log.
+async function logPaola(entries) {
+  const rows = (Array.isArray(entries) ? entries : [entries]).filter(Boolean)
+  if (!rows.length) return
+  try { await admin.from('paola_liquidacion_log').insert(rows) }
+  catch (e) { console.error('logPaola:', e.message) }
+}
+const _s = v => (v == null || v === '' ? null : String(v))
 
 // Roster de garantías para la hoja "Garantías" del Excel: TODOS los contratos S/SQ de Paola con sus
 // datos de garantía tal como viven en datos_arriendos (pedida, cuotas 1-4 con fecha/monto/cobrado, quién,
@@ -326,7 +354,11 @@ export async function GET(request) {
       const { data } = await supabase.from('paola_cierres').select('*').eq('mes', aAamm(mes)).maybeSingle()
       cierre = data || null
     }
-    return NextResponse.json({ ok: true, files, errorDrive, cierre, congelado: !!cierre?.congelado })
+    const email = await autorSesion()
+    return NextResponse.json({
+      ok: true, files, errorDrive, cierre, congelado: !!cierre?.congelado,
+      email, puedeBitacora: !!email && ACCESO_BITACORA.includes(email),
+    })
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -400,16 +432,24 @@ export async function POST(request) {
     //   Persiste la foto del mes + las columnas manuales que edita Adalis, para que deje el Excel.
     //   Clave única (mes, idadmon). No escribe un mes congelado.
     if (body.accion === 'guardar') {
-      const { mes, filas, email } = body
+      const { mes, filas } = body
       if (!mes) return NextResponse.json({ error: 'Falta el mes' }, { status: 400 })
       if (!Array.isArray(filas) || filas.length === 0) {
         return NextResponse.json({ error: 'No hay filas que guardar: procesa la liquidación primero' }, { status: 400 })
       }
+      const autor = (await autorSesion()) || body.email || null
       const mesYM = aYYYYMM(mes)
       const { data: cierre } = await admin.from('paola_cierres').select('congelado').eq('mes', mesYM).maybeSingle()
       if (cierre?.congelado) {
         return NextResponse.json({ error: 'El mes está congelado: no se puede modificar.' }, { status: 409 })
       }
+      // Foto previa (para la BITÁCORA: qué cambió, de qué valor a cuál).
+      const { data: previas } = await admin.from('liquidacion_paola')
+        .select('idadmon, recibido, multas_deudas, cantidad, especial, comentarios_1, comentarios_2, estado_pago, nota_pago')
+        .eq('mes', mesYM)
+      const prevMap = {}
+      for (const p of previas || []) prevMap[p.idadmon] = p
+
       const rows = filas.filter(f => f && f.idadmon).map(f => ({
         mes: mesYM, idadmon: f.idadmon,
         propiedad: txtOrNull(f.propiedad), arrendatario: txtOrNull(f.arrendatario), estado: txtOrNull(f.estado),
@@ -421,11 +461,34 @@ export async function POST(request) {
         multas_deudas: aNumero(f.multasDeudas), especial: txtOrNull(f.especial), cantidad: aNumero(f.cantidad),
         comentarios_1: txtOrNull(f.comentarios1), comentarios_2: txtOrNull(f.comentarios2),
         estado_pago: txtOrNull(f.estadoPago), nota_pago: txtOrNull(f.notaPago),
-        origen: 'crm', generado_por: email || null, updated_at: new Date().toISOString(),
+        origen: 'crm', generado_por: autor, updated_at: new Date().toISOString(),
       }))
+
+      // Diff campo a campo contra la foto previa → entradas de bitácora
+      const CAMPOS = [
+        ['recibido', 'Recibido', true], ['multas_deudas', 'Multas/Deudas', true], ['cantidad', 'Cantidad', true],
+        ['especial', 'Especial', false], ['comentarios_1', 'Comentario 1', false], ['comentarios_2', 'Comentario 2', false],
+        ['estado_pago', 'Estado pago', false], ['nota_pago', 'Nota pago', false],
+      ]
+      const igual = (a, b, esNum) => esNum ? (Number(a) || 0) === (Number(b) || 0) : (_s(a) || '') === (_s(b) || '')
+      const logs = []
+      for (const r of rows) {
+        const antes = prevMap[r.idadmon] || {}
+        const nuevo = r.idadmon in prevMap
+        for (const [col, label, esNum] of CAMPOS) {
+          if (!igual(antes[col], r[col], esNum)) {
+            logs.push({
+              mes: mesYM, idadmon: r.idadmon, campo: label, evento: nuevo ? 'edit' : 'alta',
+              valor_anterior: _s(antes[col]), valor_nuevo: _s(r[col]), autor,
+            })
+          }
+        }
+      }
+
       const { error } = await admin.from('liquidacion_paola').upsert(rows, { onConflict: 'mes,idadmon' })
       if (error) throw new Error(error.message)
-      return NextResponse.json({ ok: true, guardadas: rows.length })
+      await logPaola(logs)
+      return NextResponse.json({ ok: true, guardadas: rows.length, registrados: logs.length })
     }
 
     // ── acciones: CONTROL DE GARANTÍAS por cuotas (tabla paola_garantias) ─────────
@@ -464,17 +527,43 @@ export async function POST(request) {
         pagada: g.pagada === false ? false : true,
         nota: txtOrNull(g.nota),
       }
+      const autorG = (await autorSesion()) || null
+      const { data: prevG } = await admin.from('paola_garantias')
+        .select('monto, bodega_monto, pagada').eq('idadmon', idadmonG).eq('mes', fila.mes).eq('n_cuota', nCuota).maybeSingle()
       const { data, error } = await admin.from('paola_garantias')
         .upsert(fila, { onConflict: 'idadmon,mes,n_cuota' }).select().maybeSingle()
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      await logPaola({
+        mes: fila.mes, idadmon: idadmonG, campo: `Garantía cuota ${nCuota}`, evento: prevG ? 'edit' : 'alta',
+        valor_anterior: prevG ? `${prevG.monto || 0}${prevG.bodega_monto ? ' + bodega ' + prevG.bodega_monto : ''}` : null,
+        valor_nuevo: `${fila.monto || 0}${fila.bodega_monto ? ' + bodega ' + fila.bodega_monto : ''}${fila.pagada === false ? ' (pendiente)' : ''}`,
+        autor: autorG,
+      })
       return NextResponse.json({ ok: true, cuota: data || fila })
     }
 
     if (body.accion === 'garantias_delete') {
       if (!body.id) return NextResponse.json({ error: 'Falta el id de la cuota' }, { status: 400 })
+      const autorG = (await autorSesion()) || null
+      const { data: prevG } = await admin.from('paola_garantias').select('idadmon, mes, n_cuota, monto').eq('id', body.id).maybeSingle()
       const { error } = await admin.from('paola_garantias').delete().eq('id', body.id)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (prevG) await logPaola({ mes: prevG.mes, idadmon: prevG.idadmon, campo: `Garantía cuota ${prevG.n_cuota}`, evento: 'borrar', valor_anterior: _s(prevG.monto), valor_nuevo: null, autor: autorG })
       return NextResponse.json({ ok: true })
+    }
+
+    // ── acción: LEER la BITÁCORA de la liquidación (append-only). Solo Dirección/Karina. ──
+    if (body.accion === 'bitacora') {
+      const email = await autorSesion()
+      if (!email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+      if (!ACCESO_BITACORA.includes(email)) return NextResponse.json({ error: 'Acceso restringido a Dirección y Karina.' }, { status: 403 })
+      let q = admin.from('paola_liquidacion_log')
+        .select('id, mes, idadmon, campo, evento, valor_anterior, valor_nuevo, autor, creado_en')
+        .order('creado_en', { ascending: false }).limit(5000)
+      if (body.mes) q = q.eq('mes', aYYYYMM(body.mes))
+      const { data, error } = await q
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, log: data || [] })
     }
 
     // ── acción: ABRIR el mes ya GUARDADO (sin re-procesar la cartola) ────────────

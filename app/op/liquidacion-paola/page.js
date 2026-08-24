@@ -1,3 +1,6 @@
+// VERSION: v27 · 2026-08-24 · Pestaña BITÁCORA (solo Dirección/Karina, según puedeBitacora del GET): registro de
+//   cambios de la liquidación (fecha/hora, autor, idadmon, campo, antes→después) leído de paola_liquidacion_log.
+//   Hereda v26.
 // VERSION: v26 · 2026-08-24 · (1) Columna RECIBIDO editable a mano (para corregir un pago del justificante aún sin
 //   discriminar antes de generar el Excel); recalcula Falta y fluye al guardado y al Excel. (2) Barra de acciones +
 //   pestañas + cabecera de la tabla STICKY bajo el TopNav (top 52/106/tabla), con la tabla en contenedor de altura
@@ -125,6 +128,10 @@ export default function LiquidacionPaolaPage() {
   const [garAviso, setGarAviso] = useState(null)
   const garVacia = { idadmon: '', mes: '', n_cuota: '', monto: '', bodega_monto: '', garantia_total: '', fecha: '', nota: '', pagada: true }
   const [garForm, setGarForm] = useState(garVacia)
+  // Bitácora (solo Dirección/Karina)
+  const [puedeBitacora, setPuedeBitacora] = useState(false)
+  const [bitacora, setBitacora] = useState([])
+  const [bitCargando, setBitCargando] = useState(false)
 
   useEffect(() => {
     const h = new Date()
@@ -139,6 +146,7 @@ export default function LiquidacionPaolaPage() {
       .then(r => r.json())
       .then(d => {
         if (!d.ok) return
+        setPuedeBitacora(!!d.puedeBitacora)
         const files = d.files || []
         setArchivosDrive(files)
         setErrorDrive(d.errorDrive || null)
@@ -330,6 +338,20 @@ export default function LiquidacionPaolaPage() {
       if (d.ok) setGarantias(gs => gs.filter(g => g.id !== id))
     } catch { /* silencioso */ }
   }
+
+  async function cargarBitacora() {
+    setBitCargando(true)
+    try {
+      const res = await fetch('/api/liquidacion-paola', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'bitacora', mes }),
+      })
+      const d = await res.json()
+      if (d.ok) setBitacora(d.log || [])
+    } catch { /* silencioso */ }
+    setBitCargando(false)
+  }
+  useEffect(() => { if (tab === 'bitacora' && puedeBitacora) cargarBitacora() }, [tab, mes])
 
   // Redacta la carta (texto preescrito) para revisarla/editarla antes de enviar.
   async function verCarta() {
@@ -813,6 +835,7 @@ export default function LiquidacionPaolaPage() {
                 { key: 'garantias', label: 'Garantías' },
                 { key: 'sin_identificar', label: `Sin identificar (${datos.sinIdentificar.length})` },
                 { key: 'no_renta', label: `No es renta (${datos.noEsRenta.length})` },
+                ...(puedeBitacora ? [{ key: 'bitacora', label: '🗒 Bitácora' }] : []),
               ].map(t => (
                 <button key={t.key} onClick={() => setTab(t.key)} style={{
                   padding: '10px 16px', fontSize: 12, fontWeight: tab === t.key ? 500 : 400,
@@ -1204,6 +1227,39 @@ export default function LiquidacionPaolaPage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* ── BITÁCORA (solo Dirección/Karina) ──────────────────────────── */}
+            {tab === 'bitacora' && puedeBitacora && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--gray-500)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  Registro de cambios de la liquidación de {mesLabel()} (quién, cuándo y de qué valor a cuál). Solo lectura.
+                  {bitCargando && <span> · cargando…</span>}
+                </div>
+                {bitacora.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--gray-400)' }}>Sin cambios registrados en este mes.</div>
+                ) : (
+                  <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+                      <thead><tr style={{ background: 'var(--gray-50)' }}>
+                        {['Fecha/hora', 'Autor', 'IdAdmon', 'Campo', 'Antes', 'Después'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {bitacora.map(b => (
+                          <tr key={b.id}>
+                            <td style={{ ...td, fontSize: 11, whiteSpace: 'nowrap' }}>{b.creado_en ? new Date(b.creado_en).toLocaleString('es-CL') : '—'}</td>
+                            <td style={{ ...td, fontSize: 11, color: 'var(--gray-600)' }}>{(b.autor || '—').replace('@fondocapital.com', '')}</td>
+                            <td style={{ ...td, fontWeight: 600, color: '#1a56db' }}>{b.idadmon || '—'}</td>
+                            <td style={{ ...td, fontSize: 11 }}>{b.campo}{b.evento && b.evento !== 'edit' ? <span style={{ marginLeft: 4, fontSize: 9, color: 'var(--gray-400)' }}>({b.evento})</span> : null}</td>
+                            <td style={{ ...td, fontSize: 11, color: '#dc2626' }}>{b.valor_anterior ?? '—'}</td>
+                            <td style={{ ...td, fontSize: 11, color: '#16a34a' }}>{b.valor_nuevo ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </>
