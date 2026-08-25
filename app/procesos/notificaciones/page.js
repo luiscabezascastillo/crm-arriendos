@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v12 · 2026-08-25 · El modal de envío ahora MUESTRA el detalle de los fallos (idadmon + motivo que
+//   devuelve el endpoint: rechazo SMTP de Gmail, "sin email", límite de envío, etc.). Antes solo daba el recuento
+//   "Enviados/Errores" y no se veía la causa. Cambio solo de UI (no toca el envío). Hereda v11.
 // VERSION: v11 · 2026-08-25 · Nueva columna "Próx. ajuste": fecha del PRÓXIMO reajuste de cada contrato no-UF. Se toma
 //   de la fecha_reajusteN programada más cercana en el futuro; si ninguna está cargada, se deduce por periodicidad
 //   (semestral +6 · trimestral +3 · anual +12) desde la última fecha conocida (o el inicio). UF/FIJO → "—". Se
@@ -1339,8 +1342,18 @@ export default function NotificacionesPage() {
                 {resultado.error ? (
                   <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px', color: '#991B1B' }}>Error: {resultado.error}</div>
                 ) : (
-                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 12px', color: '#166534' }}>
-                    Enviados: {resultado.enviados || 0} · Errores: {resultado.errores || 0}
+                  <div style={{ background: resultado.errores ? '#FFFBEB' : '#F0FDF4', border: '1px solid ' + (resultado.errores ? '#FCD34D' : '#86EFAC'), borderRadius: 8, padding: '10px 12px', color: resultado.errores ? '#92400E' : '#166534' }}>
+                    <div style={{ fontWeight: 600 }}>Enviados: {resultado.enviados || 0} · Errores: {resultado.errores || 0}</div>
+                    {Array.isArray(resultado.detalle) && resultado.detalle.some((d) => !d.ok) && (
+                      <div style={{ marginTop: 8, maxHeight: 170, overflowY: 'auto', fontSize: 11, color: '#7C2D12' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>No se enviaron (motivo):</div>
+                        {resultado.detalle.filter((d) => !d.ok).map((d, k) => (
+                          <div key={k} style={{ padding: '3px 0', borderTop: k ? '1px solid #FDE68A' : 'none' }}>
+                            <b>{d.idadmon}</b>: {d.error || 'error de envío'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
