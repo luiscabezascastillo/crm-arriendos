@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v32 · 2026-08-25 · Cartola IDADMON: filas anteriores al RESETEO (cierre ficticio) se marcan HISTÓRICO — atenuadas, saldo "—", no suman al total; toggle Mostrar/Ocultar histórico. Hereda v31.
 // VERSION: v31 · 2026-08-25 · Vista Tabla: el filtro por columna pasa al estilo EXCEL de SA (server-side): lista de
 //   valores con casillas + buscador + "(Seleccionar todo)" + una condición (texto/número), todo traducido a la
 //   consulta Supabase (.in / .ilike / .gte…) para que filtre las ~29k filas reales, no solo las cargadas. Solo en las
@@ -225,6 +226,9 @@ class Salvavidas extends Component {
     )
   }
 }
+
+// v32: un "reseteo"/cierre ficticio marca el corte; lo anterior es histórico congelado (no suma al saldo).
+const RE_RESET = /(RESET|REGULARIZ|FICTICIO|REINICIA|SEGUIMIENTO CUENTAS|AJUSTES? COVID)/i
 
 export default function CartolasPage() {
   const [vista, setVista] = useState('tabla')   // 'tabla' | 'idadmon'
@@ -928,6 +932,8 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   const [error, setError] = useState(null)
   const [ficha, setFicha] = useState(null)      // fila de datos_arriendos
   const [movs, setMovs] = useState([])          // movimientos con _saldo corrido
+  const [resetInfo, setResetInfo] = useState({ count: 0, fecha: '' })  // v32: corte por reseteo (cierre ficticio)
+  const [verHist, setVerHist] = useState(true)  // v32: histórico anterior al reseteo visible (atenuado) por defecto
   const [consultado, setConsultado] = useState(false)
   const [aviso, setAviso] = useState(null)      // "en TÉRMINO" / "HISTÓRICO"
   const [ufMesInicio, setUfMesInicio] = useState(null)   // valor_uf del mes de inicio (indices_mensuales)
@@ -1031,12 +1037,17 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       if (fa !== fb) return fa - fb
       return (a.id || 0) - (b.id || 0)
     })
-    // saldo corrido desde 0: saldo = saldo_anterior + cargo - abono. Las filas ANULADAS no cuentan (saldo = null).
+    // v32: localizar el ÚLTIMO reseteo/cierre ficticio; todo lo anterior (incluido él) es histórico congelado.
+    let resetIdx = -1
+    for (let i = 0; i < ordenados.length; i++) { if (RE_RESET.test(String(ordenados[i].concepto || ''))) resetIdx = i }
+    setResetInfo(resetIdx >= 0 ? { count: resetIdx + 1, fecha: ordenados[resetIdx].fecha || '' } : { count: 0, fecha: '' })
+    // saldo corrido desde 0: cargo suma, abono resta. ANULADAS e HISTÓRICO (<= reseteo) no cuentan (saldo = null).
     let saldo = 0
-    const conSaldo = ordenados.map(m => {
-      if (m.anulado) return { ...m, _saldo: null }
+    const conSaldo = ordenados.map((m, i) => {
+      const hist = resetIdx >= 0 && i <= resetIdx
+      if (m.anulado || hist) return { ...m, _saldo: null, _hist: hist }
       saldo = saldo + cargoEfectivo(m) - num(m.abono)
-      return { ...m, _saldo: saldo }
+      return { ...m, _saldo: saldo, _hist: false }
     })
     setMovs(conSaldo)
     } catch (err) {
@@ -1063,7 +1074,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
       Comentarios: m.comentarios ?? '',
       Calif: m.calif ?? '',
       Justificantes: m.justificantes ?? '',
-      Marca: m.anulado ? 'ANULADO' : (m.manual ? 'MANUAL' : ''),
+      Marca: m.anulado ? 'ANULADO' : (m._hist ? 'HISTORICO' : (m.manual ? 'MANUAL' : '')),
     }))
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.json_to_sheet(salida)
@@ -1083,7 +1094,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
 
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
-  const saldoTotal = movs.filter(m => !m.anulado).reduce((a, m) => a + cargoEfectivo(m) - num(m.abono), 0)
+  const saldoTotal = movs.filter(m => !m.anulado && !m._hist).reduce((a, m) => a + cargoEfectivo(m) - num(m.abono), 0)
   const idsEditables = new Set(movs.slice(-5).map(m => m.id))
   const estadoLiq = (m) => {
     if (m.cargo_editado_en == null) return null
@@ -1111,7 +1122,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
         // Antes este recálculo tras editar no saltaba las anuladas → la línea anulada volvía a sumarse al saldo.
         let sAc = 0
         return upd.map(m => {
-          if (m.anulado) return { ...m, _saldo: null }
+          if (m.anulado || m._hist) return { ...m, _saldo: null }
           sAc = sAc + cargoEfectivo(m) - num(m.abono)
           return { ...m, _saldo: sAc }
         })
@@ -1195,12 +1206,13 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
     </div>
   )
 
-  const cellMov = (r, c) => {
+  const cellMov = (r, c, esHist = false) => {
     if (c.key === '_saldo') { if (r._saldo == null) return <span style={{ color: '#B4B2A9' }}>—</span>; return <span style={{ fontWeight: 600, fontFamily: MONO, color: r._saldo < 0 ? '#9B1C1C' : '#2C2C2A' }}>{fmtNum(r._saldo)}</span> }
     if (c.key === 'concepto') {
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ textDecoration: r.anulado ? 'line-through' : 'none', color: r.anulado ? '#B4B2A9' : 'inherit' }}>{r.concepto ?? '—'}</span>
+          {esHist && <span title="Anterior al reseteo (cierre ficticio): congelado, no suma al saldo" style={{ fontSize: 9, fontWeight: 700, color: '#6B7280', background: '#ECEBE6', borderRadius: 4, padding: '0 5px' }}>histórico</span>}
           {r.manual && <span title="Movimiento manual" style={{ fontSize: 9, fontWeight: 700, color: '#0C447C', background: '#E6F1FB', borderRadius: 4, padding: '0 5px' }}>MANUAL</span>}
           {r.anulado && <span style={{ fontSize: 9, fontWeight: 700, color: '#9B1C1C', background: '#FDECEC', borderRadius: 4, padding: '0 5px' }}>ANULADO</span>}
           {/* v14: editar (solo MANUAL) / anular (MANUAL o cualquier línea de cargo) / reactivar (cualquier anulada) */}
@@ -1329,6 +1341,12 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
           {/* MOVIMIENTOS · el proporcional del primer mes va a la derecha, en la misma línea */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
+            {resetInfo.count > 0 && (
+              <button onClick={() => setVerHist(v => !v)} title="Filas anteriores al reseteo (cierre ficticio): congeladas, no suman al saldo"
+                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 7, border: '0.5px solid #D3D1C7', background: '#F4F3EF', color: '#6B7280', cursor: 'pointer' }}>
+                {verHist ? `Ocultar histórico (${resetInfo.count})` : `Mostrar histórico (${resetInfo.count})`}
+              </button>
+            )}
             {propCalc && (
             <details style={{ marginLeft: 'auto', border: '0.5px solid ' + (descuadre ? '#FCD34D' : '#CDE3CD'), borderRadius: 8, background: descuadre ? '#FEF3C7' : '#F0F7F0' }}>
               <summary style={{ cursor: 'pointer', padding: '5px 12px', fontSize: 12, color: descuadre ? '#92400E' : '#5F5E5A', fontWeight: 600, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1403,17 +1421,20 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
                 </tr>
               </thead>
               <tbody>
-                {movs.map((r) => {
+                {!verHist && resetInfo.count > 0 && (
+                  <tr><td colSpan={MCOLS.length} onClick={() => setVerHist(true)} style={{ padding: '7px 10px', textAlign: 'center', background: '#FBFAF6', color: '#6B7280', fontSize: 11.5, cursor: 'pointer', borderBottom: '0.5px solid #EDEBE4' }}>▸ {resetInfo.count} línea(s) de histórico anterior al reseteo del {resetInfo.fecha} — mostrar</td></tr>
+                )}
+                {(verHist ? movs : movs.filter(m => !m._hist)).map((r) => {
                   const el = estadoLiq(r)
                   // Cambio manual: línea añadida a mano, cargo editado o cargo con override → rojo SUAVE.
                   // "No cuadra con la liquidación" → rojo MÁS FUERTE (prioritario, es el aviso crítico).
                   const manualCambio = !!(r.manual || r.cargo_editado_en != null || (r.cargo_manual != null && r.cargo_manual !== ''))
-                  const filaBg = el === 'no_cuadra' ? '#F5B7B1' : manualCambio ? '#FDEBEA' : el === 'sin_liq' ? '#FEF9E7' : null
+                  const filaBg = r._hist ? '#F4F3EF' : el === 'no_cuadra' ? '#F5B7B1' : manualCambio ? '#FDEBEA' : el === 'sin_liq' ? '#FEF9E7' : null
                   return (
                   <tr key={r.id}>
                     {MCOLS.map((c, ci) => (
-                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: filaBg || bgMov(r, c), color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4' }}>
-                        {cellMov(r, c)}
+                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: filaBg || bgMov(r, c), color: r._hist ? '#A8A69E' : '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', fontStyle: r._hist ? 'italic' : 'normal' }}>
+                        {cellMov(r, c, r._hist)}
                       </td>
                     ))}
                   </tr>
@@ -1424,7 +1445,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
             </table>
           </div>
           <div style={{ fontSize: 11, color: '#888780', marginTop: 8 }}>
-            {movs.length} movimiento(s) · saldo corrido desde 0 (cargo suma, abono resta) · ordenados por fecha.
+            {movs.length} movimiento(s) · saldo corrido desde 0 (cargo suma, abono resta) · ordenados por fecha{resetInfo.count > 0 ? ` · ${resetInfo.count} línea(s) de histórico anterior al reseteo del ${resetInfo.fecha}: congeladas, no suman` : ''}.
           </div>
           {puedeEditarCargo && (
             <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>
