@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v11 · 2026-08-25 · Nueva columna "Próx. ajuste": fecha del PRÓXIMO reajuste de cada contrato no-UF. Se toma
+//   de la fecha_reajusteN programada más cercana en el futuro; si ninguna está cargada, se deduce por periodicidad
+//   (semestral +6 · trimestral +3 · anual +12) desde la última fecha conocida (o el inicio). UF/FIJO → "—". Se
+//   reajustan anchos para no meter scroll horizontal. Hereda v10.
 // VERSION: v10 · 2026-08-25 · FIX columna "Ajuste" y bloque de ajuste del correo: mostraban el reajuste VIGENTE
 //   arrastrado (el más reciente <= mes), así que un ajuste de un mes anterior reaparecía cada mes (A00792 de
 //   agosto, A00339 de julio, seguían saliendo en septiembre). Ahora `ajusteTipo/ajusteMonto` se atan a tipoCom
@@ -131,6 +135,49 @@ function tipoComunicacion(c, av, mes) {
   if (av && mes && String(av.fecha || '').slice(0, 7) === String(mes).slice(0, 7)) return 'AJUSTE'
   return 'sin-cambio'   // tiene reajustes, pero ninguno cae este mes
 }
+// Meses entre reajustes según el tipo de revisión (0 = no lleva reajuste programado: UF puro / FIJO).
+function intervaloReajuste(revision) {
+  const r = (revision || '').trim().toUpperCase()
+  if (r === 'UF' || r === 'FIJO' || r === '') return 0
+  if (r.includes('TRIMESTRAL')) return 3
+  if (r.includes('ANUAL')) return 12
+  if (r.includes('SEMESTRAL') || r.includes('6 MESES')) return 6
+  return 0
+}
+const primerDiaMes = (iso) => String(iso).slice(0, 7) + '-01'
+function sumarMeses(isoPrimerDia, n) {
+  const [y, m] = String(isoPrimerDia).slice(0, 7).split('-').map(Number)
+  const t = y * 12 + (m - 1) + n
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}-01`
+}
+const MES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+function fmtMesAnio(iso) {
+  if (!iso) return ''
+  const [y, m] = String(iso).slice(0, 7).split('-').map(Number)
+  return `${MES3[m - 1] || '?'}-${y}`
+}
+// Próxima fecha de reajuste (posterior al mes procesado). Preferencia:
+//  1) la fecha_reajusteN programada más cercana que sea > mes;
+//  2) si no hay ninguna futura cargada, se deduce por periodicidad desde la última fecha conocida (o el inicio),
+//     sumando el intervalo hasta pasar el mes. UF/FIJO (intervalo 0) → null (no llevan reajuste programado).
+function proximaFechaReajuste(c, mes) {
+  const intervalo = intervaloReajuste(c.revision)
+  if (!intervalo || !mes) return null
+  let futuraMin = null, anclaMax = null
+  for (let i = 1; i <= 6; i++) {
+    const f = c['fecha_reajuste' + i]
+    if (!f) continue
+    const isoF = String(f).slice(0, 10)
+    if (isoF > mes && (futuraMin === null || isoF < futuraMin)) futuraMin = isoF
+    if (anclaMax === null || isoF > anclaMax) anclaMax = isoF
+  }
+  if (futuraMin) return futuraMin
+  const ancla = anclaMax || (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : null)
+  if (!ancla) return null
+  let d = primerDiaMes(ancla)
+  for (let g = 0; g < 600 && d <= mes; g++) d = sumarMeses(d, intervalo)
+  return d > mes ? d : null
+}
 // ¿El texto del control parece una fecha/timestamp ISO? ('2026-06-26 17:33:11' o ISO)
 function esFechaIso(s) {
   if (!s) return false
@@ -181,16 +228,17 @@ function RevBadge({ revision }) {
 
 const COLS = [
   { key: 'idadmon',           label: 'IDADMON',      w: '6%',   align: 'left',  val: (c) => c.idadmon || '' },
-  { key: 'envioEstado',       label: 'Envío',        w: '7%',   align: 'left',  val: (c) => c.envioEstado || '' },
-  { key: 'fecha_inicio',      label: 'Inicio',       w: '7.5%', align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
-  { key: 'propietario',       label: 'Propietario',  w: '11%',  align: 'left',  val: (c) => c.propietario || '' },
-  { key: 'inmueble',          label: 'Propiedad',    w: '11.5%',align: 'left',  val: (c) => c.inmueble || '' },
-  { key: 'arrendatario',      label: 'Arrendatario', w: '11.5%',align: 'left',  val: (c) => c.arrendatario || '' },
-  { key: 'revision',          label: 'Revisión',     w: '7.5%', align: 'left',  val: (c) => (c.revision || '').trim() },
-  { key: 'apagar',            label: 'A pagar',      w: '8%',   align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
-  { key: 'ajuste',            label: 'Ajuste',       w: '7%',   align: 'right', val: (c) => String(c.ajusteMonto || ''), numeric: true },
+  { key: 'envioEstado',       label: 'Envío',        w: '6.5%', align: 'left',  val: (c) => c.envioEstado || '' },
+  { key: 'fecha_inicio',      label: 'Inicio',       w: '7%',   align: 'left',  val: (c) => (c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : '') },
+  { key: 'propietario',       label: 'Propietario',  w: '10.5%',align: 'left',  val: (c) => c.propietario || '' },
+  { key: 'inmueble',          label: 'Propiedad',    w: '11%',  align: 'left',  val: (c) => c.inmueble || '' },
+  { key: 'arrendatario',      label: 'Arrendatario', w: '11%',  align: 'left',  val: (c) => c.arrendatario || '' },
+  { key: 'revision',          label: 'Revisión',     w: '7%',   align: 'left',  val: (c) => (c.revision || '').trim() },
+  { key: 'apagar',            label: 'A pagar',      w: '7.5%', align: 'right', val: (c) => String(c.apagar ?? ''), numeric: true },
+  { key: 'ajuste',            label: 'Ajuste',       w: '6.5%', align: 'right', val: (c) => String(c.ajusteMonto || ''), numeric: true },
+  { key: 'proxAjuste',        label: 'Próx. ajuste', w: '7%',   align: 'left',  val: (c) => c.proxAjusteISO || '' },
   { key: 'tipoCom',           label: 'Comunic.',     w: '5.5%', align: 'left',  val: (c) => c.tipoCom || '' },
-  { key: 'mail_arrendatario', label: 'email',        w: '7%',   align: 'left',  val: (c) => c.mail_arrendatario || '' },
+  { key: 'mail_arrendatario', label: 'email',        w: '6.5%', align: 'left',  val: (c) => c.mail_arrendatario || '' },
 ]
 
 const menuItem = {
@@ -405,6 +453,9 @@ export default function NotificacionesPage() {
       const tieneEsp = cantEsp > 0 && mesesEsp > 0
       const espVigente = tieneEsp && nMesEsp != null && nMesEsp >= 1 && nMesEsp <= mesesEsp
 
+      // Próximo reajuste (para la columna "Próx. ajuste"). ISO para ordenar/filtrar; label bonito para pintar.
+      const proxISO = proximaFechaReajuste(c, mesSel)
+
       return {
         ...c, apagar, apagarCalc, tieneOverride, tipoCom, envioEstado, sendable,
         esp: tieneEsp ? { meses: mesesEsp, cantidad: cantEsp, comentario: c.comentario2b || '', vigente: espVigente } : null,
@@ -417,6 +468,8 @@ export default function NotificacionesPage() {
         // (p.ej. A00792 → agosto, A00339 → julio) reaparecía en la columna y en el correo cada mes. (v10)
         ajusteTipo: tipoCom === 'AJUSTE' ? av.tipo : null,
         ajusteMonto: tipoCom === 'AJUSTE' ? av.monto : 0,
+        proxAjusteISO: proxISO || '',
+        proxAjusteLabel: proxISO ? fmtMesAnio(proxISO) : '',
       }
     })
   }, [contratos, notiMap, mesSel, idxMes])
@@ -1141,7 +1194,9 @@ export default function NotificacionesPage() {
                       title={c.tieneOverride ? `Importe manual (calculado: $${fmtMiles(c.apagarCalc)})` : ''}>
                       ${fmtMiles(c.apagar)}{c.tieneOverride ? ' *' : ''}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 12, textAlign: 'right', fontWeight: c.ajusteMonto > 0 ? 600 : 400, color: c.ajusteMonto > 0 ? '#b45309' : '#CBD5E1' }}
-                      title={c.ajusteMonto > 0 ? `Reajuste vigente (${c.ajusteTipo || ''})` : ''}>{c.ajusteMonto > 0 ? '$' + fmtMiles(c.ajusteMonto) : '—'}</td>
+                      title={c.ajusteMonto > 0 ? `Reajuste de este mes (${c.ajusteTipo || ''})` : ''}>{c.ajusteMonto > 0 ? '$' + fmtMiles(c.ajusteMonto) : '—'}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.proxAjusteLabel ? '#6B7280' : '#CBD5E1', whiteSpace: 'nowrap' }}
+                      title={c.proxAjusteISO ? `Próximo reajuste${c.revision ? ' (' + c.revision + ')' : ''}: ${fmtFecha(c.proxAjusteISO)}` : (esUF(c.revision) ? 'En UF: se actualiza cada mes con el valor de la UF' : 'Sin reajuste programado')}>{c.proxAjusteLabel || '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: c.tipoCom === 'UF' ? '#1a56db' : c.tipoCom === 'AJUSTE' ? '#d97706' : '#9CA3AF', fontWeight: 500 }}>{c.tipoCom === 'AJUSTE' || c.tipoCom === 'UF' ? c.tipoCom : '—'}</td>
                     <td style={{ padding: '9px 12px', borderBottom: '1px solid #F0EEE8', fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.mail_arrendatario || ''}>{c.mail_arrendatario || '—'}</td>
                     <td style={{ padding: '9px 6px', borderBottom: '1px solid #F0EEE8', textAlign: 'center' }}>
