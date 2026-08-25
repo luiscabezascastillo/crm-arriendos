@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v10 · 2026-08-25 · INTERNO nunca lleva markup. (1) lineaConMarkup fuerza markup 0 en líneas INTERNO,
+//   ignorando cualquier markup_pct heredado (presupuestos antiguos guardados con 20% antes de la etiqueta). (2) Al
+//   cambiar el TIPO de una línea, el markup se ajusta solo: INTERNO⇒0, EXTERNO⇒default 20%. Así Adalis/Fabiola pueden
+//   marcar una línea como interna, el markup queda en cero y guardan sin tocar la columna de markup (que no ven).
+//   Requiere api/presupuestos/pdf v2 (mismo criterio en el PDF). Hereda v9.
 // VERSION: v9 · 2026-08-11 · DEEP-LINK: /procesos/presupuestos?codigo=Cxxx (o ?num=) abre ese presupuesto al
 //   cargar la lista (para enlazarlo desde la hoja del término). Aditivo, no cambia el resto. Hereda v8.
 // VERSION: v8 · 2026-08-07 · PDF + Email del presupuesto CON markup, desde la hoja (como en Términos). Botón "PDF con
@@ -70,10 +75,12 @@ const tipoDe = (l) => (esInterno(l) ? 'INTERNO' : 'EXTERNO')
 // Markup por defecto de la línea según su tipo: INTERNO => 0, EXTERNO => MARKUP_DEFAULT.
 const markupDefault = (l) => (esInterno(l) ? 0 : MARKUP_DEFAULT)
 // Precio de una línea CON markup aplicado (precio al cliente). Mismo patrón que Términos.
-// Si la línea no tiene markup_pct explícito, usa el default según el tipo (INTERNO 0 / EXTERNO 20).
+// REGLA FIRME: una línea INTERNO (trabajo propio de FCR) NUNCA lleva markup — se ignora cualquier markup_pct
+// heredado (p. ej. presupuestos antiguos que se guardaron con 20% antes de existir la etiqueta INTERNO/EXTERNO).
+// Solo las EXTERNO usan markup_pct explícito, o el default (20%) si no lo tienen.
 function lineaConMarkup(l) {
   const base = Number(l.base_imponible) || 0
-  const mk = (l.markup_pct === '' || l.markup_pct == null) ? markupDefault(l) : (Number(l.markup_pct) || 0)
+  const mk = esInterno(l) ? 0 : ((l.markup_pct === '' || l.markup_pct == null) ? markupDefault(l) : (Number(l.markup_pct) || 0))
   const baseMk = Math.round(base * (1 + mk / 100))
   const ivaMk = Math.round(baseMk * 0.19)
   return { base: baseMk, iva: ivaMk, total: baseMk + ivaMk, markup: mk }
@@ -222,6 +229,14 @@ export default function PresupuestosPage() {
   // ── lineas ──
   function setLinea(i, k, v) {
     setLineas(ls => ls.map((l, j) => j === i ? calcLinea({ ...l, [k]: v }) : l))
+  }
+  // Cambiar el TIPO ajusta también el markup: INTERNO => 0 (trabajo propio, sin margen); EXTERNO => '' (usa el
+  // 20% por defecto). Así, si Adalis/Fabiola marcan una línea como interna, el markup queda en cero y pueden
+  // guardar sin tocar la columna de markup (que no ven). Corrige también presupuestos antiguos al re-etiquetar.
+  function cambiarTipo(i, tipo) {
+    setLineas(ls => ls.map((l, j) => j === i
+      ? calcLinea({ ...l, tipo_ejecucion: tipo, markup_pct: tipo === 'INTERNO' ? 0 : '' })
+      : l))
   }
   function agregarLinea() { setLineas(ls => [...ls, { ...LINEA_VACIA }]) }
   function quitarLinea(i) { setLineas(ls => ls.filter((_, j) => j !== i)) }
@@ -591,7 +606,7 @@ export default function PresupuestosPage() {
                           <span style={{ fontSize: 12, fontWeight: 600, color: esInterno(l) ? '#0f766e' : '#185FA5' }}>{tipoDe(l)}</span>
                         ) : (
                           <select style={{ ...input, padding: '6px 8px', cursor: 'pointer', color: esInterno(l) ? '#0f766e' : '#185FA5', fontWeight: 600 }}
-                            value={tipoDe(l)} onChange={e => setLinea(i, 'tipo_ejecucion', e.target.value)}>
+                            value={tipoDe(l)} onChange={e => cambiarTipo(i, e.target.value)}>
                             <option value="EXTERNO">Externo</option>
                             <option value="INTERNO">Interno</option>
                           </select>

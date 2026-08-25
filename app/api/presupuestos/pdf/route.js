@@ -1,3 +1,6 @@
+// VERSION: v2 · 2026-08-25 · INTERNO ⇒ markup 0 SIEMPRE (aunque la línea traiga un markup_pct explícito heredado
+//   de un presupuesto antiguo). Antes, un markup_pct guardado (p. ej. 20) se aplicaba también a líneas internas.
+//   Mismo criterio que la hoja Presupuestos v10. Hereda v1.
 // VERSION: v1 · 2026-08-07 · app/api/presupuestos/pdf/route.js
 //   Genera el PDF del presupuesto CON MARKUP (precio al cliente) desde la hoja de Presupuestos y lo sube al bucket
 //   'presupuestos' (público, nombre con token aleatorio). Devuelve { pdf_url, path, neto, iva, total, para: {to, nombre} }.
@@ -67,7 +70,9 @@ export async function POST(req) {
     : [{ descripcion: p.descripcion || ('Presupuesto ' + (p.numero || '')), cantidad: null, base: n0(p.neto), markup_pct: null, tipo: 'EXTERNO' }]
 
   const lineas = lineasFuente.map(l => {
-    const mk = (l.markup_pct === '' || l.markup_pct == null) ? (esInterno(l.tipo) ? 0 : MARKUP_DEFAULT) : (Number(l.markup_pct) || 0)
+    // INTERNO ⇒ markup 0 SIEMPRE (trabajo propio de FCR), aunque tenga un markup_pct explícito heredado de un
+    // presupuesto antiguo. Solo EXTERNO usa markup_pct explícito o el default (20%).
+    const mk = esInterno(l.tipo) ? 0 : ((l.markup_pct === '' || l.markup_pct == null) ? MARKUP_DEFAULT : (Number(l.markup_pct) || 0))
     const importe = Math.round(l.base * (1 + mk / 100))
     return { descripcion: l.descripcion, cantidad: l.cantidad, importe }
   })
