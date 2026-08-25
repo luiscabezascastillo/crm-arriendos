@@ -1,4 +1,9 @@
 'use client'
+// VERSION: v10 · 2026-08-25 · FIX columna "Ajuste" y bloque de ajuste del correo: mostraban el reajuste VIGENTE
+//   arrastrado (el más reciente <= mes), así que un ajuste de un mes anterior reaparecía cada mes (A00792 de
+//   agosto, A00339 de julio, seguían saliendo en septiembre). Ahora `ajusteTipo/ajusteMonto` se atan a tipoCom
+//   ('AJUSTE' solo si el reajuste cae DENTRO del mes procesado), igual que ya hacía la columna COMUNIC. y el KPI
+//   "Con ajuste". La renta "A pagar" no cambia (sigue sumando todos los reajustes ya aplicados). Hereda v9.
 // VERSION: v9 · 2026-08-24 · (1) Nueva columna "Ajuste" (importe del reajuste vigente) y columna "Envío" más estrecha,
 //   sin scroll horizontal. (2) Fondo del IDADMON coloreado si tiene "Especial primeros meses": azul fuerte si aún
 //   vigente, azul claro si ya pasó; tooltip (~1s) con meses/cuantía/comentario (comentario2b). Hereda v8.
@@ -406,8 +411,12 @@ export default function NotificacionesPage() {
         control,                                   // texto de la columna C (fecha o motivo)
         controlEsFecha,
         comentario: noti?.comentario || '',        // columna W (nota informativa)
-        ajusteTipo: av ? av.tipo : null,
-        ajusteMonto: av ? av.monto : 0,
+        // El AJUSTE (columna + email) es SOLO el reajuste que toma efecto en el mes procesado, no el
+        // vigente arrastrado. Se ata a tipoCom, que ya exige que la fecha del reajuste caiga DENTRO del
+        // mes. Antes se usaba `av` (el más reciente <= mes), así que un ajuste de un mes anterior
+        // (p.ej. A00792 → agosto, A00339 → julio) reaparecía en la columna y en el correo cada mes. (v10)
+        ajusteTipo: tipoCom === 'AJUSTE' ? av.tipo : null,
+        ajusteMonto: tipoCom === 'AJUSTE' ? av.monto : 0,
       }
     })
   }, [contratos, notiMap, mesSel, idxMes])
