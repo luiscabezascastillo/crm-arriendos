@@ -1,4 +1,8 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
+// VERSION: v18 · 2026-08-25 · FIX filtro de cabecera (Inmueble, etc.): al buscar dentro del filtro, "Seleccionar todo"
+//   marcaba TODAS las opciones (no solo las buscadas), así que filtrar p.ej. por "Pablo Urzúa" acababa marcando todo
+//   y no filtraba nada. Ahora, con búsqueda activa, "Seleccionar resultados" actúa solo sobre lo encontrado, y hay un
+//   botón "Filtrar solo por estos" que aplica de un clic el subconjunto buscado. Hereda v17.
 // VERSION: v17 · 2026-08-23 · Bajo cada importe de servicio (GGCC/Luz/Agua/Gas) se muestra su FECHA DE CAPTURA
 //   compacta (dd-mm, de fecha_hecho_*), para detectar de un vistazo datos viejos que conviene actualizar a mano.
 // VERSION: v16 · 2026-08-23 · La etiqueta de corte es el ÚLTIMO corte tomado (máximo), no +1: la tabla viva ES
@@ -145,8 +149,18 @@ function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
   const filteredOpts = options.filter(o => String(o).toLowerCase().includes(search.toLowerCase()))
 
   function toggleAll() {
-    if (selected.length === options.length) setSelected([])
-    else setSelected([...options])
+    if (search.trim()) {
+      // Con BÚSQUEDA activa: "Seleccionar todo" actúa SOLO sobre los resultados visibles (como Excel/SA).
+      // Antes seleccionaba TODAS las opciones aunque hubieras buscado, así que filtrar por "pablo" acababa
+      // marcando todo y no filtraba nada.
+      const vis = filteredOpts
+      const todosVisSel = vis.length > 0 && vis.every(o => selected.includes(o))
+      if (todosVisSel) setSelected(selected.filter(o => !vis.includes(o)))
+      else setSelected([...new Set([...selected, ...vis])])
+    } else {
+      if (selected.length === options.length) setSelected([])
+      else setSelected([...options])
+    }
   }
   function toggle(opt) {
     setSelected(s => s.includes(opt) ? s.filter(x => x !== opt) : [...s, opt])
@@ -213,8 +227,10 @@ function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
             <div onClick={toggleAll} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px', borderRadius:6, cursor:'pointer', fontSize:12 }}
               onMouseEnter={e => e.currentTarget.style.background='#F3F4F6'}
               onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-              <input type="checkbox" readOnly checked={selected.length === options.length} style={{ margin:0 }} />
-              <span style={{ fontWeight:500 }}>Seleccionar todo</span>
+              <input type="checkbox" readOnly
+                checked={search.trim() ? (filteredOpts.length>0 && filteredOpts.every(o => selected.includes(o))) : (selected.length === options.length && options.length>0)}
+                style={{ margin:0 }} />
+              <span style={{ fontWeight:500 }}>{search.trim() ? 'Seleccionar resultados' : 'Seleccionar todo'}</span>
             </div>
             {filteredOpts.map(opt => (
               <div key={opt} onClick={() => toggle(opt)}
@@ -226,6 +242,14 @@ function ExcelFilter({ label, type, options, value, onApply, align='left' }) {
               </div>
             ))}
           </div>
+          {search.trim() && filteredOpts.length > 0 && (
+            <div style={{ padding:'0 12px 8px' }}>
+              <button onClick={() => { onApply({ selected: [...filteredOpts], sort: sortDir, min: minVal, max: maxVal }); setOpen(false) }}
+                style={{ width:'100%', padding:'6px', borderRadius:6, border:'1px solid #BFDBFE', background:'#EFF6FF', fontSize:12, cursor:'pointer', color:'#1D4ED8', fontWeight:600 }}>
+                Filtrar solo por estos {filteredOpts.length > 1 ? `(${filteredOpts.length})` : ''}
+              </button>
+            </div>
+          )}
           <div style={{ padding:'8px 12px', borderTop:'0.5px solid #F3F4F6', display:'flex', gap:6 }}>
             <button onClick={clear} style={{ flex:1, padding:'5px', borderRadius:6, border:'1px solid #E5E7EB', background:'#fff', fontSize:12, cursor:'pointer', color:'#6B7280' }}>Limpiar</button>
             <button onClick={apply} style={{ flex:1, padding:'5px', borderRadius:6, border:'none', background:'#1D4ED8', fontSize:12, cursor:'pointer', color:'#fff', fontWeight:500 }}>Aplicar</button>
