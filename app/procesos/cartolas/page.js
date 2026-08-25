@@ -1,4 +1,10 @@
 'use client'
+// VERSION: v31 · 2026-08-25 · Vista Tabla: el filtro por columna pasa al estilo EXCEL de SA (server-side): lista de
+//   valores con casillas + buscador + "(Seleccionar todo)" + una condición (texto/número), todo traducido a la
+//   consulta Supabase (.in / .ilike / .gte…) para que filtre las ~29k filas reales, no solo las cargadas. Solo en las
+//   columnas que se usan: IDADMON, Concepto, Cargo, Abono, Saldo, Calif, Estado, Fecha. La lista de valores se saca
+//   con una consulta a esa sola columna (paginada, acotada por los otros filtros activos, cacheada). Sin ordenación de
+//   columna (chocaría con la paginación por id; queda como mejora aparte). Hereda v30.
 // VERSION: v30 · 2026-08-24 · Boton "Cartolas a auditar" en la barra de la vista Tabla (-> /procesos/cartolas/auditar). Hereda v29.
 // VERSION: v29 · 2026-08-24 · Abre la cartola directamente via URL ?idadmon=A00xxx (p.ej. al pinchar el IDADMON en Cobranza). Cambio aditivo. Hereda v28.
 // VERSION: v28 · 2026-08-16 · La pestaña "Cartola por IDADMON" deja de ser botón: ahora es solo un texto
@@ -134,6 +140,66 @@ const fechaOrden = (s) => {
   return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1])
 }
 
+/* ── Filtro estilo Excel (server-side), como en SA ────────────────────────────
+   Solo llevan botón de filtro las columnas que se usan de verdad. Cada columna
+   declara su TIPO, que decide los operadores de condición y cómo se ordena la
+   lista de valores. El filtro se aplica SIEMPRE en la consulta a Supabase (no en
+   memoria), para que actúe sobre las ~29k filas reales y no solo las cargadas. */
+const FTIPO = { idadmon: 'texto', concepto: 'texto', cargo: 'num', abono: 'num', saldo: 'num', calif: 'texto', estado: 'texto', fecha: 'fecha' }
+const esFiltrable = (key) => Object.prototype.hasOwnProperty.call(FTIPO, key)
+
+const OPERADORES = {
+  texto: [['contiene', 'Contiene'], ['nocontiene', 'No contiene'], ['empieza', 'Empieza por'], ['termina', 'Termina por'], ['igual', 'Igual a'], ['distinto', 'Distinto de']],
+  num:   [['=', 'Igual a'], ['>', 'Mayor que'], ['<', 'Menor que'], ['>=', 'Mayor o igual'], ['<=', 'Menor o igual'], ['entre', 'Entre dos valores']],
+  fecha: [['contiene', 'Contiene'], ['igual', 'Igual a'], ['empieza', 'Empieza por (dd/mm…)']],
+}
+const condPuesta = (c) => !!(c && c.op && c.v1 !== '' && c.v1 != null)
+// ¿el filtro de esta columna hace algo?  (lista de valores O una condición)
+const filtroCartolaActivo = (s) => !!s && (Array.isArray(s.sel) || condPuesta(s.c1))
+
+// Aplica UNA condición sobre la query del servidor. Devuelve la query modificada.
+const aplicarCond = (q, key, tipo, cond) => {
+  if (!condPuesta(cond)) return q
+  const { op, v1, v2 } = cond
+  if (tipo === 'num') {
+    const a = Number(v1), b = Number(v2)
+    if (Number.isNaN(a)) return q
+    if (op === '=')  return q.eq(key, a)
+    if (op === '>')  return q.gt(key, a)
+    if (op === '<')  return q.lt(key, a)
+    if (op === '>=') return q.gte(key, a)
+    if (op === '<=') return q.lte(key, a)
+    if (op === 'entre') return Number.isNaN(b) ? q.gte(key, a) : q.gte(key, Math.min(a, b)).lte(key, Math.max(a, b))
+    return q
+  }
+  const v = String(v1 ?? '')
+  if (op === 'contiene')   return q.ilike(key, `%${v}%`)
+  if (op === 'nocontiene') return q.not(key, 'ilike', `%${v}%`)
+  if (op === 'empieza')    return q.ilike(key, `${v}%`)
+  if (op === 'termina')    return q.ilike(key, `%${v}`)
+  if (op === 'igual')      return q.eq(key, v)
+  if (op === 'distinto')   return q.neq(key, v)
+  return q
+}
+
+// Aplica el filtro completo de una columna (lista de valores + condición) a la query.
+const aplicarFiltroColumna = (q, key, f) => {
+  if (!filtroCartolaActivo(f)) return q
+  const tipo = FTIPO[key] || 'texto'
+  if (Array.isArray(f.sel)) {
+    const vals = tipo === 'num' ? f.sel.filter(x => x !== '' && x != null).map(Number) : f.sel
+    if (vals.length) q = q.in(key, vals)
+  }
+  return aplicarCond(q, key, tipo, f.c1)
+}
+
+// Etiqueta legible de un valor de la lista.
+const etiquetaValor = (tipo, k) => {
+  if (k === '' || k == null) return '(vacías)'
+  if (tipo === 'num') { const n = Number(k); return Number.isNaN(n) ? String(k) : n.toLocaleString('es-CL') }
+  return String(k)
+}
+
 /* Red de seguridad: si algo revienta al pintar, se muestra el motivo en vez de dejar la
    pantalla en blanco. Sin esto, un dato inesperado tumba la vista entera sin decir por qué. */
 class Salvavidas extends Component {
@@ -220,7 +286,10 @@ function TablaVista({ vista, setVista, abrirCartola }) {
   const [refreshing, setRefreshing] = useState(false)
   const [filtros, setFiltros] = useState({})
   const [openF, setOpenF] = useState(null)
-  const [draft, setDraft] = useState({})
+  const [draft, setDraft] = useState({})              // { sel:string[]|null, c1:{op,v1,v2}, busca }
+  const [distinctVals, setDistinctVals] = useState(null)   // valores de la columna abierta (null = cargando/aún no)
+  const [distinctLoading, setDistinctLoading] = useState(false)
+  const distinctRef = useRef({})                       // cache por (columna + otros filtros)
   const [savingId, setSavingId] = useState(null)
   const [toast, setToast] = useState(null)
   // Chequeo de duplicados (modal)
@@ -249,14 +318,7 @@ function TablaVista({ vista, setVista, abrirCartola }) {
   const buildQuery = (fActuales) => {
     let q = supabase.from('cuentas').select('*')
     for (const [key, f] of Object.entries(fActuales)) {
-      if (!f) continue
-      const col = COLS.find(c => c.key === key)
-      if (col?.money) {
-        if ((f.min ?? '') !== '') q = q.gte(key, Number(f.min))
-        if ((f.max ?? '') !== '') q = q.lte(key, Number(f.max))
-      } else if ((f.search ?? '') !== '') {
-        q = q.ilike(key, `%${f.search}%`)
-      }
+      q = aplicarFiltroColumna(q, key, f)
     }
     return q
   }
@@ -320,10 +382,7 @@ function TablaVista({ vista, setVista, abrirCartola }) {
 
   const onScroll = (e) => { if (e.currentTarget.scrollTop <= 40) loadMore() }
 
-  const activo = (key) => {
-    const f = filtros[key]
-    return !!f && ((f.search ?? '') !== '' || (f.min ?? '') !== '' || (f.max ?? '') !== '')
-  }
+  const activo = (key) => filtroCartolaActivo(filtros[key])
   const hayFiltros = Object.keys(filtros).some(k => activo(k))
 
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
@@ -450,45 +509,150 @@ function TablaVista({ vista, setVista, abrirCartola }) {
   }
 
   const popCol = openF ? COLS.find(c => c.key === openF.key) : null
+
+  // Trae la lista de valores de UNA columna (consulta a esa sola columna, paginada, acotada por
+  // los OTROS filtros activos). Es barata: una columna flaca aunque sean 29k filas. Se cachea.
+  const cargarDistinct = async (key, fActuales) => {
+    const tipo = FTIPO[key] || 'texto'
+    const otros = Object.fromEntries(Object.entries(fActuales).filter(([k, v]) => k !== key && filtroCartolaActivo(v)))
+    const sig = key + '|' + JSON.stringify(otros)
+    if (distinctRef.current[sig]) { setDistinctVals(distinctRef.current[sig]); setDistinctLoading(false); return }
+    setDistinctLoading(true); setDistinctVals(null)
+    const vistos = new Set()
+    const PAG = 1000, MAXPAG = 60, TOPE = 6000, CONC = 6
+    // arma una consulta fresca de esa sola columna con los OTROS filtros aplicados (la reusamos por página)
+    const armar = (opts) => {
+      let q = supabase.from('cuentas').select(key, opts)
+      for (const [k, f] of Object.entries(otros)) q = aplicarFiltroColumna(q, k, f)
+      return q
+    }
+    try {
+      // 1) contamos para saber cuántas páginas hay; 2) las traemos en paralelo (en tandas).
+      const { count } = await armar({ count: 'exact', head: true })
+      const nPag = count != null ? Math.min(MAXPAG, Math.max(1, Math.ceil(count / PAG))) : MAXPAG
+      for (let base = 0; base < nPag; base += CONC) {
+        const lote = []
+        for (let p = base; p < Math.min(base + CONC, nPag); p++) lote.push(armar().order(key, { ascending: true }).range(p * PAG, p * PAG + PAG - 1))
+        const res = await Promise.all(lote)
+        let ultimaCorta = false
+        for (const { data, error } of res) {
+          if (error) continue
+          for (const row of (data || [])) vistos.add(row[key] == null ? '' : String(row[key]))
+          if ((data || []).length < PAG) ultimaCorta = true
+        }
+        if (ultimaCorta || vistos.size >= TOPE) break
+      }
+    } catch { /* red: si falla, lista vacía y quedan las condiciones */ }
+    let arr = Array.from(vistos)
+    if (tipo === 'num') arr.sort((a, b) => (Number(a) || 0) - (Number(b) || 0))
+    else if (tipo === 'fecha') arr.sort((a, b) => fechaOrden(a) - fechaOrden(b))
+    else arr.sort((a, b) => String(a).localeCompare(String(b)))
+    distinctRef.current[sig] = arr
+    setDistinctVals(arr); setDistinctLoading(false)
+  }
+
   const abrirFiltro = (c, e) => {
     const rc = e.currentTarget.getBoundingClientRect()
-    setDraft(filtros[c.key] || {})
-    setOpenF(openF && openF.key === c.key ? null : { key: c.key, x: rc.left, y: rc.bottom + 2 })
+    if (openF && openF.key === c.key) { setOpenF(null); return }
+    const est = filtros[c.key] || {}
+    setDraft({ sel: Array.isArray(est.sel) ? [...est.sel] : null, c1: est.c1 || { op: '', v1: '', v2: '' }, busca: '' })
+    setOpenF({ key: c.key, x: rc.left, y: rc.bottom + 2 })
+    cargarDistinct(c.key, filtros)
   }
   const aplicarFiltro = () => {
-    const nf = { ...filtros, [openF.key]: draft }
+    const key = openF.key
+    const total = (distinctVals || []).length
+    const nuevo = {}
+    if (Array.isArray(draft.sel) && total && draft.sel.length < total) nuevo.sel = draft.sel   // solo si no están TODAS
+    if (condPuesta(draft.c1)) nuevo.c1 = draft.c1
+    const nf = { ...filtros }
+    if (Object.keys(nuevo).length) nf[key] = nuevo; else delete nf[key]
     setFiltros(nf); setOpenF(null); fetchInitial(nf)
   }
   const quitarFiltro = () => {
     const nf = { ...filtros }; delete nf[openF.key]
     setFiltros(nf); setOpenF(null); fetchInitial(nf)
   }
+
   const renderPop = () => {
     if (!openF || !popCol) return null
     const c = popCol
-    const left = Math.min(openF.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 260)
+    const tipo = FTIPO[c.key] || 'texto'
+    const left = Math.min(openF.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 296)
+    const todos = distinctVals || []
+    const marcadas = draft.sel == null ? new Set(todos) : new Set(draft.sel)
+    const bt = (draft.busca || '').toLowerCase()
+    const vis = bt ? todos.filter(k => etiquetaValor(tipo, k).toLowerCase().includes(bt)) : todos
+    const todasVis = vis.length > 0 && vis.every(k => marcadas.has(k))
+    const algunaVis = vis.some(k => marcadas.has(k))
+
+    const nextSel = (mut) => {
+      const cur = draft.sel == null ? new Set(todos) : new Set(draft.sel)
+      mut(cur)
+      return Array.from(cur)
+    }
+    const toggle = (k) => setDraft(d => ({ ...d, sel: nextSel(s => { s.has(k) ? s.delete(k) : s.add(k) }) }))
+    const toggleAll = () => setDraft(d => ({ ...d, sel: nextSel(s => { vis.forEach(k => todasVis ? s.delete(k) : s.add(k)) }) }))
+    const setC1 = (patch) => setDraft(d => ({ ...d, c1: { ...d.c1, ...patch } }))
+
+    const campo = { width: '100%', fontSize: 12, padding: '5px 7px', borderRadius: 6, border: '0.5px solid #D3D1C7', boxSizing: 'border-box' }
+    const casilla = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', cursor: 'pointer' }
+    const marcadasN = draft.sel == null ? todos.length : draft.sel.length
+
     return (
       <>
         <div onClick={() => setOpenF(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-        <div style={{ position: 'fixed', left, top: openF.y, width: 248, background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.15)', zIndex: 41, fontSize: 12 }}>
-          <div style={{ padding: 10 }}>
-            <div style={{ fontWeight: 600, color: '#5F5E5A', marginBottom: 6 }}>Filtrar: {c.h}</div>
-            {c.money ? (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input value={draft.min ?? ''} onChange={e => setDraft(d => ({ ...d, min: e.target.value }))} placeholder="≥ min" inputMode="numeric"
-                  style={{ width: '50%', fontSize: 12, padding: '5px 6px', border: '0.5px solid #D3D1C7', borderRadius: 5, boxSizing: 'border-box' }} />
-                <input value={draft.max ?? ''} onChange={e => setDraft(d => ({ ...d, max: e.target.value }))} placeholder="≤ max" inputMode="numeric"
-                  style={{ width: '50%', fontSize: 12, padding: '5px 6px', border: '0.5px solid #D3D1C7', borderRadius: 5, boxSizing: 'border-box' }} />
-              </div>
-            ) : (
-              <input autoFocus value={draft.search ?? ''} onChange={e => setDraft(d => ({ ...d, search: e.target.value }))}
-                onKeyDown={e => { if (e.key === 'Enter') aplicarFiltro() }} placeholder="contiene…"
-                style={{ width: '100%', fontSize: 12, padding: '5px 6px', border: '0.5px solid #D3D1C7', borderRadius: 5, boxSizing: 'border-box' }} />
+        <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left, top: openF.y, width: 284, background: '#fff', border: '0.5px solid #B4B2A9', borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,.16)', zIndex: 41, fontSize: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 10px 2px', fontWeight: 600, color: '#5F5E5A' }}>Filtrar: {c.h}</div>
+
+          {/* Condición de texto / número */}
+          <div style={{ padding: '4px 10px 8px', borderBottom: '0.5px solid #ECEAE3' }}>
+            <select value={draft.c1.op} onChange={e => setC1({ op: e.target.value, v1: '', v2: '' })} style={{ ...campo, marginBottom: 5 }}>
+              <option value="">— sin condición —</option>
+              {OPERADORES[tipo].map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+            </select>
+            {draft.c1.op && (
+              <input type={tipo === 'num' ? 'number' : 'text'} value={draft.c1.v1} autoFocus
+                onChange={e => setC1({ v1: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter') aplicarFiltro() }}
+                placeholder="valor" style={{ ...campo, marginBottom: draft.c1.op === 'entre' ? 5 : 0 }} />
+            )}
+            {draft.c1.op === 'entre' && (
+              <input type="number" value={draft.c1.v2} onChange={e => setC1({ v2: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter') aplicarFiltro() }} placeholder="y" style={campo} />
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', borderTop: '0.5px solid #EDEBE4' }}>
-            <button onClick={quitarFiltro} style={{ fontSize: 11, border: '0.5px solid #D3D1C7', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Quitar</button>
-            <button onClick={aplicarFiltro} style={{ fontSize: 11, border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 6, padding: '4px 14px', cursor: 'pointer' }}>Aplicar</button>
+
+          {/* Lista de valores con casillas */}
+          <div style={{ padding: '8px 10px 4px' }}>
+            <input value={draft.busca} onChange={e => setDraft(d => ({ ...d, busca: e.target.value }))} placeholder="Buscar valor…" style={{ ...campo, marginBottom: 6 }} />
+            <label style={{ ...casilla, fontWeight: 600 }}>
+              <input type="checkbox" checked={todasVis}
+                ref={el => { if (el) el.indeterminate = !todasVis && algunaVis }}
+                onChange={toggleAll} disabled={distinctLoading || todos.length === 0} />
+              <span>{draft.busca ? '(Seleccionar los resultados)' : '(Seleccionar todo)'}</span>
+            </label>
+            <div style={{ borderBottom: '0.5px solid #ECEAE3', margin: '5px 0 3px' }} />
+            <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+              {distinctLoading && <div style={{ fontSize: 12, color: '#B4B2A9', padding: '8px 0' }}>Cargando valores…</div>}
+              {!distinctLoading && vis.length === 0 && <div style={{ fontSize: 12, color: '#B4B2A9', padding: '8px 0' }}>Sin valores.</div>}
+              {!distinctLoading && vis.map(k => (
+                <label key={k} style={casilla}>
+                  <input type="checkbox" checked={marcadas.has(k)} onChange={() => toggle(k)} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{etiquetaValor(tipo, k)}</span>
+                </label>
+              ))}
+            </div>
+            {!distinctLoading && todos.length >= 6000 && <div style={{ fontSize: 10, color: '#B4B2A9', padding: '2px 0 4px' }}>Lista recortada (muchos valores). Usa el buscador o una condición.</div>}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, padding: 8, borderTop: '0.5px solid #ECEAE3', background: '#FAFAF7' }}>
+            <button onClick={aplicarFiltro}
+              style={{ flex: 1, fontSize: 12, padding: 6, borderRadius: 6, border: 'none', background: '#1D9E75', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+              Aplicar{Array.isArray(draft.sel) && todos.length && marcadasN < todos.length ? ` (${marcadasN})` : ''}
+            </button>
+            <button onClick={quitarFiltro} title="Quitar el filtro de esta columna" style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>Quitar</button>
+            <button onClick={() => setOpenF(null)} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', cursor: 'pointer' }}>✕</button>
           </div>
         </div>
       </>
@@ -543,8 +707,10 @@ function TablaVista({ vista, setVista, abrirCartola }) {
                   <th key={i} style={{ padding: '6px 8px', textAlign: c.align, fontWeight: 600, color: '#5F5E5A', whiteSpace: 'nowrap', minWidth: c.w, position: 'sticky', top: 0, background: '#F1EFE8', zIndex: 3, borderBottom: '0.5px solid #D3D1C7' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       {c.h}
-                      <button onClick={(e) => abrirFiltro(c, e)} title="Filtrar"
-                        style={{ border: 'none', background: activo(c.key) ? '#1D9E75' : 'transparent', color: activo(c.key) ? '#fff' : '#888780', borderRadius: 4, cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: '2px 4px' }}>▾</button>
+                      {esFiltrable(c.key) && (
+                        <button onClick={(e) => abrirFiltro(c, e)} title={activo(c.key) ? 'Filtro aplicado' : 'Filtrar'}
+                          style={{ border: 'none', background: activo(c.key) ? '#1D9E75' : 'transparent', color: activo(c.key) ? '#fff' : '#888780', borderRadius: 4, cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: '2px 4px' }}>▾</button>
+                      )}
                     </span>
                   </th>
                 ))}

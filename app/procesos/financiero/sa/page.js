@@ -19,6 +19,7 @@
 // VERSION: v32 · 2026-08-12 · SA: la columna MONTO cambia su desplegable por un filtro POR RANGO con signo
 //   (Desde/Hasta): cargos negativos / abonos positivos, un lado opcional. Se quitan de ese menú el "ordenar" y las
 //   opciones inactivas (borrar filtro / quitar todos). El resto de columnas conserva su filtro Excel. Hereda v31.
+// VERSION: v32 · 2026-08-24 · Aviso al vuelo si Cuenta 1 no es un unico codigo bien formado (p.ej. "1104-04 2105-07"): avisa que ira al puente 1104-98. Evita el pendiente que no se va. Hereda v31.
 // VERSION: v31 · 2026-07-30 · SA: Cuenta 1 se pone sola en 2105-05 en pagos a proveedor.
 //   Cuando la linea CUADRA con una factura de Compras (mismo importe, ±20 dias), el pago
 //   cancela la deuda del proveedor, asi que la contrapartida SIEMPRE es 2105-05 PROVEEDORES.
@@ -1567,6 +1568,8 @@ const wantScroll = useRef(false)
                   const cta1EsProv = sugs.length > 0 && codDe(l.cuenta_1) === CTA_PROVEEDORES
                   const d1 = describeCuenta(l.cuenta_1)
                   const d2 = describeCuenta(l.cuenta_2)
+                  const cta1Val = String(l.cuenta_1 || '').trim()
+                  const cta1Mal = !!cta1Val && !/^[0-9]{4}-[0-9]{2}(-[0-9A-Za-z]+)?$/.test(cta1Val)
                   return (
                   <div key={i} style={{ border: '0.5px solid #ECEAE3', borderRadius: 9, padding: '9px 11px', marginBottom: 9, background: '#FCFCFA' }}>
                     {/* fila 1: folio · CCB · cantidad · concepto · quitar */}
@@ -1586,6 +1589,11 @@ const wantScroll = useRef(false)
                           onChange={v => setLinea(i, 'cuenta_1', v)} />
                         {d1 && <div style={{ fontSize: 10.5, color: '#888780', marginTop: 3, lineHeight: 1.3 }}>{d1}</div>}
                         {cta1EsProv && <div style={{ fontSize: 10, color: '#085041', marginTop: 2 }}>· puesta sola: pago a proveedor</div>}
+                        {cta1Mal && (
+                          <div style={{ fontSize: 10.5, color: '#B23A3A', marginTop: 4, fontWeight: 600, lineHeight: 1.35 }}>
+                            ⚠ Una sola cuenta por línea. Esto no es un código válido: irá al puente 1104-98 (Pendiente por clasificar). Usa «+ Añadir línea» para repartir.
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#888780', marginBottom: 3 }}>Cuenta 2 <span style={{ fontWeight: 400, color: '#B4B2A9' }}>· contrapartida</span></div>

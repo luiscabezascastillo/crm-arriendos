@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-24 · Explicacion inicial (COVID, solo S/SQ/Q, negativos->A00000; Karina lidera/Adalis colidera).
 // VERSION: v1 · 2026-08-24 · Panel "Cartolas a auditar": deuda grande (bajo cobranza) + saldo a favor
 //   (posible abono mal asignado), con Tipo, Seguimiento (Karina/Direccion) y Acciones/Notas.
 //   Adalis/Fabiola VEN y SUGIEREN; el trio (Alberto/Luis/Karina) hace seguimiento y registra acciones.
@@ -170,8 +171,11 @@ export default function AuditarPage() {
           <span style={{ cursor: 'pointer', color: VERDE }} onClick={() => router.push('/procesos/cartolas')}>← Cartolas</span> · Cartolas a auditar
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1A1A17', margin: '0 0 4px' }}>Cartolas a auditar</h1>
-        <div style={{ fontSize: 13, color: TENUE, marginBottom: 18 }}>
-          Cartolas con problema para revisar. Adalis y Fabiola <b>sugieren</b>; Karina/Dirección hacen <b>seguimiento</b> y registran <b>acciones</b> (y el traslado a A00000, en su caso). El IDADMON abre su Cartola.
+        <div style={{ fontSize: 13, color: '#1A1A17', background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 10, padding: '14px 16px', marginBottom: 18, lineHeight: 1.55 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Cómo abordar esta auditoría · Karina lidera, Adalis colidera</div>
+          Un saldo a favor del arrendatario casi nunca es real: <b>nadie paga de más</b>. Lo que hubo fue la época COVID, con precios especiales, y en aquel momento no se registraba bien; así que un negativo casi siempre es un <b>abono mal anotado</b> (o de otro contrato). Solo nos interesan los contratos <b>S, SQ y Q</b>. Empezad por los de <b>saldo negativo</b> (a favor).
+          <div style={{ marginTop: 8 }}>Plan para esta semana: <b>una hora diaria</b> de reunión entre vosotras para ver los casos, y <b>otra hora</b> para analizarlos y, al final, <b>modificar o pasar el abono sospechoso al buffer A00000</b> (eso solo Karina). Todo es reversible: lo del A00000 se devuelve a su IDADMON cuando aparezca el correcto.</div>
+          <div style={{ marginTop: 8, color: TENUE }}>Adalis y Fabiola: podéis <b>ver</b> y <b>sugerir</b> (💡); los cambios en la cartola los hace Karina.</div>
         </div>
         {loading && <div style={{ padding: 30, color: TENUE }}>Calculando…</div>}
         {error && <div style={{ padding: 16, color: ROJO, fontSize: 13 }}>Error: {error}</div>}
