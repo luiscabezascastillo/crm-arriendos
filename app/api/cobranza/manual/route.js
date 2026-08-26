@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-26 · Botón "← Volver" a Cobranza en la barra superior. Hereda v1.
 // VERSION: v1 · 2026-08-24 · Cobranza · Manual de uso (HTML imprimible / guardable como PDF).
 //   Se abre desde el boton "Manual" de la cabecera. Contenido estatico, para no informaticos.
 // Ruta real: app/api/cobranza/manual/route.js
@@ -30,11 +31,12 @@ export async function GET() {
   .k { background: #EEF4FF; border: 1px solid #CFE0FF; border-radius: 5px; padding: 1px 7px; font-size: 12.5px; font-weight: 600; color: #1D4ED8; white-space: nowrap; }
   .legal { color: #9B1C1C; font-weight: 700; }
   .cob { color: #085041; font-weight: 700; }
-  .toolbar { position: sticky; top: 0; background: #F4F6F9; padding: 10px 0; margin-bottom: 8px; }
+  .toolbar { position: sticky; top: 0; background: #F4F6F9; padding: 10px 0; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; }
+  button.volver { background: #fff; color: #085041; border: 1px solid #CBE6BE; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
   button.print { background: #1D9E75; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer; }
   @media print { .toolbar { display: none; } body { background: #fff; } .box, .tip, .warn { break-inside: avoid; } h2 { break-after: avoid; } }
 </style></head><body><div class="wrap">
-<div class="toolbar"><button class="print" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
+<div class="toolbar"><button class="volver" onclick="window.close();setTimeout(function(){location.href='/op/cobranza'},150)">← Volver</button><button class="print" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
 
 <h1>Manual de uso — Cobranza</h1>
 <div class="sub">Fondo Capital · Impago &rarr; gestión con constancia &rarr; pago o acción legal</div>

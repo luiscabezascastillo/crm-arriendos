@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-26 · Botón "← Volver" a Cobranza en la barra superior. Hereda v1.
 // VERSION: v1 · 2026-08-26 · Cobranza · Guía "Buenas prácticas para la reclamación a morosos" (HTML imprimible / PDF).
 //   Se abre desde el boton "📕 Guía morosos" de la cabecera. Contenido estatico, para todo el equipo.
 // Ruta real: app/api/cobranza/guia-morosos/route.js
@@ -30,13 +31,14 @@ export async function GET() {
   .gold { background: #FFF7E0; border: 1px solid #F0DFA8; border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 14px; color: #6b4e05; }
   .legal { color: #9B1C1C; font-weight: 700; }
   .cob { color: #085041; font-weight: 700; }
-  .toolbar { position: sticky; top: 0; background: #F4F6F9; padding: 10px 0; margin-bottom: 8px; }
+  .toolbar { position: sticky; top: 0; background: #F4F6F9; padding: 10px 0; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; }
+  button.volver { background: #fff; color: #085041; border: 1px solid #CBE6BE; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
   button.print { background: #1D9E75; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .lead { font-size: 15px; }
   .cierre { font-size: 15px; font-weight: 600; color: #1a3d33; background: #fff; border: 1px solid #E4E2DA; border-left: 4px solid #1D9E75; border-radius: 8px; padding: 14px 18px; margin: 20px 0 6px; }
   @media print { .toolbar { display: none; } body { background: #fff; } .box, .tip, .warn, .gold, .cierre { break-inside: avoid; } h2 { break-after: avoid; } }
 </style></head><body><div class="wrap">
-<div class="toolbar"><button class="print" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
+<div class="toolbar"><button class="volver" onclick="window.close();setTimeout(function(){location.href='/op/cobranza'},150)">← Volver</button><button class="print" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
 
 <h1>Buenas prácticas para la reclamación a morosos</h1>
 <div class="sub">Fondo Capital Rent · Guía interna para administración, finanzas y legal</div>

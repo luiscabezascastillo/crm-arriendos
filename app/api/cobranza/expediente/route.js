@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-26 · Botón "← Volver" a Cobranza en la barra superior. Hereda v1.
 // VERSION: v1 · 2026-08-10 · Expediente de cobranza (HTML listo para imprimir / guardar como PDF).
 //   GET ?idadmon=  -> documento con la cabecera del caso + TODAS las gestiones (constancia) en orden.
 //   Se abre en una pestaña; auto-lanza el diálogo de impresión (Guardar como PDF).
@@ -25,7 +26,7 @@ function pagina(titulo, cuerpo, autoprint) {
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #1f1f1f; margin: 0; padding: 0 24px 40px; font-size: 13px; }
-  .toolbar { padding: 12px 0; }
+  .toolbar { padding: 12px 0; display: flex; gap: 10px; align-items: center; }
   .toolbar button { font-size: 13px; padding: 8px 16px; border: 1px solid #1D9E75; background: #fff; color: #085041; border-radius: 6px; cursor: pointer; font-weight: 600; }
   header { border-bottom: 2px solid #1F3864; padding-bottom: 8px; margin-bottom: 14px; }
   header .marca { font-size: 16px; font-weight: 800; color: #1F3864; }
@@ -43,7 +44,7 @@ function pagina(titulo, cuerpo, autoprint) {
   footer { margin-top: 20px; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 8px; }
   @media print { .toolbar { display: none; } body { padding: 0 6px; } }
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>
+<div class="toolbar"><button onclick="window.close();setTimeout(function(){location.href='/op/cobranza'},150)">← Volver</button><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>
 ${cuerpo}
 ${autoprint ? '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},350)})</script>' : ''}
 </body></html>`
