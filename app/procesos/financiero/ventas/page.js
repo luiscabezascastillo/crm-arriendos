@@ -1,3 +1,4 @@
+// VERSION: v8 · 2026-08-26 · Ventas: filtro tambien en Neto/IVA/Total (numerico, con orden) + boton "Exportar Excel" (lo que se ve, con filtros). Hereda v7.
 // VERSION: v7 · 2026-07-26 · Ventas: filtros estilo Excel. Vuelve a una sola peticion.
 //   · El tope de 1000 filas de Supabase esta resuelto EN EL ENDPOINT (route.js v2,
 //     lectura paginada con .range()). La v6 lo esquivaba pidiendo mes a mes desde el
@@ -76,9 +77,9 @@ const COLDEFS = [
   { key: 'tipo_doc', label: 'Tipo', w: '64px', align: 'left', get: v => v.tipo_doc || '', filter: 'list' },
   { key: 'receptor', label: 'Receptor', w: '1fr', align: 'left', get: v => v.receptor || '', filter: 'text' },
   { key: 'ccb', label: 'CCB', w: '78px', align: 'left', get: v => v.ccb || '', filter: 'list' },
-  { key: 'neto', label: 'Neto', w: '104px', align: 'right', get: v => v.neto, filter: null },
-  { key: 'iva', label: 'IVA', w: '94px', align: 'right', get: v => v.iva, filter: null },
-  { key: 'total', label: 'Total', w: '116px', align: 'right', get: v => v.total, filter: null },
+  { key: 'neto', label: 'Neto', w: '104px', align: 'right', get: v => v.neto, filter: 'list' },
+  { key: 'iva', label: 'IVA', w: '94px', align: 'right', get: v => v.iva, filter: 'list' },
+  { key: 'total', label: 'Total', w: '116px', align: 'right', get: v => v.total, filter: 'list' },
 ]
 const GRID = COLDEFS.map(c => c.w).join(' ')
 
@@ -201,6 +202,20 @@ export default function VentasPage() {
     } catch (e) {
       setContabMsg({ error: 'No se pudo generar la contabilidad.' })
     } finally { setGenerandoContab(false) }
+  }
+  const exportarExcel = async () => {
+    if (!ventasVista.length) return
+    const XLSX = await import('xlsx')
+    const filas = ventasVista.map(v => ({
+      Folio: v.folio ?? '', Fecha: fmtFecha(v.fecha), Tipo: v.tipo_doc || '', Receptor: v.receptor || '',
+      RUT: v.rut || '', IDADMON: v.idadmon || '', CCB: v.ccb || '',
+      Neto: v.neto ?? 0, IVA: v.iva ?? 0, Total: v.total ?? 0,
+      Revision: v.revision || '', Glosa: v.glosa || '',
+    }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Ventas')
+    const etq = (modo === 'mensual' && mesSel) ? mesSel : 'todas'
+    XLSX.writeFile(wb, `Ventas_${etq}.xlsx`)
   }
   const wantScroll = useRef(false)
   // Donde debe pegarse la cabecera de la tabla: lo calcula FinancieroHeader.
@@ -335,6 +350,9 @@ export default function VentasPage() {
           {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel de ventas</span>}
           {modo === 'mensual' && mesSel && (
             <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
+          )}
+          {ventasVista.length > 0 && (
+            <button onClick={exportarExcel} title="Exportar a Excel lo que ves (con los filtros aplicados)" style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#085041', cursor: 'pointer' }}>⭳ Exportar Excel ({ventasVista.length})</button>
           )}
         </>}
         metricas={[
