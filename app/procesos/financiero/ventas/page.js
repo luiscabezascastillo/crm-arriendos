@@ -1,3 +1,4 @@
+// VERSION: v9 · 2026-08-26 · Ventas: boton "Generar cobro por mandato" (nivel 2 -> origen mandato, cierre de mes). Hereda v8.
 // VERSION: v8 · 2026-08-26 · Ventas: filtro tambien en Neto/IVA/Total (numerico, con orden) + boton "Exportar Excel" (lo que se ve, con filtros). Hereda v7.
 // VERSION: v7 · 2026-07-26 · Ventas: filtros estilo Excel. Vuelve a una sola peticion.
 //   · El tope de 1000 filas de Supabase esta resuelto EN EL ENDPOINT (route.js v2,
@@ -163,6 +164,7 @@ export default function VentasPage() {
   const [meses, setMeses] = useState([])
   const [mesSel, setMesSel] = useState(null)
   const [generandoContab, setGenerandoContab] = useState(false)
+  const [generandoMandato, setGenerandoMandato] = useState(false)
   const [contabMsg, setContabMsg] = useState(null)
   const [ventas, setVentas] = useState([])
   const [loading, setLoading] = useState(false)
@@ -202,6 +204,26 @@ export default function VentasPage() {
     } catch (e) {
       setContabMsg({ error: 'No se pudo generar la contabilidad.' })
     } finally { setGenerandoContab(false) }
+  }
+  const generarMandato = async () => {
+    if (!canEdit || generandoMandato || !mesSel) return
+    setGenerandoMandato(true); setContabMsg(null)
+    try {
+      const r = await fetch('/api/financiero/contab', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origen: 'mandato', periodo: mesSel }),
+      })
+      const j = await r.json()
+      if (j.error) { setContabMsg({ error: j.error }); return }
+      const n = (j.resultado || []).length
+      const nOk = (j.resultado || []).filter(x => x.r_cuadra).length
+      setContabMsg({
+        error: j.todos_cuadran ? null : `Mandato: generados ${n}, pero ${n - nOk} no cuadran. Revisar en CONTAB.`,
+        text: `${n} asiento(s) de cobro por mandato para ${mesLabel(mesSel)}, todos cuadran ✓. Ya están en CONTAB.`,
+      })
+    } catch (e) {
+      setContabMsg({ error: 'No se pudo generar el cobro por mandato.' })
+    } finally { setGenerandoMandato(false) }
   }
   const exportarExcel = async () => {
     if (!ventasVista.length) return
@@ -350,6 +372,9 @@ export default function VentasPage() {
           {canEdit && <span style={{ fontSize: 11, color: '#B4B2A9' }}>o arrastra / pega el Excel de ventas</span>}
           {modo === 'mensual' && mesSel && (
             <button onClick={generarContab} disabled={!canEdit || generandoContab} title={canEdit ? 'Generar los comprobantes contables de este mes (van a CONTAB)' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #1D9E75', background: (!canEdit || generandoContab) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoContab) ? '#888780' : '#085041', cursor: (!canEdit || generandoContab) ? 'default' : 'pointer' }}>🧮 {generandoContab ? 'Generando…' : 'Generar contabilidad'}</button>
+          )}
+          {modo === 'mensual' && mesSel && (
+            <button onClick={generarMandato} disabled={!canEdit || generandoMandato} title={canEdit ? 'Asiento mensual de cobro por mandato (Debe 2107-02 / Haber 1104-01 por CCB). Correr al CERRAR el mes.' : 'Sin permiso'} style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #0C447C', background: (!canEdit || generandoMandato) ? '#F0EFEA' : '#fff', color: (!canEdit || generandoMandato) ? '#888780' : '#0C447C', cursor: (!canEdit || generandoMandato) ? 'default' : 'pointer' }}>🔗 {generandoMandato ? 'Generando…' : 'Generar cobro por mandato'}</button>
           )}
           {ventasVista.length > 0 && (
             <button onClick={exportarExcel} title="Exportar a Excel lo que ves (con los filtros aplicados)" style={{ fontSize: 12, fontWeight: 600, padding: '8px 15px', borderRadius: 8, border: '0.5px solid #D3D1C7', background: '#fff', color: '#085041', cursor: 'pointer' }}>⭳ Exportar Excel ({ventasVista.length})</button>

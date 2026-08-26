@@ -1,6 +1,7 @@
 // VERSION: v10 · 2026-08-20 · cuentaNubox: si la cuenta trae el nombre pegado ("4201-46 CONSERVADOR...") se queda solo con el codigo (Nubox no lo encontraba). Hereda v9.
 // VERSION: v9 · 2026-08-20 · cuentaNubox: en vez de truncar el 3er nivel al padre, RELLENA la analitica a 4 digitos (4201-01-02 -> 4201-01-0002). Nubox tiene las hijas dadas de alta y obliga a imputar en ellas, no en el padre. Hereda v8.
 // VERSION: v8 · 2026-08-20 · Previsualizacion: columna centro_costo tambien en blanco (coincide con lo que va a Nubox; el CC real queda en campo ccb solo de referencia). Hereda v7.
+// VERSION: v8 · 2026-08-26 · Origen 'mandato' -> contab_generar_mandato (nivel 2: Debe 2107-02 / Haber 1104-01 por CCB). Hereda v7.
 // VERSION: v7 · 2026-08-20 · Export Nubox: (a) excluye comprobantes con cuenta puente (1104-98/4201-99): no imputables, van a Pendiente; (b) trunca cuentas de 3er nivel analitico al padre imputable (4201-01-07 -> 4201-01) en campo cuenta_nubox, el detalle por empleado se conserva en glosa/preview. Hereda v6.
 // VERSION: v6 · 2026-08-19 · Límite de bloque Nubox a 4950 (antes 5000). Hereda v5.
 // VERSION: v5 · 2026-08-19 · filasNubox: lee TODAS las lineas paginando (antes se cortaba a 1000 -> falso descuadre y export incompleto). Hereda v4.
@@ -34,6 +35,7 @@ const GENERADORES = {
   honorarios: 'contab_generar_honorarios',
   sa:      'contab_generar_sa',
   caja_chica: 'contab_generar_caja_chica',
+  mandato: 'contab_generar_mandato',
 }
 
 const LIMITE_NUBOX = 4950 // líneas máximas por bloque de importación (Nubox admite <5000; margen)
