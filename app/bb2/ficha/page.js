@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v2 · 2026-08-25 · PASO 3 ACTIVADO: botón "Terminar e informar a Karina". Guarda la ficha y llama a
+//   /api/bb2/terminar, que envía a Karina (CC Legal) el correo de facturación de las dos comisiones y marca la
+//   operación HECHO (solo si el correo salió). Disponible para Dirección + Anthony, si la operación existe y no
+//   está ya HECHO. Hereda v1.
 // VERSION: v1 · 2026-08-11 · app/bb2/ficha/page.js — PASO 2 de BB2: ficha de captura calcada del LOG 2.0.7.
 //   Recupera (?id=R00xxx) o crea (?id=nuevo, siguiente R). Bloques: Propietario · Co-propietario · Arrendatario 1
 //   · Arrendatario 2 · Aval · Inmueble · Comentarios · Datos económicos (comisión propietario/arrendatario, con
@@ -87,6 +91,25 @@ function BB2Ficha() {
       const j = await res.json()
       if (!res.ok || j.error) { setMsg({ t: 'error', x: j.error || ('Error ' + res.status) }); return }
       setHecho(false); setMsg({ t: 'ok', x: 'Operación desbloqueada.' })
+    } catch (e) { setMsg({ t: 'error', x: String(e?.message || e) }) } finally { setGuardando(false) }
+  }
+
+  // PASO 3: guarda la ficha y envía a Karina el correo de facturación; al volver OK la operación queda HECHO.
+  async function terminar() {
+    if (!existe || hecho || !model) return
+    if (!window.confirm(`¿Terminar el arriendo ${id} e informar a Karina para que facture?\n\nSe enviará el correo de facturación (a Karina, con Legal en copia) con las dos comisiones, y la operación quedará marcada como HECHO (protegida).`)) return
+    setGuardando(true); setMsg(null)
+    try {
+      // 1) Guardar los cambios actuales, para que el correo salga con lo último de la ficha.
+      const gr = await fetch('/api/bb2/guardar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, model }) })
+      const gj = await gr.json()
+      if (!gr.ok || gj.error) { setMsg({ t: 'error', x: 'No se pudo guardar antes de terminar: ' + (gj.error || ('Error ' + gr.status)) }); return }
+      // 2) Terminar + informar a Karina.
+      const res = await fetch('/api/bb2/terminar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+      const j = await res.json()
+      if (!res.ok || j.error) { setMsg({ t: 'error', x: j.error || ('Error ' + res.status) }); return }
+      setHecho(true); setExiste(true)
+      setMsg({ t: 'ok', x: `✓ ${id} terminado. Correo de facturación enviado a Karina${j.cc ? ' (CC ' + j.cc + ')' : ''}.` })
     } catch (e) { setMsg({ t: 'error', x: String(e?.message || e) }) } finally { setGuardando(false) }
   }
 
@@ -230,7 +253,12 @@ function BB2Ficha() {
                 ? <button onClick={() => guardar(hecho && esDireccion)} disabled={guardando} style={btn('#16a34a', guardando)}>{guardando ? 'Guardando…' : (hecho ? '💾 Guardar (desbloqueando)' : '💾 Guardar borrador')}</button>
                 : <span style={{ fontSize: 12, color: '#b45309' }}>Operación protegida (HECHO). Solo Dirección puede editar.</span>}
               {hecho && esDireccion && <button onClick={desbloquear} disabled={guardando} style={btn('#b45309', guardando)}>🔓 Desbloquear</button>}
-              <button disabled title="Paso 3: enviará la facturación a Karina (cola + email). Aún no activo." style={{ ...btn('#9ca3af', true) }}>Terminar e informar · pronto</button>
+              {existe && !hecho && (
+                <button onClick={terminar} disabled={guardando}
+                  title="Marca la operación como terminada (HECHO) y envía a Karina el correo de facturación de las dos comisiones (con Legal en copia)."
+                  style={btn('#0C447C', guardando)}>{guardando ? 'Procesando…' : '📧 Terminar e informar a Karina'}</button>
+              )}
+              {hecho && <span style={{ fontSize: 12, fontWeight: 600, color: '#166534' }}>Terminada · facturación informada a Karina.</span>}
               <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>Guarda en el LOG con claves limpias · no borra datos previos.</span>
             </div>
           </>
