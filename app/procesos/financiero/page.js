@@ -1,5 +1,6 @@
 'use client'
 // RUTA: app/procesos/financiero/page.js
+// VERSION: v10 · 2026-08-26 · Añadida ficha "Vacaciones" (/ausencias, personal); tarjetas ordenadas alfabéticamente al pintar y rejilla a 3 columnas. Hereda v9.
 // VERSION: v9 · 2026-08-17 · Añadida la ficha "Pagos" (recordatorios de pagos recurrentes / vencimientos,
 //   /procesos/financiero/pagos).
 // VERSION: v8 · 2026-08-16 · Añadida la ficha "Tarjeta de crédito" (estado de cuenta Santander …2494,
@@ -31,6 +32,7 @@ const SUBPROCESOS = [
   { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
   { icon: '🌍', titulo: 'Facturas Int.',  desc: 'Facturas internacionales de servicios (del exterior) con su CCB',    cadencia: 'mensual',  href: '/procesos/financiero/facturas-int' },
   { icon: '🔔', titulo: 'Pagos',          desc: 'Recordatorios de pagos recurrentes y vencimientos (avisa a Alberto)', cadencia: 'continuo', href: '/procesos/financiero/pagos' },
+  { icon: '🌴', titulo: 'Vacaciones',     desc: 'Vacaciones, licencias médicas y permisos del personal',            cadencia: 'continuo', href: '/ausencias' },
 ]
 
 const CAD_BADGE = {
@@ -106,7 +108,7 @@ export default function FinancieroPage() {
   return (
     <>
       <TopNav />
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: isMobile ? '16px 14px 40px' : '20px 24px 40px' }}>
+      <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobile ? '16px 14px 40px' : '20px 24px 40px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
           <div>
             <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 600, margin: '0 0 2px', color: '#2C2C2A' }}>Financiero</h1>
@@ -117,8 +119,8 @@ export default function FinancieroPage() {
             ← Procesos
           </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
-          {SUBPROCESOS.map((s, i) => (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
+          {[...SUBPROCESOS].sort((a, b) => a.titulo.toLowerCase().localeCompare(b.titulo.toLowerCase(), 'es')).map((s, i) => (
             <SubCard key={i} sub={s} onClick={go} isMobile={isMobile} />
           ))}
         </div>

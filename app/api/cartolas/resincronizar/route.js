@@ -1,4 +1,9 @@
 // app/api/cartolas/resincronizar/route.js
+// VERSION: v2 · 2026-08-26 · FIX formato de fecha: aammToFecha generaba la fecha del cargo en ISO ("2026-07-01"),
+//   así que un resync que CREA la fila metía el cargo con fecha ISO → se descolocaba en la cartola (aparecía arriba)
+//   y la morosidad no lo casaba (moroso falso); si además existía la fila dd/mm, quedaba duplicado (caso A00477).
+//   Ahora genera dd/mm/aaaa ("01/07/2026"), igual que cargar-mes. La dedup por concepto (línea existe→UPDATE) ya
+//   estaba; con la fecha correcta no vuelve a crear ISO ni descolocados. Hereda v1.
 // Re-sincroniza el CARGO de un IDADMON en `cuentas` desde el origen (calcular_liquidacion),
 // tras corregir datos en el LOG. Solo Direccion y Karina.
 //
@@ -27,7 +32,8 @@ const aammToTxt = aamm => {
   const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10)
   return `${MESES_TXT[m - 1] || '?'} 20${a}`
 }
-const aammToFecha = aamm => `20${String(aamm).slice(0, 2)}-${String(aamm).slice(2)}-01`
+// Fecha del cargo del mes en dd/mm/aaaa (como cargar-mes), NUNCA ISO. Día 01 del mes.
+const aammToFecha = aamm => `01/${String(aamm).slice(2)}/20${String(aamm).slice(0, 2)}`
 function diaMesSantiago() {
   try { return parseInt(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', day: '2-digit' }).format(new Date()), 10) }
   catch { return new Date().getUTCDate() }
