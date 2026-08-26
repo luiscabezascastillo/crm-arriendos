@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-26 · Nueva pestaña "Vacaciones" (personal: vacaciones/licencias/permisos) -> /ausencias, para Karina/Direccion. Hereda v5.
 // VERSION: v5 · 2026-08-17 · Nueva pestaña "Pagos" (recordatorios de pagos recurrentes) antes de CONTAB. Hereda v4.
 // VERSION: v4 · 2026-08-16 · Nuevas pestañas "Tarjeta" (tarjeta de crédito Santander …2494) tras Global,
 //   y "Facturas Int." (que faltaba en la barra) tras Alberto. Hereda v3.
@@ -36,6 +37,7 @@ const MODULOS = [
   { id: 'facturas-int',   icon: '🌍', label: 'Facturas Int.', href: '/procesos/financiero/facturas-int' },
   { id: 'pagos',          icon: '🔔', label: 'Pagos',       href: '/procesos/financiero/pagos' },
   { id: 'contab',         icon: '📊', label: 'CONTAB',      href: '/procesos/financiero/contab' },
+  { id: 'ausencias',      icon: '🌴', label: 'Vacaciones',  href: '/ausencias' },
 ]
 
 const VERDE = '#085041'

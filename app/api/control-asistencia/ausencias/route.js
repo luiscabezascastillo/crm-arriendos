@@ -1,10 +1,16 @@
+// VERSION: v2 · 2026-08-26 · Candado de rol (Alberto/Luis/Karina) en POST y DELETE; created_by = usuario autenticado. Hereda v1.
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
+
+// Solo Direccion y Karina pueden registrar/borrar ausencias (mismo trio que remuneraciones/cartolas).
+const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
 
 // GET /api/control-asistencia/ausencias  → lista todas las ausencias con nombre del trabajador
 export async function GET() {
@@ -23,7 +29,11 @@ export async function GET() {
 // POST /api/control-asistencia/ausencias  → crea una ausencia, calcula dias_habiles
 export async function POST(request) {
   try {
-    const { trabajador_id, tipo, fecha_inicio, fecha_fin, motivo, recuperable, created_by } = await request.json()
+    const session = await getServerSession(authOptions)
+    const email = session?.user?.email
+    if (!email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    if (!EDITORES.includes(email)) return NextResponse.json({ error: 'Solo Direccion y Karina pueden registrar ausencias.' }, { status: 403 })
+    const { trabajador_id, tipo, fecha_inicio, fecha_fin, motivo, recuperable } = await request.json()
 
     if (!trabajador_id || !tipo || !fecha_inicio || !fecha_fin) {
       return NextResponse.json({ error: 'Faltan datos obligatorios' }, { status: 400 })
@@ -55,7 +65,7 @@ export async function POST(request) {
         recuperable: recuperable === true,
         motivo: motivo || null,
         origen: 'CRM',
-        created_by: created_by || null,
+        created_by: email,
       }])
       .select('id, dias_habiles')
       .single()
@@ -70,6 +80,10 @@ export async function POST(request) {
 // DELETE /api/control-asistencia/ausencias?id=123  → elimina una ausencia
 export async function DELETE(request) {
   try {
+    const session = await getServerSession(authOptions)
+    const email = session?.user?.email
+    if (!email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    if (!EDITORES.includes(email)) return NextResponse.json({ error: 'Solo Direccion y Karina pueden borrar ausencias.' }, { status: 403 })
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
