@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v20 · 2026-08-26 · Pestaña "Multas": bandeja de multas por atraso (solo lectura, consume /api/cobranza/multas + MultasView). Hereda v19.
+// VERSION: v19 · 2026-08-26 · Boton "📕 Guía morosos" en la cabecera (abre /api/cobranza/guia-morosos). Hereda v18.
 // VERSION: v18 · 2026-08-24 · Saldos a favor: enlace al panel completo "Cartolas a auditar". Hereda v17.
 // VERSION: v17 · 2026-08-24 · Saldos a favor: sugerencias por contrato (Adalis/Fabiola proponen; trio marca atendida). El traslado a A00000 seguira gateado al trio. Hereda v16.
 // VERSION: v16 · 2026-08-24 · Pestaña "Saldos a favor": auditoría de saldos a favor del arrendatario (S/SQ y Q), IDADMON->Cartola, parejas mismo piso marcadas. Solo lectura (endpoint /api/cobranza/saldos-favor). Hereda v15.
@@ -35,6 +37,8 @@ import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const money = (v) => { const n = num(v); return (n ? '$' + n.toLocaleString('es-CL') : '$0') }
+
+import MultasView from './MultasView'
 
 const C = {
   txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8',
@@ -106,6 +110,7 @@ const COB_COLS = [
 
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
+  { k: 'multas', label: 'Multas' },
   { k: 'casos', label: 'Casos' },
   { k: 'saldos', label: 'Saldos a favor' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
@@ -139,6 +144,8 @@ export default function Cobranza() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => window.open('/api/cobranza/manual', '_blank')} title="Manual de uso del modulo"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #CBE6BE', background: '#E9F4E4', color: '#085041', whiteSpace: 'nowrap' }}>📖 Manual</button>
+          <button onClick={() => window.open('/api/cobranza/guia-morosos', '_blank')} title="Buenas practicas para la reclamacion a morosos"
+            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #F0DFA8', background: '#FFF7E0', color: '#6b4e05', whiteSpace: 'nowrap' }}>📕 Guía morosos</button>
           <button onClick={() => setAyudaOpen(true)} title="Como funciona la cobranza"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>? Ayuda</button>
         </div>
@@ -159,6 +166,7 @@ export default function Cobranza() {
       </div>
 
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
+      {tab === 'multas' && <MultasView />}
       {tab === 'casos' && <CasosView />}
       {tab === 'saldos' && <SaldosFavor />}
       {tab === 'bitacora' && <Bitacora />}
