@@ -1,7 +1,8 @@
-// VERSION: v3 · 2026-08-26 · El periodo por defecto no entra hasta pasado el día 10 (gracia): días 1-10 -> mes anterior. Hereda v2.
-// VERSION: v2 · 2026-08-26 · FIX periodo por defecto: el mes de la renta YA vencida (día 5), no la ventana 23→22 del FALTAN (que saltaba al mes siguiente). Hereda v1.
-// VERSION: v1 · 2026-08-26 · Cobranza · Bandeja de MULTAS por atraso (solo lectura / cálculo).
-//   GET ?periodo=AAMM (por defecto el mes en curso según la ventana 23→22, igual que FALTAN).
+// VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
+// VERSION: v3 · 2026-08-26 · Periodo por defecto respeta la gracia del día 10 (días 1-10 -> mes anterior). Hereda v2.
+// VERSION: v2 · 2026-08-26 · FIX periodo por defecto: mes de la renta ya vencida, no la ventana 23→22 del FALTAN. Hereda v1.
+// VERSION: v1 · 2026-08-26 · Cobranza · Bandeja de MULTAS por atraso (cálculo tramo a tramo + perfil).
+//   GET ?periodo=AAMM (por defecto el mes cuya renta ya venció y pasó la gracia del día 10).
 //   Para cada moroso de arriendo (falta>0 en calcular_liquidacion, quien_cobra≠DUEÑO):
 //     - base / recibido / falta EXACTOS del FALTAN (RPC calcular_liquidacion, agrupado por idadmon).
 //     - multa TRAMO A TRAMO: gracia si pagó lo sustancial ≤ día 10; si no, se pondera el saldo vivo
@@ -14,6 +15,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { createClient } from '@supabase/supabase-js'
+import nodemailer from 'nodemailer'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -22,6 +24,20 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 const TOL = 10000            // tolerancia de saldo (pesos): por debajo se considera "al día"
 const DIA_MS = 86400000
+
+// ── Envío de correo (mismo patrón que /api/cobranza/gestion: alias de info@, misma app password) ──
+const BCC_ARCHIVO = 'info@fondocapital.com'
+const EMAIL_COBRANZA = process.env.EMAIL_COBRANZA || 'cobranza@fondocapital.com'
+const EMAIL_LEGAL = process.env.EMAIL_LEGAL || 'legal@fondocapital.com'
+const DEPT = {
+  cobranza: { from: `"Fondo Capital · Cobranzas" <${EMAIL_COBRANZA}>`, replyTo: EMAIL_COBRANZA },
+  legal: { from: `"Fondo Capital · Area Legal" <${EMAIL_LEGAL}>`, replyTo: EMAIL_LEGAL },
+}
+const deptOf = (d) => (d === 'legal' ? 'legal' : 'cobranza')
+const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD } })
+const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const textoAHtml = (t) => '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;line-height:1.6">' + escapeHtml(t).replace(/\n/g, '<br>') + '</div>'
+const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 
 const n0 = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 
@@ -206,4 +222,176 @@ export async function GET(req) {
   }
 
   return Response.json({ ok: true, periodo, hoy: isoUTC(hoy.t), ventana_ini: isoUTC(ventanaIni), morosos, plantillas: plaRes.data || [], resumen })
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST — acciones sobre una multa: aviso | firme | regularizar | anular.
+//   aviso  -> envía la carta del perfil (plazo 3 días hábiles). NO toca cuentas.
+//   firme  -> envía la 2ª carta Y carga la multa en `cuentas` (calif=MULTA, anulable).
+//   regularizar -> cierra sin multa (pagó dentro del plazo).
+//   anular -> anula la multa; si era firme, anula también el cargo en `cuentas` (soft).
+// Emitir aviso y firme: roles que operan Cobranza (Dirección/Administración/Finanzas/Legal),
+//   incluidas Adalis y Fabiola. Cada carga a cartola deja rastro en cuentas_bitacora con el usuario.
+// ════════════════════════════════════════════════════════════════════════════
+function hoyTxtSantiago() {
+  const h = hoySantiago()
+  return String(h.d).padStart(2, '0') + '/' + String(h.mo).padStart(2, '0') + '/' + h.y
+}
+function plazoHabil(nHab) {
+  const h = hoySantiago()
+  let t = h.t, added = 0
+  while (added < nHab) { t += DIA_MS; const wd = new Date(t).getUTCDay(); if (wd !== 0 && wd !== 6) added++ }
+  return isoUTC(t)
+}
+async function asegurarCaso(idadmon, contrato, dias) {
+  const tipo = String(contrato.estado || '').toUpperCase().startsWith('Q') ? 'termino' : 'vigente'
+  const { data: ab } = await admin.from('cobranza_casos').select('*').eq('idadmon', idadmon).eq('tipo', tipo).neq('estado', 'cerrado').limit(1)
+  if (ab && ab[0]) return ab[0].id
+  const { data: nuevo, error } = await admin.from('cobranza_casos').insert({
+    idadmon, tipo, estado: 'mora_leve', monto_adeudado: 0, dias_mora: dias || 0,
+    propietario: contrato.propietario || null, propiedad: contrato.inmueble || null,
+    arrendatario: contrato.arrendatario || null, arrendatario_rut: contrato.rut || null,
+    aval: contrato.avalista || null, aval_rut: contrato.rut_avalista || null,
+    responsable: contrato._email, origen: 'auto_mora',
+  }).select().single()
+  if (error) throw new Error('No se pudo crear el caso: ' + error.message)
+  return nuevo.id
+}
+async function enviarCorreo({ dept, to, subject, html, test, remitenteEmail }) {
+  const remit = DEPT[deptOf(dept)]
+  if (test) {
+    const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to: remitenteEmail, subject: '[PRUEBA] ' + subject, html })
+    return { acuse: info?.messageId || 'prueba', response: info?.response || '' }
+  }
+  const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to, bcc: BCC_ARCHIVO, subject, html })
+  if (!info || info.rejected?.length) throw new Error('Gmail no aceptó el destinatario (' + (info?.response || 's/r') + ')')
+  return { acuse: info?.messageId || 'ok', response: info?.response || '' }
+}
+async function registrarGestion({ caso_id, idadmon, dept, contrato, destino_email, etapa, asunto, contenido, acuse, monto }) {
+  const remit = DEPT[deptOf(dept)]
+  const { data, error } = await admin.from('cobranza_gestiones').insert({
+    caso_id, idadmon, canal: 'email', departamento: deptOf(dept), remitente: remit.replyTo,
+    destinatario: 'arrendatario', destino_email: destino_email || null,
+    destinatario_rut: contrato.rut || null, destinatario_nombre: contrato.arrendatario || null,
+    plantilla_id: null, etapa: etapa || null, asunto: asunto || null,
+    contenido_snapshot: contenido || null, acuse: acuse || null, resultado: 'enviado',
+    monto_reclamado: monto || null, usuario: contrato._email,
+  }).select('id').single()
+  if (error) throw new Error('No se pudo registrar la gestión: ' + error.message)
+  return data.id
+}
+
+export async function POST(req) {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  const rol = session?.user?.role
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!PUEDEN_VER.includes(rol)) return Response.json({ error: 'No autorizado' }, { status: 403 })
+
+  let body
+  try { body = await req.json() } catch { return Response.json({ error: 'JSON inválido' }, { status: 400 }) }
+  const accion = String(body.accion || '').trim()
+  const idadmon = String(body.idadmon || '').trim().toUpperCase()
+  const periodo = String(body.periodo || '').trim()
+  if (!idadmon || !/^\d{4}$/.test(periodo)) return Response.json({ error: 'Falta idadmon o periodo (AAMM).' }, { status: 400 })
+
+  // contrato (para remitente, destinatario y caso)
+  const { data: arr } = await admin.from('datos_arriendos')
+    .select('idadmon, estado, arrendatario, rut, mail_arrendatario, avalista, rut_avalista, propietario, inmueble')
+    .eq('idadmon', idadmon).limit(1)
+  const contrato = (arr && arr[0]) || {}
+  contrato._email = email
+  const mesTxt = MESES_TXT[Number(periodo.slice(2)) - 1] + ' 20' + periodo.slice(0, 2)
+
+  try {
+    // ── AVISO ───────────────────────────────────────────────────────────────
+    if (accion === 'aviso' || accion === 'firme') {
+      const dept = deptOf(body.departamento)
+      const asunto = String(body.asunto || '').trim()
+      const contenido = String(body.contenido || '').trim()
+      const monto = Math.round(Number(body.monto) || 0)
+      const perfil = String(body.perfil || '').trim() || null
+      const dias = Math.round(Number(body.dias_atraso) || 0)
+      const destino = String(body.destino_email || contrato.mail_arrendatario || '').trim()
+      const test = body.test === true
+      if (!asunto || !contenido) return Response.json({ error: 'Falta asunto o contenido de la carta.' }, { status: 400 })
+      if (!test && !destino) return Response.json({ error: 'No hay email del arrendatario; edítalo antes de enviar.' }, { status: 400 })
+      if (accion === 'firme' && !(monto > 0)) return Response.json({ error: 'La multa debe ser mayor que 0 para hacerla firme.' }, { status: 400 })
+
+      const html = textoAHtml(contenido)
+      const env = await enviarCorreo({ dept, to: destino, subject: asunto, html, test, remitenteEmail: email })
+      if (test) return Response.json({ ok: true, test: true, response: env.response })
+
+      const caso_id = await asegurarCaso(idadmon, contrato, dias)
+      const etapa = (accion === 'aviso' ? 'multa_aviso_' : 'multa_firme_') + (perfil || 'apretado')
+      const gestion_id = await registrarGestion({ caso_id, idadmon, dept, contrato, destino_email: destino, etapa, asunto, contenido, acuse: env.acuse, monto })
+
+      if (accion === 'aviso') {
+        const plazo = plazoHabil(3)
+        const fila = {
+          idadmon, periodo, perfil, base_multa: Math.round(Number(body.base) || 0), dias_atraso: dias,
+          multa_diaria: (body.multa_diaria == null ? null : Number(body.multa_diaria)), monto,
+          tramos: body.tramos || null, estado: 'avisada',
+          fecha_aviso: new Date().toISOString(), plazo_hasta: plazo, gestion_aviso_id: gestion_id, usuario: email,
+        }
+        const { error } = await admin.from('cobranza_multas').upsert(fila, { onConflict: 'idadmon,periodo' })
+        if (error) return Response.json({ error: 'cobranza_multas: ' + error.message }, { status: 500 })
+        return Response.json({ ok: true, estado: 'avisada', plazo_hasta: plazo, gestion_id })
+      }
+
+      // ── FIRME: carga el cargo en cuentas ──
+      const fecha = hoyTxtSantiago()
+      const concepto = `MULTA ATRASO RENTA ${mesTxt}`
+      const comentarios = `Multa por atraso ${dias} día(s) · periodo ${periodo} · perfil ${perfil || '—'}`
+      const { data: cargo, error: eCargo } = await admin.from('cuentas').insert({
+        idadmon, fecha, concepto, cargo: monto, calif: 'MULTA', comentarios,
+        manual: true, anulado: false, estado: contrato.estado || 'S',
+      }).select('id').single()
+      if (eCargo) return Response.json({ error: 'INSERT cuentas (multa): ' + eCargo.message }, { status: 500 })
+      await admin.from('cuentas_bitacora').insert({
+        cuenta_id: cargo.id, idadmon, accion: 'alta', campo: null, valor_anterior: null,
+        valor_nuevo: `MULTA ${monto} · ${concepto}`, motivo: `Multa por atraso ${mesTxt}`, usuario: email,
+      })
+      const fila = {
+        idadmon, periodo, perfil, base_multa: Math.round(Number(body.base) || 0), dias_atraso: dias,
+        multa_diaria: (body.multa_diaria == null ? null : Number(body.multa_diaria)), monto,
+        tramos: body.tramos || null, estado: 'firme',
+        fecha_firme: new Date().toISOString(), cuenta_id: cargo.id, gestion_firme_id: gestion_id, usuario: email,
+      }
+      const { error } = await admin.from('cobranza_multas').upsert(fila, { onConflict: 'idadmon,periodo' })
+      if (error) return Response.json({ error: 'cobranza_multas: ' + error.message }, { status: 500 })
+      return Response.json({ ok: true, estado: 'firme', cuenta_id: cargo.id, gestion_id })
+    }
+
+    // ── REGULARIZAR ───────────────────────────────────────────────────────────
+    if (accion === 'regularizar') {
+      const { error } = await admin.from('cobranza_multas')
+        .upsert({ idadmon, periodo, estado: 'regularizada', fecha_regularizada: new Date().toISOString(), usuario: email }, { onConflict: 'idadmon,periodo' })
+      if (error) return Response.json({ error: error.message }, { status: 500 })
+      return Response.json({ ok: true, estado: 'regularizada' })
+    }
+
+    // ── ANULAR ────────────────────────────────────────────────────────────────
+    if (accion === 'anular') {
+      const motivo = String(body.motivo || '').trim()
+      if (motivo.length < 3) return Response.json({ error: 'El motivo de anulación es obligatorio.' }, { status: 400 })
+      const { data: m } = await admin.from('cobranza_multas').select('*').eq('idadmon', idadmon).eq('periodo', periodo).limit(1)
+      const prev = m && m[0]
+      if (prev?.cuenta_id) {
+        await admin.from('cuentas').update({ anulado: true }).eq('id', prev.cuenta_id)
+        await admin.from('cuentas_bitacora').insert({
+          cuenta_id: prev.cuenta_id, idadmon, accion: 'anula', campo: 'anulado', valor_anterior: 'false',
+          valor_nuevo: 'true', motivo: 'Anulación de multa: ' + motivo, usuario: email,
+        })
+      }
+      const { error } = await admin.from('cobranza_multas')
+        .upsert({ idadmon, periodo, estado: 'anulada', fecha_anulada: new Date().toISOString(), motivo_anulada: motivo, usuario: email }, { onConflict: 'idadmon,periodo' })
+      if (error) return Response.json({ error: error.message }, { status: 500 })
+      return Response.json({ ok: true, estado: 'anulada' })
+    }
+
+    return Response.json({ error: 'Acción no reconocida: ' + accion }, { status: 400 })
+  } catch (e) {
+    return Response.json({ error: String(e.message || e) }, { status: 500 })
+  }
 }

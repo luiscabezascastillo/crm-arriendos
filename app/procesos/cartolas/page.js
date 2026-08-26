@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v33 · 2026-08-26 · Filas de MULTA por atraso (calif='MULTA') con fondo rojo claro. Hereda v32.
 // VERSION: v32 · 2026-08-25 · Cartola IDADMON: filas anteriores al RESETEO (cierre ficticio) se marcan HISTÓRICO — atenuadas, saldo "—", no suman al total; toggle Mostrar/Ocultar histórico. Hereda v31.
 // VERSION: v31 · 2026-08-25 · Vista Tabla: el filtro por columna pasa al estilo EXCEL de SA (server-side): lista de
 //   valores con casillas + buscador + "(Seleccionar todo)" + una condición (texto/número), todo traducido a la
@@ -478,6 +479,8 @@ function TablaVista({ vista, setVista, abrirCartola }) {
     return (<div style={{ padding: 60, textAlign: 'center', color: '#888', fontSize: 14 }}>Cargando cuentas…</div>)
 
   const bgCelda = (r, c) => {
+    if (String(r.calif || '').trim().toUpperCase() === 'MULTA')
+      return '#FBEDEC'   // multa por atraso: rojo claro en toda la fila
     if (String(r.calif || '').trim().toUpperCase() === 'INICIO' && (c.key === 'idadmon' || c.key === 'concepto' || c.key === 'cargo'))
       return '#E9F4E4'
     return '#fff'
