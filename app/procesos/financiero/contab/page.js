@@ -1,3 +1,5 @@
+// VERSION: v14 · 2026-08-26 · Ayuda desplegable "Como funciona esto" (proceso, orden, idempotencia, revision, ojo con el anio). Hereda v13.
+// VERSION: v13 · 2026-08-26 · Ficha "Cobro por mandato" (origen mandato, nivel 2) + nota explicativa. Hereda v12.
 // VERSION: v12 · 2026-08-20 · Export Nubox: (a) celdas vacias como null (no string '') -> SheetJS escribia '' como celda presente en L-Q y Nubox lo leia como campo invalido (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga; (b) columna Centro Costo SIEMPRE vacia (el CC viaja en las cuentas 4301-XX, no en columna Nubox); (c) cuenta = cuenta_nubox (3er nivel analitico truncado al padre imputable). Hereda v11.
 // VERSION: v11 · 2026-08-19 · Numeración correlativa con Nº de inicio configurable y continua entre bloques. Hereda v10.
 // VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
@@ -40,6 +42,7 @@ const HEADERS_NUBOX = ['Número', 'Tipo', 'Fecha', 'Glosa', 'Cuenta Detalle', 'G
 
 const ORIGENES = [
   { id: 'ventas',       nombre: 'Ventas',        desc: 'Ingresos por CCB (bruto/neto/IVA)',     activo: true  },
+  { id: 'mandato',      nombre: 'Cobro por mandato', desc: 'Nivel 2: 1104-01 → 2107 (comisión del pool)', activo: true  },
   { id: 'compras',      nombre: 'Compras',       desc: 'Gastos por naturaleza + IVA crédito',   activo: true  },
   { id: 'honorarios',   nombre: 'Honorarios',    desc: 'Boletas de honorarios',                 activo: true  },
   { id: 'sa',           nombre: 'B. Santander',  desc: 'Movimientos Santander (propio)',        activo: true  },
@@ -240,6 +243,19 @@ export default function ContabPage() {
               Pendiente de clasificar →
             </button>
           </div>
+          <details style={{ marginBottom: 12, background: '#fff', border: `1px solid ${BORDE}`, borderRadius: 10 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#0C447C', padding: '9px 12px' }}>ℹ️ Cómo funciona esto — ayuda (pulsa para abrir)</summary>
+            <div style={{ fontSize: 12, color: '#3A3A36', lineHeight: 1.65, padding: '2px 14px 14px' }}>
+              <div style={{ marginBottom: 8 }}>CONTAB genera los asientos contables de cada módulo y los prepara para Nubox. <b>Nada se envía solo</b>: tú revisas y luego exportas.</div>
+              <div style={{ marginBottom: 3 }}><b>Los botones de cada ficha:</b></div>
+              <div style={{ marginBottom: 3 }}>• <b>Generar / Regenerar</b>: crea los asientos de ese módulo para el periodo elegido (Ventas: Debe 1104-01 / Haber 5101 + IVA; Compras, Honorarios, etc., cada uno el suyo).</div>
+              <div style={{ marginBottom: 9 }}>• <b>Cobro por mandato</b> (nivel 2): rebaja Deudores clientes (1104-01) con la comisión que FCR retiene del arriendo — <b>Debe 2107-02 / Haber 1104-01</b> por CCB (CC1/CC2/CC3). Córrelo <b>al cerrar el mes</b>, después de Ventas.</div>
+              <div style={{ marginBottom: 3 }}><b>Orden del mes:</b> 1) cada módulo "cuadra ✓"; 2) "Pendiente de clasificar" a cero; 3) Regenerar los módulos; 4) Cobro por mandato; 5) Previsualizar Nubox y revisar; 6) Exportar.</div>
+              <div style={{ marginBottom: 3 }}><b>¿Repetirlo?</b> Es seguro: "Regenerar" borra y rehace ese módulo y ese mes — no duplica.</div>
+              <div style={{ marginBottom: 3 }}><b>¿Revisar antes de exportar?</b> Mira la tabla de abajo (Debe / Haber / Cuadre por comprobante) y pulsa "Previsualizar Nubox" para el detalle cuenta a cuenta.</div>
+              <div><b>Ojo con el año</b> (selector de arriba): la prueba en Nubox es 2026. Generar para 2025 calcularía de las ventas de ese año si las hay — no lo hagas salvo que quieras rehacer 2025.</div>
+            </div>
+          </details>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {ORIGENES.map((o) => {
               const res = resumenPorOrigen(o.id)
