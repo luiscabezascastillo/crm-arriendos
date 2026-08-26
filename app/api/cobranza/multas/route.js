@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-26 · El periodo por defecto no entra hasta pasado el día 10 (gracia): días 1-10 -> mes anterior. Hereda v2.
+// VERSION: v2 · 2026-08-26 · FIX periodo por defecto: el mes de la renta YA vencida (día 5), no la ventana 23→22 del FALTAN (que saltaba al mes siguiente). Hereda v1.
 // VERSION: v1 · 2026-08-26 · Cobranza · Bandeja de MULTAS por atraso (solo lectura / cálculo).
 //   GET ?periodo=AAMM (por defecto el mes en curso según la ventana 23→22, igual que FALTAN).
 //   Para cada moroso de arriendo (falta>0 en calcular_liquidacion, quien_cobra≠DUEÑO):
@@ -42,11 +44,13 @@ function hoySantiago() {
   return { y, mo, d, t: Date.UTC(y, mo - 1, d) }
 }
 
-// periodo AAMM por defecto (ventana 23→22: desde el 23 cuenta el mes siguiente), igual que FALTAN.
+// periodo AAMM por defecto para MULTAS: el mes cuya renta YA venció (vence el día 5).
+// Hasta pasado el día 10 (gracia) un mes NO entra en multas -> se apunta al mes anterior.
+// (Ojo: NO se usa la ventana 23→22 del FALTAN, que se adelanta al mes siguiente para liquidar.)
 function periodoPorDefecto() {
   const h = hoySantiago()
   let y = h.y, mo = h.mo
-  if (h.d >= 23) { mo += 1; if (mo > 12) { mo = 1; y += 1 } }
+  if (h.d <= 10) { mo -= 1; if (mo < 1) { mo = 12; y -= 1 } }
   return String(y).slice(2) + String(mo).padStart(2, '0')
 }
 
