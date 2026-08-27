@@ -1,4 +1,6 @@
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
+// VERSION: v15 · 2026-08-27 · Tabla de comprobantes: filtros de columna en la cabecera (Origen/Periodo/Fecha/Glosa/CCB/Cuadre)
+//   para poder aislar lo que se quiere revisar (p. ej. Origen=mandato, Periodo=2026-01), con contador y "Quitar filtros". Hereda v14.
 // VERSION: v14 · 2026-08-26 · Ayuda desplegable "Como funciona esto" (proceso, orden, idempotencia, revision, ojo con el anio). Hereda v13.
 // VERSION: v13 · 2026-08-26 · Ficha "Cobro por mandato" (origen mandato, nivel 2) + nota explicativa. Hereda v12.
 // VERSION: v12 · 2026-08-20 · Export Nubox: (a) celdas vacias como null (no string '') -> SheetJS escribia '' como celda presente en L-Q y Nubox lo leia como campo invalido (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga; (b) columna Centro Costo SIEMPRE vacia (el CC viaja en las cuentas 4301-XX, no en columna Nubox); (c) cuenta = cuenta_nubox (3er nivel analitico truncado al padre imputable). Hereda v11.
@@ -75,6 +77,8 @@ export default function ContabPage() {
   const [alcance, setAlcance] = useState('anio')   // 'mes' | 'anio'
   const [mes, setMes] = useState(new Date().getMonth() + 1)
   const [comprobantes, setComprobantes] = useState([])
+  const [fComp, setFComp] = useState({})   // filtros de columna de la tabla de comprobantes
+  const setFC = (col, val) => setFComp(p => ({ ...p, [col]: val }))
   const [resumen, setResumen] = useState([])
   const [cargando, setCargando] = useState(false)
   const [generando, setGenerando] = useState(null)
@@ -200,6 +204,20 @@ export default function ContabPage() {
     return { debe, haber, n: comprobantes.length, todos, lineas: comprobantes.reduce((s, c) => s + (Number(c.n_lineas) || 0), 0) }
   }, [comprobantes])
 
+  // Comprobantes visibles tras aplicar los filtros de cabecera (texto, "contiene", por columna).
+  const comprobantesVis = useMemo(() => {
+    const act = Object.entries(fComp).filter(([, v]) => v && String(v).trim())
+    if (!act.length) return comprobantes
+    return comprobantes.filter(c => act.every(([k, v]) => {
+      const q = String(v).trim().toLowerCase()
+      let val = ''
+      if (k === 'fecha') val = fechaCL(c.fecha)
+      else if (k === 'cuadre') val = c.cuadra ? 'cuadra ✓ ok si' : 'descuadre ✗ no'
+      else val = String(c[k] ?? '')
+      return val.toLowerCase().includes(q)
+    }))
+  }, [comprobantes, fComp])
+
   const resumenPorOrigen = (id) => resumen.find(r => r.origen === id)
 
   if (status === 'loading') return <div style={{ padding: 40, color: TENUE }}>Cargando…</div>
@@ -294,6 +312,12 @@ export default function ContabPage() {
             <div style={{ fontSize: 14, color: '#1A1A17' }}>
               <b>{totalGeneral.n}</b> comprobantes · <b>{totalGeneral.lineas}</b> líneas · debe <b>{clp(totalGeneral.debe)}</b>{' '}
               <span style={{ color: totalGeneral.todos ? VERDE : ROJO }}>{totalGeneral.todos ? 'todos cuadran ✓' : 'hay descuadres ✗'}</span>
+              {Object.values(fComp).some(v => v && String(v).trim()) && (
+                <span style={{ marginLeft: 10, fontSize: 13, color: TENUE }}>
+                  · filtrado: <b>{comprobantesVis.length}</b> de {comprobantes.length}
+                  <button onClick={() => setFComp({})} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: `1px solid ${BORDE}`, background: '#fff', color: VERDE, fontSize: 12, cursor: 'pointer' }}>Quitar filtros</button>
+                </span>
+              )}
             </div>
             <div style={{ flex: 1 }} />
             <button onClick={previsualizar} disabled={cargandoPreview} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: cargandoPreview ? 0.6 : 1 }}>
@@ -312,12 +336,18 @@ export default function ContabPage() {
           <div style={{ overflowX: 'auto', border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
-                <th style={th}>Origen</th><th style={th}>Periodo</th><th style={th}>Fecha</th><th style={th}>Glosa</th>
-                <th style={th}>CCB</th><th style={{ ...th, textAlign: 'right' }}>Líneas</th>
-                <th style={{ ...th, textAlign: 'right' }}>Debe</th><th style={{ ...th, textAlign: 'right' }}>Haber</th><th style={th}>Cuadre</th>
+                <th style={{ ...th, verticalAlign: 'top' }}>Origen<FiltroCol col="origen" filtros={fComp} set={setFC} /></th>
+                <th style={{ ...th, verticalAlign: 'top' }}>Periodo<FiltroCol col="periodo" filtros={fComp} set={setFC} /></th>
+                <th style={{ ...th, verticalAlign: 'top' }}>Fecha<FiltroCol col="fecha" filtros={fComp} set={setFC} /></th>
+                <th style={{ ...th, verticalAlign: 'top' }}>Glosa<FiltroCol col="glosa" filtros={fComp} set={setFC} /></th>
+                <th style={{ ...th, verticalAlign: 'top' }}>CCB<FiltroCol col="ccb" filtros={fComp} set={setFC} /></th>
+                <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Líneas</th>
+                <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Debe</th>
+                <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Haber</th>
+                <th style={{ ...th, verticalAlign: 'top' }}>Cuadre<FiltroCol col="cuadre" filtros={fComp} set={setFC} /></th>
               </tr></thead>
               <tbody>
-                {comprobantes.map(c => (
+                {comprobantesVis.map(c => (
                   <tr key={c.id}>
                     <td style={td}>{c.origen}</td>
                     <td style={td}>{c.periodo}</td>
