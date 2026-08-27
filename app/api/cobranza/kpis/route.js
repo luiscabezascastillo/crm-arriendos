@@ -1,3 +1,5 @@
+// VERSION: v7 · 2026-08-27 · Meses SIN datos de servicios (ggcc vacio ese mes) -> deuda_serv y garantias_riesgo = null (hueco en la curva),
+//   no 0 (que dibujaba un valle falso, p.ej. Junio 2026). Hereda v6.
 // VERSION: v6 · 2026-08-27 · Devuelve tambien la LISTA de IDADMON en riesgo (id, deuda servicios, garantia) por mes, para el listado. Hereda v5.
 // VERSION: v5 · 2026-08-27 · FIX "Cartera por cobrar" (v4 daba ~0 por ventana): ahora = saldo vivo (cargado-abonado) a fin de mes
 //   SOLO de contratos ACTIVOS que cobra FCR (S/SQ/Q, no dueno). = la misma deuda real de la pagina; excluye morosidad de terminados
@@ -117,7 +119,7 @@ export async function GET(req) {
       const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) { riesgo++; riesgoIds.push({ id, deuda: Math.round(t), gar: Math.round(g) }) }
     }
     const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
-    return { y, mo, base_t, cobradoPlazo, deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo, riesgo_ids: riesgoIds }
+    return { y, mo, base_t, cobradoPlazo, deuda_serv: totalS > 0 ? Math.round(deuda_serv) : null, pct_serv_aldia, garantias_riesgo: totalS > 0 ? riesgo : null, riesgo_ids: riesgoIds }
   }))
 
   // 2) cartera = saldo vivo (cargado - abonado) a fin de mes, SOLO de contratos activos que cobra FCR (S/SQ/Q, no dueno).
