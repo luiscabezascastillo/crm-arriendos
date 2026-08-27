@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v13 · 2026-08-27 · Resumen CC1+CC2+CC3: el ÚLTIMO mes (en curso, datos aún incompletos) se traza
+//   PUNTEADO en las tres curvas y con el punto hueco, para distinguir lo provisional de lo cerrado. Hereda v12.
 // VERSION: v12 · 2026-08-27 · Panel: se SUPRIME la barra superior de KPIs demo (Ingresos/Costes/Resultado/
 //   Propiedades/Alertas, cifras inventadas). En su lugar, RESUMEN CC1+CC2+CC3 con 3 curvas: Ventas total
 //   (admon_fcr+ingresos+facturación), Costes total y Resultado (Ventas−Costes, línea gruesa) en EJE
@@ -176,12 +178,28 @@ function ResumenChart({ labels, ventas, costes, pl }) {
         ))}
         {R0 < 0 && R1 > 0 && <line x1={PL} y1={YR(0)} x2={VW - PR} y2={YR(0)} stroke={C_R} strokeWidth="1" strokeDasharray="3 3" opacity="0.4" />}
         {labels.map((l, i) => <text key={'x' + i} x={X(i)} y={VH - 6} textAnchor="middle" fontSize="9.5" fill={TXT}>{String(l).slice(0, 3)}</text>)}
-        <path d={mk(ventas, YL)} fill="none" stroke={C_V} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={mk(costes, YL)} fill="none" stroke={C_C} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={mk(pl, YR)} fill="none" stroke={C_R} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {ventas.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pv' + i} cx={X(i)} cy={YL(v)} r="2.4" fill={C_V} /> : null)}
-        {costes.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pc' + i} cx={X(i)} cy={YL(v)} r="2.4" fill={C_C} /> : null)}
-        {pl.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pp' + i} cx={X(i)} cy={YR(v)} r="3.1" fill={C_R} /> : null)}
+        {/* Cada serie: tramo firme + ULTIMO tramo (mes en curso, datos aun incompletos) PUNTEADO y punto hueco. */}
+        {[{ d: ventas, Y: YL, c: C_V, w: 2.4, r: 2.4 }, { d: costes, Y: YL, c: C_C, w: 2.4, r: 2.4 }, { d: pl, Y: YR, c: C_R, w: 4, r: 3.1 }].map((sr, si) => {
+          const vi = []; sr.d.forEach((v, i) => { if (v != null && Number.isFinite(v)) vi.push(i) })
+          const lastIdx = vi.length ? vi[vi.length - 1] : -1
+          const enCurso = lastIdx === sr.d.length - 1 && vi.length >= 2   // el ultimo punto es el mes en curso
+          const prevIdx = enCurso ? vi[vi.length - 2] : -1
+          const firme = enCurso ? sr.d.map((v, i) => i === lastIdx ? null : v) : sr.d   // tramo firme: sin el ultimo
+          return (
+            <g key={'s' + si}>
+              <path d={mk(firme, sr.Y)} fill="none" stroke={sr.c} strokeWidth={sr.w} strokeLinecap="round" strokeLinejoin="round" />
+              {enCurso && (
+                <line x1={X(prevIdx)} y1={sr.Y(sr.d[prevIdx])} x2={X(lastIdx)} y2={sr.Y(sr.d[lastIdx])}
+                  stroke={sr.c} strokeWidth={sr.w} strokeLinecap="round" strokeDasharray={`${Math.max(2, sr.w - 0.5)} ${sr.w + 3}`} />
+              )}
+              {sr.d.map((v, i) => (v != null && Number.isFinite(v))
+                ? (i === lastIdx && enCurso
+                    ? <circle key={'pt' + i} cx={X(i)} cy={sr.Y(v)} r={sr.r + 0.4} fill="#fff" stroke={sr.c} strokeWidth="1.6" />
+                    : <circle key={'pt' + i} cx={X(i)} cy={sr.Y(v)} r={sr.r} fill={sr.c} />)
+                : null)}
+            </g>
+          )
+        })}
       </svg>
     </div>
   )
@@ -463,7 +481,7 @@ export default function PanelPage() {
           costes={resumen.map(r => r.c)}
           pl={resumen.map(r => r.p)}
         />
-        <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 4, fontStyle: 'italic' }}>Ventas = Admon FCR (CC1) + Ingresos arriendos (CC2) + Facturación (CC3). Costes parciales (mes cerrado anterior). Solo meses con liquidación CC1 (congelados + mes en curso *).</div>
+        <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 4, fontStyle: 'italic' }}>Ventas = Admon FCR (CC1) + Ingresos arriendos (CC2) + Facturación (CC3). Costes parciales (mes cerrado anterior). Solo meses con liquidación CC1 (congelados + mes en curso). El último mes va PUNTEADO: aún no están cargados todos sus datos.</div>
       </div>
 
       <div style={{ padding: '20px 24px' }}>
