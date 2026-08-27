@@ -1,4 +1,6 @@
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
+// VERSION: v18 · 2026-08-27 · Tabla de comprobantes: filtro de cabecera IDÉNTICO al del SA (componente compartido
+//   FiltroCabecera: orden asc/desc, condiciones de texto, checkboxes con buscador y Aceptar/Cancelar) en Origen/Periodo/Fecha/Glosa/CCB/Cuadre. Hereda v17.
 // VERSION: v17 · 2026-08-27 · Tabla de comprobantes: el filtro de columna pasa de input de texto a AUTOFILTRO estilo Excel
 //   (▼ con checkboxes + buscador, como SA) en Origen/Periodo/Fecha/Glosa/CCB/Cuadre. Hereda v16.
 // VERSION: v16 · 2026-08-27 · Tarjetas de modulos a 3 columnas. Boton "Borrar todo" (solo EDITORES, doble confirmacion)
@@ -31,6 +33,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/app/components/ui/FiltroCabecera'
 import * as XLSX from 'xlsx'
 
 const EDITORES = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
@@ -41,6 +44,16 @@ const BORDE = '#E5E4DF'
 const TENUE = '#888780'
 const ROJO_BG = '#FBE9E7'
 const ROJO = '#B23A3A'
+
+// Columnas de la tabla de comprobantes para el filtro de cabecera estilo SA (una fila = un comprobante).
+const COLDEFS_COMP = [
+  { key: 'origen',  label: 'Origen',  tipo: 'texto', fkey: c => c.origen || '',  flabel: k => k || '(vacías)' },
+  { key: 'periodo', label: 'Periodo', tipo: 'texto', fkey: c => c.periodo || '', flabel: k => k || '(vacías)' },
+  { key: 'fecha',   label: 'Fecha',   tipo: 'fecha', fkey: c => String(c.fecha || '').slice(0, 10), flabel: k => (k ? fechaCL(k) : '(vacías)') },
+  { key: 'glosa',   label: 'Glosa',   tipo: 'texto', fkey: c => c.glosa || '',   flabel: k => k || '(vacías)' },
+  { key: 'ccb',     label: 'CCB',     tipo: 'texto', fkey: c => c.ccb || '',     flabel: k => k || '(sin CCB)' },
+  { key: 'cuadre',  label: 'Cuadre',  tipo: 'texto', fkey: c => (c.cuadra ? 'Cuadra' : 'Descuadra'), flabel: k => k || '' },
+]
 
 const clp = (n) => (n == null || n === '' ? '' : Number(n).toLocaleString('es-CL'))
 
@@ -81,11 +94,11 @@ export default function ContabPage() {
   const [alcance, setAlcance] = useState('anio')   // 'mes' | 'anio'
   const [mes, setMes] = useState(new Date().getMonth() + 1)
   const [comprobantes, setComprobantes] = useState([])
-  const [fCol, setFCol] = useState({ origen: new Set(), periodo: new Set(), fecha: new Set(), glosa: new Set(), ccb: new Set(), cuadre: new Set() })  // autofiltros de columna (estilo Excel)
-  const [filtroAbierto, setFiltroAbierto] = useState(null)   // qué columna tiene el desplegable abierto
-  const setFC2 = (col, sel) => setFCol(p => ({ ...p, [col]: sel }))
-  const FCOLS = ['origen', 'periodo', 'fecha', 'glosa', 'ccb', 'cuadre']
-  const limpiarFCol = () => setFCol({ origen: new Set(), periodo: new Set(), fecha: new Set(), glosa: new Set(), ccb: new Set(), cuadre: new Set() })
+  const [cFiltros, setCFiltros] = useState({})   // filtros de columna estilo SA de la tabla de comprobantes
+  const [cOpen, setCOpen] = useState(null)       // columna con el desplegable abierto
+  const [cOrden, setCOrden] = useState(null)     // { key, dir } orden tipo Excel
+  const hayFiltro = Object.values(cFiltros).some(filtroActivo)
+  const limpiarTodo = () => setCFiltros({})
   const [borrando, setBorrando] = useState(false)
   const [resumen, setResumen] = useState([])
   const [cargando, setCargando] = useState(false)
@@ -227,26 +240,15 @@ export default function ContabPage() {
     return { debe, haber, n: comprobantes.length, todos, lineas: comprobantes.reduce((s, c) => s + (Number(c.n_lineas) || 0), 0) }
   }, [comprobantes])
 
-  // Comprobantes visibles tras aplicar los filtros de cabecera (texto, "contiene", por columna).
-  // Autofiltro estilo Excel (como SA): valor de cada columna por comprobante + valores distintos + filtrado.
-  const colVal = (c, k) => k === 'fecha' ? fechaCL(c.fecha) : k === 'cuadre' ? (c.cuadra ? 'Cuadra ✓' : 'Descuadra ✗') : String(c[k] ?? '')
-  const valores = useMemo(() => {
-    const o = {}
-    for (const k of FCOLS) o[k] = [...new Set(comprobantes.map(c => colVal(c, k)))].sort()
-    return o
-  }, [comprobantes])   // eslint-disable-line
-  const hayFiltro = FCOLS.some(k => fCol[k]?.size)
-  const comprobantesVis = useMemo(
-    () => comprobantes.filter(c => FCOLS.every(k => !fCol[k]?.size || fCol[k].has(colVal(c, k)))),
-    [comprobantes, fCol]   // eslint-disable-line
-  )
+  // Comprobantes visibles: filtros de cabecera estilo SA (sel + condiciones + orden).
+  const comprobantesVis = useMemo(() => aplicarFiltros(comprobantes, COLDEFS_COMP, cFiltros, cOrden), [comprobantes, cFiltros, cOrden])
 
   const resumenPorOrigen = (id) => resumen.find(r => r.origen === id)
 
   if (status === 'loading') return <div style={{ padding: 40, color: TENUE }}>Cargando…</div>
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FAFAF8' }} onClick={() => setFiltroAbierto(null)}>
+    <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
       <BotonVolver />
       <FinancieroNav activo="contab" />
@@ -338,7 +340,7 @@ export default function ContabPage() {
               {hayFiltro && (
                 <span style={{ marginLeft: 10, fontSize: 13, color: TENUE }}>
                   · filtrado: <b>{comprobantesVis.length}</b> de {comprobantes.length}
-                  <button onClick={limpiarFCol} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: `1px solid ${BORDE}`, background: '#fff', color: VERDE, fontSize: 12, cursor: 'pointer' }}>Quitar filtros</button>
+                  <button onClick={limpiarTodo} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: `1px solid ${BORDE}`, background: '#fff', color: VERDE, fontSize: 12, cursor: 'pointer' }}>Quitar filtros</button>
                 </span>
               )}
             </div>
@@ -366,15 +368,28 @@ export default function ContabPage() {
           <div style={{ overflowX: 'auto', border: `1px solid ${BORDE}`, borderRadius: 12, background: '#fff' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>
-                <th style={{ ...th, verticalAlign: 'top' }}>Origen<FiltroExcel col="origen" valores={valores.origen} sel={fCol.origen} onChange={sset => setFC2('origen', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
-                <th style={{ ...th, verticalAlign: 'top' }}>Periodo<FiltroExcel col="periodo" valores={valores.periodo} sel={fCol.periodo} onChange={sset => setFC2('periodo', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
-                <th style={{ ...th, verticalAlign: 'top' }}>Fecha<FiltroExcel col="fecha" valores={valores.fecha} sel={fCol.fecha} onChange={sset => setFC2('fecha', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
-                <th style={{ ...th, verticalAlign: 'top' }}>Glosa<FiltroExcel col="glosa" valores={valores.glosa} sel={fCol.glosa} onChange={sset => setFC2('glosa', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
-                <th style={{ ...th, verticalAlign: 'top' }}>CCB<FiltroExcel col="ccb" valores={valores.ccb} sel={fCol.ccb} onChange={sset => setFC2('ccb', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
+                {['origen', 'periodo', 'fecha', 'glosa', 'ccb'].map(k => {
+                  const col = COLDEFS_COMP.find(c => c.key === k)
+                  return (
+                    <th key={k} style={{ ...th, verticalAlign: 'top', position: 'relative' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {col.label}{cOrden?.key === k ? (cOrden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        <HeaderFilter col={col} movs={comprobantes} state={cFiltros[k]} setState={v => setCFiltros(f => ({ ...f, [k]: v }))}
+                          open={cOpen} setOpen={setCOpen} orden={cOrden} setOrden={setCOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                      </span>
+                    </th>
+                  )
+                })}
                 <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Líneas</th>
                 <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Debe</th>
                 <th style={{ ...th, textAlign: 'right', verticalAlign: 'top' }}>Haber</th>
-                <th style={{ ...th, verticalAlign: 'top' }}>Cuadre<FiltroExcel col="cuadre" valores={valores.cuadre} sel={fCol.cuadre} onChange={sset => setFC2('cuadre', sset)} abierto={filtroAbierto} setAbierto={setFiltroAbierto} /></th>
+                <th style={{ ...th, verticalAlign: 'top', position: 'relative' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    Cuadre{cOrden?.key === 'cuadre' ? (cOrden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                    <HeaderFilter col={COLDEFS_COMP.find(c => c.key === 'cuadre')} movs={comprobantes} state={cFiltros.cuadre} setState={v => setCFiltros(f => ({ ...f, cuadre: v }))}
+                      open={cOpen} setOpen={setCOpen} orden={cOrden} setOrden={setCOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                  </span>
+                </th>
               </tr></thead>
               <tbody>
                 {comprobantesVis.map(c => (
@@ -502,49 +517,6 @@ function PreviewNubox({ preview, onCerrar, onExportar }) {
         </div>
       </div>
     </div>
-  )
-}
-
-// Autofiltro estilo Excel (▼ con checkboxes y buscador), igual que en SA/Facturas.
-function FiltroExcel({ col, valores, sel, onChange, abierto, setAbierto }) {
-  const [q, setQ] = useState('')
-  const activo = sel && sel.size > 0 && sel.size < valores.length
-  const vis = q ? valores.filter(v => String(v).toLowerCase().includes(q.toLowerCase())) : valores
-  const todos = !sel || sel.size === 0 || sel.size === valores.length
-  function toggle(v) {
-    const set = new Set(sel && sel.size ? sel : valores)
-    if (set.has(v)) set.delete(v); else set.add(v)
-    onChange(set.size === valores.length ? new Set() : set)
-  }
-  function marcarTodos(on) { onChange(on ? new Set() : new Set(['__none__'])) }
-  return (
-    <span style={{ position: 'relative', display: 'inline-block' }}>
-      <span onClick={e => { e.stopPropagation(); setAbierto(abierto === col ? null : col) }}
-        style={{ cursor: 'pointer', marginLeft: 4, color: activo ? '#1D9E75' : '#B4B2A9', fontSize: 11, userSelect: 'none', fontWeight: 700 }}
-        title="Filtrar">{activo ? '▼●' : '▼'}</span>
-      {abierto === col && (
-        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 20, left: 0, zIndex: 50, background: '#fff', border: '1px solid #CBD5E1', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', width: 240, color: '#1a1a2e', fontWeight: 400 }}>
-          <div style={{ padding: 8, borderBottom: '1px solid #EEE' }}>
-            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar…" style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', boxSizing: 'border-box' }} />
-          </div>
-          <div style={{ padding: '4px 8px', borderBottom: '1px solid #EEE', display: 'flex', gap: 10, fontSize: 11 }}>
-            <span onClick={() => marcarTodos(true)} style={{ cursor: 'pointer', color: '#2563EB' }}>Todos</span>
-            <span onClick={() => marcarTodos(false)} style={{ cursor: 'pointer', color: '#2563EB' }}>Ninguno</span>
-          </div>
-          <div style={{ maxHeight: 220, overflowY: 'auto', padding: 4 }}>
-            {vis.map(v => {
-              const marcado = todos || (sel && sel.has(v))
-              return (
-                <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', fontSize: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={!!marcado} onChange={() => toggle(v)} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v) || '(vacío)'}</span>
-                </label>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </span>
   )
 }
 
