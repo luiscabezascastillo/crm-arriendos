@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-27 · Selector de liquidacion (por defecto la que toca segun el dia 10); los KPIs muestran la elegida.
 // VERSION: v2 · 2026-08-26 · Cobranza · Widget-resumen de KPIs de salud del cobro.
 //   5 KPIs (renta: cobrado en plazo · cartera por cobrar; servicios: deuda · al día · garantías en riesgo)
 //   con valor actual, color según meta y mini-curva, y enlace a la vista de detalle (/op/cobranza/kpis).
@@ -22,13 +23,17 @@ const cumple = (v, meta) => v == null || !meta ? null : (meta.dir === 'up' ? v >
 export default function KpisResumen() {
   const [d, setD] = useState(null)
   const [err, setErr] = useState('')
+  const [sel, setSel] = useState(null)
   useEffect(() => {
     fetch('/api/cobranza/kpis?meses=6', { cache: 'no-store' }).then(r => r.json())
       .then(j => { if (j.error) setErr(j.error); else setD(j) }).catch(e => setErr(String(e)))
   }, [])
   if (err) return null
 
-  const a = d?.actual, m = d?.metas
+  const m = d?.metas
+  const serie = d?.serie || []
+  const idx = (sel != null && sel < serie.length) ? sel : (serie.length ? serie.length - 1 : 0)
+  const a = serie[idx]
   const kpis = a ? [
     { lab: 'Cobrado en plazo', big: (a.pct_cobrado ?? '—') + '%', sub: 'meta ' + (m.pct_cobrado.txt), meta: cumple(a.pct_cobrado, m.pct_cobrado), serie: d.serie.map(s => s.pct_cobrado), color: C.verde },
     { lab: 'Cartera por cobrar', big: Pk(a.cartera), sub: (a.pct_cartera ?? '—') + '% · meta ' + m.pct_cartera.txt, meta: cumple(a.pct_cartera, m.pct_cartera), serie: d.serie.map(s => s.cartera), color: C.rojo },
@@ -42,7 +47,12 @@ export default function KpisResumen() {
     <div style={{ background: '#F7F6F1', border: '1px solid ' + C.line, borderRadius: 14, padding: 14, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: C.txt, textTransform: 'uppercase', letterSpacing: '.04em' }}>Salud del cobro</span>
-        <span style={{ fontSize: 11.5, color: C.sub }}>{a ? 'al mes ' + a.lbl : 'cargando…'}</span>
+        {serie.length ? (
+          <select value={idx} onChange={e => setSel(Number(e.target.value))} title="Elige la liquidación a ver"
+            style={{ fontSize: 11.5, color: C.sub, border: '1px solid ' + C.line, borderRadius: 7, padding: '2px 6px', background: '#fff', cursor: 'pointer' }}>
+            {serie.map((s, i) => <option key={s.aamm} value={i}>{'Liquidación ' + s.lbl}</option>)}
+          </select>
+        ) : <span style={{ fontSize: 11.5, color: C.sub }}>cargando…</span>}
         <Link href="/op/cobranza/kpis" style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: C.acento, textDecoration: 'none' }}>Ver evolución →</Link>
       </div>
       {!a ? <div style={{ color: C.sub, fontSize: 12.5 }}>Calculando indicadores…</div> : (

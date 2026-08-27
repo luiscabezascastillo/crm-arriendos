@@ -1,3 +1,6 @@
+// VERSION: v4 · 2026-08-27 · FIX "Cartera por cobrar": era el saldo vivo ACUMULADO de todos los meses (morosidad historica, ~102M).
+//   Ahora es POR LIQUIDACION: base del mes - lo cobrado en su ciclo de cobro (dia 23 mes anterior -> dia 23 del mes), acotado a >=0.
+//   Asi refleja lo que falta por cobrar de ESA liquidacion (nunca mas que su base). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Cobranza · KPIs de salud del cobro (renta + servicios), serie mensual.
 //   FIX v3: (1) servicios: el campo ggcc_agua_luz.mes es ISO "AAAA-MM" (no "AGOSTO 2026") -> se consultaba
 //   vacío (deuda $0, al día —%, garantías 0). Ahora filtra por "AAAA-MM" y agrupa por idadmon.
@@ -91,8 +94,12 @@ export async function GET(req) {
     let base_t = 0
     for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) base_t += n0(r.base) }
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
-    let cobradoPlazo = 0
-    for (const a of abonos) { if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab }
+    const finCiclo = Date.UTC(y, mo - 1, 23)   // fin del ciclo de cobro de esta liquidacion (dia 23 del mes)
+    let cobradoPlazo = 0, cobradoCiclo = 0
+    for (const a of abonos) {
+      if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab
+      if (a.t >= ini && a.t < finCiclo) cobradoCiclo += a.ab
+    }
     // servicios agrupados por idadmon (un contrato puede tener varios inmuebles)
     const porId = {}
     for (const r of (servRes.data || [])) {
@@ -107,20 +114,12 @@ export async function GET(req) {
       const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) riesgo++
     }
     const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
-    return { y, mo, base_t, cobradoPlazo, deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo }
+    return { y, mo, base_t, cobradoPlazo, cartera: Math.max(0, Math.round(base_t - cobradoCiclo)), deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo }
   }))
 
-  // 2) cartera = saldo acumulado a fin de cada mes (sweep sobre movs ordenados)
-  const bal = {}; let mi = 0; const carteraMes = {}
-  for (const { y, mo } of meses) {
-    const fin = Date.UTC(y, mo, 0)  // último día del mes
-    while (mi < movs.length && movs[mi].t <= fin) { bal[movs[mi].idadmon] = (bal[movs[mi].idadmon] || 0) + movs[mi].delta; mi++ }
-    let c = 0; for (const id in bal) { if (bal[id] > 0) c += bal[id] }
-    carteraMes[isoMes(y, mo)] = Math.round(c)
-  }
-
+  // 2) cartera POR LIQUIDACION (no acumulada): base del mes - lo cobrado en su ciclo (ya calculado arriba)
   const serie = rentaServ.map(r => {
-    const cartera = carteraMes[isoMes(r.y, r.mo)] || 0
+    const cartera = r.cartera || 0
     return {
       aamm: aamm(r.y, r.mo), lbl: lblDe(r.y, r.mo), base: Math.round(r.base_t),
       pct_cobrado: r.base_t > 0 ? Math.min(100, Math.round((r.cobradoPlazo / r.base_t) * 1000) / 10) : null,
