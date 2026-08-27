@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-26 · FIX: datos_arriendos no tiene 'fecha_reajuste' (solo _1..6); se quita del select. Hereda v1.
 // VERSION: v1 · 2026-08-26 · Cobranza · Bandeja de DIFERENCIAS / saldo por cobrar (solo lectura).
 //   GET ?periodo=AAMM. Detecta contratos que PAGARON DE MENOS (pagaron algo pero les falta),
 //   distinto del que no pagó nada (esos van a Multas/cobranza). Objetivo: cazar el goteo pequeño
@@ -42,7 +43,7 @@ const isoUTC = (t) => new Date(t).toISOString().slice(0, 10)
 
 // última fecha de reajuste ya aplicada (<= hoy) entre fecha_reajuste y fecha_reajuste1..6
 function ultimoReajuste(a, hoyT) {
-  const cands = ['fecha_reajuste', 'fecha_reajuste1', 'fecha_reajuste2', 'fecha_reajuste3', 'fecha_reajuste4', 'fecha_reajuste5', 'fecha_reajuste6']
+  const cands = ['fecha_reajuste1', 'fecha_reajuste2', 'fecha_reajuste3', 'fecha_reajuste4', 'fecha_reajuste5', 'fecha_reajuste6']
     .map(k => pf(a[k])).filter(t => t && t <= hoyT)
   if (!cands.length) return null
   return Math.max(...cands)
@@ -74,7 +75,7 @@ export async function GET(req) {
   if (!ids.length) return Response.json({ ok: true, periodo, hoy: isoUTC(hoy.t), filas: [], resumen: { total: 0, suma_dif: 0, suma_acum: 0, con_reajuste: 0 } })
 
   const [arrRes, ctasRes] = await Promise.all([
-    admin.from('datos_arriendos').select('idadmon, arrendatario, rut, mail_arrendatario, inmueble, propietario, quien_cobra, cuota, fecha_reajuste, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6').in('idadmon', ids),
+    admin.from('datos_arriendos').select('idadmon, arrendatario, mail_arrendatario, inmueble, propietario, quien_cobra, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6').in('idadmon', ids),
     admin.from('cuentas').select('idadmon, cargo, cargo_manual, abono, anulado').in('idadmon', ids),
   ])
   if (arrRes.error) return Response.json({ error: 'datos_arriendos: ' + arrRes.error.message }, { status: 500 })
