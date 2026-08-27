@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v18 · 2026-08-27 · La banda RESUMEN CC1+CC2+CC3 se muestra solo a Direccion, Karina y Anthony. Hereda v17.
+// VERSION: v17 · 2026-08-27 · Resumen: acumulado del mismo AZUL que el resultado (linea fina), ventas/costes mas
+//   difuminadas, y titulo motivacional grande sobre el grafico. Hereda v16.
 // VERSION: v16 · 2026-08-27 · Resumen: Acumulado al MISMO eje que el Resultado (arrancan juntos), con numeros morados;
 //   numeros del resultado por signo; BENEFICIOS/PERDIDAS dentro del grafico. Hereda v15.
 // VERSION: v15 · 2026-08-27 · Resumen: eje Y izq legible con marcas en MILES (1/2/5·10^n), BENEFICIOS arriba /
@@ -52,6 +55,7 @@ import AvisoPagos from '../components/ui/AvisoPagos'
 import AvisoRecordatorios from '../components/ui/AvisoRecordatorios'
 import { supabase } from '../../lib/supabaseClient'
 import KpisResumen from '../op/cobranza/KpisResumen'
+import { useSession } from 'next-auth/react'
 
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
 
@@ -174,7 +178,7 @@ function ResumenChart({ labels, ventas, costes, pl }) {
     return { li, en, pi: en ? vi[vi.length - 2] : -1 }
   }
   const TXT = '#8a8880', AX = '#eceae2'
-  const C_V = '#1baf7a', C_C = '#eb6834', C_A = '#7c3aed'
+  const C_V = '#1baf7a', C_C = '#eb6834'
   const AZUL = '#1d4ed8', ROJO = '#dc2626'
   const colorPt = v => (v >= 0 ? AZUL : ROJO)
   const mil = v => Math.round(v / 1000).toLocaleString('es-CL')
@@ -188,14 +192,14 @@ function ResumenChart({ labels, ventas, costes, pl }) {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--gray-800)', fontWeight: 800 }}>
           <span style={{ width: 22, height: 5, borderRadius: 2, background: AZUL }} />Resultado mensual
         </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6d28d9', fontWeight: 700 }}>
-          <span style={{ width: 18, height: 4, borderRadius: 2, background: C_A }} />Acumulado
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: AZUL, fontWeight: 700 }}>
+          <span style={{ width: 18, height: 3, borderRadius: 2, background: AZUL, opacity: 0.85 }} />Acumulado
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
-          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_V, opacity: 0.5 }} />Ventas
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_V, opacity: 0.4 }} />Ventas
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
-          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_C, opacity: 0.5 }} />Costes
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_C, opacity: 0.4 }} />Costes
         </span>
         <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>cifras en miles de $ · eje izq: Resultado y Acumulado · eje der: ventas y costes (apoyo)</span>
       </div>
@@ -221,27 +225,27 @@ function ResumenChart({ labels, ventas, costes, pl }) {
           const { li, en, pi } = lastSeg(sr.d)
           const firme = en ? sr.d.map((v, i) => i === li ? null : v) : sr.d
           return (
-            <g key={'f' + si} opacity="0.3">
+            <g key={'f' + si} opacity="0.2">
               <path d={mk(firme, Yvc)} fill="none" stroke={sr.c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               {en && <line x1={X(pi)} y1={Yvc(sr.d[pi])} x2={X(li)} y2={Yvc(sr.d[li])} stroke={sr.c} strokeWidth="1.8" strokeDasharray="2 4" strokeLinecap="round" />}
             </g>
           )
         })}
-        {/* ACUMULADO (eje izq, morado) + numeros morados */}
+        {/* ACUMULADO (eje izq): mismo AZUL que el resultado, linea mas fina + numeros azules */}
         {(() => {
           const { li, en, pi } = lastSeg(plAcum)
           const firme = en ? plAcum.map((v, i) => i === li ? null : v) : plAcum
           return (
             <g>
-              <path d={mk(firme, Yr)} fill="none" stroke={C_A} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-              {en && <line x1={X(pi)} y1={Yr(plAcum[pi])} x2={X(li)} y2={Yr(plAcum[li])} stroke={C_A} strokeWidth="2.8" strokeDasharray="3 4" strokeLinecap="round" />}
+              <path d={mk(firme, Yr)} fill="none" stroke={AZUL} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+              {en && <line x1={X(pi)} y1={Yr(plAcum[pi])} x2={X(li)} y2={Yr(plAcum[li])} stroke={AZUL} strokeWidth="2.6" strokeDasharray="3 4" strokeLinecap="round" opacity="0.85" />}
               {plAcum.map((v, i) => (v != null && Number.isFinite(v))
                 ? (i === li && en
-                    ? <circle key={'ac' + i} cx={X(i)} cy={Yr(v)} r="3.4" fill="#fff" stroke={C_A} strokeWidth="2" />
-                    : <circle key={'ac' + i} cx={X(i)} cy={Yr(v)} r="2.8" fill={C_A} />)
+                    ? <circle key={'ac' + i} cx={X(i)} cy={Yr(v)} r="3.4" fill="#fff" stroke={AZUL} strokeWidth="2" />
+                    : <circle key={'ac' + i} cx={X(i)} cy={Yr(v)} r="2.6" fill={AZUL} />)
                 : null)}
               {plAcum.map((v, i) => (v != null && Number.isFinite(v))
-                ? <text key={'al' + i} x={X(i)} y={Yr(v) + 15} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={C_A}>{mil(v)}</text>
+                ? <text key={'al' + i} x={X(i)} y={Yr(v) + 15} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={AZUL}>{mil(v)}</text>
                 : null)}
             </g>
           )
@@ -399,6 +403,11 @@ function ChipGar({ q }) {
 }
 
 export default function PanelPage() {
+  const { data: session } = useSession()
+  const rol = session?.user?.role || ''
+  const email = session?.user?.email || ''
+  // Resumen CC1+CC2+CC3: solo Direccion, Karina y Anthony.
+  const puedeVerResumen = rol === 'direccion' || ['karina.morales@fondocapital.com', 'anthony.mendoza@fondocapital.com'].includes(email)
   const [terminos, setTerminos] = useState([])
   const [morosos, setMorosos]   = useState([])
   const [dispon, setDispon]     = useState([])
@@ -534,8 +543,12 @@ export default function PanelPage() {
       <AvisoPagos />
       <AvisoRecordatorios />
 
-      {/* Resumen CC1+CC2+CC3 — Ventas, Costes y Resultado (doble escala). Sustituye la barra de KPIs demo. */}
+      {/* Resumen CC1+CC2+CC3 — solo Dirección, Karina y Anthony */}
+      {puedeVerResumen && (
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px 12px' }}>
+        <div style={{ textAlign: 'center', margin: '2px 0 12px' }}>
+          <span style={{ fontSize: 19, fontWeight: 800, color: '#1d4ed8', letterSpacing: '.02em', lineHeight: 1.25 }}>¡¡¡ A PESAR DE LA HISTORIA, ESTAMOS EN PROCESO DE CAMBIO HACIA EL ÉXITO !!!</span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--gray-700)', letterSpacing: '.04em' }}>RESUMEN CC1 + CC2 + CC3</span>
           <span style={{ fontSize: 10.5, color: 'var(--gray-400)' }}>Ventas y costes de las tres áreas juntas · Resultado (Ventas−Costes) en escala propia · año rodante</span>
@@ -548,6 +561,7 @@ export default function PanelPage() {
         />
         <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 4, fontStyle: 'italic' }}>Ventas = Admon FCR (CC1) + Ingresos arriendos (CC2) + Facturación (CC3). Costes parciales (mes cerrado anterior). Solo meses con liquidación CC1 (congelados + mes en curso). El último mes va PUNTEADO: aún no están cargados todos sus datos.</div>
       </div>
+      )}
 
       <div style={{ padding: '20px 24px' }}>
 
