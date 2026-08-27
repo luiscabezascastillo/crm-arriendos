@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Quitada la pestaña "Casos" (vista de términos con déficit desde vw_termino_resultado: montos irreales e incluía contratos que cobra el dueño). Hereda versión previa.
 // VERSION: v23 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios con mini-curva y enlace a /op/cobranza/kpis). Hereda v22.
 // VERSION: v22 · 2026-08-26 · Pestañas reordenadas por flujo de cobro (Cartolas·Diferencias·Multas·Casos·Servicios·…) + botón "🔔 Notificaciones" en cabecera (prevención). Hereda v21.
 // VERSION: v21 · 2026-08-26 · Pestaña "Diferencias": saldo por cobrar / pagó de menos (solo lectura, /api/cobranza/diferencias + DiferenciasView). Hereda v20.
@@ -117,7 +118,6 @@ const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
   { k: 'diferencias', label: 'Diferencias' },
   { k: 'multas', label: 'Multas' },
-  { k: 'casos', label: 'Casos' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
   { k: 'saldos', label: 'Saldos a favor' },
   { k: 'inicios', label: 'Inicios' },
@@ -177,7 +177,6 @@ export default function Cobranza() {
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
       {tab === 'multas' && <MultasView />}
       {tab === 'diferencias' && <DiferenciasView />}
-      {tab === 'casos' && <CasosView />}
       {tab === 'saldos' && <SaldosFavor />}
       {tab === 'bitacora' && <Bitacora />}
 
