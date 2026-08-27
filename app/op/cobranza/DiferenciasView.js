@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-27 · Email suave afinado + trozo condicional del reajuste (solo si lo hubo). Hereda v2.
 // VERSION: v2 · 2026-08-27 · Cobranza · Pestaña DIFERENCIAS (Tanda 2: drawer de gestión).
 //   Al pulsar una fila se abre un DRAWER lateral con el retrato del arrendatario (a cobrar/recibido,
 //   reajuste, perfil de pagador, deuda de servicios) y el email suave ya redactado (revisar y enviar).
@@ -40,6 +41,8 @@ export default function DiferenciasView() {
     .replaceAll('{{arrendatario}}', f.arrendatario || '').replaceAll('{{propiedad}}', f.propiedad || '')
     .replaceAll('{{mes}}', data?.mes_lbl || '').replaceAll('{{a_cobrar}}', P(f.base))
     .replaceAll('{{recibido}}', P(f.recibido)).replaceAll('{{diferencia}}', P(f.diferencia))
+    .replaceAll('{{idadmon}}', f.idadmon || '')
+    .replaceAll('{{reajuste}}', f.reajuste_reciente ? ('La diferencia se debe, muy probablemente, a la actualización (reajuste) de su arriendo aplicada el ' + ddmm(f.fecha_reajuste) + ', que quizá aún no estaba reflejada en su pago. ') : '')
 
   const abrir = (f) => {
     const pl = data.plantilla || { asunto: '', cuerpo: '' }

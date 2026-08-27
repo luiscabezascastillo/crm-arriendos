@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-08-27 · Email suave afinado: pide regularizar hoy/mañana, con concepto de pago y mención del reajuste (placeholder). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Cobranza · DIFERENCIAS / saldo por cobrar (Tanda 2: retrato + envío + estado).
 //   GET: por moroso "pagó de menos" devuelve el retrato completo (a cobrar, recibido, diferencia, %,
 //        saldo cartola, reajuste, PERFIL de pagador, deuda de servicios) + estado guardado + plantilla suave.
@@ -163,8 +164,8 @@ export async function GET(req) {
 
 function plantillaSuave() {
   return {
-    asunto: 'Recordatorio de saldo — arriendo {{mes}} · {{propiedad}}',
-    cuerpo: 'Estimado/a {{arrendatario}}:\n\nLe escribimos por una pequeña diferencia en el pago del arriendo de {{propiedad}} correspondiente a {{mes}}. El monto correspondiente era {{a_cobrar}} y hemos recibido {{recibido}}, quedando una diferencia de {{diferencia}}.\n\nEs posible que se deba a la actualización (reajuste) del arriendo. Le agradeceríamos regularizar esta pequeña diferencia en su próximo pago, o indicarnos si hubo algún inconveniente.\n\nGracias por su atención,\nFondo Capital · Cobranzas',
+    asunto: 'Diferencia pendiente del arriendo de {{mes}} — {{propiedad}}',
+    cuerpo: 'Estimado/a {{arrendatario}}:\n\nGracias por su pago del arriendo de {{propiedad}} correspondiente a {{mes}}. Al revisar la cuenta hemos detectado una pequeña diferencia: el monto que correspondía era {{a_cobrar}} y se recibió {{recibido}}, por lo que queda pendiente {{diferencia}}.\n\n{{reajuste}}Le agradeceríamos regularizar esta diferencia de {{diferencia}} hoy o mañana, indicando en el concepto del pago: «{{idadmon}} diferencia arriendo {{mes}}». Es una cantidad pequeña, pero preferimos avisarle a tiempo para que su cuenta quede al día y no se acumule.\n\nSi ya realizó el pago o cree que hay un error, respóndanos a este correo y lo revisamos enseguida.\n\nUn cordial saludo,\nFondo Capital · Cobranzas',
   }
 }
 
