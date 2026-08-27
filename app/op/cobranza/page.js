@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v21 · 2026-08-26 · Pestaña "Diferencias": saldo por cobrar / pagó de menos (solo lectura, /api/cobranza/diferencias + DiferenciasView). Hereda v20.
 // VERSION: v20 · 2026-08-26 · Pestaña "Multas": bandeja de multas por atraso (solo lectura, consume /api/cobranza/multas + MultasView). Hereda v19.
 // VERSION: v19 · 2026-08-26 · Boton "📕 Guía morosos" en la cabecera (abre /api/cobranza/guia-morosos). Hereda v18.
 // VERSION: v18 · 2026-08-24 · Saldos a favor: enlace al panel completo "Cartolas a auditar". Hereda v17.
@@ -39,6 +40,7 @@ const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/
 const money = (v) => { const n = num(v); return (n ? '$' + n.toLocaleString('es-CL') : '$0') }
 
 import MultasView from './MultasView'
+import DiferenciasView from './DiferenciasView'
 
 const C = {
   txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8',
@@ -111,6 +113,7 @@ const COB_COLS = [
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
   { k: 'multas', label: 'Multas' },
+  { k: 'diferencias', label: 'Diferencias' },
   { k: 'casos', label: 'Casos' },
   { k: 'saldos', label: 'Saldos a favor' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
@@ -167,6 +170,7 @@ export default function Cobranza() {
 
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
       {tab === 'multas' && <MultasView />}
+      {tab === 'diferencias' && <DiferenciasView />}
       {tab === 'casos' && <CasosView />}
       {tab === 'saldos' && <SaldosFavor />}
       {tab === 'bitacora' && <Bitacora />}
