@@ -1,3 +1,4 @@
+// VERSION: v11 · 2026-08-27 · FIX KPIs inestables: paginación de cuentas con .order(id) (sin order, cada carga daba números distintos). Renta (cobrado en plazo + cartera) SOLO estado S/SQ (no Q término). Hereda v10.
 // VERSION: v10 · 2026-08-27 · FIX cartera $0: se sumaban faltas netas (sobrepagos cancelaban). Ahora suma SOLO faltas positivas por idadmon = FALTAN real (~2,3M ago). Hereda v9.
 // VERSION: v9 · 2026-08-27 · "Cartera por cobrar" = FALTA de la liquidación del mes (verdad del FALTAN, ~2,3M ago), no el saldo vivo acumulado. Meta 5%. Hereda v8.
 // VERSION: v8 · 2026-08-27 · "Cobrado en plazo" POR CONTRATO: se capa lo pagado en la ventana a la cuota del mes de cada IDADMON
@@ -56,7 +57,7 @@ const lblDe = (y, mo) => MES_ABR[mo - 1] + " '" + String(y).slice(2)
 async function todasCuentas() {
   const out = []; let from = 0; const page = 1000
   for (let i = 0; i < 60; i++) {
-    const { data, error } = await admin.from('cuentas').select('idadmon, fecha, cargo, cargo_manual, abono, anulado').range(from, from + page - 1)
+    const { data, error } = await admin.from('cuentas').select('idadmon, fecha, cargo, cargo_manual, abono, anulado').order('id', { ascending: true }).range(from, from + page - 1)
     if (error || !data || !data.length) break
     out.push(...data)
     if (data.length < page) break
@@ -74,13 +75,14 @@ export async function GET(req) {
   const N = Math.min(18, Math.max(3, Number(new URL(req.url).searchParams.get('meses')) || 6))
 
   const { data: arr } = await admin.from('datos_arriendos').select('idadmon, quien_cobra, garantia_pedida, estado')
-  const dueno = new Set(), garantia = {}, activo = new Set()
+  const dueno = new Set(), garantia = {}, activo = new Set(), ssq = new Set()
   for (const a of (arr || [])) {
     const esDueno = String(a.quien_cobra || '').toUpperCase() === 'DUEÑO'
     if (esDueno) dueno.add(a.idadmon)
     garantia[a.idadmon] = n0(a.garantia_pedida)
     const est = String(a.estado || '').toUpperCase()
     if (!esDueno && (est === 'S' || est === 'SQ' || est === 'Q')) activo.add(a.idadmon)
+    if (!esDueno && (est === 'S' || est === 'SQ')) ssq.add(a.idadmon)
   }
 
   // movimientos de cuentas (una vez): para "cobrado en plazo" (abonos) y "cartera" (saldo acumulado)
@@ -107,7 +109,7 @@ export async function GET(req) {
     // FALTAN real: agrupar por idadmon y sumar SOLO las faltas positivas (los que deben).
     // (sumar todas cancelaba morosos con sobrepagos y daba ~0). Igual que /procesos/liquidaciones/faltan.
     const baseById = {}, faltaById = {}
-    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) { baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base); faltaById[r.idadmon] = (faltaById[r.idadmon] || 0) + n0(r.falta) } }
+    for (const r of (liqRes.data || [])) { if (ssq.has(r.idadmon)) { baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base); faltaById[r.idadmon] = (faltaById[r.idadmon] || 0) + n0(r.falta) } }
     let base_t = 0; for (const id in baseById) base_t += baseById[id]
     let falta_t = 0; for (const id in faltaById) if (faltaById[id] > 0) falta_t += faltaById[id]
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
