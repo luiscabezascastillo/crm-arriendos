@@ -1,3 +1,4 @@
+// VERSION: v9 · 2026-08-27 · "Cartera por cobrar" = FALTA de la liquidación del mes (verdad del FALTAN, ~2,3M ago), no el saldo vivo acumulado. Meta 5%. Hereda v8.
 // VERSION: v8 · 2026-08-27 · "Cobrado en plazo" POR CONTRATO: se capa lo pagado en la ventana a la cuota del mes de cada IDADMON
 //   (antes sumaba abonos sin tope -> atrasos/sobrepagos lo inflaban y topaba en 100% en meses viejos; era un artefacto). Hereda v7.
 // VERSION: v7 · 2026-08-27 · Meses SIN datos de servicios (ggcc vacio ese mes) -> deuda_serv y garantias_riesgo = null (hueco en la curva),
@@ -103,7 +104,8 @@ export async function GET(req) {
       admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(y, mo) + '%'),
     ])
     const baseById = {}
-    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base) }
+    let falta_t = 0
+    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) { baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base); falta_t += n0(r.falta) } }
     let base_t = 0; for (const id in baseById) base_t += baseById[id]
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
     // pagado en plazo POR CONTRATO, capado a su cuota del mes (atrasos/sobrepagos no inflan el %)
@@ -125,20 +127,12 @@ export async function GET(req) {
       const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) { riesgo++; riesgoIds.push({ id, deuda: Math.round(t), gar: Math.round(g) }) }
     }
     const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
-    return { y, mo, base_t, cobradoPlazo, deuda_serv: totalS > 0 ? Math.round(deuda_serv) : null, pct_serv_aldia, garantias_riesgo: totalS > 0 ? riesgo : null, riesgo_ids: riesgoIds }
+    return { y, mo, base_t, falta_t: Math.round(Math.max(0, falta_t)), cobradoPlazo, deuda_serv: totalS > 0 ? Math.round(deuda_serv) : null, pct_serv_aldia, garantias_riesgo: totalS > 0 ? riesgo : null, riesgo_ids: riesgoIds }
   }))
 
-  // 2) cartera = saldo vivo (cargado - abonado) a fin de mes, SOLO de contratos activos que cobra FCR (S/SQ/Q, no dueno).
-  //    Es la deuda real de la pagina; excluye morosidad de contratos terminados. Barrido sobre movs ordenados.
-  const bal = {}; let mi = 0; const carteraMes = {}
-  for (const { y, mo } of meses) {
-    const fin = Date.UTC(y, mo, 0)  // ultimo dia del mes
-    while (mi < movs.length && movs[mi].t <= fin) { if (activo.has(movs[mi].idadmon)) bal[movs[mi].idadmon] = (bal[movs[mi].idadmon] || 0) + movs[mi].delta; mi++ }
-    let c = 0; for (const id in bal) { if (bal[id] > 0) c += bal[id] }
-    carteraMes[isoMes(y, mo)] = Math.round(c)
-  }
+  // 2) cartera = FALTA de la liquidación de CADA mes (lo que falta cobrar de ESA renta) = verdad del FALTAN.
   const serie = rentaServ.map(r => {
-    const cartera = carteraMes[isoMes(r.y, r.mo)] || 0
+    const cartera = r.falta_t || 0
     return {
       aamm: aamm(r.y, r.mo), lbl: lblDe(r.y, r.mo), base: Math.round(r.base_t),
       pct_cobrado: r.base_t > 0 ? Math.min(100, Math.round((r.cobradoPlazo / r.base_t) * 1000) / 10) : null,
@@ -149,7 +143,7 @@ export async function GET(req) {
 
   const metas = {
     pct_cobrado: { objetivo: 95, dir: 'up', txt: '≥ 95%' },
-    pct_cartera: { objetivo: 25, dir: 'down', txt: '≤ 25%' },   // cartera acumulada ≤ ~1/4 de una renta mensual
+    pct_cartera: { objetivo: 5, dir: 'down', txt: '≤ 5%' },   // morosidad del mes (falta / a cobrar)
     pct_serv_aldia: { objetivo: 90, dir: 'up', txt: '≥ 90%' },
     garantias_riesgo: { objetivo: 0, dir: 'down', txt: '0' },
   }

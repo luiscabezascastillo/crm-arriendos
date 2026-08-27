@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-08-27 · "Cartera por cobrar" en número completo (no millones); es la falta del mes. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Selector de liquidacion (por defecto la que toca segun el dia 10); los KPIs muestran la elegida.
 // VERSION: v2 · 2026-08-26 · Cobranza · Widget-resumen de KPIs de salud del cobro.
 //   5 KPIs (renta: cobrado en plazo · cartera por cobrar; servicios: deuda · al día · garantías en riesgo)
@@ -9,6 +10,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', verde: '#085041', rojo: '#9B1C1C', ambar: '#B8860B', azul: '#1D4ED8', acento: '#1D9E75' }
 const Pk = (n) => { const v = Number(n) || 0; return v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + Math.round(v / 1000) + 'k' }
+const P = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
 
 function spark(vals, color, w = 92, h = 24) {
   const xs = vals.filter(v => v != null)
@@ -36,7 +38,7 @@ export default function KpisResumen() {
   const a = serie[idx]
   const kpis = a ? [
     { lab: 'Cobrado en plazo', big: (a.pct_cobrado ?? '—') + '%', sub: 'meta ' + (m.pct_cobrado.txt), meta: cumple(a.pct_cobrado, m.pct_cobrado), serie: d.serie.map(s => s.pct_cobrado), color: C.verde },
-    { lab: 'Cartera por cobrar', big: Pk(a.cartera), sub: (a.pct_cartera ?? '—') + '% · meta ' + m.pct_cartera.txt, meta: cumple(a.pct_cartera, m.pct_cartera), serie: d.serie.map(s => s.cartera), color: C.rojo },
+    { lab: 'Cartera por cobrar', big: P(a.cartera), sub: (a.pct_cartera ?? '—') + '% · meta ' + m.pct_cartera.txt, meta: cumple(a.pct_cartera, m.pct_cartera), serie: d.serie.map(s => s.cartera), color: C.rojo },
     { lab: 'Deuda de servicios', big: Pk(a.deuda_serv), sub: 'protege garantías', meta: null, serie: d.serie.map(s => s.deuda_serv), color: C.ambar },
     { lab: 'Servicios al día', big: (a.pct_serv_aldia ?? '—') + '%', sub: 'meta ' + m.pct_serv_aldia.txt, meta: cumple(a.pct_serv_aldia, m.pct_serv_aldia), serie: d.serie.map(s => s.pct_serv_aldia), color: C.azul },
     { lab: 'Garantías en riesgo', big: String(a.garantias_riesgo ?? '—'), sub: 'meta ' + m.garantias_riesgo.txt, meta: cumple(a.garantias_riesgo, m.garantias_riesgo), serie: d.serie.map(s => s.garantias_riesgo), color: '#7a1c17' },
