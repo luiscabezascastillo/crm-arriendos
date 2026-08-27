@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/financiero/pagos/page.js
 // VERSION: v1 · 2026-08-17 · Pagos recurrentes: estado del mes (por vencer / vencido / pagado), botón "Pagado"
 //   (Alberto/Luis/Karina) con constancia de quién y cuándo, y alta/edición del catálogo (editable sin código).
@@ -5,6 +6,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
@@ -71,6 +73,7 @@ export default function PagosRecurrentesPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="pagos" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 24px 60px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>

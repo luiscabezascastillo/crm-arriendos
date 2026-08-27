@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v1 · 2026-07-31 · Vista de CONSULTA de Inmuebles (regenera la hoja "Inmuebles" del Excel).
 //   Muestra por propietario las unidades individuales y las combinaciones (agrupaciones depto+bodega/
 //   estacionamiento) con su ROL individual o combinado. Lee de la tabla `inmuebles` (raw_data) por
@@ -9,6 +10,7 @@
 //   (supervisor/Dirección/Anthony): marca unidades del propietario y compone idinmue+texto+rol
 //   (orden dep→bod→est) automáticamente, editable, y guarda en combinaciones_norm.
 import Link from 'next/link'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -183,6 +185,7 @@ export default function InmueblesPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 24px' }}>
 
         {/* Cabecera: título a la izquierda, búsqueda y botones a la derecha en la misma fila */}

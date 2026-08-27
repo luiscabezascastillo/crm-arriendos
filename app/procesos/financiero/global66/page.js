@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/financiero/global66/page.js
 // VERSION: v1 · 2026-08-16 · Global 66 (cuenta 1101-06). Arrastra el Excel de movimientos y se cargan
 //   (dedup por ID de transacción). Tabla con CCB, Cuenta contable y Comentario editables (se guardan
@@ -5,6 +6,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -81,6 +83,7 @@ export default function Global66Page() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="global66" />
       {dragOver && canEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

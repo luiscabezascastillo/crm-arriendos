@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v5 · 2026-08-24 · Añade botón "🗂️ Gestionar correspondencias" (→ /op/comunidad-feliz/correspondencias)
 //   en el bloque de acceso, junto a "No asociados". Hereda v4.
 // VERSION: v4 · 2026-08-17 · (1) Pantalla CERRADA POR ROL: solo Administración (Adalis/Fabiola), Karina y
@@ -16,6 +17,7 @@
 //   Feliz (bloques de 3, con dedup y validación anti-desalineo) sin pasar por xlsx ni Drive.
 //   Reutiliza el previo/tabla/guardar existentes. La vía de Drive se mantiene intacta.
 import { useState, useEffect } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -317,6 +319,7 @@ export default function ComunidadFeliz() {
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+      <BotonVolver />
 
       {/* Cabecera */}
       <div style={{ marginBottom: 24 }}>

@@ -1,4 +1,5 @@
 'use client';
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v27 · 2026-08-18 · El desplegable del FOLIO (Núm) se muestra en orden DESCENDENTE (el folio más alto =
 //   más reciente, arriba), vía la marca `ordenDesc` del motor de filtro. Solo en Descuentos. No cambia los datos
 //   (los folios históricos con decimales se quedan como están, pero salen abajo). Hereda v26.
@@ -66,6 +67,7 @@
 //   (ABONO→negativo, CARGO→positivo), para que el signo no quede al azar.
 
 import { useEffect, useMemo, useState, useRef } from 'react';
+import BotonVolver from '../../components/ui/BotonVolver'
 import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel';
 import { TIPOS, REPERCUTIR_A } from '@/lib/descuentosPermisos';
 import TopNav from '@/app/components/ui/TopNav';
@@ -460,6 +462,7 @@ export default function DescuentosPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ padding: '72px 20px 20px', background: C.fondo, minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <h1 style={{ color: C.azul, margin: 0, fontSize: 24 }}>Descuentos</h1>

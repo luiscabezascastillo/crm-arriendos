@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v1 · 2026-08-15 · "Alberto" · Cuenta corriente del propietario de la empresa (Financiero).
 //   Libro de movimientos que afectan al dinero/deuda entre la empresa (FCR) y Alberto: aportes, retiros,
 //   gastos que la empresa le debe, devoluciones, ajustes… Columnas: Fecha · Tipo · Descripción · Procedencia ·
@@ -8,6 +9,7 @@
 //   Escritura: Dirección + Alberto/Luis/Karina. Requiere tabla `cuenta_alberto` y /api/financiero/alberto.
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -117,6 +119,7 @@ export default function CuentaAlbertoPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="alberto" />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px 20px 40px' }}>
 

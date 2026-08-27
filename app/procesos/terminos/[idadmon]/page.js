@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v5 · 2026-08-11 · Botón "🧾 Ver hoja del término →" (enlaza a /procesos/terminos?id=IDADMON, la hoja
 //   real con garantía/servicios/reparaciones/markup/resultado). El resto igual. Hereda v4.
 // VERSION: v4 · 2026-07-12 · app/procesos/terminos/[idadmon]/page.js
@@ -11,6 +12,7 @@
 //   - Se conserva el grafo de dependencias (abajo) y el historial.
 //   Import consolidado a @/lib/supabaseAdmin y guardas de null (heredado de v2).
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import BotonVolver from "../../../components/ui/BotonVolver";
 import CompletarButton from "./CompletarButton";
 
 const nodeColor = {
@@ -157,6 +159,7 @@ export default async function TerminoPage({ params }) {
 
   return (
     <main style={{ padding: 24, fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+      <BotonVolver />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
           <h1 style={{ marginBottom: 2 }}>Workflow de término</h1>

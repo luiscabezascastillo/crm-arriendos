@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v14 · 2026-08-26 · Ayuda desplegable "Como funciona esto" (proceso, orden, idempotencia, revision, ojo con el anio). Hereda v13.
 // VERSION: v13 · 2026-08-26 · Ficha "Cobro por mandato" (origen mandato, nivel 2) + nota explicativa. Hereda v12.
 // VERSION: v12 · 2026-08-20 · Export Nubox: (a) celdas vacias como null (no string '') -> SheetJS escribia '' como celda presente en L-Q y Nubox lo leia como campo invalido (Monto/Fecha/RUT/Folio () + 'columnas L a Q requeridas'), rechazando toda la carga; (b) columna Centro Costo SIEMPRE vacia (el CC viaja en las cuentas 4301-XX, no en columna Nubox); (c) cuenta = cuenta_nubox (3er nivel analitico truncado al padre imputable). Hereda v11.
@@ -19,6 +20,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -205,6 +207,7 @@ export default function ContabPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="contab" />
       <div style={{ maxWidth: 1300, margin: '0 auto', padding: '24px 20px 80px' }}>
 

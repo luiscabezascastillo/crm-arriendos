@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v1 · 2026-08-05 · Hoja DICOM (/cc1/dicom): listado consultable de informes DICOM (Equifax)
 //   unidos a su pago (JOIN dicom_registro ↔ dicom_pagos). Filtro estilo Excel + búsqueda + orden
 //   EN MEMORIA (mismo motor que el LOG/SA) y "Exportar Excel" que vuelca EXACTAMENTE lo filtrado.
@@ -6,6 +7,7 @@
 'use client'
 
 import Link from 'next/link'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -206,6 +208,7 @@ export default function DicomPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
+      <BotonVolver />
 
       <div style={{ padding: '10px 24px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Link href="/cc1" style={{ fontSize: 12, color: 'var(--gray-400)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>

@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/financiero/tarjeta/page.js
 // VERSION: v2 · 2026-08-17 · Filtros tipo Excel en TODAS las columnas (mismo componente que BI, en app/lib/filtroBI):
 //   texto (orden A→Z/Z→A + casillas por valor + buscador), numérico en "Cargo del mes" (rango/valor exacto) y árbol de
@@ -10,6 +11,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -149,6 +151,7 @@ export default function TarjetaPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="tarjeta" />
       {dragOver && canEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

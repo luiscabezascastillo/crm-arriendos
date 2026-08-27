@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/financiero/sii/page.js
 // VERSION: v2 · 2026-08-16 · SII · F29: vista TABLA (todos los meses juntos) + columna Comentario
 //   editable (se guarda en observacion vía PATCH). Se alterna con la vista Lista+detalle.
@@ -8,6 +9,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -110,6 +112,7 @@ export default function SiiF29Page() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="sii" />
       {dragOver && canEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v39 · 2026-08-16 · RENDIMIENTO tabla: VENTANA DE RENDER (virtualización casera, sin dependencias). Con
 //   ~7.000 filas el freno era el DOM (7.000 <tr> pintados) + re-render de TODAS al teclear una celda. Ahora la tabla
 //   carga entera en memoria (rápida después) pero SOLO pinta las filas visibles (± un margen), con dos filas
@@ -107,6 +108,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -1170,6 +1172,7 @@ export default function BiVista() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1640, margin: '0 auto', padding: '18px 20px 30px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div>

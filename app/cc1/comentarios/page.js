@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v4 · 2026-08-10 · FIX permisos de Dirección: la detección usaba rol === 'admin' (código muerto), por lo que
 //   Dirección NUNCA podía editar/borrar comentarios de otros. Ahora Dirección se reconoce por rol 'direccion' o por ser
 //   uno de los correos de Dirección (Alberto/Luis/Karina) → puede editar/borrar CUALQUIER comentario. Hereda v3.
@@ -14,6 +15,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -247,6 +249,7 @@ export default function ComentariosPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border, #E5E3DC)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={() => router.push('/cc1')}
           style={{ fontSize: 13, color: 'var(--gray-500, #888)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>‹ Volver al LOG</button>

@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v2 · 2026-08-18 · Renombrado a "Pagos Iniciales - Neika" (h1). Añadida leyenda "DATOS CARGADOS DE
 //   ARRIENDOS REALIZADOS DESDE JUNIO 2026" en un recuadro junto al título. Quitados los placeholder "opcional"
 //   de RUT y Comentarios. Hereda v1.
@@ -7,6 +8,7 @@
 //   Campos: IDADMON, fecha del pago, cantidad, RUT, descripción, comentarios. Lista filtrable por IDADMON.
 //   Endpoint: /api/procesos/inicios-neika. Ruta: app/procesos/inicios-neika/page.js
 import { useState, useEffect, useMemo } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
@@ -108,6 +110,7 @@ export default function IniciosNeika() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 6 }}>
           <div>

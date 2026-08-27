@@ -1,5 +1,7 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 ﻿'use client'
 import { useState, useEffect } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import TopNav from '@/app/components/ui/TopNav'
 
 export default function EmailDeudoresPage() {
@@ -105,6 +107,7 @@ export default function EmailDeudoresPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px' }}>
 
         <div style={{ marginBottom: 24 }}>

@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/financiero/facturas-int/page.js
 // VERSION: v1 · 2026-08-16 · Facturas Internacionales (servicios del exterior). Arrastra el PDF y
 //   crea una línea (lector parseFacturaInternacional). Tabla con Cuenta contable y Comentario
@@ -5,6 +6,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -84,6 +86,7 @@ export default function FacturasIntPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="facturas-int" />
       {dragOver && canEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

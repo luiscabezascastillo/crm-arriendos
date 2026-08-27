@@ -1,10 +1,12 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v2 · 2026-08-18 · Botón "📅 Calendar" en cada recordatorio con fecha: abre Google Calendar con el evento
 //   ya rellenado (día completo). El aviso "1 día antes" lo aplica el propio Google Calendar. Hereda v1.
 // VERSION: v1 · 2026-08-18 · Página de RECORDATORIOS personales: cada usuario gestiona SOLO los suyos (añadir, editar,
 //   marcar hecho, borrar). Alimenta el aviso del Panel. Color por persona (Luis azul · Alberto teal).
 //   Solo para RECORDATORIOS_USERS. Ruta: app/procesos/recordatorios/page.js
 import { useState, useEffect, useMemo } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
@@ -137,6 +139,7 @@ export default function Recordatorios() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ marginBottom: 12 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: col.fg }}>🔔 Mis recordatorios</h1>

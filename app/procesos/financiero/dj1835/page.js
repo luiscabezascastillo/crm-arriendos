@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v5 · 2026-07-26 · Pantalla DJ 1835: + barra FinancieroNav.
 //   · Selector de año + nota del año tributario.
 //   · Totales del año. Panel plegable de "Pendientes de rol" (con monto, sin rol).
@@ -11,6 +12,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -184,6 +186,7 @@ export default function DJ1835Page() {
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="dj1835" />
 
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 0' }}>

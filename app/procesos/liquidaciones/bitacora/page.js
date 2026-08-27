@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // RUTA: app/procesos/liquidaciones/bitacora/page.js
 // VERSION: v1 · 2026-08-19 · BITÁCORA de facturación (solo lectura). Acceso EXCLUSIVO a Dirección/Karina
 //   (alberto.cabezas, luis.cabezas, karina.morales). Lee /api/liquidaciones/bitacora-facturacion y muestra
@@ -6,6 +7,7 @@
 //   (posible doble facturación). Filtro por mes y por texto (idadmon/propietario).
 
 import { useState, useEffect, useMemo } from 'react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import TopNav from '@/app/components/ui/TopNav'
 
@@ -74,6 +76,7 @@ export default function BitacoraFacturacion() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1500, margin: '0 auto', padding: 20, fontFamily: '"DM Sans", sans-serif' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
           <h2 style={{ margin: 0, color: '#1e3a8a' }}>Bitácora de facturación</h2>

@@ -1,3 +1,4 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v7 · 2026-08-14 · Dos arreglos: (1) tras cargar (LRE o PDF) se refresca la tabla del mes
 //   aunque ya estuviera seleccionado (antes había que recargar la página para ver el coste completo);
 //   (2) la nota "meses sin cargar" ya NO cuenta el mes en curso (la nómina se corre a fin de mes),
@@ -47,6 +48,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
@@ -421,6 +423,7 @@ export default function RemuneracionesPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAF8' }}>
       <TopNav />
+      <BotonVolver />
       <FinancieroNav activo="remuneraciones" />
       {dragOver && puedeEditar && (
         <div data-overlay="1" style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(29,158,117,0.10)', border: '3px dashed #1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

@@ -1,10 +1,12 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v2 · 2026-08-18 · Acceso explícito: Dirección SIEMPRE (por email luis/alberto o rol direccion) + roles
 //   operativos (finanzas, administracion) y Karina. Antes solo pedía sesión. Hereda v1.
 // VERSION: v1 · 2026-08-18 · Bitácora de cambios de estado de contratos (auditoría). Dos vistas: cambios recientes
 //   (con filtros por persona y tipo de cambio) y el historial completo de un contrato (busca por IDADMON).
 //   Lee /api/bitacora-estados (historico_idadmon). Solo lectura. Ruta: app/procesos/bitacora-estados/page.js
 import { useState, useEffect, useMemo } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import TopNav from '@/app/components/ui/TopNav'
@@ -97,6 +99,7 @@ export default function BitacoraEstados() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{ marginBottom: 12 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Bitácora de estados</h1>

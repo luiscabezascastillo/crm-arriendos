@@ -1,5 +1,7 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 import { useState, useEffect } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
 
@@ -77,6 +79,7 @@ export default function MLNotificacionesPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px' }}>
 
         <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>

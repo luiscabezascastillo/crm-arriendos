@@ -1,8 +1,10 @@
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v1 · 2026-08-23 · Página "Cortes de servicios" (plan B). Lista los cortes tomados (GET
 //   /api/servicios/cortes) y permite TOMAR un corte nuevo (POST action:'tomar') con selector de fecha y nota:
 //   copia la foto actual del mes de ggcc_agua_luz a ggcc_cortes_datos. No toca la tabla viva.
 'use client'
 import { useState, useEffect } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import TopNav from '@/app/components/ui/TopNav'
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }
@@ -55,6 +57,7 @@ export default function CortesServiciosPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f9fafb' }}>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 24px' }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 4px' }}>Cortes de servicios</h1>
         <p style={{ fontSize: 12, color: '#6b7280', marginTop: 0, marginBottom: 16 }}>

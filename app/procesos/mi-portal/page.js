@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v5 · 2026-08-12 · Mi Portal: botón "+ Nueva alerta" en la tarjeta Alertas (solo Dirección, viendo el
 //   portal de otra persona), como el "+ Nueva tarea". Abre un modal (título, detalle, fecha) e inserta la alerta en
 //   `alertas` para esa persona (origen manual, con nota de quién la creó y cuándo). Hereda v4.
@@ -15,6 +16,7 @@
 //   Normalizado CRLF→LF. Sin cambios de lógica (el agrupado por antigüedad va aparte).
 
 import { useState, useEffect } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -343,6 +345,7 @@ export default function MiPortalPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 28px' }}>
         {/* Cabecera */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>

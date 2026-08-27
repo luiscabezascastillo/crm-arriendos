@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v4 · 2026-07-23 · bloque IPC con fondo verde claro (como el Excel), separado del bloque de % ajuste por UF
 // VERSION: v3 · 2026-07-23 · redondeo al guardar igual que el Excel (ipc 6 dec, uf_3m/6m 5 dec, uf_12m 4 dec)
 // VERSION: v2 · 2026-07-23 · simbolo % junto a los campos de IPC y sin placeholders que parezcan valores
@@ -9,6 +10,7 @@
 //   Editable desde el mes de liquidacion en curso (regla: dia >= 23 -> mes siguiente).
 //   Meses anteriores: SOLO LECTURA. Filas hasta diciembre 2027.
 import { useState, useEffect, useMemo } from 'react'
+import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
@@ -217,6 +219,7 @@ export default function IndicesPage() {
   return (
     <>
       <TopNav />
+      <BotonVolver />
       <div style={{ maxWidth: 1500, margin: '0 auto', padding: 24, fontFamily: '"DM Sans", sans-serif' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
