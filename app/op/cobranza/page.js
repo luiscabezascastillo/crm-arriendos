@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Unificado "Manual"+"Ayuda" en un solo botón "Ayuda" (panel en la misma página), con el contenido actualizado a la realidad del módulo y remitiendo a «Guía morosos» para la reclamación. Hereda versión previa.
 // VERSION: 2026-08-27 · "Notificaciones" abre en la MISMA ventana (Link SPA), no en pestaña nueva; se vuelve con el ← Volver de esa página. Hereda versión previa.
 // VERSION: 2026-08-27 · TopNav en Cobranza + barra de pestañas sticky bajo el TopNav (top 52); cabecera de VistaCobranza baja a top 100. Hereda versión previa.
 // VERSION: 2026-08-27 · Reorden pestañas (Diferencias·Multas·Cartolas·Saldos·Bitácora·Servicios·Inicios) y Diferencias por defecto. Hereda versión previa.
@@ -131,13 +132,14 @@ const TITULO_TIPO = { cartolas: 'Cobranza de Cartolas', inicios: 'Cobranza de In
 
 // Contenido del boton "? Ayuda" — como funciona la cobranza (escueto y practico).
 const AYUDA_COBRANZA = [
-  { t: 'Como detecta la mora', d: 'Mira el saldo vivo de cada contrato en su cartola (lo cargado menos lo abonado). Si hay deuda y el contrato lo cobra FCR (no el dueno), sale como moroso. La deuda depende de que la cartola este limpia.' },
-  { t: 'Las pestanas', d: 'Cartolas: morosos, deuda y la Proxima accion de hoy, con el boton Gestionar. Casos: expedientes abiertos con semaforo al propietario y el Expediente en PDF. Servicios / Inicios / Bitacora: deudas de servicios, contratos recien iniciados y el registro global de gestiones.' },
-  { t: 'La escalera (que toca hoy)', d: 'Por dias desde el ultimo abono: 1er aviso al arrendatario (>=1 dia), 1a reclamacion + avisar al propietario (>=5), reclamar al aval (>=10), aviso pre-DICOM (>=15). Plazos en borrador, a validar por Legal.' },
-  { t: 'Siempre arrendatario Y aval', d: 'La solidaridad del aval se pierde si no se le reclama a tiempo y en forma. Por eso desde el 2o aviso entra tambien el aval.' },
-  { t: 'Semaforo al propietario', d: 'Verde: silencio (mora leve). Ambar: aviso proactivo (el riesgo crece). Rojo: decision/cargo con expediente. Regla de oro: el propietario nunca debe sorprenderse de un mal resultado.' },
-  { t: 'Gestionar (el boton)', d: 'Ves los contactos, los avisos obligatorios pendientes (aval/propietario) y registras la gestion con una plantilla; puedes enviarla por email y queda el acuse. Todo lo registrado es INMUTABLE: no se edita ni se borra.' },
-  { t: 'El expediente', d: 'En Casos generas un PDF con toda la secuencia de gestiones. Es la salida legal para el aval, el abogado o el respaldo al dueno.' },
+  { t: 'Qué es este módulo', d: 'La cobranza del arriendo y de los servicios en un solo sitio: detectar quién debe, avisar dejando constancia, y escalar hasta el pago o la acción legal. La deuda sale de la cartola de cada contrato (lo cargado menos lo abonado) que cobra FCR, no el dueño.' },
+  { t: 'Las pestañas', d: 'Diferencias: pagó de menos (casi siempre por un reajuste) — recordatorio suave. Multas: atraso de renta, aviso → firme (carga a la cartola, anulable). Cartolas: morosos con deuda y su gestión. Saldos a favor: cartolas a auditar. Bitácora: el registro global de todas las gestiones. Servicios: deudas de GGCC/luz/agua/gas y su recordatorio. Inicios: contratos recién arrancados.' },
+  { t: 'Salud del cobro (KPIs)', d: 'Arriba, cinco indicadores con su evolución: cobrado en plazo y cartera por cobrar (renta, mensual); deuda de servicios, servicios al día y garantías en riesgo (servicios, corte semanal de los domingos). «Ver evolución» abre las curvas.' },
+  { t: 'Enviar siempre pasa por revisión', d: 'Todo email (diferencias, multas, servicios) abre una ventana de confirmación: ves el correo, añades CC (p. ej. el aval), y eliges Probar (a ti), Confirmar y enviar o Volver a editar. Todo envío real lleva copia a administración y queda registrado.' },
+  { t: 'Además del email: llamada y WhatsApp', d: 'En Diferencias, Multas y Servicios puedes registrar una llamada, un WhatsApp o una visita presencial. Queda en la Bitácora con su fecha y usuario, aunque no salga ningún correo.' },
+  { t: 'Notificaciones (prevención)', d: 'El botón Notificaciones es el recordatorio automático de pago del día 24-26, antes de que venza la renta. Es la capa de prevención, no de reclamación.' },
+  { t: 'Constancia inmutable', d: 'Lo registrado no se edita ni se borra. Sin constancia, no existe: es lo que sostiene la reclamación al aval, al abogado o el respaldo al dueño.' },
+  { t: 'Cómo reclamar bien', d: 'El detalle de la escalera (a quién y cuándo se reclama: arrendatario, aval, propietario, pre-DICOM) y las buenas prácticas están en el botón «Guía morosos».' },
 ]
 
 export default function Cobranza() {
@@ -156,8 +158,6 @@ export default function Cobranza() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Link href="/procesos/notificaciones" title="Notificaciones: recordatorio automatico de pago (prevencion, dia 24-26)"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🔔 Notificaciones</Link>
-          <button onClick={() => window.open('/api/cobranza/manual', '_blank')} title="Manual de uso del modulo"
-            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #CBE6BE', background: '#E9F4E4', color: '#085041', whiteSpace: 'nowrap' }}>📖 Manual</button>
           <button onClick={() => window.open('/api/cobranza/guia-morosos', '_blank')} title="Buenas practicas para la reclamacion a morosos"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #F0DFA8', background: '#FFF7E0', color: '#6b4e05', whiteSpace: 'nowrap' }}>📕 Guía morosos</button>
           <button onClick={() => setAyudaOpen(true)} title="Como funciona la cobranza"
@@ -192,11 +192,11 @@ export default function Cobranza() {
           <div onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.25)', width: 'min(640px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Como funciona la Cobranza</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Ayuda · cómo funciona la Cobranza</h2>
               <button onClick={() => setAyudaOpen(false)} style={{ border: 'none', background: 'transparent', fontSize: 20, color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ fontSize: 13, color: '#1a1a2e', background: '#EAF2FB', border: '1px solid #C9DEF5', borderRadius: 8, padding: '9px 12px', margin: '4px 0 14px' }}>
-              <b>Sin constancia, no existe.</b> El sistema empuja las acciones a tiempo (arrendatario, aval y propietario) y deja un rastro inmutable de todo.
+              <b>Sin constancia, no existe.</b> El módulo empuja las acciones a tiempo y deja un rastro inmutable de todo lo que se hace. Para el detalle de la reclamación, mira «Guía morosos».
             </div>
             {AYUDA_COBRANZA.map((a, i) => (
               <div key={i} style={{ padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #F0EFEA' }}>
