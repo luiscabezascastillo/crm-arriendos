@@ -1,3 +1,7 @@
+// VERSION: v6 · 2026-08-27 · Devuelve tambien la LISTA de IDADMON en riesgo (id, deuda servicios, garantia) por mes, para el listado. Hereda v5.
+// VERSION: v5 · 2026-08-27 · FIX "Cartera por cobrar" (v4 daba ~0 por ventana): ahora = saldo vivo (cargado-abonado) a fin de mes
+//   SOLO de contratos ACTIVOS que cobra FCR (S/SQ/Q, no dueno). = la misma deuda real de la pagina; excluye morosidad de terminados
+//   (por eso ya no sale 102M) y no es 0. Hereda v4.
 // VERSION: v4 · 2026-08-27 · FIX "Cartera por cobrar": era el saldo vivo ACUMULADO de todos los meses (morosidad historica, ~102M).
 //   Ahora es POR LIQUIDACION: base del mes - lo cobrado en su ciclo de cobro (dia 23 mes anterior -> dia 23 del mes), acotado a >=0.
 //   Asi refleja lo que falta por cobrar de ESA liquidacion (nunca mas que su base). Hereda v3.
@@ -63,11 +67,14 @@ export async function GET(req) {
 
   const N = Math.min(18, Math.max(3, Number(new URL(req.url).searchParams.get('meses')) || 6))
 
-  const { data: arr } = await admin.from('datos_arriendos').select('idadmon, quien_cobra, garantia_pedida')
-  const dueno = new Set(), garantia = {}
+  const { data: arr } = await admin.from('datos_arriendos').select('idadmon, quien_cobra, garantia_pedida, estado')
+  const dueno = new Set(), garantia = {}, activo = new Set()
   for (const a of (arr || [])) {
-    if (String(a.quien_cobra || '').toUpperCase() === 'DUEÑO') dueno.add(a.idadmon)
+    const esDueno = String(a.quien_cobra || '').toUpperCase() === 'DUEÑO'
+    if (esDueno) dueno.add(a.idadmon)
     garantia[a.idadmon] = n0(a.garantia_pedida)
+    const est = String(a.estado || '').toUpperCase()
+    if (!esDueno && (est === 'S' || est === 'SQ' || est === 'Q')) activo.add(a.idadmon)
   }
 
   // movimientos de cuentas (una vez): para "cobrado en plazo" (abonos) y "cartera" (saldo acumulado)
@@ -94,12 +101,8 @@ export async function GET(req) {
     let base_t = 0
     for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) base_t += n0(r.base) }
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
-    const finCiclo = Date.UTC(y, mo - 1, 23)   // fin del ciclo de cobro de esta liquidacion (dia 23 del mes)
-    let cobradoPlazo = 0, cobradoCiclo = 0
-    for (const a of abonos) {
-      if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab
-      if (a.t >= ini && a.t < finCiclo) cobradoCiclo += a.ab
-    }
+    let cobradoPlazo = 0
+    for (const a of abonos) { if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab }
     // servicios agrupados por idadmon (un contrato puede tener varios inmuebles)
     const porId = {}
     for (const r of (servRes.data || [])) {
@@ -107,24 +110,32 @@ export async function GET(req) {
       const t = n0(r.deuda_gastos_comunes) + n0(r.deuda_vigente_electricidad) + n0(r.deuda_vigente_agua) + n0(r.deuda_vigente_gas)
       porId[r.idadmon] = (porId[r.idadmon] || 0) + Math.max(0, t)
     }
-    let deuda_serv = 0, conDeuda = 0, riesgo = 0; const totalS = Object.keys(porId).length
+    let deuda_serv = 0, conDeuda = 0, riesgo = 0; const totalS = Object.keys(porId).length; const riesgoIds = []
     for (const id in porId) {
       const t = porId[id]; deuda_serv += t
       if (t > UMBRAL_SERV) conDeuda++
-      const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) riesgo++
+      const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) { riesgo++; riesgoIds.push({ id, deuda: Math.round(t), gar: Math.round(g) }) }
     }
     const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
-    return { y, mo, base_t, cobradoPlazo, cartera: Math.max(0, Math.round(base_t - cobradoCiclo)), deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo }
+    return { y, mo, base_t, cobradoPlazo, deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo, riesgo_ids: riesgoIds }
   }))
 
-  // 2) cartera POR LIQUIDACION (no acumulada): base del mes - lo cobrado en su ciclo (ya calculado arriba)
+  // 2) cartera = saldo vivo (cargado - abonado) a fin de mes, SOLO de contratos activos que cobra FCR (S/SQ/Q, no dueno).
+  //    Es la deuda real de la pagina; excluye morosidad de contratos terminados. Barrido sobre movs ordenados.
+  const bal = {}; let mi = 0; const carteraMes = {}
+  for (const { y, mo } of meses) {
+    const fin = Date.UTC(y, mo, 0)  // ultimo dia del mes
+    while (mi < movs.length && movs[mi].t <= fin) { if (activo.has(movs[mi].idadmon)) bal[movs[mi].idadmon] = (bal[movs[mi].idadmon] || 0) + movs[mi].delta; mi++ }
+    let c = 0; for (const id in bal) { if (bal[id] > 0) c += bal[id] }
+    carteraMes[isoMes(y, mo)] = Math.round(c)
+  }
   const serie = rentaServ.map(r => {
-    const cartera = r.cartera || 0
+    const cartera = carteraMes[isoMes(r.y, r.mo)] || 0
     return {
       aamm: aamm(r.y, r.mo), lbl: lblDe(r.y, r.mo), base: Math.round(r.base_t),
       pct_cobrado: r.base_t > 0 ? Math.min(100, Math.round((r.cobradoPlazo / r.base_t) * 1000) / 10) : null,
       cartera, pct_cartera: r.base_t > 0 ? Math.round((cartera / r.base_t) * 1000) / 10 : null,
-      deuda_serv: r.deuda_serv, pct_serv_aldia: r.pct_serv_aldia, garantias_riesgo: r.garantias_riesgo,
+      deuda_serv: r.deuda_serv, pct_serv_aldia: r.pct_serv_aldia, garantias_riesgo: r.garantias_riesgo, riesgo_ids: r.riesgo_ids || [],
     }
   })
 

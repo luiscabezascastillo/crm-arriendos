@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-27 · Listado de IDADMON en riesgo (2 columnas, con su deuda de servicios) junto a la tarjeta de garantias. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Vista de detalle de KPIs con curvas de evolución.
 //   5 gráficos (cobrado en plazo · cartera por cobrar % · deuda de servicios · servicios al día ·
 //   garantías en riesgo) sobre /api/cobranza/kpis, con línea de meta y color según cumplimiento.
@@ -83,6 +84,28 @@ export default function KpisPage() {
           <Chart titulo="Deuda de servicios" subt="GGCC + luz + agua + gas impagos · baja = mejor" serie={d.serie} campo="deuda_serv" color={C.ambar} tipo="money" meta={null} dir="down" />
           <Chart titulo="Servicios al día" subt="% de contratos sin deuda relevante de servicios · sube = mejor" serie={d.serie} campo="pct_serv_aldia" color={C.azul} tipo="pct" meta={M.pct_serv_aldia.objetivo} dir="up" />
           <Chart titulo="Garantías en riesgo" subt="contratos cuya deuda de servicios ≥ 50% de su garantía · baja = mejor" serie={d.serie} campo="garantias_riesgo" color="#7a1c17" tipo="num" meta={M.garantias_riesgo.objetivo} dir="down" />
+          {(() => {
+            const ult = d.serie[d.serie.length - 1] || {}
+            const fmt = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL')
+            const rl = (ult.riesgo_ids || []).slice().sort((a, b) => b.deuda - a.deuda)
+            return (
+              <div style={{ background: '#fff', border: '1px solid ' + C.line, borderRadius: 12, padding: '14px 16px' }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>IDADMON en riesgo <span style={{ color: '#7a1c17' }}>({rl.length})</span></div>
+                <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 10 }}>deuda de servicios ≥ 50% de su garantía · {ult.lbl || ''}</div>
+                {rl.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>Ninguno.</div> : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 16px' }}>
+                    {rl.map(x => (
+                      <Link key={x.id} href={'/procesos/cartolas?idadmon=' + x.id} title={'Deuda servicios ' + fmt(x.deuda) + ' · garantía ' + fmt(x.gar)}
+                        style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, textDecoration: 'none', borderBottom: '1px solid ' + C.grid, padding: '2px 0' }}>
+                        <span style={{ fontFamily: 'monospace', color: C.acento }}>{x.id}</span>
+                        <span style={{ color: C.sub }}>{fmt(x.deuda)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
