@@ -1,3 +1,4 @@
+// VERSION: v21 · 2026-08-27 · Drawer: botón "Enviar recordatorio de servicios" (email suave, confirmación, CC, copia a administración). Hereda v20.
 // VERSION: v20 · 2026-08-27 · Drawer: bloque "Registrar gestión" (llamada/WhatsApp/presencial) → Bitácora de cobranza. Hereda v19.
 // VERSION: v19 · 2026-08-26 · Breadcrumb: enlace "← Volver" (history.back) para regresar a donde se llamó (Cobranza, CC1…). Hereda v18.
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
@@ -37,6 +38,7 @@ import * as XLSX from 'xlsx'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import RegistroGestion from '../../components/ui/RegistroGestion'
+import RecordatorioServicios from '../../components/ui/RecordatorioServicios'
 import { supabase } from '../../../lib/supabaseClient'
 function fmt(n) {
   if (n === null || n === undefined) return null
@@ -889,6 +891,9 @@ export default function Deudas() {
                 <span style={{fontSize:13,fontWeight:500,color:totalF(drawer)>0?'#A32D2D':'#3B6D11'}}>Total deuda</span>
                 <span style={{fontSize:20,fontWeight:600,color:totalF(drawer)>0?'#A32D2D':'#3B6D11'}}>{fmtPeso(totalF(drawer))}</span>
               </div>
+
+              {/* Recordatorio de servicios por email (suave, con confirmación) → Bitácora */}
+              <RecordatorioServicios idadmon={drawer.idadmon} propietario={contratos[drawer.idadmon]?.propietario} inmueble={contratos[drawer.idadmon]?.inmueble} ggcc={drawer.deuda_gastos_comunes} luz={drawer.deuda_vigente_electricidad} agua={drawer.deuda_vigente_agua} gas={drawer.deuda_vigente_gas} />
 
               {/* Registrar gestión (llamada/WhatsApp/presencial) → Bitácora de cobranza */}
               <div style={{marginBottom:20}}>
