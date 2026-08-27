@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-08-27 · Selector por defecto = "Año en curso" (Ene..mes base); se mantienen 6/12/18. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Listado de IDADMON en riesgo (2 columnas, con su deuda de servicios) junto a la tarjeta de garantias. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Vista de detalle de KPIs con curvas de evolución.
 //   5 gráficos (cobrado en plazo · cartera por cobrar % · deuda de servicios · servicios al día ·
@@ -53,10 +54,17 @@ function Chart({ titulo, subt, serie, campo, color, tipo, meta, dir }) {
   )
 }
 
+// meses del año en curso por defecto (Ene..mes base); respeta la gracia del día 10.
+const _h = new Date()
+let _ay = _h.getFullYear(), _am = _h.getMonth() + 1
+if (_h.getDate() <= 10) { _am--; if (_am < 1) { _am = 12; _ay-- } }
+const ANIO_ACTUAL = _ay
+const N_ANIO = _am
+
 export default function KpisPage() {
   const [d, setD] = useState(null)
   const [err, setErr] = useState('')
-  const [meses, setMeses] = useState(12)
+  const [meses, setMeses] = useState(N_ANIO)
   useEffect(() => {
     setD(null)
     fetch('/api/cobranza/kpis?meses=' + meses, { cache: 'no-store' }).then(r => r.json())
@@ -70,7 +78,7 @@ export default function KpisPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Salud del cobro · evolución</h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {[6, 12, 18].map(x => <button key={x} onClick={() => setMeses(x)} style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + C.line, background: meses === x ? C.verde : '#fff', color: meses === x ? '#fff' : C.sub }}>{x} meses</button>)}
+          {[{ lbl: 'Año ' + ANIO_ACTUAL, val: N_ANIO }, { lbl: '6 meses', val: 6 }, { lbl: '12 meses', val: 12 }, { lbl: '18 meses', val: 18 }].map(o => <button key={o.lbl} onClick={() => setMeses(o.val)} style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + C.line, background: meses === o.val ? C.verde : '#fff', color: meses === o.val ? '#fff' : C.sub }}>{o.lbl}</button>)}
         </div>
       </div>
       <div style={{ fontSize: 13.5, color: C.sub, marginBottom: 18 }}>Dos cuentas por contrato: la <b>renta</b> (a FCR) y los <b>servicios</b> (a terceros, protegen la garantía). "En plazo" = pagado hasta el día 10. La línea verde discontinua es la meta.</div>
