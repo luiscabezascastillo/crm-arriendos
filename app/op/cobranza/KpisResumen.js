@@ -1,15 +1,15 @@
 'use client'
-// VERSION: v1 · 2026-08-26 · Cobranza · Widget-resumen de KPIs de salud del cobro.
-//   4 KPIs (renta: cobrado en plazo · cartera por cobrar; servicios: deuda · al día) con el valor
-//   actual y una mini-curva, y enlace a la vista de detalle (/op/cobranza/kpis). Consume /api/cobranza/kpis.
+// VERSION: v2 · 2026-08-26 · Cobranza · Widget-resumen de KPIs de salud del cobro.
+//   5 KPIs (renta: cobrado en plazo · cartera por cobrar; servicios: deuda · al día · garantías en riesgo)
+//   con valor actual, color según meta y mini-curva, y enlace a la vista de detalle (/op/cobranza/kpis).
+//   Consume /api/cobranza/kpis. v2: cobrado en plazo real (≤día10), metas y KPI de garantías.
 // Ruta real: app/op/cobranza/KpisResumen.js
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', verde: '#085041', rojo: '#9B1C1C', ambar: '#B8860B', azul: '#1D4ED8', acento: '#1D9E75' }
-const P = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
 const Pk = (n) => { const v = Number(n) || 0; return v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + Math.round(v / 1000) + 'k' }
 
-function spark(vals, color, w = 96, h = 26) {
+function spark(vals, color, w = 92, h = 24) {
   const xs = vals.filter(v => v != null)
   if (xs.length < 2) return null
   const min = Math.min(...xs), max = Math.max(...xs), rng = (max - min) || 1
@@ -17,7 +17,7 @@ function spark(vals, color, w = 96, h = 26) {
   const pts = vals.map((v, i) => v == null ? null : `${(i * step).toFixed(1)},${(h - 3 - ((v - min) / rng) * (h - 6)).toFixed(1)}`).filter(Boolean).join(' ')
   return <svg width={w} height={h} style={{ display: 'block' }}><polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" /></svg>
 }
-const tendencia = (vals) => { const xs = vals.filter(v => v != null); if (xs.length < 2) return 0; return xs[xs.length - 1] - xs[0] }
+const cumple = (v, meta) => v == null || !meta ? null : (meta.dir === 'up' ? v >= meta.objetivo : v <= meta.objetivo)
 
 export default function KpisResumen() {
   const [d, setD] = useState(null)
@@ -26,21 +26,18 @@ export default function KpisResumen() {
     fetch('/api/cobranza/kpis?meses=6', { cache: 'no-store' }).then(r => r.json())
       .then(j => { if (j.error) setErr(j.error); else setD(j) }).catch(e => setErr(String(e)))
   }, [])
-
-  const box = { background: '#fff', border: '1px solid ' + C.line, borderRadius: 12, padding: '10px 14px', flex: '1 1 180px', minWidth: 168 }
-  const lab = { fontSize: 10.5, fontWeight: 700, color: C.sub, textTransform: 'uppercase', letterSpacing: '.03em' }
-  const val = { fontSize: 22, fontWeight: 800, lineHeight: 1.1, margin: '2px 0' }
-
   if (err) return null
-  const a = d?.actual
-  const col = (v, dir) => v == null ? C.sub : (dir === 'up' ? (v >= 0 ? C.verde : C.rojo) : (v <= 0 ? C.verde : C.rojo))
+
+  const a = d?.actual, m = d?.metas
   const kpis = a ? [
-    { lab: 'Cobrado en plazo', big: (a.pct_cobrado ?? '—') + '%', color: C.verde, serie: d.serie.map(s => s.pct_cobrado), dir: 'up' },
-    { lab: 'Cartera por cobrar', big: Pk(a.cartera), color: C.rojo, serie: d.serie.map(s => s.cartera), dir: 'down' },
-    { lab: 'Deuda de servicios', big: Pk(a.deuda_serv), color: C.ambar, serie: d.serie.map(s => s.deuda_serv), dir: 'down' },
-    { lab: 'Servicios al día', big: (a.pct_serv_aldia ?? '—') + '%', color: C.azul, serie: d.serie.map(s => s.pct_serv_aldia), dir: 'up' },
+    { lab: 'Cobrado en plazo', big: (a.pct_cobrado ?? '—') + '%', sub: 'meta ' + (m.pct_cobrado.txt), meta: cumple(a.pct_cobrado, m.pct_cobrado), serie: d.serie.map(s => s.pct_cobrado), color: C.verde },
+    { lab: 'Cartera por cobrar', big: Pk(a.cartera), sub: (a.pct_cartera ?? '—') + '% · meta ' + m.pct_cartera.txt, meta: cumple(a.pct_cartera, m.pct_cartera), serie: d.serie.map(s => s.cartera), color: C.rojo },
+    { lab: 'Deuda de servicios', big: Pk(a.deuda_serv), sub: 'protege garantías', meta: null, serie: d.serie.map(s => s.deuda_serv), color: C.ambar },
+    { lab: 'Servicios al día', big: (a.pct_serv_aldia ?? '—') + '%', sub: 'meta ' + m.pct_serv_aldia.txt, meta: cumple(a.pct_serv_aldia, m.pct_serv_aldia), serie: d.serie.map(s => s.pct_serv_aldia), color: C.azul },
+    { lab: 'Garantías en riesgo', big: String(a.garantias_riesgo ?? '—'), sub: 'meta ' + m.garantias_riesgo.txt, meta: cumple(a.garantias_riesgo, m.garantias_riesgo), serie: d.serie.map(s => s.garantias_riesgo), color: '#7a1c17' },
   ] : []
 
+  const box = { background: '#fff', border: '1px solid ' + C.line, borderRadius: 12, padding: '10px 13px', flex: '1 1 165px', minWidth: 155 }
   return (
     <div style={{ background: '#F7F6F1', border: '1px solid ' + C.line, borderRadius: 14, padding: 14, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -49,17 +46,17 @@ export default function KpisResumen() {
         <Link href="/op/cobranza/kpis" style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: C.acento, textDecoration: 'none' }}>Ver evolución →</Link>
       </div>
       {!a ? <div style={{ color: C.sub, fontSize: 12.5 }}>Calculando indicadores…</div> : (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {kpis.map((k, i) => {
-            const t = tendencia(k.serie)
+            const valColor = k.meta === null ? k.color : (k.meta ? C.verde : C.rojo)
             return (
-              <div key={i} style={box}>
-                <div style={lab}>{k.lab}</div>
-                <div style={{ ...val, color: k.color }}>{k.big}</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                  {spark(k.serie, k.color) || <span style={{ fontSize: 11, color: C.sub }}>—</span>}
-                  <span style={{ fontSize: 11, fontWeight: 700, color: col(k.dir === 'up' ? t : -t, 'up') }}>{t === 0 ? '' : (t > 0 ? '▲' : '▼')}</span>
+              <div key={i} style={{ ...box, borderTop: '3px solid ' + (k.meta === null ? k.color : (k.meta ? C.verde : C.rojo)) }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: C.sub, textTransform: 'uppercase', letterSpacing: '.03em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{k.lab}</span>{k.meta === null ? null : <span style={{ color: k.meta ? C.verde : C.rojo, fontSize: 12 }}>{k.meta ? '✓' : '!'}</span>}
                 </div>
+                <div style={{ fontSize: 21, fontWeight: 800, lineHeight: 1.1, margin: '2px 0', color: valColor }}>{k.big}</div>
+                <div style={{ fontSize: 10, color: C.sub, marginBottom: 4 }}>{k.sub}</div>
+                {spark(k.serie, valColor) || <span style={{ fontSize: 11, color: C.sub }}>—</span>}
               </div>
             )
           })}
