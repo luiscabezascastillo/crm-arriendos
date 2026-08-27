@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Gráfico Cartera: escala automática (0..~meta*1.3) y cifra en millones sobre cada mes. Hereda versión previa.
 // VERSION: v4 · 2026-08-27 · Selector por defecto = "Año en curso" (Ene..mes base); se mantienen 6/12/18. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Listado de IDADMON en riesgo (2 columnas, con su deuda de servicios) junto a la tarjeta de garantias. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Vista de detalle de KPIs con curvas de evolución.
@@ -13,13 +14,14 @@ const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', grid: '#ECEAE3', ve
 const P = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
 const Pk = (n) => { const v = Number(n) || 0; return v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : '$' + Math.round(v / 1000) + 'k' }
 
-function Chart({ titulo, subt, serie, campo, color, tipo, meta, dir }) {
+function Chart({ titulo, subt, serie, campo, color, tipo, meta, dir, escalaAuto, campoMonto }) {
   const vals = serie.map(s => s[campo])
   const has = vals.filter(v => v != null)
   if (!has.length) return <div style={{ background: '#fff', border: '1px solid ' + C.line, borderRadius: 14, padding: 18, color: C.sub, fontSize: 13 }}>Sin datos para {titulo}.</div>
   const W = 520, H = 210, mL = 54, mR = 16, mT = 16, mB = 30
   let min, max
-  if (tipo === 'pct') { max = Math.max(100, ...has, meta || 0); min = Math.max(0, Math.floor((Math.min(...has, meta ?? 100) - 5) / 10) * 10) }
+  if (tipo === 'pct' && escalaAuto) { max = Math.ceil((Math.max(...has, meta || 0) || 1) * 1.3); min = 0 }
+  else if (tipo === 'pct') { max = Math.max(100, ...has, meta || 0); min = Math.max(0, Math.floor((Math.min(...has, meta ?? 100) - 5) / 10) * 10) }
   else { min = 0; max = Math.max(...has, meta || 0) || 1 }
   const rng = (max - min) || 1
   const X = (i) => mL + (W - mL - mR) * (serie.length > 1 ? i / (serie.length - 1) : 0)
@@ -49,6 +51,7 @@ function Chart({ titulo, subt, serie, campo, color, tipo, meta, dir }) {
         <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         {serie.map((s, i) => s[campo] == null ? null : <circle key={i} cx={X(i)} cy={Y(s[campo])} r="3" fill={color} />)}
         {serie.map((s, i) => (i % Math.ceil(serie.length / 8 || 1) === 0 || i === serie.length - 1) && <text key={'x' + i} x={X(i)} y={H - 8} textAnchor="middle" fontSize="10.5" fill={C.sub}>{s.lbl}</text>)}
+        {campoMonto && serie.map((s, i) => s[campo] == null ? null : <text key={'m' + i} x={X(i)} y={Y(s[campo]) - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill={color}>{(Number(s[campoMonto]) / 1e6).toFixed(3).replace('.', ',')}</text>)}
       </svg>
     </div>
   )
@@ -88,7 +91,7 @@ export default function KpisPage() {
       {d && M && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
           <Chart titulo="Cobrado en plazo" subt="% de la renta pagada hasta el día 10 · sube = mejor" serie={d.serie} campo="pct_cobrado" color={C.verde} tipo="pct" meta={M.pct_cobrado.objetivo} dir="up" />
-          <Chart titulo="Cartera por cobrar" subt="% de la renta sin cobrar a cierre · baja = mejor" serie={d.serie} campo="pct_cartera" color={C.rojo} tipo="pct" meta={M.pct_cartera.objetivo} dir="down" />
+          <Chart titulo="Cartera por cobrar" subt="% de la renta sin cobrar a cierre (cifra = millones $) · baja = mejor" serie={d.serie} campo="pct_cartera" color={C.rojo} tipo="pct" meta={M.pct_cartera.objetivo} dir="down" escalaAuto campoMonto="cartera" />
           <Chart titulo="Deuda de servicios" subt="GGCC + luz + agua + gas impagos · baja = mejor" serie={d.serie} campo="deuda_serv" color={C.ambar} tipo="money" meta={null} dir="down" />
           <Chart titulo="Servicios al día" subt="% de contratos sin deuda relevante de servicios · sube = mejor" serie={d.serie} campo="pct_serv_aldia" color={C.azul} tipo="pct" meta={M.pct_serv_aldia.objetivo} dir="up" />
           <Chart titulo="Garantías en riesgo" subt="contratos cuya deuda de servicios ≥ 50% de su garantía · baja = mejor" serie={d.serie} campo="garantias_riesgo" color="#7a1c17" tipo="num" meta={M.garantias_riesgo.objetivo} dir="down" />
