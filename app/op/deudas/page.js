@@ -1,3 +1,4 @@
+// VERSION: v19 · 2026-08-26 · Breadcrumb: enlace "← Volver" (history.back) para regresar a donde se llamó (Cobranza, CC1…). Hereda v18.
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // VERSION: v18 · 2026-08-25 · FIX filtro de cabecera (Inmueble, etc.): al buscar dentro del filtro, "Seleccionar todo"
 //   marcaba TODAS las opciones (no solo las buscadas), así que filtrar p.ej. por "Pablo Urzúa" acababa marcando todo
@@ -632,6 +633,8 @@ export default function Deudas() {
   return (
     <div style={{padding:'24px 32px',maxWidth:1400,margin:'0 auto',fontFamily:'var(--font-sans,sans-serif)'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,fontSize:13}}>
+        <a onClick={()=>{ if (typeof window!=='undefined') window.history.back() }} style={{color:'#1D9E75',fontWeight:700,textDecoration:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:6}}>← Volver</a>
+        <span style={{color:'#D1D5DB'}}>·</span>
         <Link href="/cc1" style={{color:'#6B7280',textDecoration:'none',display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:6}}>
           ← CC1 Admin
         </Link>

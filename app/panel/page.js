@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v11 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios) arriba del contenido, reutilizado de Cobranza. Hereda v10.
 // VERSION: v10 · 2026-08-16 · (1) Los importes de las tarjetas CC dejan de ir en compacto ($76,7M) y se muestran en
 //   NÚMERO COMPLETO con separador de miles y sin símbolo (76.700.000). (2) Cada tarjeta lleva debajo, dentro del
 //   cuadro, un mini-gráfico de líneas con la EVOLUCIÓN del año (paleta validada, con leyenda). Hereda v9.
@@ -38,6 +39,7 @@ import TopNav from '../components/ui/TopNav'
 import AvisoPagos from '../components/ui/AvisoPagos'
 import AvisoRecordatorios from '../components/ui/AvisoRecordatorios'
 import { supabase } from '../../lib/supabaseClient'
+import KpisResumen from '../op/cobranza/KpisResumen'
 
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL')
 
@@ -375,6 +377,8 @@ export default function PanelPage() {
       </div>
 
       <div style={{ padding: '20px 24px' }}>
+
+        <KpisResumen />
 
         {/* OPERACIÓN */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>

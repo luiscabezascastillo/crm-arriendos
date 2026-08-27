@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v23 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios con mini-curva y enlace a /op/cobranza/kpis). Hereda v22.
+// VERSION: v22 · 2026-08-26 · Pestañas reordenadas por flujo de cobro (Cartolas·Diferencias·Multas·Casos·Servicios·…) + botón "🔔 Notificaciones" en cabecera (prevención). Hereda v21.
 // VERSION: v21 · 2026-08-26 · Pestaña "Diferencias": saldo por cobrar / pagó de menos (solo lectura, /api/cobranza/diferencias + DiferenciasView). Hereda v20.
 // VERSION: v20 · 2026-08-26 · Pestaña "Multas": bandeja de multas por atraso (solo lectura, consume /api/cobranza/multas + MultasView). Hereda v19.
 // VERSION: v19 · 2026-08-26 · Boton "📕 Guía morosos" en la cabecera (abre /api/cobranza/guia-morosos). Hereda v18.
@@ -41,6 +43,7 @@ const money = (v) => { const n = num(v); return (n ? '$' + n.toLocaleString('es-
 
 import MultasView from './MultasView'
 import DiferenciasView from './DiferenciasView'
+import KpisResumen from './KpisResumen'
 
 const C = {
   txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8',
@@ -112,11 +115,11 @@ const COB_COLS = [
 
 const TABS = [
   { k: 'cartolas', label: 'Cartolas' },
-  { k: 'multas', label: 'Multas' },
   { k: 'diferencias', label: 'Diferencias' },
+  { k: 'multas', label: 'Multas' },
   { k: 'casos', label: 'Casos' },
-  { k: 'saldos', label: 'Saldos a favor' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
+  { k: 'saldos', label: 'Saldos a favor' },
   { k: 'inicios', label: 'Inicios' },
   { k: 'bitacora', label: 'Bitácora' },
 ]
@@ -145,6 +148,8 @@ export default function Cobranza() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px' }}>Cobranza</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => window.open('/procesos/notificaciones', '_blank')} title="Notificaciones: recordatorio automatico de pago (prevencion, dia 24-26)"
+            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>🔔 Notificaciones</button>
           <button onClick={() => window.open('/api/cobranza/manual', '_blank')} title="Manual de uso del modulo"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #CBE6BE', background: '#E9F4E4', color: '#085041', whiteSpace: 'nowrap' }}>📖 Manual</button>
           <button onClick={() => window.open('/api/cobranza/guia-morosos', '_blank')} title="Buenas practicas para la reclamacion a morosos"
@@ -168,6 +173,7 @@ export default function Cobranza() {
         })}
       </div>
 
+      <KpisResumen />
       {(tab === 'cartolas' || tab === 'inicios') && <VistaCobranza tipo={tab} />}
       {tab === 'multas' && <MultasView />}
       {tab === 'diferencias' && <DiferenciasView />}
