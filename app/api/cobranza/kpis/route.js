@@ -1,3 +1,4 @@
+// VERSION: v12 · 2026-08-27 · Servicios SEMANAL: las 3 curvas (deuda, al dia, garantias) evolucionan corte a corte (domingos, ggcc_cortes/_datos); la renta sigue mensual. Devuelve serie_serv + actual_serv. Hereda v11.
 // VERSION: v11 · 2026-08-27 · FIX KPIs inestables: paginación de cuentas con .order(id) (sin order, cada carga daba números distintos). Renta (cobrado en plazo + cartera) SOLO estado S/SQ (no Q término). Hereda v10.
 // VERSION: v10 · 2026-08-27 · FIX cartera $0: se sumaban faltas netas (sobrepagos cancelaban). Ahora suma SOLO faltas positivas por idadmon = FALTAN real (~2,3M ago). Hereda v9.
 // VERSION: v9 · 2026-08-27 · "Cartera por cobrar" = FALTA de la liquidación del mes (verdad del FALTAN, ~2,3M ago), no el saldo vivo acumulado. Meta 5%. Hereda v8.
@@ -146,11 +147,41 @@ export async function GET(req) {
     }
   })
 
+  // 3) SERVICIOS SEMANAL: una foto por corte (domingos). La medicion arranco hace 2 semanas; la curva crece hacia el futuro.
+  //    La renta sigue mensual; estas 3 curvas (deuda, al dia, garantias) evolucionan corte a corte (ggcc_cortes + ggcc_cortes_datos).
+  const ddmm = (v) => { const t = pf(v); if (!t) return String(v || ''); const dd = new Date(t); return String(dd.getUTCDate()).padStart(2, '0') + '/' + String(dd.getUTCMonth() + 1).padStart(2, '0') }
+  let serie_serv = []
+  try {
+    const { data: cortesReg } = await admin.from('ggcc_cortes').select('aamm, corte, fecha, mes, nota').order('fecha', { ascending: true })
+    const cortes = (cortesReg || []).slice(-26)   // ultimas ~26 semanas
+    serie_serv = await Promise.all(cortes.map(async (c) => {
+      const { data: datos } = await admin.from('ggcc_cortes_datos')
+        .select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas')
+        .eq('aamm', c.aamm).eq('corte', c.corte)
+      const porId = {}
+      for (const r of (datos || [])) {
+        if (dueno.has(r.idadmon)) continue
+        const t = n0(r.deuda_gastos_comunes) + n0(r.deuda_vigente_electricidad) + n0(r.deuda_vigente_agua) + n0(r.deuda_vigente_gas)
+        porId[r.idadmon] = (porId[r.idadmon] || 0) + Math.max(0, t)
+      }
+      let deuda_serv = 0, conDeuda = 0, riesgo = 0; const totalS = Object.keys(porId).length; const riesgoIds = []
+      for (const id in porId) {
+        const t = porId[id]; deuda_serv += t
+        if (t > UMBRAL_SERV) conDeuda++
+        const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) { riesgo++; riesgoIds.push({ id, deuda: Math.round(t), gar: Math.round(g) }) }
+      }
+      const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
+      return { fecha: c.fecha, lbl: ddmm(c.fecha), aamm: c.aamm, corte: c.corte, nota: c.nota || null,
+        deuda_serv: totalS > 0 ? Math.round(deuda_serv) : null, pct_serv_aldia,
+        garantias_riesgo: totalS > 0 ? riesgo : null, riesgo_ids: riesgoIds }
+    }))
+  } catch (e) { serie_serv = [] }
+
   const metas = {
     pct_cobrado: { objetivo: 95, dir: 'up', txt: '≥ 95%' },
     pct_cartera: { objetivo: 5, dir: 'down', txt: '≤ 5%' },   // morosidad del mes (falta / a cobrar)
     pct_serv_aldia: { objetivo: 90, dir: 'up', txt: '≥ 90%' },
     garantias_riesgo: { objetivo: 0, dir: 'down', txt: '0' },
   }
-  return Response.json({ ok: true, meses: N, serie, actual: serie[serie.length - 1] || null, metas })
+  return Response.json({ ok: true, meses: N, serie, serie_serv, actual: serie[serie.length - 1] || null, actual_serv: serie_serv[serie_serv.length - 1] || null, metas })
 }

@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v5 · 2026-08-27 · Servicios en curva SEMANAL (corte a corte, domingos): las 3 curvas de servicios usan serie_serv (eje X = fecha del corte); la renta sigue mensual. Panel de riesgo = ultimo corte. Hereda v4.
 // VERSION: 2026-08-27 · Gráfico Cartera: escala automática (0..~meta*1.3) y cifra en millones sobre cada mes. Hereda versión previa.
 // VERSION: v4 · 2026-08-27 · Selector por defecto = "Año en curso" (Ene..mes base); se mantienen 6/12/18. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Listado de IDADMON en riesgo (2 columnas, con su deuda de servicios) junto a la tarjeta de garantias. Hereda v2.
@@ -92,11 +93,11 @@ export default function KpisPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
           <Chart titulo="Cobrado en plazo" subt="% de la renta pagada hasta el día 10 · sube = mejor" serie={d.serie} campo="pct_cobrado" color={C.verde} tipo="pct" meta={M.pct_cobrado.objetivo} dir="up" />
           <Chart titulo="Cartera por cobrar" subt="% de la renta sin cobrar a cierre (cifra = millones $) · baja = mejor" serie={d.serie} campo="pct_cartera" color={C.rojo} tipo="pct" meta={M.pct_cartera.objetivo} dir="down" escalaAuto campoMonto="cartera" />
-          <Chart titulo="Deuda de servicios" subt="GGCC + luz + agua + gas impagos · baja = mejor" serie={d.serie} campo="deuda_serv" color={C.ambar} tipo="money" meta={null} dir="down" />
-          <Chart titulo="Servicios al día" subt="% de contratos sin deuda relevante de servicios · sube = mejor" serie={d.serie} campo="pct_serv_aldia" color={C.azul} tipo="pct" meta={M.pct_serv_aldia.objetivo} dir="up" />
-          <Chart titulo="Garantías en riesgo" subt="contratos cuya deuda de servicios ≥ 50% de su garantía · baja = mejor" serie={d.serie} campo="garantias_riesgo" color="#7a1c17" tipo="num" meta={M.garantias_riesgo.objetivo} dir="down" />
+          <Chart titulo="Deuda de servicios" subt="GGCC + luz + agua + gas impagos · corte semanal (domingos) · baja = mejor" serie={d.serie_serv || []} campo="deuda_serv" color={C.ambar} tipo="money" meta={null} dir="down" />
+          <Chart titulo="Servicios al día" subt="% de contratos sin deuda relevante · corte semanal (domingos) · sube = mejor" serie={d.serie_serv || []} campo="pct_serv_aldia" color={C.azul} tipo="pct" meta={M.pct_serv_aldia.objetivo} dir="up" />
+          <Chart titulo="Garantías en riesgo" subt="deuda de servicios ≥ 50% de su garantía · corte semanal (domingos) · baja = mejor" serie={d.serie_serv || []} campo="garantias_riesgo" color="#7a1c17" tipo="num" meta={M.garantias_riesgo.objetivo} dir="down" />
           {(() => {
-            const ult = d.serie[d.serie.length - 1] || {}
+            const ss = d.serie_serv || []; const ult = (ss.length ? ss[ss.length - 1] : (d.serie[d.serie.length - 1] || {}))
             const fmt = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL')
             const rl = (ult.riesgo_ids || []).slice().sort((a, b) => b.deuda - a.deuda)
             return (

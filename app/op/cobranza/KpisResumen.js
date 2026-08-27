@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v5 · 2026-08-27 · Servicios (deuda, al dia, garantias) leen el ULTIMO corte semanal (serie_serv) y su mini-curva por cortes; la renta sigue por liquidacion mensual. Hereda v4.
 // VERSION: v4 · 2026-08-27 · "Cartera por cobrar" en número completo (no millones); es la falta del mes. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Selector de liquidacion (por defecto la que toca segun el dia 10); los KPIs muestran la elegida.
 // VERSION: v2 · 2026-08-26 · Cobranza · Widget-resumen de KPIs de salud del cobro.
@@ -36,12 +37,14 @@ export default function KpisResumen() {
   const serie = d?.serie || []
   const idx = (sel != null && sel < serie.length) ? sel : (serie.length ? serie.length - 1 : 0)
   const a = serie[idx]
+  const ss = d?.serie_serv || []
+  const as = ss.length ? ss[ss.length - 1] : null
   const kpis = a ? [
     { lab: 'Cobrado en plazo', big: (a.pct_cobrado ?? '—') + '%', sub: 'meta ' + (m.pct_cobrado.txt), meta: cumple(a.pct_cobrado, m.pct_cobrado), serie: d.serie.map(s => s.pct_cobrado), color: C.verde },
     { lab: 'Cartera por cobrar', big: P(a.cartera), sub: (a.pct_cartera ?? '—') + '% · meta ' + m.pct_cartera.txt, meta: cumple(a.pct_cartera, m.pct_cartera), serie: d.serie.map(s => s.cartera), color: C.rojo },
-    { lab: 'Deuda de servicios', big: Pk(a.deuda_serv), sub: 'protege garantías', meta: null, serie: d.serie.map(s => s.deuda_serv), color: C.ambar },
-    { lab: 'Servicios al día', big: (a.pct_serv_aldia ?? '—') + '%', sub: 'meta ' + m.pct_serv_aldia.txt, meta: cumple(a.pct_serv_aldia, m.pct_serv_aldia), serie: d.serie.map(s => s.pct_serv_aldia), color: C.azul },
-    { lab: 'Garantías en riesgo', big: String(a.garantias_riesgo ?? '—'), sub: 'meta ' + m.garantias_riesgo.txt, meta: cumple(a.garantias_riesgo, m.garantias_riesgo), serie: d.serie.map(s => s.garantias_riesgo), color: '#7a1c17' },
+    { lab: 'Deuda de servicios', big: Pk(as?.deuda_serv), sub: as ? ('corte ' + as.lbl) : 'protege garantías', meta: null, serie: ss.map(s => s.deuda_serv), color: C.ambar },
+    { lab: 'Servicios al día', big: (as?.pct_serv_aldia ?? '—') + '%', sub: 'meta ' + m.pct_serv_aldia.txt + (as ? ' · ' + as.lbl : ''), meta: cumple(as?.pct_serv_aldia, m.pct_serv_aldia), serie: ss.map(s => s.pct_serv_aldia), color: C.azul },
+    { lab: 'Garantías en riesgo', big: String(as?.garantias_riesgo ?? '—'), sub: 'meta ' + m.garantias_riesgo.txt + (as ? ' · ' + as.lbl : ''), meta: cumple(as?.garantias_riesgo, m.garantias_riesgo), serie: ss.map(s => s.garantias_riesgo), color: '#7a1c17' },
   ] : []
 
   const box = { background: '#fff', border: '1px solid ' + C.line, borderRadius: 12, padding: '10px 13px', flex: '1 1 165px', minWidth: 155 }
