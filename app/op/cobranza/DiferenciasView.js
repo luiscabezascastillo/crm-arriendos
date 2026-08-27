@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v6 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el drawer → Bitácora, además del email. Hereda v5.
 // VERSION: v5 · 2026-08-27 · "Probar (a mí)" y "Enviar" abren la MISMA ventana de revisión; la prueba se lanza desde ahí. Hereda v4.
 // VERSION: v4 · 2026-08-27 · Paso de confirmación antes de enviar (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Email suave afinado + trozo condicional del reajuste (solo si lo hubo). Hereda v2.
@@ -9,6 +10,7 @@
 //   Consume /api/cobranza/diferencias (GET retrato · POST enviar/estado).
 // Ruta real: app/op/cobranza/DiferenciasView.js
 import { useState, useEffect } from 'react'
+import RegistroGestion from '../../components/ui/RegistroGestion'
 const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8', rojo: '#9B1C1C', rojoBg: '#FBEDEC', verde: '#085041', verdeBg: '#E9F4E4', ambar: '#B8860B', ambarBg: '#FBF7EC', azul: '#1D4ED8', azulBg: '#EEF4FF', acento: '#1D9E75', naranja: '#E8820C', naranjaBg: '#FFF1DF' }
 const P = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Math.round(Number(n) || 0)).toLocaleString('es-CL')
 const ddmm = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d && m ? `${d}/${m}/${y}` : iso }
@@ -187,6 +189,9 @@ export default function DiferenciasView() {
                 <button disabled={dw.enviando} onClick={() => marcar('pospuesto')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.ambar, cursor: 'pointer' }}>Posponer</button>
                 <button disabled={dw.enviando} onClick={() => marcar('investigar')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.azul, cursor: 'pointer' }}>A investigar</button>
               </div>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <RegistroGestion idadmon={dw.f.idadmon} arrendatario={dw.f.arrendatario} propietario={dw.f.propietario} inmueble={dw.f.propiedad} aval={dw.f.aval} deuda={dw.f.saldo_acumulado} onDone={() => cargar(periodo)} />
             </div>
           </div>
         </div>

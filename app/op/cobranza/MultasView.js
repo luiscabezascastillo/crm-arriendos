@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v5 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el modal → Bitácora, además de la carta. Hereda v4.
 // VERSION: v4 · 2026-08-27 · "Probar (a mí)" abre la MISMA ventana de revisión; la prueba se lanza desde ahí (sin cargar cartola). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Paso de confirmación antes de enviar aviso/firme (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Pestaña MULTAS con acciones (Tanda 2).
@@ -8,6 +9,7 @@
 // Ruta real: app/op/cobranza/MultasView.js
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import RegistroGestion from '../../components/ui/RegistroGestion'
 const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8', rojo: '#9B1C1C', rojoBg: '#FBEDEC', verde: '#085041', verdeBg: '#E9F4E4', ambar: '#B8860B', ambarBg: '#FBF7EC', acento: '#1D9E75' }
 const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 
@@ -283,6 +285,9 @@ function MultasView() {
               <textarea value={modal.cuerpo} onChange={e => setModal({ ...modal, cuerpo: e.target.value })} rows={11} style={{ width: '100%', fontSize: 13, padding: '9px 11px', border: '1px solid ' + C.line, borderRadius: 8, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
             </div>
 
+            <div style={{ marginBottom: 12 }}>
+              <RegistroGestion idadmon={modal.m.idadmon} arrendatario={modal.m.arrendatario} propietario={modal.m.propietario} inmueble={modal.m.propiedad} rut={modal.m.rut} aval={modal.m.aval} rut_avalista={modal.m.rut_avalista} deuda={modal.m.falta} departamento={modal.dept} />
+            </div>
             {modal.msg && <div style={{ fontSize: 12.5, color: modal.msg[0] === '✓' ? C.verde : C.rojo, marginBottom: 8 }}>{modal.msg}</div>}
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 6 }}>

@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v17 · 2026-08-27 · Se retira el botón (y su handler) de "Boletas SimpleFactura" (en desuso; ya se factura por Nubox). Hereda v16.
 // VERSION: v16 · 2026-08-27 · Botón "Excel (revisión)": exporta la facturación del mes a .xlsx (hoja Facturacion por línea,
 //   mensual+complementarias; hoja Por propietario con A transferir/Transferido/Diferencia/Observaciones). Solo lectura, además del CSV. Hereda v15.
 // RUTA: app/procesos/liquidaciones/facturas/page.js
@@ -154,26 +155,6 @@ export default function FacturasPage() {
     setGenerando(false)
   }
 
-  // SimpleFactura EN RETIRADA: solo Dirección, solo boletas. Marca HECHO igual.
-  async function generarSimpleBoletas() {
-    if (generando) return
-    setGenerando(true); setError(null); setResumenGen(null)
-    try {
-      const res = await fetch('/api/liquidaciones/generar-csv', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, limite, formato: 'simple', solo: 'boletas' }),
-      })
-      const d = await res.json()
-      if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
-      setCsvGen(prev => ({ ...prev, boletas: d.boletas_csv || '' }))
-      if (d.boletas_csv) descargarCSV(d.boletas_csv, `boletas_39_${mes}.csv`)
-      setResumenGen(d.resumen)
-      cargar(mes)
-    } catch (err) {
-      setError(String(err?.message || err))
-    }
-    setGenerando(false)
-  }
 
   // Acceso: SOLO los tres emails (o rol admin). Nadie más.
   useEffect(() => {
@@ -488,11 +469,6 @@ export default function FacturasPage() {
             style={{ fontSize: 14, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#6D28D9', color: '#fff', cursor: generando ? 'default' : 'pointer', opacity: generando ? 0.6 : 1 }}>
             {generando ? '⏳ Generando…' : '⬇ Generar CSV Nubox'}
           </button>
-          <button onClick={generarSimpleBoletas} disabled={generando || rol !== 'direccion'}
-            title={rol === 'direccion' ? 'SimpleFactura en retirada · solo boletas' : 'SimpleFactura: solo Dirección, solo boletas'}
-            style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid #E5DEF5', background: '#F5F3FF', color: '#B4A7D6', cursor: (generando || rol !== 'direccion') ? 'default' : 'pointer', opacity: rol === 'direccion' ? 0.9 : 0.45 }}>
-            ⬇ Boletas SimpleFactura <span style={{ fontSize: 10, fontWeight: 400 }}>(en retirada)</span>
-          </button>
         </div>
       </div>
       </div>{/* fin zona sticky */}
@@ -510,7 +486,6 @@ export default function FacturasPage() {
               <span style={{ color: '#6B7280', fontSize: 12 }}>¿No se descargó algún archivo? Descárgalo aquí:</span>
               {csvGen.nubox && <span onClick={() => descargarCSV(csvGen.nubox, `nubox_ventas_${mes}.csv`, false)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 700, fontSize: 12, textDecoration: 'underline' }}>⬇ nubox_ventas</span>}
               {csvGen.facturas && <span onClick={() => descargarCSV(csvGen.facturas, `facturas_33_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ facturas_33</span>}
-              {csvGen.boletas && <span onClick={() => descargarCSV(csvGen.boletas, `boletas_39_${mes}.csv`)} style={{ cursor: 'pointer', color: '#6D28D9', fontWeight: 600, fontSize: 12, textDecoration: 'underline' }}>⬇ boletas_39</span>}
             </div>
           )}
         </div>
