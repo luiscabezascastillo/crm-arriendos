@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · "Notificaciones" abre en la MISMA ventana (Link SPA), no en pestaña nueva; se vuelve con el ← Volver de esa página. Hereda versión previa.
 // VERSION: 2026-08-27 · TopNav en Cobranza + barra de pestañas sticky bajo el TopNav (top 52); cabecera de VistaCobranza baja a top 100. Hereda versión previa.
 // VERSION: 2026-08-27 · Reorden pestañas (Diferencias·Multas·Cartolas·Saldos·Bitácora·Servicios·Inicios) y Diferencias por defecto. Hereda versión previa.
 // VERSION: 2026-08-27 · Quitada la pestaña "Casos" (vista de términos con déficit desde vw_termino_resultado: montos irreales e incluía contratos que cobra el dueño). Hereda versión previa.
@@ -153,8 +154,8 @@ export default function Cobranza() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px' }}>Cobranza</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => window.open('/procesos/notificaciones', '_blank')} title="Notificaciones: recordatorio automatico de pago (prevencion, dia 24-26)"
-            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap' }}>🔔 Notificaciones</button>
+          <Link href="/procesos/notificaciones" title="Notificaciones: recordatorio automatico de pago (prevencion, dia 24-26)"
+            style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #C9DEF5', background: '#EAF2FB', color: '#185FA5', whiteSpace: 'nowrap', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🔔 Notificaciones</Link>
           <button onClick={() => window.open('/api/cobranza/manual', '_blank')} title="Manual de uso del modulo"
             style={{ fontSize: 13, fontWeight: 700, padding: '7px 13px', cursor: 'pointer', borderRadius: 9, border: '1px solid #CBE6BE', background: '#E9F4E4', color: '#085041', whiteSpace: 'nowrap' }}>📖 Manual</button>
           <button onClick={() => window.open('/api/cobranza/guia-morosos', '_blank')} title="Buenas practicas para la reclamacion a morosos"

@@ -33,6 +33,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import BotonVolver from '@/app/components/ui/BotonVolver'
 
 // ════════════════════════════════════════════════════════════════════════
 // Endpoint de envío del recordatorio de arriendo.
@@ -955,6 +956,7 @@ export default function NotificacionesPage() {
   return (
     <>
       <TopNav />
+      <div style={{ padding: '10px 24px 0' }}><BotonVolver label="Volver" /></div>
       {reajOpen && (
         <div onClick={() => !reajBusy && setReajOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
