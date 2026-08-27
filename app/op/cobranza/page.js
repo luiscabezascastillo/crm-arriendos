@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Reorden pestañas (Diferencias·Multas·Cartolas·Saldos·Bitácora·Servicios·Inicios) y Diferencias por defecto. Hereda versión previa.
 // VERSION: 2026-08-27 · Quitada la pestaña "Casos" (vista de términos con déficit desde vw_termino_resultado: montos irreales e incluía contratos que cobra el dueño). Hereda versión previa.
 // VERSION: v23 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios con mini-curva y enlace a /op/cobranza/kpis). Hereda v22.
 // VERSION: v22 · 2026-08-26 · Pestañas reordenadas por flujo de cobro (Cartolas·Diferencias·Multas·Casos·Servicios·…) + botón "🔔 Notificaciones" en cabecera (prevención). Hereda v21.
@@ -115,13 +116,13 @@ const COB_COLS = [
 ]
 
 const TABS = [
-  { k: 'cartolas', label: 'Cartolas' },
   { k: 'diferencias', label: 'Diferencias' },
   { k: 'multas', label: 'Multas' },
-  { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
+  { k: 'cartolas', label: 'Cartolas' },
   { k: 'saldos', label: 'Saldos a favor' },
-  { k: 'inicios', label: 'Inicios' },
   { k: 'bitacora', label: 'Bitácora' },
+  { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
+  { k: 'inicios', label: 'Inicios' },
 ]
 const TITULO_TIPO = { cartolas: 'Cobranza de Cartolas', inicios: 'Cobranza de Inicios' }
 
@@ -137,7 +138,7 @@ const AYUDA_COBRANZA = [
 ]
 
 export default function Cobranza() {
-  const [tab, setTab] = useState('cartolas')
+  const [tab, setTab] = useState('diferencias')
   const [ayudaOpen, setAyudaOpen] = useState(false)
 
   return (
