@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v15 · 2026-08-27 · Resumen: eje Y izq legible con marcas en MILES (1/2/5·10^n), BENEFICIOS arriba /
+//   PERDIDAS abajo, valor en miles sobre cada punto, y nueva curva de ACUMULADO del resultado (apoyo, eje der). Hereda v14.
 // VERSION: v14 · 2026-08-27 · Resumen: el Resultado pasa a PROTAGONISTA con eje propio a la IZQUIERDA (numeracion
 //   azul=beneficio/rojo=perdida, con signo), linea solida gruesa y puntos por signo; Ventas/Costes difuminadas al eje DERECHO. Hereda v13.
 // VERSION: v13 · 2026-08-27 · Resumen CC1+CC2+CC3: el ÚLTIMO mes (en curso, datos aún incompletos) se traza
@@ -115,31 +117,45 @@ function MiniChart({ series, labels }) {
   )
 }
 
-// Resumen CC1+CC2+CC3. PROTAGONISTA: el Resultado (Ventas-Costes), con su eje propio a la IZQUIERDA, linea
-// solida y gruesa, puntos AZUL (beneficio) / ROJO (perdida) y la numeracion del eje en ese mismo color (las
-// perdidas con signo negativo). Ventas y Costes van de apoyo, DIFUMINADAS, en el eje DERECHO. Solo pinta los
-// meses con dato de CC1 (congelados + mes en curso); el ultimo mes va punteado (datos aun incompletos).
+// Ticks "bonitos" (1/2/5·10^n) para un eje de ordenadas legible.
+function niceTicks(lo, hi, count) {
+  if (!(hi > lo)) return [Math.round(lo)]
+  const raw = (hi - lo) / count
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
+  const norm = raw / mag
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag
+  const start = Math.ceil(lo / step) * step
+  const out = []
+  for (let t = start; t <= hi + step * 0.001; t += step) out.push(Math.round(t))
+  return out
+}
+
+// Resumen CC1+CC2+CC3. PROTAGONISTA: el RESULTADO mensual (Ventas-Costes) en el eje IZQUIERDO, con marcas en MILES,
+// "BENEFICIOS" arriba / "PERDIDAS" abajo, linea solida gruesa, puntos AZUL (beneficio) / ROJO (perdida) y el valor
+// (en miles) escrito sobre cada punto. De apoyo, difuminadas al eje DERECHO: Ventas, Costes y el ACUMULADO del
+// resultado. Solo pinta meses con CC1 (congelados + mes en curso); el ultimo mes va punteado (datos incompletos).
 function ResumenChart({ labels, ventas, costes, pl }) {
-  const VW = 1160, VH = 262, PL = 96, PR = 96, PT = 30, PB = 26
+  const VW = 1180, VH = 288, PL = 116, PR = 100, PT = 26, PB = 40
   const pw = VW - PL - PR, ph = VH - PT - PB, n = labels.length
-  const vcNums = [...ventas, ...costes].filter(v => v != null && Number.isFinite(v))
   const plNums = pl.filter(v => v != null && Number.isFinite(v))
   if (!plNums.length) return (
     <div style={{ height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--gray-400)' }}>
       Sin meses congelados en la ventana todavía.
     </div>
   )
-  // Eje DERECHO: Ventas + Costes (apoyo), anclado en 0
-  let V0 = Math.min(0, ...vcNums), V1 = Math.max(1, ...vcNums)
-  if (V0 === V1) V1 = V0 + 1
-  V1 += (V1 - V0) * 0.10
-  // Eje IZQUIERDO: Resultado (lo que interesa), escala propia, incluye el 0
+  // Acumulado del resultado (running total sobre los meses con dato)
+  let acc = 0
+  const plAcum = pl.map(v => { if (v == null || !Number.isFinite(v)) return null; acc += v; return acc })
+  const rNums = [...ventas, ...costes, ...plAcum].filter(v => v != null && Number.isFinite(v))
+  // Eje IZQ: resultado mensual (el protagonista)
   let R0 = Math.min(0, ...plNums), R1 = Math.max(0, ...plNums)
-  if (R0 === R1) R1 = R0 + 1
-  const rp = (R1 - R0) * 0.16; R0 -= rp; R1 += rp
+  const rpad = (R1 - R0) * 0.14 || 1000; R0 -= rpad; R1 += rpad
+  // Eje DER: ventas + costes + acumulado (apoyo)
+  let V0 = Math.min(0, ...rNums), V1 = Math.max(1, ...rNums)
+  const vpad = (V1 - V0) * 0.08; V1 += vpad; if (V0 < 0) V0 -= vpad
   const X = i => PL + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw)
-  const Yr = v => PT + (1 - (v - R0) / (R1 - R0)) * ph    // Resultado (eje izq)
-  const Yvc = v => PT + (1 - (v - V0) / (V1 - V0)) * ph   // Ventas/Costes (eje der)
+  const Yr = v => PT + (1 - (v - R0) / (R1 - R0)) * ph    // resultado (izq)
+  const Yvc = v => PT + (1 - (v - V0) / (V1 - V0)) * ph   // ventas/costes/acumulado (der)
   const mk = (data, Y) => {
     let d = '', pen = false
     data.forEach((v, i) => {
@@ -148,46 +164,58 @@ function ResumenChart({ labels, ventas, costes, pl }) {
     })
     return d
   }
-  // Indices validos + si el ultimo es el mes en curso (para puntear ese tramo).
   const lastSeg = d => {
     const vi = []; d.forEach((v, i) => { if (v != null && Number.isFinite(v)) vi.push(i) })
     const li = vi.length ? vi[vi.length - 1] : -1
     const en = li === d.length - 1 && vi.length >= 2
     return { li, en, pi: en ? vi[vi.length - 2] : -1 }
   }
-  const TXT = '#8a8880', AX = '#e6e4dc'
-  const C_V = '#1baf7a', C_C = '#eb6834'
+  const TXT = '#8a8880', AX = '#eceae2'
+  const C_V = '#1baf7a', C_C = '#eb6834', C_A = '#7c3aed'
   const AZUL = '#1d4ed8', ROJO = '#dc2626'
   const colorPt = v => (v >= 0 ? AZUL : ROJO)
-  const rt = [R1, (R0 + R1) / 2, 0, R0].filter((x, i, a) => a.indexOf(x) === i)   // ticks eje izq (incluye 0)
-  const vt = [V1, (V0 + V1) / 2, V0]                                              // ticks eje der
+  const mil = v => Math.round(v / 1000).toLocaleString('es-CL')   // en miles
+  let ticksR = niceTicks(R0, R1, 5)
+  if (R0 < 0 && R1 > 0 && !ticksR.includes(0)) ticksR = [...ticksR, 0].sort((a, b) => a - b)
+  const ticksV = niceTicks(V0, V1, 4)
   const faded = [{ d: ventas, c: C_V }, { d: costes, c: C_C }]
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '0 4px 8px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 4px 8px', alignItems: 'center' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--gray-800)', fontWeight: 800 }}>
-          <span style={{ width: 22, height: 5, borderRadius: 2, background: AZUL }} />Resultado (Ventas − Costes)
+          <span style={{ width: 22, height: 5, borderRadius: 2, background: AZUL }} />Resultado mensual
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6d28d9', fontWeight: 600 }}>
+          <span style={{ width: 16, height: 3, borderRadius: 2, background: C_A }} />Acumulado
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
-          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_V, opacity: 0.45 }} />Ventas
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_V, opacity: 0.5 }} />Ventas
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
-          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_C, opacity: 0.45 }} />Costes
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_C, opacity: 0.5 }} />Costes
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>eje izq: Resultado (azul=beneficio · rojo=pérdida) · eje der: ventas y costes (apoyo)</span>
+        <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>cifras en miles de $ · eje izq: Resultado · eje der: apoyo (ventas, costes, acumulado)</span>
       </div>
       <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
-        {/* rejilla segun el eje IZQ (Resultado) */}
-        {rt.map((t, i) => <line key={'g' + i} x1={PL} y1={Yr(t)} x2={VW - PR} y2={Yr(t)} stroke={AX} strokeWidth="1" />)}
-        {/* linea 0: frontera beneficio / perdida */}
-        <line x1={PL} y1={Yr(0)} x2={VW - PR} y2={Yr(0)} stroke="#b9b6ad" strokeWidth="1.4" />
-        {/* etiquetas eje IZQ (Resultado) coloreadas por signo, negativas con su signo */}
-        {rt.map((t, i) => <text key={'lt' + i} x={PL - 10} y={Yr(t) + 3.5} textAnchor="end" fontSize="11.5" fontWeight="700" fill={t >= 0 ? AZUL : ROJO}>{miles(t)}</text>)}
-        {/* etiquetas eje DER (Ventas/Costes), neutras */}
-        {vt.map((t, i) => <text key={'vt' + i} x={VW - PR + 10} y={Yvc(t) + 3.5} textAnchor="start" fontSize="10" fill={TXT}>{miles(t)}</text>)}
-        {labels.map((l, i) => <text key={'x' + i} x={X(i)} y={VH - 6} textAnchor="middle" fontSize="9.5" fill={TXT}>{String(l).slice(0, 3)}</text>)}
+        {/* rejilla + eje IZQ (Resultado), marcas en miles coloreadas por signo */}
+        {ticksR.map((t, i) => (
+          <g key={'g' + i}>
+            <line x1={PL} y1={Yr(t)} x2={VW - PR} y2={Yr(t)} stroke={t === 0 ? '#b9b6ad' : AX} strokeWidth={t === 0 ? 1.4 : 1} />
+            <line x1={PL - 5} y1={Yr(t)} x2={PL} y2={Yr(t)} stroke="#b9b6ad" strokeWidth="1.2" />
+            <text x={PL - 9} y={Yr(t) + 3.5} textAnchor="end" fontSize="11" fontWeight="700" fill={t > 0 ? AZUL : t < 0 ? ROJO : '#6b7280'}>{mil(t)}</text>
+          </g>
+        ))}
+        <line x1={PL} y1={PT} x2={PL} y2={PT + ph} stroke="#b9b6ad" strokeWidth="1.2" />
+        {/* BENEFICIOS arriba / PERDIDAS abajo, rotados junto al eje */}
+        <text transform={`rotate(-90 16 ${PT + ph * 0.26})`} x={16} y={PT + ph * 0.26} textAnchor="middle" fontSize="10.5" fontWeight="800" letterSpacing="1.5" fill={AZUL}>BENEFICIOS</text>
+        <text transform={`rotate(-90 16 ${PT + ph * 0.76})`} x={16} y={PT + ph * 0.76} textAnchor="middle" fontSize="10.5" fontWeight="800" letterSpacing="1.5" fill={ROJO}>PÉRDIDAS</text>
+        {/* eje DER (apoyo), marcas neutras en miles */}
+        {ticksV.map((t, i) => (
+          <text key={'v' + i} x={VW - PR + 9} y={Yvc(t) + 3.5} textAnchor="start" fontSize="9.5" fill={TXT}>{mil(t)}</text>
+        ))}
+        {labels.map((l, i) => <text key={'x' + i} x={X(i)} y={VH - 8} textAnchor="middle" fontSize="9.5" fill={TXT}>{String(l).slice(0, 3)}</text>)}
 
-        {/* Ventas y Costes: APOYO, difuminadas (eje der) */}
+        {/* Ventas y Costes: apoyo difuminado (eje der) */}
         {faded.map((sr, si) => {
           const { li, en, pi } = lastSeg(sr.d)
           const firme = en ? sr.d.map((v, i) => i === li ? null : v) : sr.d
@@ -195,12 +223,23 @@ function ResumenChart({ labels, ventas, costes, pl }) {
             <g key={'f' + si} opacity="0.3">
               <path d={mk(firme, Yvc)} fill="none" stroke={sr.c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               {en && <line x1={X(pi)} y1={Yvc(sr.d[pi])} x2={X(li)} y2={Yvc(sr.d[li])} stroke={sr.c} strokeWidth="1.8" strokeDasharray="2 4" strokeLinecap="round" />}
-              {sr.d.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={i} cx={X(i)} cy={Yvc(v)} r="1.8" fill={sr.c} /> : null)}
             </g>
           )
         })}
+        {/* ACUMULADO (eje der), morado, medio */}
+        {(() => {
+          const { li, en, pi } = lastSeg(plAcum)
+          const firme = en ? plAcum.map((v, i) => i === li ? null : v) : plAcum
+          return (
+            <g>
+              <path d={mk(firme, Yvc)} fill="none" stroke={C_A} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+              {en && <line x1={X(pi)} y1={Yvc(plAcum[pi])} x2={X(li)} y2={Yvc(plAcum[li])} stroke={C_A} strokeWidth="2.6" strokeDasharray="3 4" strokeLinecap="round" opacity="0.9" />}
+              {plAcum.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={i} cx={X(i)} cy={Yvc(v)} r="2.2" fill={C_A} /> : null)}
+            </g>
+          )
+        })()}
 
-        {/* RESULTADO: protagonista, solido y grueso (eje izq). Puntos AZUL beneficio / ROJO perdida. */}
+        {/* RESULTADO mensual: protagonista (eje izq). Puntos azul/rojo + valor en miles. */}
         {(() => {
           const { li, en, pi } = lastSeg(pl)
           const firme = en ? pl.map((v, i) => i === li ? null : v) : pl
@@ -210,8 +249,11 @@ function ResumenChart({ labels, ventas, costes, pl }) {
               {en && <line x1={X(pi)} y1={Yr(pl[pi])} x2={X(li)} y2={Yr(pl[li])} stroke={colorPt(pl[li])} strokeWidth="4.2" strokeLinecap="round" strokeDasharray="3 5" />}
               {pl.map((v, i) => (v != null && Number.isFinite(v))
                 ? (i === li && en
-                    ? <circle key={i} cx={X(i)} cy={Yr(v)} r="4.6" fill="#fff" stroke={colorPt(v)} strokeWidth="2.2" />
-                    : <circle key={i} cx={X(i)} cy={Yr(v)} r="4.2" fill={colorPt(v)} />)
+                    ? <circle key={'p' + i} cx={X(i)} cy={Yr(v)} r="4.6" fill="#fff" stroke={colorPt(v)} strokeWidth="2.2" />
+                    : <circle key={'p' + i} cx={X(i)} cy={Yr(v)} r="4.2" fill={colorPt(v)} />)
+                : null)}
+              {pl.map((v, i) => (v != null && Number.isFinite(v))
+                ? <text key={'t' + i} x={X(i)} y={Yr(v) + (v >= 0 ? -9 : 16)} textAnchor="middle" fontSize="9" fontWeight="700" fill={colorPt(v)}>{mil(v)}</text>
                 : null)}
             </g>
           )
