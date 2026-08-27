@@ -1,3 +1,5 @@
+// VERSION: v8 · 2026-08-27 · "Cobrado en plazo" POR CONTRATO: se capa lo pagado en la ventana a la cuota del mes de cada IDADMON
+//   (antes sumaba abonos sin tope -> atrasos/sobrepagos lo inflaban y topaba en 100% en meses viejos; era un artefacto). Hereda v7.
 // VERSION: v7 · 2026-08-27 · Meses SIN datos de servicios (ggcc vacio ese mes) -> deuda_serv y garantias_riesgo = null (hueco en la curva),
 //   no 0 (que dibujaba un valle falso, p.ej. Junio 2026). Hereda v6.
 // VERSION: v6 · 2026-08-27 · Devuelve tambien la LISTA de IDADMON en riesgo (id, deuda servicios, garantia) por mes, para el listado. Hereda v5.
@@ -86,7 +88,7 @@ export async function GET(req) {
     if (r.anulado || dueno.has(r.idadmon)) continue
     const t = pf(r.fecha); if (!t) continue
     const ab = n0(r.abono), ca = cargoEf(r)
-    if (ab > 0) abonos.push({ t, ab })
+    if (ab > 0) abonos.push({ idadmon: r.idadmon, t, ab })
     if (ca !== 0 || ab !== 0) movs.push({ idadmon: r.idadmon, t, delta: ca - ab })
   }
   movs.sort((a, b) => a.t - b.t)
@@ -100,11 +102,15 @@ export async function GET(req) {
       admin.rpc('calcular_liquidacion', { p_mes: aamm(y, mo) }),
       admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(y, mo) + '%'),
     ])
-    let base_t = 0
-    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) base_t += n0(r.base) }
+    const baseById = {}
+    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base) }
+    let base_t = 0; for (const id in baseById) base_t += baseById[id]
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
+    // pagado en plazo POR CONTRATO, capado a su cuota del mes (atrasos/sobrepagos no inflan el %)
+    const pagById = {}
+    for (const a of abonos) { if (a.t >= ini && a.t <= corte && baseById[a.idadmon] != null) pagById[a.idadmon] = (pagById[a.idadmon] || 0) + a.ab }
     let cobradoPlazo = 0
-    for (const a of abonos) { if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab }
+    for (const id in baseById) cobradoPlazo += Math.min(baseById[id], pagById[id] || 0)
     // servicios agrupados por idadmon (un contrato puede tener varios inmuebles)
     const porId = {}
     for (const r of (servRes.data || [])) {
