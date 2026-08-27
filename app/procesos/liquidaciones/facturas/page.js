@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v16 · 2026-08-27 · Botón "Excel (revisión)": exporta la facturación del mes a .xlsx (hoja Facturacion por línea,
+//   mensual+complementarias; hoja Por propietario con A transferir/Transferido/Diferencia/Observaciones). Solo lectura, además del CSV. Hereda v15.
 // RUTA: app/procesos/liquidaciones/facturas/page.js
 // VERSION: v17 · 2026-08-18 · Distingue facturado UNA vez ("total") de DOS veces ("×2 parcial+resto"): cuenta las
 //   emisiones distintas por propietario en liquidacion_facturado (nº de fechas de emisión). Badge bajo el estado
@@ -380,6 +382,53 @@ export default function FacturasPage() {
   const totIva = visibles.reduce((s, f) => s + (Number(f.iva) || 0), 0)
   const totComplComision = complL.reduce((s, c) => s + (Number(c.comision) || 0), 0)
   const totComplIva = complL.reduce((s, c) => s + (Number(c.iva) || 0), 0)
+
+  // Excel de revisión (además del CSV): la facturación del mes tal como se ve, para revisar antes de cerrar. No emite nada.
+  const exportarExcelRevision = async () => {
+    const XLSX = await import('xlsx')
+    // Hoja 1 — una fila por línea (inmueble): lo mensual + las complementarias (lo mismo que entra al CSV).
+    const filas = visibles.map(f => {
+      const p = propMap[f.idprop] || {}
+      const com = Number(f.comision) || 0, iva = Number(f.iva) || 0
+      return {
+        Origen: 'Mensual', IdAdmon: f.idadmon, IdProp: f.idprop, Propietario: f.propietario,
+        Inmueble: f.inmueble, Admon: com, IVA: iva, Total: com + iva,
+        Tipo: p.tipo_factura || '', Doc: TIPO_DOC[p.tipo_factura] || '', Facturar: p.facturar || 'NO',
+        'Fecha emision': p.fecha_emision ? new Date(p.fecha_emision).toLocaleString('es-CL') : '',
+        Comentario: p.comentario || '',
+      }
+    })
+    for (const c of complL) {
+      const com = Number(c.comision) || 0, iva = Number(c.iva) || 0
+      filas.push({
+        Origen: 'Complementaria', IdAdmon: c.idadmon, IdProp: c.idprop, Propietario: c.propietario,
+        Inmueble: c.inmueble, Admon: com, IVA: iva, Total: com + iva,
+        Tipo: '', Doc: '', Facturar: 'complementaria',
+        'Fecha emision': '', Comentario: c.mes_espera ? ('en espera desde ' + c.mes_espera) : '',
+      })
+    }
+    // Hoja 2 — una fila por propietario (agregado + transferencia), como el bloque de resumen de la vista.
+    const porProp = {}
+    for (const f of visibles) {
+      const p = propMap[f.idprop] || {}
+      if (!porProp[f.idprop]) {
+        const at = Number(p.total_a_transferir) || 0, tr = Number(p._transf) || 0
+        porProp[f.idprop] = {
+          IdProp: f.idprop, Propietario: f.propietario, Inmuebles: 0, Admon: 0, IVA: 0, Total: 0,
+          Tipo: p.tipo_factura || '', Facturar: p.facturar || 'NO',
+          'A transferir': at, Transferido: tr, Diferencia: at - tr,
+          Validado: p.transfer_validado || '', Enviada: p.enviada_at ? new Date(p.enviada_at).toLocaleString('es-CL') : '',
+          Observaciones: p._obs || '',
+        }
+      }
+      const r = porProp[f.idprop]
+      r.Inmuebles += 1; r.Admon += Number(f.comision) || 0; r.IVA += Number(f.iva) || 0; r.Total = r.Admon + r.IVA
+    }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Facturacion')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(porProp)), 'Por propietario')
+    XLSX.writeFile(wb, `Facturacion_${mes}.xlsx`)
+  }
   const idpropsVis = [...new Set(visibles.map(f => f.idprop))]
   const nFactura = idpropsVis.filter(ip => propMap[ip]?.tipo_factura === '33').length
   const nBoleta = idpropsVis.filter(ip => ['39', '41'].includes(propMap[ip]?.tipo_factura)).length
@@ -428,6 +477,11 @@ export default function FacturasPage() {
         <label style={{ fontSize: 13, color: '#666' }} title="Si un propietario tiene este nº de inmuebles o más, su factura se parte en dos">Máx líneas/doc:</label>
         <input type="number" value={limite} min={2} onChange={e => setLimite(Number(e.target.value) || 10)}
           style={{ fontSize: 14, padding: '7px 8px', borderRadius: 8, border: '1px solid #D3D1C7', width: 60 }} />
+        <button onClick={exportarExcelRevision} disabled={cargando}
+          title="Exporta a Excel la facturación de este mes (mensual + complementarias) para revisar antes de cerrar. No emite nada."
+          style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#065F46', cursor: cargando ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+          ⭳ Excel (revisión)
+        </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
           <button onClick={generarNubox} disabled={generando}
             title="Genera el CSV de Nubox (Cargar Ventas desde Archivo). Nubox asigna los folios."
