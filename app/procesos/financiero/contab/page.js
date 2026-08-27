@@ -1,4 +1,6 @@
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
+// VERSION: v16 · 2026-08-27 · Tarjetas de modulos a 3 columnas. Boton "Borrar todo" (solo EDITORES, doble confirmacion)
+//   junto a Previsualizar Nubox -> DELETE ?todo=1 (borra todo lo generado, regenerable). Hereda v15.
 // VERSION: v15 · 2026-08-27 · Tabla de comprobantes: filtros de columna en la cabecera (Origen/Periodo/Fecha/Glosa/CCB/Cuadre)
 //   para poder aislar lo que se quiere revisar (p. ej. Origen=mandato, Periodo=2026-01), con contador y "Quitar filtros". Hereda v14.
 // VERSION: v14 · 2026-08-26 · Ayuda desplegable "Como funciona esto" (proceso, orden, idempotencia, revision, ojo con el anio). Hereda v13.
@@ -79,6 +81,7 @@ export default function ContabPage() {
   const [comprobantes, setComprobantes] = useState([])
   const [fComp, setFComp] = useState({})   // filtros de columna de la tabla de comprobantes
   const setFC = (col, val) => setFComp(p => ({ ...p, [col]: val }))
+  const [borrando, setBorrando] = useState(false)
   const [resumen, setResumen] = useState([])
   const [cargando, setCargando] = useState(false)
   const [generando, setGenerando] = useState(null)
@@ -133,6 +136,21 @@ export default function ContabPage() {
       })
       cargar()
     } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo generar.' }) } finally { setGenerando(null) }
+  }
+
+  // Borra TODO lo generado en CONTAB (todos los periodos). Derivado -> se puede regenerar. Doble confirmacion.
+  const borrarTodo = async () => {
+    if (!puedeEditar || borrando) return
+    if (!window.confirm('Vas a BORRAR TODO lo generado en CONTAB (todos los periodos y anios).\n\nElimina todos los asientos; luego hay que volver a generarlos con "Regenerar" en cada modulo. Es reversible en ese sentido, pero se borra todo.\n\n¿Continuar?')) return
+    if (!window.confirm('Confirmacion final: se borran TODOS los comprobantes de CONTAB. ¿Seguro?')) return
+    setBorrando(true); setAviso(null); setError(null)
+    try {
+      const r = await fetch('/api/financiero/contab?todo=1', { method: 'DELETE' })
+      const j = await r.json()
+      if (j.error) { setAviso({ tipo: 'error', txt: j.error }); return }
+      setAviso({ tipo: 'ok', txt: `Borrado todo lo generado: ${j.borrados} comprobante(s).` })
+      cargar()
+    } catch (e) { setAviso({ tipo: 'error', txt: 'No se pudo borrar.' }) } finally { setBorrando(false) }
   }
 
   const previsualizar = async () => {
@@ -277,7 +295,7 @@ export default function ContabPage() {
               <div><b>Ojo con el año</b> (selector de arriba): la prueba en Nubox es 2026. Generar para 2025 calcularía de las ventas de ese año si las hay — no lo hagas salvo que quieras rehacer 2025.</div>
             </div>
           </details>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {ORIGENES.map((o) => {
               const res = resumenPorOrigen(o.id)
               const gen = generando === o.id
@@ -320,6 +338,13 @@ export default function ContabPage() {
               )}
             </div>
             <div style={{ flex: 1 }} />
+            {puedeEditar && (
+              <button onClick={borrarTodo} disabled={borrando || cargandoPreview}
+                title="Borra TODO lo generado en CONTAB (todos los periodos). Se puede regenerar."
+                style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${ROJO}`, background: '#fff', color: ROJO, fontSize: 14, fontWeight: 600, cursor: borrando ? 'default' : 'pointer', opacity: borrando ? 0.6 : 1 }}>
+                {borrando ? 'Borrando…' : '🗑 Borrar todo'}
+              </button>
+            )}
             <button onClick={previsualizar} disabled={cargandoPreview} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: VERDE, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: cargandoPreview ? 0.6 : 1 }}>
               {cargandoPreview ? 'Preparando…' : 'Previsualizar Nubox'}
             </button>

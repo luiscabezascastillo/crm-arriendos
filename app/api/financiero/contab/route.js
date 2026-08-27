@@ -1,3 +1,4 @@
+// VERSION: v11 · 2026-08-27 · DELETE /api/financiero/contab: ?todo=1 borra TODO lo generado (o ?periodo/?anio para acotar); comprobantes+lineas, solo EDITORES, regenerable. Hereda v10.
 // VERSION: v10 · 2026-08-20 · cuentaNubox: si la cuenta trae el nombre pegado ("4201-46 CONSERVADOR...") se queda solo con el codigo (Nubox no lo encontraba). Hereda v9.
 // VERSION: v9 · 2026-08-20 · cuentaNubox: en vez de truncar el 3er nivel al padre, RELLENA la analitica a 4 digitos (4201-01-02 -> 4201-01-0002). Nubox tiene las hijas dadas de alta y obliga a imputar en ellas, no en el padre. Hereda v8.
 // VERSION: v8 · 2026-08-20 · Previsualizacion: columna centro_costo tambien en blanco (coincide con lo que va a Nubox; el CC real queda en campo ccb solo de referencia). Hereda v7.
@@ -154,6 +155,57 @@ export async function POST(req) {
 
   const cuadran = (data || []).every(r => r.r_cuadra)
   return Response.json({ ok: true, origen, periodo, resultado: data || [], todos_cuadran: cuadran })
+}
+
+// DELETE: borra los comprobantes (y sus lineas). ?todo=1 borra TODO lo generado; ?periodo=AAAA-MM o ?anio=AAAA acotan.
+//   Los asientos son derivados: se pueden volver a generar con "Regenerar". Solo EDITORES.
+export async function DELETE(req) {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+  if (!EDITORES.includes(email)) return Response.json({ error: 'No tienes permiso para borrar comprobantes.' }, { status: 403 })
+
+  const { searchParams } = new URL(req.url)
+  const periodo = searchParams.get('periodo')
+  const anio = searchParams.get('anio')
+  const todo = searchParams.get('todo')   // ?todo=1 -> borra TODO lo generado (todos los periodos)
+
+  // TODO: borrado global sin enumerar ids (no lo limita el cap de 1000 filas).
+  if (todo) {
+    const { count } = await admin.from('contab_comprobantes').select('*', { count: 'exact', head: true })
+    const e1 = await admin.from('contab_lineas').delete().gte('id', 0)
+    if (e1.error) return Response.json({ error: 'lineas: ' + e1.error.message }, { status: 500 })
+    const e2 = await admin.from('contab_comprobantes').delete().gte('id', 0)
+    if (e2.error) return Response.json({ error: 'comprobantes: ' + e2.error.message }, { status: 500 })
+    return Response.json({ ok: true, borrados: count || 0, alcance: 'todo' })
+  }
+
+  // Alcance acotado (periodo o ano): enumera ids paginando y borra en trozos.
+  const ids = []
+  let desde = 0
+  for (;;) {
+    let q = admin.from('contab_comprobantes').select('id').order('id', { ascending: true }).range(desde, desde + 999)
+    if (periodo) q = q.eq('periodo', periodo)
+    else if (anio) q = q.gte('periodo', `${anio}-01`).lte('periodo', `${anio}-12`)
+    else return Response.json({ error: 'Falta el alcance (periodo, anio o todo).' }, { status: 400 })
+    const { data, error } = await q
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    if (!data || !data.length) break
+    ids.push(...data.map(c => c.id))
+    if (data.length < 1000) break
+    desde += 1000
+  }
+  if (!ids.length) return Response.json({ ok: true, borrados: 0 })
+
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await admin.from('contab_lineas').delete().in('comprobante_id', ids.slice(i, i + 200))
+    if (error) return Response.json({ error: 'lineas: ' + error.message }, { status: 500 })
+  }
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await admin.from('contab_comprobantes').delete().in('id', ids.slice(i, i + 200))
+    if (error) return Response.json({ error: 'comprobantes: ' + error.message }, { status: 500 })
+  }
+  return Response.json({ ok: true, borrados: ids.length, alcance: periodo || anio })
 }
 
 // Construye filas planas Nubox (A-K) de uno o varios periodos.
