@@ -1,8 +1,8 @@
-// VERSION: v2 · 2026-08-26 · Cobranza · KPIs de salud del cobro (renta + servicios), serie mensual.
-//   Cambios v2: (1) "cobrado en plazo" REAL = abonos con fecha ≤ día 10 (gracia) / a cobrar del mes,
-//   contando fecha de cada abono (ya no proxy). (2) Metas por defecto (estándar gestión inmobiliaria).
-//   (3) Nuevo KPI "garantías en riesgo": contratos cuya deuda de servicios ≥ 50% de su garantía.
-//   GET ?meses=6 -> serie[{aamm,lbl,pct_cobrado,cartera,pct_cartera,deuda_serv,pct_serv_aldia,garantias_riesgo,base}]
+// VERSION: v3 · 2026-08-27 · Cobranza · KPIs de salud del cobro (renta + servicios), serie mensual.
+//   FIX v3: (1) servicios: el campo ggcc_agua_luz.mes es ISO "AAAA-MM" (no "AGOSTO 2026") -> se consultaba
+//   vacío (deuda $0, al día —%, garantías 0). Ahora filtra por "AAAA-MM" y agrupa por idadmon.
+//   (2) "Cartera por cobrar" = DEUDA ACUMULADA real (saldo vivo de cuentas a fin de mes), no la falta del
+//   mes en curso (que sale ~0). (3) "cobrado en plazo" real (abonos ≤ día 10). Metas + garantías en riesgo.
 // Ruta real: app/api/cobranza/kpis/route.js
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
@@ -13,12 +13,11 @@ export const maxDuration = 60
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
-const UMBRAL_SERV = 30000          // deuda de servicios por debajo de la cual se considera "al día"
-const RIESGO_GARANTIA = 0.5        // deuda de servicios ≥ 50% de la garantía => garantía en riesgo
-const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
+const UMBRAL_SERV = 30000
+const RIESGO_GARANTIA = 0.5
 const MES_ABR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-const DIA_MS = 86400000
 const n0 = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
+const cargoEf = (r) => (r.cargo_manual != null && r.cargo_manual !== '') ? n0(r.cargo_manual) : n0(r.cargo)
 
 function pf(s) {
   const t = String(s || '').trim()
@@ -37,14 +36,14 @@ function mesBase() {
   return { y, mo }
 }
 const aamm = (y, mo) => String(y).slice(2) + String(mo).padStart(2, '0')
-const mesTxtDe = (y, mo) => MESES_TXT[mo - 1] + ' ' + y
+const isoMes = (y, mo) => y + '-' + String(mo).padStart(2, '0')
 const lblDe = (y, mo) => MES_ABR[mo - 1] + " '" + String(y).slice(2)
 
-// trae TODOS los abonos (paginado; PostgREST limita a 1000 por página)
-async function todosAbonos() {
+// trae TODAS las filas de `cuentas` (paginado; PostgREST limita a 1000 por página)
+async function todasCuentas() {
   const out = []; let from = 0; const page = 1000
   for (let i = 0; i < 60; i++) {
-    const { data, error } = await admin.from('cuentas').select('idadmon, fecha, abono, anulado').not('abono', 'is', null).range(from, from + page - 1)
+    const { data, error } = await admin.from('cuentas').select('idadmon, fecha, cargo, cargo_manual, abono, anulado').range(from, from + page - 1)
     if (error || !data || !data.length) break
     out.push(...data)
     if (data.length < page) break
@@ -59,10 +58,8 @@ export async function GET(req) {
   if (!session?.user?.email) return Response.json({ error: 'No autenticado' }, { status: 401 })
   if (!PUEDEN_VER.includes(rol)) return Response.json({ error: 'No autorizado' }, { status: 403 })
 
-  const url = new URL(req.url)
-  const N = Math.min(18, Math.max(3, Number(url.searchParams.get('meses')) || 6))
+  const N = Math.min(18, Math.max(3, Number(new URL(req.url).searchParams.get('meses')) || 6))
 
-  // contratos: quien_cobra (excluir DUEÑO) y garantía
   const { data: arr } = await admin.from('datos_arriendos').select('idadmon, quien_cobra, garantia_pedida')
   const dueno = new Set(), garantia = {}
   for (const a of (arr || [])) {
@@ -70,53 +67,73 @@ export async function GET(req) {
     garantia[a.idadmon] = n0(a.garantia_pedida)
   }
 
-  // abonos con fecha (una sola vez) para el "cobrado en plazo"
-  const abonos = (await todosAbonos())
-    .filter(r => !r.anulado && n0(r.abono) > 0)
-    .map(r => ({ idadmon: r.idadmon, t: pf(r.fecha), abono: n0(r.abono) }))
-    .filter(r => r.t && !dueno.has(r.idadmon))
+  // movimientos de cuentas (una vez): para "cobrado en plazo" (abonos) y "cartera" (saldo acumulado)
+  const cuentas = await todasCuentas()
+  const abonos = [], movs = []
+  for (const r of cuentas) {
+    if (r.anulado || dueno.has(r.idadmon)) continue
+    const t = pf(r.fecha); if (!t) continue
+    const ab = n0(r.abono), ca = cargoEf(r)
+    if (ab > 0) abonos.push({ t, ab })
+    if (ca !== 0 || ab !== 0) movs.push({ idadmon: r.idadmon, t, delta: ca - ab })
+  }
+  movs.sort((a, b) => a.t - b.t)
 
-  // meses (del más antiguo al más reciente)
   const base = mesBase(); const meses = []
   for (let i = N - 1; i >= 0; i--) { let y = base.y, mo = base.mo - i; while (mo < 1) { mo += 12; y -= 1 } meses.push({ y, mo }) }
 
-  const serie = await Promise.all(meses.map(async ({ y, mo }) => {
+  // 1) renta (RPC) y servicios (ggcc) en paralelo por mes
+  const rentaServ = await Promise.all(meses.map(async ({ y, mo }) => {
     const [liqRes, servRes] = await Promise.all([
       admin.rpc('calcular_liquidacion', { p_mes: aamm(y, mo) }),
-      admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').eq('mes', mesTxtDe(y, mo)),
+      admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(y, mo) + '%'),
     ])
-    // renta a cobrar
-    let base_t = 0, falta_t = 0
-    for (const r of (liqRes.data || [])) { if (dueno.has(r.idadmon)) continue; base_t += n0(r.base); falta_t += n0(r.falta) }
-    // cobrado EN PLAZO: abonos con fecha entre 23 del mes anterior y el día 10 de este mes
+    let base_t = 0
+    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) base_t += n0(r.base) }
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
     let cobradoPlazo = 0
-    for (const a of abonos) { if (a.t >= ini && a.t <= corte) cobradoPlazo += a.abono }
-    const pct_cobrado = base_t > 0 ? Math.min(100, Math.round((cobradoPlazo / base_t) * 1000) / 10) : null
-    const cartera = Math.round(Math.max(0, falta_t))
-    const pct_cartera = base_t > 0 ? Math.round((cartera / base_t) * 1000) / 10 : null
-    // servicios
-    let deuda_serv = 0, conDeuda = 0, totalS = 0, riesgo = 0
+    for (const a of abonos) { if (a.t >= ini && a.t <= corte) cobradoPlazo += a.ab }
+    // servicios agrupados por idadmon (un contrato puede tener varios inmuebles)
+    const porId = {}
     for (const r of (servRes.data || [])) {
       if (dueno.has(r.idadmon)) continue
       const t = n0(r.deuda_gastos_comunes) + n0(r.deuda_vigente_electricidad) + n0(r.deuda_vigente_agua) + n0(r.deuda_vigente_gas)
-      totalS++; deuda_serv += Math.max(0, t); if (t > UMBRAL_SERV) conDeuda++
-      const g = garantia[r.idadmon] || 0
-      if (g > 0 && t >= RIESGO_GARANTIA * g) riesgo++
+      porId[r.idadmon] = (porId[r.idadmon] || 0) + Math.max(0, t)
+    }
+    let deuda_serv = 0, conDeuda = 0, riesgo = 0; const totalS = Object.keys(porId).length
+    for (const id in porId) {
+      const t = porId[id]; deuda_serv += t
+      if (t > UMBRAL_SERV) conDeuda++
+      const g = garantia[id] || 0; if (g > 0 && t >= RIESGO_GARANTIA * g) riesgo++
     }
     const pct_serv_aldia = totalS > 0 ? Math.round(((totalS - conDeuda) / totalS) * 1000) / 10 : null
-    return {
-      aamm: aamm(y, mo), lbl: lblDe(y, mo), base: Math.round(base_t),
-      pct_cobrado, cartera, pct_cartera,
-      deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo,
-    }
+    return { y, mo, base_t, cobradoPlazo, deuda_serv: Math.round(deuda_serv), pct_serv_aldia, garantias_riesgo: riesgo }
   }))
 
+  // 2) cartera = saldo acumulado a fin de cada mes (sweep sobre movs ordenados)
+  const bal = {}; let mi = 0; const carteraMes = {}
+  for (const { y, mo } of meses) {
+    const fin = Date.UTC(y, mo, 0)  // último día del mes
+    while (mi < movs.length && movs[mi].t <= fin) { bal[movs[mi].idadmon] = (bal[movs[mi].idadmon] || 0) + movs[mi].delta; mi++ }
+    let c = 0; for (const id in bal) { if (bal[id] > 0) c += bal[id] }
+    carteraMes[isoMes(y, mo)] = Math.round(c)
+  }
+
+  const serie = rentaServ.map(r => {
+    const cartera = carteraMes[isoMes(r.y, r.mo)] || 0
+    return {
+      aamm: aamm(r.y, r.mo), lbl: lblDe(r.y, r.mo), base: Math.round(r.base_t),
+      pct_cobrado: r.base_t > 0 ? Math.min(100, Math.round((r.cobradoPlazo / r.base_t) * 1000) / 10) : null,
+      cartera, pct_cartera: r.base_t > 0 ? Math.round((cartera / r.base_t) * 1000) / 10 : null,
+      deuda_serv: r.deuda_serv, pct_serv_aldia: r.pct_serv_aldia, garantias_riesgo: r.garantias_riesgo,
+    }
+  })
+
   const metas = {
-    pct_cobrado: { objetivo: 95, dir: 'up', txt: '≥ 95%' },     // puntualidad de cobro
-    pct_cartera: { objetivo: 5, dir: 'down', txt: '≤ 5%' },      // morosidad / cartera vencida
-    pct_serv_aldia: { objetivo: 90, dir: 'up', txt: '≥ 90%' },   // servicios al día
-    garantias_riesgo: { objetivo: 0, dir: 'down', txt: '0' },    // ninguna garantía comprometida
+    pct_cobrado: { objetivo: 95, dir: 'up', txt: '≥ 95%' },
+    pct_cartera: { objetivo: 25, dir: 'down', txt: '≤ 25%' },   // cartera acumulada ≤ ~1/4 de una renta mensual
+    pct_serv_aldia: { objetivo: 90, dir: 'up', txt: '≥ 90%' },
+    garantias_riesgo: { objetivo: 0, dir: 'down', txt: '0' },
   }
   return Response.json({ ok: true, meses: N, serie, actual: serie[serie.length - 1] || null, metas })
 }
