@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-08-27 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-27 · Email suave afinado: pide regularizar hoy/mañana, con concepto de pago y mención del reajuste (placeholder). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Cobranza · DIFERENCIAS / saldo por cobrar (Tanda 2: retrato + envío + estado).
 //   GET: por moroso "pagó de menos" devuelve el retrato completo (a cobrar, recibido, diferencia, %,
@@ -17,6 +18,8 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 const TOL_PAGO = 10000, TOL_DIF = 1000, UMBRAL_SERV = 30000
 const BCC_ARCHIVO = 'info@fondocapital.com'
+const ADMIN_COPIA = 'administracion@fondocapital.com'   // copia interna de TODOS los envíos reales
+const parseCC = (v) => { const arr = Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/); const seen = new Set(), out = []; for (const e of arr) { const s = String(e || '').trim().toLowerCase(); if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) && !seen.has(s)) { seen.add(s); out.push(s) } } return out }
 const EMAIL_COBRANZA = process.env.EMAIL_COBRANZA || 'cobranza@fondocapital.com'
 const EMAIL_LEGAL = process.env.EMAIL_LEGAL || 'legal@fondocapital.com'
 const DEPT = { cobranza: { from: `"Fondo Capital · Cobranzas" <${EMAIL_COBRANZA}>`, replyTo: EMAIL_COBRANZA }, legal: { from: `"Fondo Capital · Area Legal" <${EMAIL_LEGAL}>`, replyTo: EMAIL_LEGAL } }
@@ -208,7 +211,8 @@ export async function POST(req) {
         await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to: email, subject: '[PRUEBA] ' + asunto, html })
         return Response.json({ ok: true, test: true })
       }
-      const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to: destino, bcc: BCC_ARCHIVO, subject: asunto, html })
+      const ccList = parseCC(body.cc)
+      const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to: destino, cc: ccList.length ? ccList : undefined, bcc: [BCC_ARCHIVO, ADMIN_COPIA], subject: asunto, html })
       if (!info || info.rejected?.length) return Response.json({ error: 'Gmail no aceptó el destinatario (' + (info?.response || 's/r') + ')' }, { status: 502 })
 
       const { data: arr } = await admin.from('datos_arriendos').select('idadmon, arrendatario, rut, inmueble, propietario').eq('idadmon', idadmon).limit(1)

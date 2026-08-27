@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-27 · Paso de confirmación antes de enviar aviso/firme (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Pestaña MULTAS con acciones (Tanda 2).
 //   Bandeja + modal de carta: elige perfil/redacción, multa editable, Probar / Enviar aviso / Hacer firme.
 //   Estados: propuesta -> avisada (plazo 3 días hábiles) -> firme (carga en cartola) | regularizada | anulada.
@@ -80,7 +81,7 @@ function MultasView() {
       m, tipo, perfil, monto,
       dept: pl?.departamento || (perfil === 'grave' ? 'legal' : 'cobranza'),
       asunto: sustituir(pl?.asunto, m, monto), cuerpo: sustituir(pl?.cuerpo, m, monto),
-      email: m.mail_arrendatario || '', enviando: false, msg: '',
+      email: m.mail_arrendatario || '', cc: '', confirmar: null, enviando: false, msg: '',
     })
   }
   const regenerar = (mod, patch) => {
@@ -97,7 +98,7 @@ function MultasView() {
     const body = {
       accion, idadmon: mod.m.idadmon, periodo, perfil: mod.perfil, monto: mod.monto,
       base: mod.m.base, dias_atraso: mod.m.dias_atraso, multa_diaria: mod.m.multa_diaria, tramos: mod.m.tramos,
-      departamento: mod.dept, asunto: mod.asunto, contenido: mod.cuerpo, destino_email: mod.email, ...extra,
+      departamento: mod.dept, asunto: mod.asunto, contenido: mod.cuerpo, destino_email: mod.email, cc: mod.cc || '', ...extra,
     }
     setModal({ ...mod, enviando: true, msg: '' })
     try {
@@ -287,8 +288,39 @@ function MultasView() {
               <button disabled={modal.enviando} onClick={() => setModal(null)} style={{ ...btn('#fff', C.sub, C.line), padding: '8px 14px' }}>Cancelar</button>
               <button disabled={modal.enviando} onClick={() => ejecutar(modal.tipo, { test: true })} style={{ ...btn('#EEF4FF', '#1D4ED8', '#CFE0FF'), padding: '8px 14px' }}>Probar (a mí)</button>
               {modal.tipo === 'aviso'
-                ? <button disabled={modal.enviando} onClick={() => ejecutar('aviso')} style={{ ...btn(C.acento, '#fff', C.acento), padding: '8px 16px' }}>{modal.enviando ? 'Enviando…' : 'Enviar aviso'}</button>
-                : <button disabled={modal.enviando} onClick={() => { if (confirm('Se cargará la multa en la cartola y se enviará la carta. ¿Confirmas?')) ejecutar('firme') }} style={{ ...btn(C.rojo, '#fff', C.rojo), padding: '8px 16px' }}>{modal.enviando ? 'Procesando…' : 'Hacer firme y cargar'}</button>}
+                ? <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: 'aviso', msg: '' })} style={{ ...btn(C.acento, '#fff', C.acento), padding: '8px 16px' }}>Enviar aviso…</button>
+                : <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: 'firme', msg: '' })} style={{ ...btn(C.rojo, '#fff', C.rojo), padding: '8px 16px' }}>Hacer firme y cargar…</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmación antes de enviar (aviso / firme) ── */}
+      {modal && modal.confirmar && (
+        <div onClick={() => !modal.enviando && setModal({ ...modal, confirmar: null })} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.3)', width: 'min(560px, 96vw)', maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 2 }}>Revisa antes de enviar</div>
+            <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 12 }}>{modal.confirmar === 'aviso' ? ('El aviso va a salir al arrendatario y abre el plazo de ' + plazoTxt + '.') : ('La carta va a salir y se cargará la multa de ' + P(modal.monto) + ' en la cartola.')}</div>
+            {modal.confirmar === 'firme' && (
+              <div style={{ background: C.rojoBg, border: '1px solid #F0CFCB', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: C.rojo, marginBottom: 12 }}>Al confirmar se carga <b>{P(modal.monto)}</b> en la cartola de {modal.m.idadmon} (rojo claro, anulable después).</div>
+            )}
+            <div style={{ display: 'grid', gap: 8, fontSize: 12.5 }}>
+              <div><span style={{ color: C.sub }}>Para:</span> <b>{modal.email || '—'}</b> <span style={{ color: C.sub }}>· sale desde {modal.dept === 'legal' ? 'legal@' : 'cobranza@'}</span></div>
+              <div>
+                <div style={{ color: C.sub, marginBottom: 3 }}>Con copia (CC · opcional — aval u otros, separa por comas)</div>
+                <input value={modal.cc} onChange={e => setModal({ ...modal, cc: e.target.value })} placeholder={modal.m.aval ? ('aval: ' + (modal.m.mail_avalista || modal.m.aval)) : 'correo@ejemplo.com, otro@ejemplo.com'} style={{ width: '100%', fontSize: 13, padding: '7px 9px', border: '1px solid ' + C.line, borderRadius: 8, boxSizing: 'border-box' }} />
+              </div>
+              <div><span style={{ color: C.sub }}>Asunto:</span> <b>{modal.asunto}</b></div>
+              <div>
+                <div style={{ color: C.sub, marginBottom: 3 }}>Cuerpo</div>
+                <div style={{ background: '#F7F6F1', border: '1px solid ' + C.line, borderRadius: 8, padding: '10px 12px', whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 220, overflowY: 'auto' }}>{modal.cuerpo}</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.sub }}>Se envía una copia oculta a administración@fondocapital.com.</div>
+            </div>
+            {modal.msg && <div style={{ fontSize: 12.5, color: modal.msg[0] === '✓' ? C.verde : C.rojo, marginTop: 10 }}>{modal.msg}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 16 }}>
+              <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: null, msg: '' })} style={{ ...btn('#fff', C.sub, C.line), padding: '8px 14px' }}>Volver a editar</button>
+              <button disabled={modal.enviando} onClick={() => ejecutar(modal.confirmar)} style={{ ...btn(modal.confirmar === 'firme' ? C.rojo : C.acento, '#fff', modal.confirmar === 'firme' ? C.rojo : C.acento), padding: '8px 16px' }}>{modal.enviando ? (modal.confirmar === 'firme' ? 'Procesando…' : 'Enviando…') : 'Confirmar y enviar'}</button>
             </div>
           </div>
         </div>

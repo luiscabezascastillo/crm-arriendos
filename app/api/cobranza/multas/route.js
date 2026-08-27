@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-08-26 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
 // VERSION: v3 · 2026-08-26 · Periodo por defecto respeta la gracia del día 10 (días 1-10 -> mes anterior). Hereda v2.
 // VERSION: v2 · 2026-08-26 · FIX periodo por defecto: mes de la renta ya vencida, no la ventana 23→22 del FALTAN. Hereda v1.
@@ -27,6 +28,8 @@ const DIA_MS = 86400000
 
 // ── Envío de correo (mismo patrón que /api/cobranza/gestion: alias de info@, misma app password) ──
 const BCC_ARCHIVO = 'info@fondocapital.com'
+const ADMIN_COPIA = 'administracion@fondocapital.com'   // copia interna de TODOS los envíos reales
+const parseCC = (v) => { const arr = Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/); const seen = new Set(), out = []; for (const e of arr) { const s = String(e || '').trim().toLowerCase(); if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) && !seen.has(s)) { seen.add(s); out.push(s) } } return out }
 const EMAIL_COBRANZA = process.env.EMAIL_COBRANZA || 'cobranza@fondocapital.com'
 const EMAIL_LEGAL = process.env.EMAIL_LEGAL || 'legal@fondocapital.com'
 const DEPT = {
@@ -257,13 +260,13 @@ async function asegurarCaso(idadmon, contrato, dias) {
   if (error) throw new Error('No se pudo crear el caso: ' + error.message)
   return nuevo.id
 }
-async function enviarCorreo({ dept, to, subject, html, test, remitenteEmail }) {
+async function enviarCorreo({ dept, to, cc, subject, html, test, remitenteEmail }) {
   const remit = DEPT[deptOf(dept)]
   if (test) {
     const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to: remitenteEmail, subject: '[PRUEBA] ' + subject, html })
     return { acuse: info?.messageId || 'prueba', response: info?.response || '' }
   }
-  const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to, bcc: BCC_ARCHIVO, subject, html })
+  const info = await transporter.sendMail({ from: remit.from, replyTo: remit.replyTo, to, cc: (cc && cc.length) ? cc : undefined, bcc: [BCC_ARCHIVO, ADMIN_COPIA], subject, html })
   if (!info || info.rejected?.length) throw new Error('Gmail no aceptó el destinatario (' + (info?.response || 's/r') + ')')
   return { acuse: info?.messageId || 'ok', response: info?.response || '' }
 }
@@ -319,7 +322,8 @@ export async function POST(req) {
       if (accion === 'firme' && !(monto > 0)) return Response.json({ error: 'La multa debe ser mayor que 0 para hacerla firme.' }, { status: 400 })
 
       const html = textoAHtml(contenido)
-      const env = await enviarCorreo({ dept, to: destino, subject: asunto, html, test, remitenteEmail: email })
+      const ccList = parseCC(body.cc)
+      const env = await enviarCorreo({ dept, to: destino, cc: ccList, subject: asunto, html, test, remitenteEmail: email })
       if (test) return Response.json({ ok: true, test: true, response: env.response })
 
       const caso_id = await asegurarCaso(idadmon, contrato, dias)

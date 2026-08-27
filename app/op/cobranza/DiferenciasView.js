@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-08-27 · Paso de confirmación antes de enviar (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Email suave afinado + trozo condicional del reajuste (solo si lo hubo). Hereda v2.
 // VERSION: v2 · 2026-08-27 · Cobranza · Pestaña DIFERENCIAS (Tanda 2: drawer de gestión).
 //   Al pulsar una fila se abre un DRAWER lateral con el retrato del arrendatario (a cobrar/recibido,
@@ -46,12 +47,12 @@ export default function DiferenciasView() {
 
   const abrir = (f) => {
     const pl = data.plantilla || { asunto: '', cuerpo: '' }
-    setDw({ f, asunto: sustituir(pl.asunto, f), cuerpo: sustituir(pl.cuerpo, f), email: f.mail_arrendatario || '', enviando: false, msg: '' })
+    setDw({ f, asunto: sustituir(pl.asunto, f), cuerpo: sustituir(pl.cuerpo, f), email: f.mail_arrendatario || '', cc: '', confirmar: false, enviando: false, msg: '' })
   }
   const enviar = async (test) => {
     const d = dw; setDw({ ...d, enviando: true, msg: '' })
     try {
-      const r = await fetch('/api/cobranza/diferencias', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accion: 'enviar', idadmon: d.f.idadmon, periodo, asunto: d.asunto, contenido: d.cuerpo, destino_email: d.email, diferencia: d.f.diferencia, test }) })
+      const r = await fetch('/api/cobranza/diferencias', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accion: 'enviar', idadmon: d.f.idadmon, periodo, asunto: d.asunto, contenido: d.cuerpo, destino_email: d.email, cc: d.cc || '', diferencia: d.f.diferencia, test }) })
       const j = await r.json()
       if (j.error) { setDw({ ...d, enviando: false, msg: '⚠ ' + j.error }); return }
       if (test) { setDw({ ...d, enviando: false, msg: '✓ Prueba enviada a ti.' }); return }
@@ -180,11 +181,39 @@ export default function DiferenciasView() {
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
               <button disabled={dw.enviando} onClick={() => enviar(true)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>Probar (a mí)</button>
-              <button disabled={dw.enviando} onClick={() => enviar(false)} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 14px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Enviar recordatorio'}</button>
+              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 14px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>Enviar recordatorio…</button>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 <button disabled={dw.enviando} onClick={() => marcar('pospuesto')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.ambar, cursor: 'pointer' }}>Posponer</button>
                 <button disabled={dw.enviando} onClick={() => marcar('investigar')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.azul, cursor: 'pointer' }}>A investigar</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmación antes de enviar ── */}
+      {dw && dw.confirmar && (
+        <div onClick={() => !dw.enviando && setDw({ ...dw, confirmar: false })} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.3)', width: 'min(560px, 96vw)', maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 2 }}>Revisa antes de enviar</div>
+            <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 14 }}>Este correo va a salir de verdad al arrendatario. Compruébalo, añade copias si quieres, y confirma.</div>
+            <div style={{ display: 'grid', gap: 8, fontSize: 12.5 }}>
+              <div><span style={{ color: C.sub }}>Para:</span> <b>{dw.email || '—'}</b></div>
+              <div>
+                <div style={{ color: C.sub, marginBottom: 3 }}>Con copia (CC · opcional — aval u otros, separa por comas)</div>
+                <input value={dw.cc} onChange={e => setDw({ ...dw, cc: e.target.value })} placeholder={dw.f.aval ? ('aval: ' + dw.f.aval) : 'correo@ejemplo.com, otro@ejemplo.com'} style={inpS} />
+              </div>
+              <div><span style={{ color: C.sub }}>Asunto:</span> <b>{dw.asunto}</b></div>
+              <div>
+                <div style={{ color: C.sub, marginBottom: 3 }}>Cuerpo</div>
+                <div style={{ background: '#F7F6F1', border: '1px solid ' + C.line, borderRadius: 8, padding: '10px 12px', whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 220, overflowY: 'auto' }}>{dw.cuerpo}</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.sub }}>Se envía una copia oculta a administración@fondocapital.com.</div>
+            </div>
+            {dw.msg && <div style={{ fontSize: 12.5, color: dw.msg[0] === '✓' ? C.verde : C.rojo, marginTop: 10 }}>{dw.msg}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 16 }}>
+              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: false, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.sub, cursor: 'pointer' }}>Volver a editar</button>
+              <button disabled={dw.enviando} onClick={() => enviar(false)} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 16px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Confirmar y enviar'}</button>
             </div>
           </div>
         </div>
