@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v14 · 2026-08-27 · Resumen: el Resultado pasa a PROTAGONISTA con eje propio a la IZQUIERDA (numeracion
+//   azul=beneficio/rojo=perdida, con signo), linea solida gruesa y puntos por signo; Ventas/Costes difuminadas al eje DERECHO. Hereda v13.
 // VERSION: v13 · 2026-08-27 · Resumen CC1+CC2+CC3: el ÚLTIMO mes (en curso, datos aún incompletos) se traza
 //   PUNTEADO en las tres curvas y con el punto hueco, para distinguir lo provisional de lo cerrado. Hereda v12.
 // VERSION: v12 · 2026-08-27 · Panel: se SUPRIME la barra superior de KPIs demo (Ingresos/Costes/Resultado/
@@ -113,32 +115,31 @@ function MiniChart({ series, labels }) {
   )
 }
 
-// Resumen CC1+CC2+CC3: Ventas y Costes en el eje izquierdo (misma escala), y RESULTADO (Ventas-Costes)
-// en un eje DERECHO propio (doble escala) para que la lnea que interesa se lea bien, ms gruesa. Ignora
-// meses sin dato de CC1 (no congelados). Etiquetas en ambos ejes (secondary encoding) y lnea 0 del resultado.
+// Resumen CC1+CC2+CC3. PROTAGONISTA: el Resultado (Ventas-Costes), con su eje propio a la IZQUIERDA, linea
+// solida y gruesa, puntos AZUL (beneficio) / ROJO (perdida) y la numeracion del eje en ese mismo color (las
+// perdidas con signo negativo). Ventas y Costes van de apoyo, DIFUMINADAS, en el eje DERECHO. Solo pinta los
+// meses con dato de CC1 (congelados + mes en curso); el ultimo mes va punteado (datos aun incompletos).
 function ResumenChart({ labels, ventas, costes, pl }) {
-  const VW = 1160, VH = 250, PL = 84, PR = 84, PT = 34, PB = 26
+  const VW = 1160, VH = 262, PL = 96, PR = 96, PT = 30, PB = 26
   const pw = VW - PL - PR, ph = VH - PT - PB, n = labels.length
-  const leftNums = [...ventas, ...costes].filter(v => v != null && Number.isFinite(v))
+  const vcNums = [...ventas, ...costes].filter(v => v != null && Number.isFinite(v))
   const plNums = pl.filter(v => v != null && Number.isFinite(v))
-  if (!leftNums.length) return (
+  if (!plNums.length) return (
     <div style={{ height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--gray-400)' }}>
       Sin meses congelados en la ventana todavía.
     </div>
   )
-  // Eje izquierdo (Ventas + Costes), anclado en 0
-  let L0 = Math.min(0, ...leftNums), L1 = Math.max(...leftNums)
-  if (L0 === L1) L1 = L0 + 1
-  L1 += (L1 - L0) * 0.10
-  // Eje derecho (Resultado), escala propia
-  let R0 = plNums.length ? Math.min(...plNums) : 0, R1 = plNums.length ? Math.max(...plNums) : 1
-  if (R0 > 0) R0 = 0
-  if (R1 < 0) R1 = 0
+  // Eje DERECHO: Ventas + Costes (apoyo), anclado en 0
+  let V0 = Math.min(0, ...vcNums), V1 = Math.max(1, ...vcNums)
+  if (V0 === V1) V1 = V0 + 1
+  V1 += (V1 - V0) * 0.10
+  // Eje IZQUIERDO: Resultado (lo que interesa), escala propia, incluye el 0
+  let R0 = Math.min(0, ...plNums), R1 = Math.max(0, ...plNums)
   if (R0 === R1) R1 = R0 + 1
-  const rp = (R1 - R0) * 0.14; R0 -= rp; R1 += rp
+  const rp = (R1 - R0) * 0.16; R0 -= rp; R1 += rp
   const X = i => PL + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw)
-  const YL = v => PT + (1 - (v - L0) / (L1 - L0)) * ph
-  const YR = v => PT + (1 - (v - R0) / (R1 - R0)) * ph
+  const Yr = v => PT + (1 - (v - R0) / (R1 - R0)) * ph    // Resultado (eje izq)
+  const Yvc = v => PT + (1 - (v - V0) / (V1 - V0)) * ph   // Ventas/Costes (eje der)
   const mk = (data, Y) => {
     let d = '', pen = false
     data.forEach((v, i) => {
@@ -147,59 +148,74 @@ function ResumenChart({ labels, ventas, costes, pl }) {
     })
     return d
   }
-  const AX = '#e6e4dc', TXT = '#8a8880'
-  const C_V = '#1baf7a', C_C = '#eb6834', C_R = '#1a56db'
-  const lt = [L0, (L0 + L1) / 2, L1]
-  const rt = [R0, (R0 + R1) / 2, R1]
-  const series = [
-    { label: 'Ventas (CC1+CC2+CC3)', color: C_V },
-    { label: 'Costes (CC1+CC2+CC3)', color: C_C },
-    { label: 'Resultado (V-C)', color: C_R, thick: true },
-  ]
+  // Indices validos + si el ultimo es el mes en curso (para puntear ese tramo).
+  const lastSeg = d => {
+    const vi = []; d.forEach((v, i) => { if (v != null && Number.isFinite(v)) vi.push(i) })
+    const li = vi.length ? vi[vi.length - 1] : -1
+    const en = li === d.length - 1 && vi.length >= 2
+    return { li, en, pi: en ? vi[vi.length - 2] : -1 }
+  }
+  const TXT = '#8a8880', AX = '#e6e4dc'
+  const C_V = '#1baf7a', C_C = '#eb6834'
+  const AZUL = '#1d4ed8', ROJO = '#dc2626'
+  const colorPt = v => (v >= 0 ? AZUL : ROJO)
+  const rt = [R1, (R0 + R1) / 2, 0, R0].filter((x, i, a) => a.indexOf(x) === i)   // ticks eje izq (incluye 0)
+  const vt = [V1, (V0 + V1) / 2, V0]                                              // ticks eje der
+  const faded = [{ d: ventas, c: C_V }, { d: costes, c: C_C }]
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '0 4px 6px' }}>
-        {series.map(s => (
-          <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--gray-600)', fontWeight: s.thick ? 700 : 500 }}>
-            <span style={{ width: 18, height: s.thick ? 5 : 3, borderRadius: 2, background: s.color }} />{s.label}
-          </span>
-        ))}
-        <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>eje izq: ventas/costes · eje der (azul): resultado</span>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '0 4px 8px', alignItems: 'center' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--gray-800)', fontWeight: 800 }}>
+          <span style={{ width: 22, height: 5, borderRadius: 2, background: AZUL }} />Resultado (Ventas − Costes)
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_V, opacity: 0.45 }} />Ventas
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-400)', fontWeight: 500 }}>
+          <span style={{ width: 15, height: 3, borderRadius: 2, background: C_C, opacity: 0.45 }} />Costes
+        </span>
+        <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>eje izq: Resultado (azul=beneficio · rojo=pérdida) · eje der: ventas y costes (apoyo)</span>
       </div>
       <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
-        {lt.map((t, i) => (
-          <g key={'l' + i}>
-            <line x1={PL} y1={YL(t)} x2={VW - PR} y2={YL(t)} stroke={AX} strokeWidth="1" />
-            <text x={PL - 8} y={YL(t) + 3} textAnchor="end" fontSize="10" fill={TXT}>{miles(t)}</text>
-          </g>
-        ))}
-        {rt.map((t, i) => (
-          <text key={'r' + i} x={VW - PR + 8} y={YR(t) + 3} textAnchor="start" fontSize="10" fill={C_R}>{miles(t)}</text>
-        ))}
-        {R0 < 0 && R1 > 0 && <line x1={PL} y1={YR(0)} x2={VW - PR} y2={YR(0)} stroke={C_R} strokeWidth="1" strokeDasharray="3 3" opacity="0.4" />}
+        {/* rejilla segun el eje IZQ (Resultado) */}
+        {rt.map((t, i) => <line key={'g' + i} x1={PL} y1={Yr(t)} x2={VW - PR} y2={Yr(t)} stroke={AX} strokeWidth="1" />)}
+        {/* linea 0: frontera beneficio / perdida */}
+        <line x1={PL} y1={Yr(0)} x2={VW - PR} y2={Yr(0)} stroke="#b9b6ad" strokeWidth="1.4" />
+        {/* etiquetas eje IZQ (Resultado) coloreadas por signo, negativas con su signo */}
+        {rt.map((t, i) => <text key={'lt' + i} x={PL - 10} y={Yr(t) + 3.5} textAnchor="end" fontSize="11.5" fontWeight="700" fill={t >= 0 ? AZUL : ROJO}>{miles(t)}</text>)}
+        {/* etiquetas eje DER (Ventas/Costes), neutras */}
+        {vt.map((t, i) => <text key={'vt' + i} x={VW - PR + 10} y={Yvc(t) + 3.5} textAnchor="start" fontSize="10" fill={TXT}>{miles(t)}</text>)}
         {labels.map((l, i) => <text key={'x' + i} x={X(i)} y={VH - 6} textAnchor="middle" fontSize="9.5" fill={TXT}>{String(l).slice(0, 3)}</text>)}
-        {/* Cada serie: tramo firme + ULTIMO tramo (mes en curso, datos aun incompletos) PUNTEADO y punto hueco. */}
-        {[{ d: ventas, Y: YL, c: C_V, w: 2.4, r: 2.4 }, { d: costes, Y: YL, c: C_C, w: 2.4, r: 2.4 }, { d: pl, Y: YR, c: C_R, w: 4, r: 3.1 }].map((sr, si) => {
-          const vi = []; sr.d.forEach((v, i) => { if (v != null && Number.isFinite(v)) vi.push(i) })
-          const lastIdx = vi.length ? vi[vi.length - 1] : -1
-          const enCurso = lastIdx === sr.d.length - 1 && vi.length >= 2   // el ultimo punto es el mes en curso
-          const prevIdx = enCurso ? vi[vi.length - 2] : -1
-          const firme = enCurso ? sr.d.map((v, i) => i === lastIdx ? null : v) : sr.d   // tramo firme: sin el ultimo
+
+        {/* Ventas y Costes: APOYO, difuminadas (eje der) */}
+        {faded.map((sr, si) => {
+          const { li, en, pi } = lastSeg(sr.d)
+          const firme = en ? sr.d.map((v, i) => i === li ? null : v) : sr.d
           return (
-            <g key={'s' + si}>
-              <path d={mk(firme, sr.Y)} fill="none" stroke={sr.c} strokeWidth={sr.w} strokeLinecap="round" strokeLinejoin="round" />
-              {enCurso && (
-                <line x1={X(prevIdx)} y1={sr.Y(sr.d[prevIdx])} x2={X(lastIdx)} y2={sr.Y(sr.d[lastIdx])}
-                  stroke={sr.c} strokeWidth={sr.w} strokeLinecap="round" strokeDasharray={`${Math.max(2, sr.w - 0.5)} ${sr.w + 3}`} />
-              )}
-              {sr.d.map((v, i) => (v != null && Number.isFinite(v))
-                ? (i === lastIdx && enCurso
-                    ? <circle key={'pt' + i} cx={X(i)} cy={sr.Y(v)} r={sr.r + 0.4} fill="#fff" stroke={sr.c} strokeWidth="1.6" />
-                    : <circle key={'pt' + i} cx={X(i)} cy={sr.Y(v)} r={sr.r} fill={sr.c} />)
-                : null)}
+            <g key={'f' + si} opacity="0.3">
+              <path d={mk(firme, Yvc)} fill="none" stroke={sr.c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              {en && <line x1={X(pi)} y1={Yvc(sr.d[pi])} x2={X(li)} y2={Yvc(sr.d[li])} stroke={sr.c} strokeWidth="1.8" strokeDasharray="2 4" strokeLinecap="round" />}
+              {sr.d.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={i} cx={X(i)} cy={Yvc(v)} r="1.8" fill={sr.c} /> : null)}
             </g>
           )
         })}
+
+        {/* RESULTADO: protagonista, solido y grueso (eje izq). Puntos AZUL beneficio / ROJO perdida. */}
+        {(() => {
+          const { li, en, pi } = lastSeg(pl)
+          const firme = en ? pl.map((v, i) => i === li ? null : v) : pl
+          return (
+            <g>
+              <path d={mk(firme, Yr)} fill="none" stroke={AZUL} strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" />
+              {en && <line x1={X(pi)} y1={Yr(pl[pi])} x2={X(li)} y2={Yr(pl[li])} stroke={colorPt(pl[li])} strokeWidth="4.2" strokeLinecap="round" strokeDasharray="3 5" />}
+              {pl.map((v, i) => (v != null && Number.isFinite(v))
+                ? (i === li && en
+                    ? <circle key={i} cx={X(i)} cy={Yr(v)} r="4.6" fill="#fff" stroke={colorPt(v)} strokeWidth="2.2" />
+                    : <circle key={i} cx={X(i)} cy={Yr(v)} r="4.2" fill={colorPt(v)} />)
+                : null)}
+            </g>
+          )
+        })()}
       </svg>
     </div>
   )
