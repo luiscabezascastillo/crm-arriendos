@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v4 · 2026-08-27 · "Probar (a mí)" abre la MISMA ventana de revisión; la prueba se lanza desde ahí (sin cargar cartola). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Paso de confirmación antes de enviar aviso/firme (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Pestaña MULTAS con acciones (Tanda 2).
 //   Bandeja + modal de carta: elige perfil/redacción, multa editable, Probar / Enviar aviso / Hacer firme.
@@ -286,7 +287,7 @@ function MultasView() {
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 6 }}>
               <button disabled={modal.enviando} onClick={() => setModal(null)} style={{ ...btn('#fff', C.sub, C.line), padding: '8px 14px' }}>Cancelar</button>
-              <button disabled={modal.enviando} onClick={() => ejecutar(modal.tipo, { test: true })} style={{ ...btn('#EEF4FF', '#1D4ED8', '#CFE0FF'), padding: '8px 14px' }}>Probar (a mí)</button>
+              <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: modal.tipo, msg: '' })} style={{ ...btn('#EEF4FF', '#1D4ED8', '#CFE0FF'), padding: '8px 14px' }}>Probar (a mí)…</button>
               {modal.tipo === 'aviso'
                 ? <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: 'aviso', msg: '' })} style={{ ...btn(C.acento, '#fff', C.acento), padding: '8px 16px' }}>Enviar aviso…</button>
                 : <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: 'firme', msg: '' })} style={{ ...btn(C.rojo, '#fff', C.rojo), padding: '8px 16px' }}>Hacer firme y cargar…</button>}
@@ -318,8 +319,9 @@ function MultasView() {
               <div style={{ fontSize: 11.5, color: C.sub }}>Se envía una copia oculta a administración@fondocapital.com.</div>
             </div>
             {modal.msg && <div style={{ fontSize: 12.5, color: modal.msg[0] === '✓' ? C.verde : C.rojo, marginTop: 10 }}>{modal.msg}</div>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 16 }}>
-              <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: null, msg: '' })} style={{ ...btn('#fff', C.sub, C.line), padding: '8px 14px' }}>Volver a editar</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 16 }}>
+              <button disabled={modal.enviando} onClick={() => setModal({ ...modal, confirmar: null, msg: '' })} style={{ ...btn('#fff', C.sub, C.line), padding: '8px 14px', marginRight: 'auto' }}>Volver a editar</button>
+              <button disabled={modal.enviando} onClick={() => ejecutar(modal.confirmar, { test: true })} style={{ ...btn('#EEF4FF', '#1D4ED8', '#CFE0FF'), padding: '8px 14px' }}>{modal.enviando ? 'Enviando…' : 'Enviar prueba a mí'}</button>
               <button disabled={modal.enviando} onClick={() => ejecutar(modal.confirmar)} style={{ ...btn(modal.confirmar === 'firme' ? C.rojo : C.acento, '#fff', modal.confirmar === 'firme' ? C.rojo : C.acento), padding: '8px 16px' }}>{modal.enviando ? (modal.confirmar === 'firme' ? 'Procesando…' : 'Enviando…') : 'Confirmar y enviar'}</button>
             </div>
           </div>

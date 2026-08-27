@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v5 · 2026-08-27 · "Probar (a mí)" y "Enviar" abren la MISMA ventana de revisión; la prueba se lanza desde ahí. Hereda v4.
 // VERSION: v4 · 2026-08-27 · Paso de confirmación antes de enviar (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v3.
 // VERSION: v3 · 2026-08-27 · Email suave afinado + trozo condicional del reajuste (solo si lo hubo). Hereda v2.
 // VERSION: v2 · 2026-08-27 · Cobranza · Pestaña DIFERENCIAS (Tanda 2: drawer de gestión).
@@ -180,7 +181,7 @@ export default function DiferenciasView() {
             {dw.msg && <div style={{ fontSize: 12.5, color: dw.msg[0] === '✓' ? C.verde : C.rojo, marginBottom: 8 }}>{dw.msg}</div>}
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-              <button disabled={dw.enviando} onClick={() => enviar(true)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>Probar (a mí)</button>
+              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>Probar (a mí)…</button>
               <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 14px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>Enviar recordatorio…</button>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 <button disabled={dw.enviando} onClick={() => marcar('pospuesto')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.ambar, cursor: 'pointer' }}>Posponer</button>
@@ -211,8 +212,9 @@ export default function DiferenciasView() {
               <div style={{ fontSize: 11.5, color: C.sub }}>Se envía una copia oculta a administración@fondocapital.com.</div>
             </div>
             {dw.msg && <div style={{ fontSize: 12.5, color: dw.msg[0] === '✓' ? C.verde : C.rojo, marginTop: 10 }}>{dw.msg}</div>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 16 }}>
-              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: false, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.sub, cursor: 'pointer' }}>Volver a editar</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 16 }}>
+              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: false, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.sub, cursor: 'pointer', marginRight: 'auto' }}>Volver a editar</button>
+              <button disabled={dw.enviando} onClick={() => enviar(true)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Enviar prueba a mí'}</button>
               <button disabled={dw.enviando} onClick={() => enviar(false)} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 16px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Confirmar y enviar'}</button>
             </div>
           </div>
