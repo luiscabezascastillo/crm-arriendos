@@ -1,3 +1,4 @@
+// VERSION: v2 · 2026-08-27 · INICIOS rediseñado: entra solo si TODOS los cargos INICIO vencieron (+5d tolerancia) y el saldo corrido al terminar los inicios > umbral. Cartolas sin cambios. Hereda v1.
 // VERSION: v1 · 2026-07-21 · Cobranza unificada. GET ?tipo=cartolas|inicios.
 //   - cartolas: TODOS los arrendatarios; umbral cobranza_umbral_cartola (8000).
 //   - inicios: solo los que tienen cargos INICIO ya vencidos; umbral cobranza_umbral_inicios (2000).
@@ -116,16 +117,23 @@ export async function GET(req) {
     })
     const conMeta = ordenados.map(m => ({ ...m, _f: fechaOrden(m.fecha) }))
 
-    // Para INICIOS: requerir al menos un cargo INICIO ya vencido; guardar la fecha de referencia.
-    let fechaUltimoInicio = null, conceptoUltimoInicio = null
+    // INICIOS (rediseño): entra a revisión solo cuando TODOS los cargos INICIO han vencido (+tolerancia).
+    // Se evalúa el SALDO CORRIDO al terminar los inicios: si es cero o a favor, el arranque quedó pagado
+    // y NO sale; si queda saldo, hay que analizar y reclamar. (No es el saldo global a hoy como Cartolas.)
+    const TOL_INI_MS = 5 * 86400000   // 5 días de tolerancia tras el último cargo de inicio
+    let fechaUltimoInicio = null, conceptoUltimoInicio = null, saldoInicio = null
     if (tipo === 'inicios') {
-      const iniciosVencidos = conMeta.filter(m =>
-        String(m.calif || '').toUpperCase() === 'INICIO' && m._f > 0 && (m._f + ventanaMs) <= hoy
-      )
-      if (iniciosVencidos.length === 0) continue
-      const ui = iniciosVencidos[iniciosVencidos.length - 1]
+      const inicios = conMeta.filter(m => String(m.calif || '').toUpperCase() === 'INICIO' && m._f > 0)
+      if (inicios.length === 0) continue                    // sin cargos de inicio -> fuera
+      const ui = inicios[inicios.length - 1]                // último cargo de inicio (conMeta va por fecha)
       fechaUltimoInicio = ui.fecha
       conceptoUltimoInicio = ui.concepto || null
+      const corte = ui._f + TOL_INI_MS
+      if (corte > hoy) continue                             // aún no ha pasado el margen -> no evaluar todavía
+      let sIni = 0
+      for (const m of conMeta) { if (m._f > 0 && m._f <= corte) sIni += num(m.cargo) - num(m.abono) }
+      saldoInicio = sIni
+      if (sIni <= umbral) continue                          // arranque saldado (cero o a favor) -> fuera
     }
 
     // Deuda VIVA: saldo corrido hasta hoy (suma de cargo−abono con fecha <= hoy)
@@ -138,10 +146,11 @@ export async function GET(req) {
       }
     }
 
-    // Clasificación
+    // Clasificación (en inicios, sobre el saldo al terminar los inicios; en cartolas, saldo a hoy)
+    const deudaEval = tipo === 'inicios' ? saldoInicio : saldoHoy
     let clase = 'al_dia'
-    if (saldoHoy > umbral) clase = 'moroso'
-    else if (saldoHoy < -P.sobrepago) clase = 'sobrepago'
+    if (deudaEval > umbral) clase = 'moroso'
+    else if (deudaEval < -P.sobrepago) clase = 'sobrepago'
 
     filas.push({
       grupo,
@@ -154,7 +163,7 @@ export async function GET(req) {
       ultimo_abono: ultimoAbono,
       fecha_ultimo_inicio: fechaUltimoInicio,        // solo en tipo=inicios
       concepto_ultimo_inicio: conceptoUltimoInicio,  // solo en tipo=inicios
-      deuda: Math.round(saldoHoy),
+      deuda: Math.round(deudaEval),
       clase,
     })
   }

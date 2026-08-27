@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · TopNav en Cobranza + barra de pestañas sticky bajo el TopNav (top 52); cabecera de VistaCobranza baja a top 100. Hereda versión previa.
 // VERSION: 2026-08-27 · Reorden pestañas (Diferencias·Multas·Cartolas·Saldos·Bitácora·Servicios·Inicios) y Diferencias por defecto. Hereda versión previa.
 // VERSION: 2026-08-27 · Quitada la pestaña "Casos" (vista de términos con déficit desde vw_termino_resultado: montos irreales e incluía contratos que cobra el dueño). Hereda versión previa.
 // VERSION: v23 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios con mini-curva y enlace a /op/cobranza/kpis). Hereda v22.
@@ -46,6 +47,7 @@ const money = (v) => { const n = num(v); return (n ? '$' + n.toLocaleString('es-
 import MultasView from './MultasView'
 import DiferenciasView from './DiferenciasView'
 import KpisResumen from './KpisResumen'
+import TopNav from '../../components/ui/TopNav'
 
 const C = {
   txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8',
@@ -142,7 +144,9 @@ export default function Cobranza() {
   const [ayudaOpen, setAyudaOpen] = useState(false)
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 20px', fontFamily: 'system-ui, -apple-system, sans-serif', color: C.txt }}>
+    <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
+      <TopNav />
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 20px', fontFamily: 'system-ui, -apple-system, sans-serif', color: C.txt }}>
       <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>
         <Link href="/procesos" style={{ color: C.sub, textDecoration: 'none' }}>← Procesos</Link> / Cobranza
       </div>
@@ -161,7 +165,7 @@ export default function Cobranza() {
       </div>
       <div style={{ fontSize: 13, color: C.sub, marginBottom: 16 }}>Impago → gestión con constancia → pago o acción legal</div>
 
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid ' + C.line, marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid ' + C.line, marginBottom: 18, position: 'sticky', top: 52, zIndex: 80, background: '#f4f6f9', paddingTop: 8 }}>
         {TABS.map(t => {
           const active = tab === t.k
           const base = {
@@ -205,6 +209,7 @@ export default function Cobranza() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }
@@ -250,7 +255,7 @@ function VistaCobranza({ tipo }) {
   const sinGestion = moros.filter(f => { const r = resumenMap[f.idadmon]; return !r || r.n === 0 }).length
 
   // Cabecera + acciones FIJAS (sticky) bajo el TopNav (52px, z-index 100): siguen visibles al hacer scroll.
-  const stickyCab = { position: 'sticky', top: 52, zIndex: 90, background: '#f4f6f9', paddingTop: 10 }
+  const stickyCab = { position: 'sticky', top: 100, zIndex: 70, background: '#f4f6f9', paddingTop: 10 }
 
   return (
     <div>
