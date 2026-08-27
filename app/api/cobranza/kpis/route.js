@@ -1,3 +1,4 @@
+// VERSION: v10 · 2026-08-27 · FIX cartera $0: se sumaban faltas netas (sobrepagos cancelaban). Ahora suma SOLO faltas positivas por idadmon = FALTAN real (~2,3M ago). Hereda v9.
 // VERSION: v9 · 2026-08-27 · "Cartera por cobrar" = FALTA de la liquidación del mes (verdad del FALTAN, ~2,3M ago), no el saldo vivo acumulado. Meta 5%. Hereda v8.
 // VERSION: v8 · 2026-08-27 · "Cobrado en plazo" POR CONTRATO: se capa lo pagado en la ventana a la cuota del mes de cada IDADMON
 //   (antes sumaba abonos sin tope -> atrasos/sobrepagos lo inflaban y topaba en 100% en meses viejos; era un artefacto). Hereda v7.
@@ -103,10 +104,12 @@ export async function GET(req) {
       admin.rpc('calcular_liquidacion', { p_mes: aamm(y, mo) }),
       admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(y, mo) + '%'),
     ])
-    const baseById = {}
-    let falta_t = 0
-    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) { baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base); falta_t += n0(r.falta) } }
+    // FALTAN real: agrupar por idadmon y sumar SOLO las faltas positivas (los que deben).
+    // (sumar todas cancelaba morosos con sobrepagos y daba ~0). Igual que /procesos/liquidaciones/faltan.
+    const baseById = {}, faltaById = {}
+    for (const r of (liqRes.data || [])) { if (!dueno.has(r.idadmon)) { baseById[r.idadmon] = (baseById[r.idadmon] || 0) + n0(r.base); faltaById[r.idadmon] = (faltaById[r.idadmon] || 0) + n0(r.falta) } }
     let base_t = 0; for (const id in baseById) base_t += baseById[id]
+    let falta_t = 0; for (const id in faltaById) if (faltaById[id] > 0) falta_t += faltaById[id]
     const ini = Date.UTC(y, mo - 2, 23), corte = Date.UTC(y, mo - 1, 10)
     // pagado en plazo POR CONTRATO, capado a su cuota del mes (atrasos/sobrepagos no inflan el %)
     const pagById = {}
