@@ -1,4 +1,8 @@
 'use client'
+// VERSION: v12 · 2026-08-27 · Panel: se SUPRIME la barra superior de KPIs demo (Ingresos/Costes/Resultado/
+//   Propiedades/Alertas, cifras inventadas). En su lugar, RESUMEN CC1+CC2+CC3 con 3 curvas: Ventas total
+//   (admon_fcr+ingresos+facturación), Costes total y Resultado (Ventas−Costes, línea gruesa) en EJE
+//   PROPIO (doble escala) para que se lea. Solo pinta meses con CC1 (congelados + mes en curso). Hereda v11.
 // VERSION: v11 · 2026-08-26 · Widget "Salud del cobro" (4 KPIs renta+servicios) arriba del contenido, reutilizado de Cobranza. Hereda v10.
 // VERSION: v10 · 2026-08-16 · (1) Los importes de las tarjetas CC dejan de ir en compacto ($76,7M) y se muestran en
 //   NÚMERO COMPLETO con separador de miles y sin símbolo (76.700.000). (2) Cada tarjeta lleva debajo, dentro del
@@ -102,6 +106,82 @@ function MiniChart({ series, labels }) {
             {s.data.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={i} cx={X(i)} cy={Y(v)} r="2.4" fill={s.color} /> : null)}
           </g>
         ))}
+      </svg>
+    </div>
+  )
+}
+
+// Resumen CC1+CC2+CC3: Ventas y Costes en el eje izquierdo (misma escala), y RESULTADO (Ventas-Costes)
+// en un eje DERECHO propio (doble escala) para que la lnea que interesa se lea bien, ms gruesa. Ignora
+// meses sin dato de CC1 (no congelados). Etiquetas en ambos ejes (secondary encoding) y lnea 0 del resultado.
+function ResumenChart({ labels, ventas, costes, pl }) {
+  const VW = 1160, VH = 250, PL = 84, PR = 84, PT = 34, PB = 26
+  const pw = VW - PL - PR, ph = VH - PT - PB, n = labels.length
+  const leftNums = [...ventas, ...costes].filter(v => v != null && Number.isFinite(v))
+  const plNums = pl.filter(v => v != null && Number.isFinite(v))
+  if (!leftNums.length) return (
+    <div style={{ height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--gray-400)' }}>
+      Sin meses congelados en la ventana todavía.
+    </div>
+  )
+  // Eje izquierdo (Ventas + Costes), anclado en 0
+  let L0 = Math.min(0, ...leftNums), L1 = Math.max(...leftNums)
+  if (L0 === L1) L1 = L0 + 1
+  L1 += (L1 - L0) * 0.10
+  // Eje derecho (Resultado), escala propia
+  let R0 = plNums.length ? Math.min(...plNums) : 0, R1 = plNums.length ? Math.max(...plNums) : 1
+  if (R0 > 0) R0 = 0
+  if (R1 < 0) R1 = 0
+  if (R0 === R1) R1 = R0 + 1
+  const rp = (R1 - R0) * 0.14; R0 -= rp; R1 += rp
+  const X = i => PL + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw)
+  const YL = v => PT + (1 - (v - L0) / (L1 - L0)) * ph
+  const YR = v => PT + (1 - (v - R0) / (R1 - R0)) * ph
+  const mk = (data, Y) => {
+    let d = '', pen = false
+    data.forEach((v, i) => {
+      if (v == null || !Number.isFinite(v)) { pen = false; return }
+      d += (pen ? ' L ' : ' M ') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); pen = true
+    })
+    return d
+  }
+  const AX = '#e6e4dc', TXT = '#8a8880'
+  const C_V = '#1baf7a', C_C = '#eb6834', C_R = '#1a56db'
+  const lt = [L0, (L0 + L1) / 2, L1]
+  const rt = [R0, (R0 + R1) / 2, R1]
+  const series = [
+    { label: 'Ventas (CC1+CC2+CC3)', color: C_V },
+    { label: 'Costes (CC1+CC2+CC3)', color: C_C },
+    { label: 'Resultado (V-C)', color: C_R, thick: true },
+  ]
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '0 4px 6px' }}>
+        {series.map(s => (
+          <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--gray-600)', fontWeight: s.thick ? 700 : 500 }}>
+            <span style={{ width: 18, height: s.thick ? 5 : 3, borderRadius: 2, background: s.color }} />{s.label}
+          </span>
+        ))}
+        <span style={{ fontSize: 10.5, color: 'var(--gray-400)', fontStyle: 'italic', marginLeft: 'auto' }}>eje izq: ventas/costes · eje der (azul): resultado</span>
+      </div>
+      <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
+        {lt.map((t, i) => (
+          <g key={'l' + i}>
+            <line x1={PL} y1={YL(t)} x2={VW - PR} y2={YL(t)} stroke={AX} strokeWidth="1" />
+            <text x={PL - 8} y={YL(t) + 3} textAnchor="end" fontSize="10" fill={TXT}>{miles(t)}</text>
+          </g>
+        ))}
+        {rt.map((t, i) => (
+          <text key={'r' + i} x={VW - PR + 8} y={YR(t) + 3} textAnchor="start" fontSize="10" fill={C_R}>{miles(t)}</text>
+        ))}
+        {R0 < 0 && R1 > 0 && <line x1={PL} y1={YR(0)} x2={VW - PR} y2={YR(0)} stroke={C_R} strokeWidth="1" strokeDasharray="3 3" opacity="0.4" />}
+        {labels.map((l, i) => <text key={'x' + i} x={X(i)} y={VH - 6} textAnchor="middle" fontSize="9.5" fill={TXT}>{String(l).slice(0, 3)}</text>)}
+        <path d={mk(ventas, YL)} fill="none" stroke={C_V} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={mk(costes, YL)} fill="none" stroke={C_C} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={mk(pl, YR)} fill="none" stroke={C_R} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        {ventas.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pv' + i} cx={X(i)} cy={YL(v)} r="2.4" fill={C_V} /> : null)}
+        {costes.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pc' + i} cx={X(i)} cy={YL(v)} r="2.4" fill={C_C} /> : null)}
+        {pl.map((v, i) => (v != null && Number.isFinite(v)) ? <circle key={'pp' + i} cx={X(i)} cy={YR(v)} r="3.1" fill={C_R} /> : null)}
       </svg>
     </div>
   )
@@ -351,6 +431,17 @@ export default function PanelPage() {
   // Mes en curso (para el * de Cerrados/Ingresos de CC2): AAMM del mes real de hoy.
   const nowAamm = (() => { const n = new Date(); return String(n.getFullYear() % 100).padStart(2, '0') + String(n.getMonth() + 1).padStart(2, '0') })()
 
+  // Resumen CC1+CC2+CC3 por mes: solo se pinta el mes si CC1 tiene dato (congelado o en curso).
+  // Ventas = admon_fcr + ingresos + facturación · Costes = costes CC1 + costes CC2 + (compras+otros) CC3.
+  const resumen = meses.map((x, i) => {
+    const a = cc1[i], b = cc2[i], c = cc3[i]
+    const v1 = a && a.admon_fcr != null ? Number(a.admon_fcr) : null
+    if (v1 == null) return { v: null, c: null, p: null }
+    const ventas = v1 + Number(b?.ingresos || 0) + Number(c?.facturacion || 0)
+    const costes = Number(a.costes || 0) + Number(b?.costes || 0) + Number(c?.compras || 0) + Number(c?.otros || 0)
+    return { v: ventas, c: costes, p: ventas - costes }
+  })
+
   const nivelColor = n => n >= 3 ? 'var(--danger-600)' : n === 2 ? 'var(--warning-600)' : 'var(--success-600)'
   const nivelBg    = n => n >= 3 ? '#dc2626' : n === 2 ? '#d97706' : '#16a34a'
 
@@ -360,20 +451,19 @@ export default function PanelPage() {
       <AvisoPagos />
       <AvisoRecordatorios />
 
-      {/* KPI bar global (demo — pendiente de cablear) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-        {[
-          { label: 'Ingresos totales', value: '$120.500', color: 'var(--success-600)' },
-          { label: 'Costes totales',   value: '$84.300',  color: 'var(--warning-600)' },
-          { label: 'Resultado neto',   value: '$36.200',  color: 'var(--success-600)' },
-          { label: 'Propiedades',      value: '152',       color: 'var(--gray-800)'    },
-          { label: 'Alertas activas',  value: '4',         color: 'var(--danger-600)'  },
-        ].map((k, i) => (
-          <div key={i} style={{ padding: '11px 20px', borderRight: i < 4 ? '1px solid var(--border)' : 'none' }}>
-            <div style={{ fontSize: 10, color: 'var(--gray-400)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: k.color }}>{k.value}</div>
-          </div>
-        ))}
+      {/* Resumen CC1+CC2+CC3 — Ventas, Costes y Resultado (doble escala). Sustituye la barra de KPIs demo. */}
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--gray-700)', letterSpacing: '.04em' }}>RESUMEN CC1 + CC2 + CC3</span>
+          <span style={{ fontSize: 10.5, color: 'var(--gray-400)' }}>Ventas y costes de las tres áreas juntas · Resultado (Ventas−Costes) en escala propia · año rodante</span>
+        </div>
+        <ResumenChart
+          labels={meses.map(m => m.lbl)}
+          ventas={resumen.map(r => r.v)}
+          costes={resumen.map(r => r.c)}
+          pl={resumen.map(r => r.p)}
+        />
+        <div style={{ fontSize: 9.5, color: 'var(--gray-400)', marginTop: 4, fontStyle: 'italic' }}>Ventas = Admon FCR (CC1) + Ingresos arriendos (CC2) + Facturación (CC3). Costes parciales (mes cerrado anterior). Solo meses con liquidación CC1 (congelados + mes en curso *).</div>
       </div>
 
       <div style={{ padding: '20px 24px' }}>
