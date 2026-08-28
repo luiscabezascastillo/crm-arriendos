@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v21 · 2026-08-28 · FIX crash: ivaAjuste pasa de useMemo a calculo normal (estaba tras los return de acceso,
+//   violaba rules-of-hooks y rompia la pagina). Hereda v20.
 // VERSION: v20 · 2026-08-28 · Copropiedades: en el camino CONGELADO se des-colapsa el idadmon compartido (una casa,
 //   2+ duenos) en sus mitades por propietario (reparto de calcular_liquidacion), asi ningun copropietario desaparece
 //   y el 'Por propietario' cuadra con las facturas. Marca visual 'copropiedad' en tabla y Excel. Hereda v19.
@@ -38,7 +40,7 @@
 // VERSION: v9 · 2026-07-08 · nombre "Pxxx — Nombre" + bloque resumen por propietario (validado/enviada/transferir/dif/observaciones)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
@@ -386,7 +388,7 @@ export default function FacturasPage() {
   // IVA a nivel DOCUMENTO (propietario) = 19% del neto total, repartido por linea (la ultima absorbe el redondeo).
   // Nubox recalcula el IVA sobre el total del documento, asi que sumar el IVA por inmueble daba +-1 peso frente a
   // la factura. Con esto el CRM coincide con Nubox. Se calcula sobre TODAS las lineas del propietario (no el filtro).
-  const ivaAjuste = useMemo(() => {
+  const ivaAjuste = (() => {
     const porProp = {}
     for (const l of lineas) (porProp[l.idprop] = porProp[l.idprop] || []).push(l)
     const map = {}
@@ -402,7 +404,7 @@ export default function FacturasPage() {
       })
     }
     return map
-  }, [lineas])
+  })()
   const ivaDe = f => (ivaAjuste[f.idadmon] != null ? ivaAjuste[f.idadmon] : (Number(f.iva) || 0))
 
   // valores únicos para cada filtro (de todas las líneas, ordenados)
