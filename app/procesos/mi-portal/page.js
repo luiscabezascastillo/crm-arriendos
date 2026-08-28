@@ -102,17 +102,7 @@ export default function MiPortalPage() {
   const [procVisOpen, setProcVisOpen] = useState(false)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: ['PENDIENTE'] })
   const [filtrosTar, setFiltrosTar] = useState({ titulo: [], estado: [], prioridad: [], fecha_limite: [] })
-  const [tarFiltroInit, setTarFiltroInit] = useState(false)
-
-  useEffect(() => {
-    if (tarFiltroInit) return
-    const tt = data?.tareas || []
-    if (tt.length === 0) return
-    const estados = [...new Set(tt.map(t => t.estado).filter(v => v != null))]
-    const sinCompletadas = estados.filter(e => e !== 'COMPLETADA')
-    if (sinCompletadas.length !== estados.length) setFiltrosTar(f => ({ ...f, estado: sinCompletadas }))
-    setTarFiltroInit(true)
-  }, [data, tarFiltroInit])
+  const [verCompletadas, setVerCompletadas] = useState(false)   // COMPLETADA ocultas por defecto; toggle para verlas
   const [tareaAbierta, setTareaAbierta] = useState(null)
   const [nuevaTarea, setNuevaTarea] = useState(null)
   const [creandoTarea, setCreandoTarea] = useState(false)
@@ -331,7 +321,9 @@ export default function MiPortalPage() {
     prioridad:    [...new Set(tareas.map(t => t.prioridad).filter(v => v != null))].sort(),
     fecha_limite: [...new Set(tareas.map(t => t.fecha_limite).filter(v => v != null))].sort(),
   }
+  const nCompletadas = tareas.filter(t => t.estado === 'COMPLETADA').length
   const tarFiltrado = tareas.filter(t =>
+    (verCompletadas || t.estado !== 'COMPLETADA') &&
     (filtrosTar.titulo.length === 0       || filtrosTar.titulo.includes(t.titulo)) &&
     (filtrosTar.estado.length === 0       || filtrosTar.estado.includes(t.estado)) &&
     (filtrosTar.prioridad.length === 0    || filtrosTar.prioridad.includes(t.prioridad)) &&
@@ -405,7 +397,7 @@ export default function MiPortalPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18, marginBottom: 28 }}>
               {/* Tareas encargadas */}
               <div style={card}>
-                <div style={cardHead}><span>📋 Tareas encargadas</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{esDireccion && emailActivo && emailActivo !== session.user.email && (<button onClick={() => setNuevaTarea({ titulo: '', descripcion: '', prioridad: 'MEDIA', fecha_limite: '' })} style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: '#1a56db', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nueva tarea</button>)}<span style={{ color: 'var(--gray-400)' }}>{tarFiltrado.length}{tarFiltrado.length !== tareas.length ? ' / ' + tareas.length : ''}</span></span></div>
+                <div style={cardHead}><span>📋 Tareas encargadas</span><span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{esDireccion && emailActivo && emailActivo !== session.user.email && (<button onClick={() => setNuevaTarea({ titulo: '', descripcion: '', prioridad: 'MEDIA', fecha_limite: '' })} style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: '#1a56db', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Nueva tarea</button>)}{nCompletadas > 0 && (<button onClick={() => setVerCompletadas(v => !v)} title="Las tareas completadas se ocultan; pulsa para verlas" style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--gray-300)', background: 'transparent', fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer', fontFamily: 'inherit' }}>{verCompletadas ? 'Ocultar completadas' : `Ver completadas (${nCompletadas})`}</button>)}<span style={{ color: 'var(--gray-400)' }}>{tarFiltrado.length}{tarFiltrado.length !== tareas.length ? ' / ' + tareas.length : ''}</span></span></div>
                 {tareas.length === 0 ? (
                   <div style={{ padding: 18, fontSize: 13, color: 'var(--gray-400)' }}>Sin tareas asignadas</div>
                 ) : (

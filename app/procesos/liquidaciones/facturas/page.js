@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v22 · 2026-08-28 · Facturas: bajo la Fecha de emision se muestra QUIEN la emitio (usuario de liquidacion_facturado_log,
+//   por propietario, emision mas reciente). Tambien columna "Emitido por" en el Excel. Hereda v21.
 // VERSION: v21 · 2026-08-28 · FIX crash: ivaAjuste pasa de useMemo a calculo normal (estaba tras los return de acceso,
 //   violaba rules-of-hooks y rompia la pagina). Hereda v20.
 // VERSION: v20 · 2026-08-28 · Copropiedades: en el camino CONGELADO se des-colapsa el idadmon compartido (una casa,
@@ -57,6 +59,8 @@ function listaMeses() { const out = []; const d = new Date(); for (let i = 0; i 
 const fmtPesos = n => (n == null || n === '') ? '—' : Number(n).toLocaleString('es-CL')
 
 const TIPO_DOC = { '33': 'Factura', '39': 'Boleta', '41': 'Boleta exenta' }
+const NOMBRE_EMISOR = { 'alberto.cabezas@fondocapital.com': 'Alberto', 'luis.cabezas@fondocapital.com': 'Luis', 'karina.morales@fondocapital.com': 'Karina' }
+const nombreEmisor = e => NOMBRE_EMISOR[e] || (e ? String(e).split('@')[0] : '')
 const tipoColor = t => t === '33' ? { bg: '#EEF2FF', fg: '#3730A3' } : (t === '39' || t === '41') ? { bg: '#ECFDF5', fg: '#065F46' } : { bg: '#F3F4F6', fg: '#6B7280' }
 
 const FACT_OPCIONES = ['SI', 'NO', 'DESPUES', 'HECHO', 'PARCIAL']
@@ -271,8 +275,17 @@ export default function FacturasPage() {
       const transfMap = {}
       for (const t of (rTransf || [])) transfMap[t.idprop] = Number(t.transferido) || 0
 
+      // Quien EMITIO cada factura (auditoria): liquidacion_facturado_log guarda el usuario por idadmon/mes.
+      // Nos quedamos, por propietario, con el usuario de la emision mas reciente.
+      const { data: logRows } = await supabase.from('liquidacion_facturado_log').select('idprop, usuario, generado_en').eq('mes', m)
+      const emisorDe = {}
+      for (const l of (logRows || [])) {
+        const cur = emisorDe[l.idprop]
+        if (!cur || String(l.generado_en) > String(cur.generado_en)) emisorDe[l.idprop] = { usuario: l.usuario, generado_en: l.generado_en }
+      }
+
       const pm = {}
-      for (const p of propRows) pm[p.idprop] = { ...p, _transf: transfMap[p.idprop] || 0 }
+      for (const p of propRows) pm[p.idprop] = { ...p, _transf: transfMap[p.idprop] || 0, _emisor: emisorDe[p.idprop]?.usuario || null }
 
       // Observaciones de Alberto: primera no vacía por idprop.
       for (const l of rawLineas) {
@@ -429,6 +442,7 @@ export default function FacturasPage() {
         Inmueble: f.inmueble, Admon: com, IVA: iva, Total: com + iva,
         Tipo: p.tipo_factura || '', Doc: TIPO_DOC[p.tipo_factura] || '', Facturar: p.facturar || 'NO',
         'Fecha emision': p.fecha_emision ? new Date(p.fecha_emision).toLocaleString('es-CL') : '',
+        'Emitido por': nombreEmisor(p._emisor),
         Comentario: p.comentario || (f._copro ? 'copropiedad (parte de este propietario)' : ''),
       }
     })
@@ -672,7 +686,9 @@ export default function FacturasPage() {
                   </td>
                   {/* Fecha emisión: solo lectura (se rellena al generar el archivo) */}
                   <td style={{ padding: '8px 10px', textAlign: 'center', color: '#666', fontSize: 12 }}>
-                    {nuevoProp ? (p.fecha_emision ? new Date(p.fecha_emision).toLocaleString('es-CL') : '—') : ''}
+                    {nuevoProp ? (p.fecha_emision
+                      ? (<>{new Date(p.fecha_emision).toLocaleString('es-CL')}{p._emisor && <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>por {nombreEmisor(p._emisor)}</div>}</>)
+                      : '—') : ''}
                   </td>
                   {/* Comentario: editable, por propietario. Solo en la primera fila del grupo. */}
                   <td style={{ padding: '8px 10px', maxWidth: 220 }}>
