@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · En Inicios/Cartolas el IDADMON abre la Cartola en la MISMA ventana (no pestaña nueva); se vuelve con el ← Volver de Cartolas. Hereda versión previa.
 // VERSION: 2026-08-27 · Unificado "Manual"+"Ayuda" en un solo botón "Ayuda" (panel en la misma página), con el contenido actualizado a la realidad del módulo y remitiendo a «Guía morosos» para la reclamación. Hereda versión previa.
 // VERSION: 2026-08-27 · "Notificaciones" abre en la MISMA ventana (Link SPA), no en pestaña nueva; se vuelve con el ← Volver de esa página. Hereda versión previa.
 // VERSION: 2026-08-27 · TopNav en Cobranza + barra de pestañas sticky bajo el TopNav (top 52); cabecera de VistaCobranza baja a top 100. Hereda versión previa.
@@ -425,7 +426,7 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
               return (
                 <tr key={f.idadmon} style={{ background: bg, boxShadow: aviso ? 'inset 3px 0 0 ' + C.ambar : 'none' }}>
                   <td style={{ ...td, fontWeight: 600 }}>
-                    <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer"
+                    <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)}
                       title="Abrir la Cartola de este contrato" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
                   </td>
                   <td style={td}>
@@ -963,7 +964,7 @@ function SaldosFavor() {
       <>
         <tr key={f.idadmon}>
           <td style={{ ...td, fontWeight: 600 }}>
-            <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} target="_blank" rel="noopener noreferrer" style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
+            <a href={'/procesos/cartolas?idadmon=' + encodeURIComponent(f.idadmon)} style={{ color: '#185FA5', textDecoration: 'none' }}>{f.idadmon}</a>
             {f.mismo_piso && f.mismo_piso.length > 0 && <div style={{ fontSize: 10, color: C.ambar, marginTop: 2 }}>⚠ mismo piso: {f.mismo_piso.join(', ')}</div>}
           </td>
           <td style={td}>{f.propietario || '—'}</td>

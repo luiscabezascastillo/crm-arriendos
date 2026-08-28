@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Botón «← Volver» (history.back) bajo el TopNav — vuelve a donde se abrió la Cartola (Cobranza/Inicios, etc.). Convención de navegación.
 // VERSION: v33 · 2026-08-26 · Filas de MULTA por atraso (calif='MULTA') con fondo rojo claro. Hereda v32.
 // VERSION: v32 · 2026-08-25 · Cartola IDADMON: filas anteriores al RESETEO (cierre ficticio) se marcan HISTÓRICO — atenuadas, saldo "—", no suman al total; toggle Mostrar/Ocultar histórico. Hereda v31.
 // VERSION: v31 · 2026-08-25 · Vista Tabla: el filtro por columna pasa al estilo EXCEL de SA (server-side): lista de
@@ -103,6 +104,7 @@ import { useRouter } from 'next/navigation'
 import { Component, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
+import BotonVolver from '@/app/components/ui/BotonVolver'
 import MorosidadCartola from '@/app/components/MorosidadCartola'
 
 const num = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
@@ -247,6 +249,7 @@ export default function CartolasPage() {
   return (
     <>
       <TopNav />
+      <div style={{ padding: '10px 24px 0', maxWidth: 1400, margin: '0 auto' }}><BotonVolver label="Volver" /></div>
       <Salvavidas key={vista}>
         {vista === 'tabla'
           ? <TablaVista vista={vista} setVista={setVista} abrirCartola={abrirCartola} />

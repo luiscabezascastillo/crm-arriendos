@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-27 · Barra de controles (top 52) y cabecera de la tabla (top 106) STICKY bajo el TopNav; la tarjeta pasa a overflowX visible para que el sticky de la cabecera funcione. Hereda versión previa.
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v2 · 2026-08-18 · Acceso explícito: Dirección SIEMPRE (por email luis/alberto o rol direccion) + roles
 //   operativos (finanzas, administracion) y Karina. Antes solo pedía sesión. Hereda v1.
@@ -109,7 +110,7 @@ export default function BitacoraEstados() {
         </div>
 
         {/* Controles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', position: 'sticky', top: 52, zIndex: 30, background: '#fff', paddingTop: 10, paddingBottom: 10, marginBottom: 4, borderBottom: '1px solid #E5E7EB' }}>
           <input value={buscar} onChange={e => setBuscar(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') cargarContrato(buscar) }}
             placeholder="Buscar historial por IDADMON (p. ej. A00874)"
@@ -147,7 +148,7 @@ export default function BitacoraEstados() {
           </div>
         )}
 
-        <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
+        <div style={{ ...card, padding: 0, overflowX: 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#F3F4F6' }}>
@@ -197,5 +198,5 @@ const inp = { padding: '7px 10px', borderRadius: 6, border: '1px solid #D1D5DB',
 const sel = { padding: '7px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 13, color: '#111827', background: '#fff' }
 const btnPrimary = { background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }
 const btnSecondary = { background: '#fff', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }
-const th = { padding: '9px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' }
+const th = { padding: '9px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap', position: 'sticky', top: 106, zIndex: 20, background: '#F3F4F6' }
 const td = { padding: '8px 12px', borderBottom: '0.5px solid #F3F4F6', verticalAlign: 'top' }
