@@ -1,4 +1,7 @@
 'use client'
+// VERSION: v20 · 2026-08-28 · Copropiedades: en el camino CONGELADO se des-colapsa el idadmon compartido (una casa,
+//   2+ duenos) en sus mitades por propietario (reparto de calcular_liquidacion), asi ningun copropietario desaparece
+//   y el 'Por propietario' cuadra con las facturas. Marca visual 'copropiedad' en tabla y Excel. Hereda v19.
 // VERSION: v19 · 2026-08-28 · IVA a nivel DOCUMENTO (19% del neto total del propietario, repartido por linea) para que el
 //   CRM (tabla, KPI e Excel) coincida con Nubox, que recalcula el IVA sobre el total del documento. Hereda v18.
 // VERSION: v18 · 2026-08-27 · Se renderiza el TopNav (faltaba) y la zona sticky baja a top:52 para quedar BAJO el TopNav. Hereda v17.
@@ -194,6 +197,28 @@ export default function FacturasPage() {
         if (eProp) { setError('propietarios: ' + eProp.message); setCargando(false); return }
         rawLineas = linFroz
         propRows = rProp || []
+        // Des-colapsar COPROPIEDADES: en la foto, un idadmon compartido por 2+ duenos se guardo como UNA linea
+        // (bajo un solo idprop, con la comision sumada), asi que uno de los duenos "desaparecia" y su
+        // "Por propietario" no cuadraba con la factura. Recuperamos el reparto por dueno de calcular_liquidacion
+        // y sustituimos esa linea por sus mitades (una por copropietario). Los importes ya cuadran con las facturas.
+        try {
+          const { data: liqCop } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
+          const rpcPorIdadmon = {}
+          for (const r of (liqCop || [])) (rpcPorIdadmon[r.idadmon] = rpcPorIdadmon[r.idadmon] || []).push(r)
+          const copro = new Set(Object.keys(rpcPorIdadmon).filter(k => new Set(rpcPorIdadmon[k].map(r => r.idprop)).size > 1))
+          if (copro.size) {
+            const split = []
+            for (const l of rawLineas) {
+              if (copro.has(l.idadmon)) {
+                for (const r of rpcPorIdadmon[l.idadmon]) {
+                  split.push({ ...l, idprop: r.idprop, propietario: r.propietario || l.propietario,
+                    comision: Math.round(Number(r.comision) || 0), iva: Math.round(Number(r.iva_comision) || 0), _copro: true })
+                }
+              } else split.push(l)
+            }
+            rawLineas = split
+          }
+        } catch { /* si la RPC falla, se deja la foto tal cual */ }
       } else {
         // ── Camino VIVO (mes NO congelado): calcular_liquidacion + propietarios.tipo_factura ──
         const { data: liq, error: eLiq } = await supabase.rpc('calcular_liquidacion', { p_mes: m })
@@ -402,7 +427,7 @@ export default function FacturasPage() {
         Inmueble: f.inmueble, Admon: com, IVA: iva, Total: com + iva,
         Tipo: p.tipo_factura || '', Doc: TIPO_DOC[p.tipo_factura] || '', Facturar: p.facturar || 'NO',
         'Fecha emision': p.fecha_emision ? new Date(p.fecha_emision).toLocaleString('es-CL') : '',
-        Comentario: p.comentario || '',
+        Comentario: p.comentario || (f._copro ? 'copropiedad (parte de este propietario)' : ''),
       }
     })
     for (const c of complL) {
@@ -619,7 +644,7 @@ export default function FacturasPage() {
                 <tr key={f.idadmon + '_' + i} id={nuevoProp ? ('fact-' + f.idprop) : undefined} style={{ scrollMarginTop: 90, borderTop: nuevoProp ? '2px solid #DDD6FE' : '1px solid #F0EEE8', background: nuevoProp ? '#FBFAFF' : '#fff' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1a1a2e' }}>{f.idadmon}</td>
                   <td style={{ padding: '8px 10px', fontWeight: nuevoProp ? 600 : 400, color: '#1a1a2e', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${f.idprop} — ${f.propietario}`}>{nuevoProp ? `${f.idprop} — ${f.propietario}` : ''}</td>
-                  <td style={{ padding: '8px 10px', color: '#444', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.inmueble}>{f.inmueble}</td>
+                  <td style={{ padding: '8px 10px', color: '#444', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.inmueble}>{f.inmueble}{f._copro && <span title="Copropiedad: la casa se reparte entre varios duenos; aqui va la parte de este propietario" style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#EDE9FE', color: '#6D28D9' }}>copropiedad</span>}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{fmtPesos(f.comision)}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', color: '#666' }}>{fmtPesos(ivaDe(f))}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'center' }}>
