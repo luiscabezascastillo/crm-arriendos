@@ -1,4 +1,6 @@
 // app/api/liquidaciones/facturar/route.js
+// VERSION: v4 · 2026-08-28 · MODO EXCEPCION: acepta forzar:true (solo trío EMAILS_OK) para editar el estado Facturar /
+//   comentario aunque el mes esté CERRADO. Sin forzar, el guard de cerrado (409) sigue igual. Hereda v3.
 // VERSION: v3 · 2026-08-18 · Acepta el estado 'PARCIAL' (facturación parcial: ya se emitió parte, falta el moroso).
 //   Al poner un propietario en 'SI' manualmente (re-emisión total intencionada), se LIMPIA su registro de líneas ya
 //   facturadas del mes (liquidacion_facturado) para que la próxima generación vuelva a emitir todo. Hereda v2.
@@ -44,6 +46,8 @@ export async function POST(req) {
   try { body = await req.json() } catch {}
   const mes = String(body.mes || '').trim()
   const idprop = String(body.idprop || '').trim()
+  // Modo EXCEPCION (solo trio, ya validado arriba): permite editar aunque el mes esté cerrado.
+  const forzar = body.forzar === true && EMAILS_OK.includes(email)
   if (!/^\d{4}$/.test(mes) || !idprop) return Response.json({ error: 'mes/idprop invalido' }, { status: 400 })
 
   const sb = svc()
@@ -52,7 +56,7 @@ export async function POST(req) {
   const { data: fila, error: eSel } = await sb
     .from('liquidacion_idprop').select('cerrado').eq('mes', mes).eq('idprop', idprop).maybeSingle()
   if (eSel) return Response.json({ error: 'lectura: ' + eSel.message }, { status: 500 })
-  if (fila?.cerrado) return Response.json({ error: 'Mes cerrado: no se puede editar.' }, { status: 409 })
+  if (fila?.cerrado && !forzar) return Response.json({ error: 'Mes cerrado: no se puede editar.' }, { status: 409 })
 
   const now = new Date().toISOString()
 

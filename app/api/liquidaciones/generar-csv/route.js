@@ -1,4 +1,6 @@
 // RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v9 · 2026-08-28 · MODO EXCEPCION: acepta forzar:true (solo trío EMAILS_OK) para emitir en un mes CERRADO
+//   (incluye las cabeceras con cerrado=true). Sin forzar, se excluyen como siempre. Hereda v8.
 // VERSION: v8 · 2026-08-19 · BITÁCORA de facturación (append-only). Cada línea emitida (regulares y complementarias) se
 //   INSERTA en liquidacion_facturado_log con usuario + hora y NUNCA se borra (sobrevive al DELETE de liquidacion_facturado
 //   al re-'SI'). Además, antes de emitir se avisa si algún idadmon YA figura en la bitácora del mes (resumen.reemitidos):
@@ -128,6 +130,7 @@ export async function POST(req) {
   if (!/^\d{4}$/.test(mes)) return Response.json({ error: 'Mes invalido (AAMM).' }, { status: 400 })
   const limite = Math.max(2, Number(body.limite) || 10)   // >= limite -> parte en 2
   const formato = String(body.formato || 'simple').toLowerCase()   // 'simple' (2 CSV) | 'nubox' (1 CSV)
+  const forzar = body.forzar === true && EMAILS_OK.includes(email)   // modo excepción: facturar en mes CERRADO (solo trío)
   const solo = String(body.solo || '').toLowerCase()               // '' | 'boletas' (SimpleFactura en retirada)
 
   const sb = svc()
@@ -137,7 +140,7 @@ export async function POST(req) {
     .select('idprop, facturar, tipo_factura, cerrado')
     .eq('mes', mes).in('facturar', ['SI', 'PARCIAL'])
   if (eCab) return Response.json({ error: 'cabeceras: ' + eCab.message }, { status: 500 })
-  const idpropsSI = (cabs || []).filter(c => c.idprop !== PAOLA && !c.cerrado).map(c => c.idprop)
+  const idpropsSI = (cabs || []).filter(c => c.idprop !== PAOLA && (!c.cerrado || forzar)).map(c => c.idprop)
   const tipoDe = {}; for (const c of cabs || []) tipoDe[c.idprop] = (c.tipo_factura || '').trim()
 
   // Complementarias a facturar en ESTE mes de cobro (arriendos morosos ya cobrados y registrados).

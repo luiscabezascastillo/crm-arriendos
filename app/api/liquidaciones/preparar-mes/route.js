@@ -1,5 +1,6 @@
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 // ═══════════════════════════════════════════════════════════════
+// VERSION: v9  ·  2026-08-28  ·  Acepta auth de CRON (cabecera x-cron-secret == CRON_SECRET) para el auto-congelar del día 23.
 // VERSION: v8  ·  2026-07-08  ·  facturar por defecto NO (seguridad: hay que activar SI a mano)
 // Para verificar tras copiar:  Select-String route.js -Pattern "VERSION: v8"
 // ═══════════════════════════════════════════════════════════════
@@ -78,9 +79,13 @@ export async function POST(req) {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
   const rol = session?.user?.role
-  if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
-  if (!(rol === 'admin' || PREPARAR_EMAILS.includes(email))) {
-    return Response.json({ error: 'Solo Direccion y Karina pueden preparar el mes.' }, { status: 403 })
+  // Auth de CRON (auto-congelar día 23): cabecera x-cron-secret == CRON_SECRET. Salta la sesión de usuario.
+  const cronOk = !!process.env.CRON_SECRET && req.headers.get('x-cron-secret') === process.env.CRON_SECRET
+  if (!cronOk) {
+    if (!email) return Response.json({ error: 'No autenticado' }, { status: 401 })
+    if (!(rol === 'admin' || PREPARAR_EMAILS.includes(email))) {
+      return Response.json({ error: 'Solo Direccion y Karina pueden preparar el mes.' }, { status: 403 })
+    }
   }
 
   let body = {}

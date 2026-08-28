@@ -1,6 +1,7 @@
 'use client'
-// VERSION: v22 · 2026-08-28 · Facturas: bajo la Fecha de emision se muestra QUIEN la emitio (usuario de liquidacion_facturado_log,
-//   por propietario, emision mas reciente). Tambien columna "Emitido por" en el Excel. Hereda v21.
+// VERSION: v23 · 2026-08-28 · Facturas: (1) selector de meses usa el CICLO 23-al-22 (mesEnCurso/listaMeses) -> el mes
+//   nuevo aparece el dia 23 (septiembre ya visible). (2) MODO EXCEPCION (solo trio): boton para facturar/corregir en un mes
+//   CERRADO; guardar y generar CSV envian forzar:true; bloqueado = cerrado && !modoExcepcion. Hereda v22.
 // VERSION: v21 · 2026-08-28 · FIX crash: ivaAjuste pasa de useMemo a calculo normal (estaba tras los return de acceso,
 //   violaba rules-of-hooks y rompia la pagina). Hereda v20.
 // VERSION: v20 · 2026-08-28 · Copropiedades: en el camino CONGELADO se des-colapsa el idadmon compartido (una casa,
@@ -54,8 +55,8 @@ const PAOLA = 'P001'   // proceso separado, se excluye de esta vista
 
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 const aammToTxt = aamm => { if (!aamm || String(aamm).length !== 4) return aamm; const a = String(aamm).slice(0, 2), m = parseInt(String(aamm).slice(2), 10); return `${MESES_TXT[m - 1] || '?'} 20${a}` }
-function mesEnCurso() { const d = new Date(); return `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}` }
-function listaMeses() { const out = []; const d = new Date(); for (let i = 0; i < 14; i++) { out.push(`${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}`); d.setMonth(d.getMonth() - 1) } return out }
+function mesEnCurso() { const d = new Date(); if (d.getDate() >= 23) { d.setDate(1); d.setMonth(d.getMonth() + 1) } return `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}` }
+function listaMeses() { const out = []; const d = new Date(); if (d.getDate() >= 23) { d.setDate(1); d.setMonth(d.getMonth() + 1) } for (let i = 0; i < 14; i++) { out.push(`${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}`); d.setMonth(d.getMonth() - 1) } return out }
 const fmtPesos = n => (n == null || n === '') ? '—' : Number(n).toLocaleString('es-CL')
 
 const TIPO_DOC = { '33': 'Factura', '39': 'Boleta', '41': 'Boleta exenta' }
@@ -136,6 +137,9 @@ export default function FacturasPage() {
   const [complL, setComplL] = useState([])   // complementarias a facturar en este mes de cobro (arriendos morosos ya cobrados)
   const [fCol, setFCol] = useState({ idadmon: new Set(), propietario: new Set(), inmueble: new Set() })  // filtros por columna
   const [filtroAbierto, setFiltroAbierto] = useState(null)  // qué columna tiene el desplegable abierto
+  const [forzarCerrado, setForzarCerrado] = useState(false)  // modo excepción: facturar en un mes CERRADO (solo trío)
+  const esTrio = EMAILS_OK.includes(email)
+  const modoExcepcion = forzarCerrado && esTrio
 
   // Descargar un CSV como archivo. conBom=false para Nubox (la plantilla no lleva BOM).
   function descargarCSV(contenido, nombre, conBom = true) {
@@ -154,7 +158,7 @@ export default function FacturasPage() {
     try {
       const res = await fetch('/api/liquidaciones/generar-csv', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, limite, formato: 'nubox' }),
+        body: JSON.stringify({ mes, limite, formato: 'nubox', forzar: modoExcepcion }),
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Error al generar'); setGenerando(false); return }
@@ -360,7 +364,7 @@ export default function FacturasPage() {
     try {
       const res = await fetch('/api/liquidaciones/facturar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mes, idprop, ...campos }),
+        body: JSON.stringify({ mes, idprop, forzar: modoExcepcion, ...campos }),
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Error al guardar'); setGuardando(''); return }
@@ -532,6 +536,13 @@ export default function FacturasPage() {
           style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#065F46', cursor: cargando ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
           ⭳ Excel (revisión)
         </button>
+        {esTrio && (
+          <button onClick={() => setForzarCerrado(v => !v)}
+            title="Permite facturar/corregir en un mes YA CERRADO. Solo Dirección y Karina. Úsalo solo para correcciones puntuales."
+            style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: modoExcepcion ? '1px solid #B45309' : '1px solid #D3D1C7', background: modoExcepcion ? '#FEF3C7' : '#fff', color: modoExcepcion ? '#92400E' : '#6B7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {modoExcepcion ? '🔓 Excepción ACTIVA' : '🔒 Facturar excepcional'}
+          </button>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
           <button onClick={generarNubox} disabled={generando}
             title="Genera el CSV de Nubox (Cargar Ventas desde Archivo). Nubox asigna los folios."
@@ -541,6 +552,12 @@ export default function FacturasPage() {
         </div>
       </div>
       </div>{/* fin zona sticky */}
+
+      {modoExcepcion && (
+        <div style={{ margin: '0 0 14px', padding: '10px 14px', borderRadius: 8, background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ Modo excepción activo: puedes facturar y corregir en un mes CERRADO. Los datos siguen congelados; solo se habilita la emisión. Desactívalo al terminar.
+        </div>
+      )}
 
       {resumenGen && (
         <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#5B21B6' }}>
@@ -649,6 +666,7 @@ export default function FacturasPage() {
               const fact = p.facturar || 'NO'
               const fc = factColor(fact)
               const cerrado = !!p.cerrado
+              const bloqueado = cerrado && !modoExcepcion   // en modo excepción el trío puede editar aunque esté cerrado
               // datos del bloque de resumen (informativo, para conocer la historia antes de facturar)
               const aTransf = Number(p.total_a_transferir) || 0
               const transf = Number(p._transf) || 0   // de la RPC (igual que CARTAS), no de la columna vacía
@@ -670,9 +688,9 @@ export default function FacturasPage() {
                   <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                     {nuevoProp ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                        <select value={fact} disabled={cerrado || guardando === f.idprop}
+                        <select value={fact} disabled={bloqueado || guardando === f.idprop}
                           onChange={e => cambiarFacturar(f.idprop, fact, e.target.value)}
-                          style={{ fontSize: 12, fontWeight: 700, padding: '3px 6px', borderRadius: 8, border: 'none', background: fc.bg, color: fc.fg, cursor: cerrado ? 'default' : 'pointer' }}>
+                          style={{ fontSize: 12, fontWeight: 700, padding: '3px 6px', borderRadius: 8, border: 'none', background: fc.bg, color: fc.fg, cursor: bloqueado ? 'default' : 'pointer' }}>
                           {FACT_OPCIONES.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                         {fact === 'HECHO' && (emisionesProp[f.idprop] || 0) >= 2 && (
@@ -699,10 +717,10 @@ export default function FacturasPage() {
                           onKeyDown={e => { if (e.key === 'Enter') { guardar(f.idprop, { comentario: comTexto }); setEditCom(null) } }}
                           style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #A5B4FC', width: '100%' }} />
                       ) : (
-                        <span onClick={() => { if (!cerrado) { setEditCom(f.idprop); setComTexto(p.comentario || '') } }}
-                          style={{ fontSize: 12, color: p.comentario ? '#444' : '#C7C4BC', cursor: cerrado ? 'default' : 'text', display: 'inline-block', minWidth: 60 }}
-                          title={cerrado ? 'Mes cerrado' : 'Clic para editar'}>
-                          {p.comentario || (cerrado ? '—' : '✎ comentar')}
+                        <span onClick={() => { if (!bloqueado) { setEditCom(f.idprop); setComTexto(p.comentario || '') } }}
+                          style={{ fontSize: 12, color: p.comentario ? '#444' : '#C7C4BC', cursor: bloqueado ? 'default' : 'text', display: 'inline-block', minWidth: 60 }}
+                          title={bloqueado ? 'Mes cerrado' : 'Clic para editar'}>
+                          {p.comentario || (bloqueado ? '—' : '✎ comentar')}
                         </span>
                       )
                     ) : ''}
