@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v18 · 2026-08-27 · Se renderiza el TopNav (faltaba) y la zona sticky baja a top:52 para quedar BAJO el TopNav. Hereda v17.
 // VERSION: v17 · 2026-08-27 · Se retira el botón (y su handler) de "Boletas SimpleFactura" (en desuso; ya se factura por Nubox). Hereda v16.
 // VERSION: v16 · 2026-08-27 · Botón "Excel (revisión)": exporta la facturación del mes a .xlsx (hoja Facturacion por línea,
 //   mensual+complementarias; hoja Por propietario con A transferir/Transferido/Diferencia/Observaciones). Solo lectura, además del CSV. Hereda v15.
@@ -36,6 +37,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
+import TopNav from '@/app/components/ui/TopNav'
 
 // Solo Alberto, Luis, Karina (ver + editar). Nadie más entra.
 const EMAILS_OK = ['alberto.cabezas@fondocapital.com', 'luis.cabezas@fondocapital.com', 'karina.morales@fondocapital.com']
@@ -342,7 +344,7 @@ export default function FacturasPage() {
     guardar(idprop, { facturar: nuevo })
   }
 
-  if (accesoOk === null || status === 'loading') return <div style={{ padding: 40, fontSize: 14, color: '#666' }}>Comprobando acceso…</div>
+  if (accesoOk === null || status === 'loading') return (<><TopNav /><div style={{ padding: 40, fontSize: 14, color: '#666' }}>Comprobando acceso…</div></>)
   if (accesoOk === false) return null
 
   const q = buscar.trim().toLowerCase()
@@ -422,11 +424,13 @@ export default function FacturasPage() {
     .map(ip => ({ idprop: ip, propietario: nombreProp[ip] || propMap[ip]?.nombre || ip }))
 
   return (
+    <>
+      <TopNav />
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px 60px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
       onClick={() => setFiltroAbierto(null)}>
 
       {/* Zona superior FIJA al hacer scroll: navegación + controles */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#F7F6F2', paddingTop: 8, paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #E8E6DF' }}>
+      <div style={{ position: 'sticky', top: 52, zIndex: 20, background: '#F7F6F2', paddingTop: 8, paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #E8E6DF' }}>
       {/* Barra navegación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
         <button onClick={() => router.push('/procesos/liquidaciones')} style={{ fontSize: 13, fontWeight: 600, padding: '7px 14px', borderRadius: 8, border: '1px solid #D3D1C7', background: '#fff', color: '#2C2C2A', cursor: 'pointer' }}>← TRANSFER</button>
@@ -664,5 +668,6 @@ export default function FacturasPage() {
         Si el mes está <b>congelado</b> lee la foto (liquidacion_idadmon / liquidacion_idprop); si <b>no</b>, factura <b>en vivo</b> (Admon+IVA de calcular_liquidacion, tipo de propietarios.tipo_factura). El "Facturar" y el comentario se guardan por propietario.
       </div>
     </div>
+    </>
   )
 }
