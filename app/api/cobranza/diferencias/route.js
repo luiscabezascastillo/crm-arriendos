@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-27 · FIX saldo acumulado y perfil: `cuentas` se traía sin paginar (>1000 filas truncaba). Ahora paginado -> el saldo cuadra con la cartola. Hereda v5.
 // VERSION: v5 · 2026-08-27 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-27 · Email suave afinado: pide regularizar hoy/mañana, con concepto de pago y mención del reajuste (placeholder). Hereda v3.
 // VERSION: v3 · 2026-08-27 · Cobranza · DIFERENCIAS / saldo por cobrar (Tanda 2: retrato + envío + estado).
@@ -97,6 +98,21 @@ async function asegurarCaso(idadmon, contrato, email) {
   return nuevo.id
 }
 
+// trae TODAS las filas de `cuentas` de los idadmon dados (paginado). PostgREST corta a 1000 filas y con
+// muchos morosos truncaba -> el saldo acumulado y el perfil salían mal (p.ej. A00308: 3.351 en vez de 95.372).
+async function cuentasDe(ids) {
+  const out = []; const page = 1000
+  for (let from = 0; from < 300000; from += page) {
+    const { data, error } = await admin.from('cuentas')
+      .select('idadmon, fecha, concepto, cargo, cargo_manual, abono, calif, anulado')
+      .in('idadmon', ids).order('id', { ascending: true }).range(from, from + page - 1)
+    if (error || !data || !data.length) break
+    out.push(...data)
+    if (data.length < page) break
+  }
+  return out
+}
+
 export async function GET(req) {
   const session = await getServerSession(authOptions)
   const rol = session?.user?.role
@@ -122,14 +138,14 @@ export async function GET(req) {
   const plantilla = plantillaSuave()
   if (!ids.length) return Response.json({ ok: true, periodo, mes_lbl: mesLbl, hoy: isoUTC(hoy.t), filas: [], plantilla, resumen: { total: 0, suma_dif: 0, suma_acum: 0, con_reajuste: 0 } })
 
-  const [arrRes, ctasRes, servRes, estRes] = await Promise.all([
+  const [arrRes, servRes, estRes, ctasAll] = await Promise.all([
     admin.from('datos_arriendos').select('idadmon, arrendatario, rut, mail_arrendatario, movil, avalista, mail_avalista, inmueble, propietario, quien_cobra, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6').in('idadmon', ids),
-    admin.from('cuentas').select('idadmon, fecha, concepto, cargo, cargo_manual, abono, calif, anulado').in('idadmon', ids),
     admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(hoy.y, hoy.mo) + '%').in('idadmon', ids),
     admin.from('cobranza_diferencias').select('*').eq('periodo', periodo).in('idadmon', ids),
+    cuentasDe(ids),
   ])
   const arrMap = {}; for (const a of (arrRes.data || [])) arrMap[a.idadmon] = a
-  const ctasMap = {}; for (const c of (ctasRes.data || [])) (ctasMap[c.idadmon] || (ctasMap[c.idadmon] = [])).push(c)
+  const ctasMap = {}; for (const c of ctasAll) (ctasMap[c.idadmon] || (ctasMap[c.idadmon] = [])).push(c)
   const servMap = {}; for (const r of (servRes.data || [])) { servMap[r.idadmon] = (servMap[r.idadmon] || 0) + n0(r.deuda_gastos_comunes) + n0(r.deuda_vigente_electricidad) + n0(r.deuda_vigente_agua) + n0(r.deuda_vigente_gas) }
   const estMap = {}; for (const e of (estRes.data || [])) estMap[e.idadmon] = e
 

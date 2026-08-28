@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-27 · FIX: `cuentas` se traía sin paginar (>1000 filas truncaba) -> perfil/tramos podían salir mal. Ahora paginado. Hereda v5.
 // VERSION: v5 · 2026-08-26 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
 // VERSION: v3 · 2026-08-26 · Periodo por defecto respeta la gracia del día 10 (días 1-10 -> mes anterior). Hereda v2.
@@ -101,6 +102,21 @@ function perfilDesdeCuentas(rows) {
   return { perfil, mesesConDeuda, diaMedio, saldoActual: Math.round(saldoActual), rentaRef: Math.round(rentaRef) }
 }
 
+// trae TODAS las filas de `cuentas` de los idadmon dados (paginado). PostgREST corta a 1000 filas y con
+// muchos morosos truncaba -> el saldo acumulado y el perfil salían mal (p.ej. A00308: 3.351 en vez de 95.372).
+async function cuentasDe(ids) {
+  const out = []; const page = 1000
+  for (let from = 0; from < 300000; from += page) {
+    const { data, error } = await admin.from('cuentas')
+      .select('id, idadmon, fecha, concepto, cargo, cargo_manual, abono, calif, anulado')
+      .in('idadmon', ids).order('id', { ascending: true }).range(from, from + page - 1)
+    if (error || !data || !data.length) break
+    out.push(...data)
+    if (data.length < page) break
+  }
+  return out
+}
+
 export async function GET(req) {
   const session = await getServerSession(authOptions)
   const rol = session?.user?.role
@@ -133,17 +149,16 @@ export async function GET(req) {
   if (!ids.length) return Response.json({ ok: true, periodo, hoy: isoUTC(hoy.t), morosos: [], plantillas: [], resumen: { total: 0 } })
 
   // 2) Datos del contrato + 3) cuentas + 4) estado guardado (en paralelo)
-  const [arrRes, ctasRes, mmRes, plaRes] = await Promise.all([
+  const [arrRes, mmRes, plaRes, ctasAll] = await Promise.all([
     admin.from('datos_arriendos').select('idadmon, estado, arrendatario, rut, mail_arrendatario, movil, avalista, rut_avalista, mail_avalista, telefono_avalista, inmueble, propietario, multa_diaria, quien_cobra, media_retraso').in('idadmon', ids),
-    admin.from('cuentas').select('id, idadmon, fecha, concepto, cargo, cargo_manual, abono, calif, anulado').in('idadmon', ids),
     admin.from('cobranza_multas').select('*').eq('periodo', periodo).in('idadmon', ids),
     admin.from('cobranza_plantillas').select('id, etapa, perfil, destinatario, departamento, asunto, cuerpo').like('etapa', 'multa_%'),
+    cuentasDe(ids),
   ])
   if (arrRes.error) return Response.json({ error: 'datos_arriendos: ' + arrRes.error.message }, { status: 500 })
-  if (ctasRes.error) return Response.json({ error: 'cuentas: ' + ctasRes.error.message }, { status: 500 })
 
   const arrMap = {}; for (const a of (arrRes.data || [])) arrMap[a.idadmon] = a
-  const ctasMap = {}; for (const c of (ctasRes.data || [])) (ctasMap[c.idadmon] || (ctasMap[c.idadmon] = [])).push(c)
+  const ctasMap = {}; for (const c of ctasAll) (ctasMap[c.idadmon] || (ctasMap[c.idadmon] = [])).push(c)
   const mmMap = {}; for (const m of (mmRes.data || [])) mmMap[m.idadmon] = m
 
   const morosos = []
