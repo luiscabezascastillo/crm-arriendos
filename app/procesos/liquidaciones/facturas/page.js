@@ -1,4 +1,6 @@
 'use client'
+// VERSION: v19 · 2026-08-28 · IVA a nivel DOCUMENTO (19% del neto total del propietario, repartido por linea) para que el
+//   CRM (tabla, KPI e Excel) coincida con Nubox, que recalcula el IVA sobre el total del documento. Hereda v18.
 // VERSION: v18 · 2026-08-27 · Se renderiza el TopNav (faltaba) y la zona sticky baja a top:52 para quedar BAJO el TopNav. Hereda v17.
 // VERSION: v17 · 2026-08-27 · Se retira el botón (y su handler) de "Boletas SimpleFactura" (en desuso; ya se factura por Nubox). Hereda v16.
 // VERSION: v16 · 2026-08-27 · Botón "Excel (revisión)": exporta la facturación del mes a .xlsx (hoja Facturacion por línea,
@@ -33,7 +35,7 @@
 // VERSION: v9 · 2026-07-08 · nombre "Pxxx — Nombre" + bloque resumen por propietario (validado/enviada/transferir/dif/observaciones)
 //   (facturar por grupo, fecha solo-lectura, comentario por propietario),
 //   sin RUT/Comuna, propietario+inmueble juntas, excluye P y Paola. Solo 3 usuarios.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabaseClient'
@@ -356,13 +358,35 @@ export default function FacturasPage() {
   }
   const visibles = (q ? lineas.filter(f => (f.propietario + ' ' + f.inmueble + ' ' + f.idadmon + ' ' + f.idprop).toLowerCase().includes(q)) : lineas).filter(pasaCol)
 
+  // IVA a nivel DOCUMENTO (propietario) = 19% del neto total, repartido por linea (la ultima absorbe el redondeo).
+  // Nubox recalcula el IVA sobre el total del documento, asi que sumar el IVA por inmueble daba +-1 peso frente a
+  // la factura. Con esto el CRM coincide con Nubox. Se calcula sobre TODAS las lineas del propietario (no el filtro).
+  const ivaAjuste = useMemo(() => {
+    const porProp = {}
+    for (const l of lineas) (porProp[l.idprop] = porProp[l.idprop] || []).push(l)
+    const map = {}
+    for (const ip in porProp) {
+      const ls = porProp[ip]
+      const netoTot = ls.reduce((a, l) => a + (Number(l.comision) || 0), 0)
+      const ivaDoc = Math.round(netoTot * 0.19)
+      let acc = 0
+      ls.forEach((l, i) => {
+        const iva = (i < ls.length - 1) ? Math.round((Number(l.comision) || 0) * 0.19) : (ivaDoc - acc)
+        if (i < ls.length - 1) acc += iva
+        map[l.idadmon] = iva
+      })
+    }
+    return map
+  }, [lineas])
+  const ivaDe = f => (ivaAjuste[f.idadmon] != null ? ivaAjuste[f.idadmon] : (Number(f.iva) || 0))
+
   // valores únicos para cada filtro (de todas las líneas, ordenados)
   const uniq = (key) => [...new Set(lineas.map(l => l[key] || ''))].sort((a, b) => String(a).localeCompare(String(b), 'es'))
   const valIdadmon = uniq('idadmon'), valProp = uniq('propietario'), valInmueble = uniq('inmueble')
 
   // Totales
   const totComision = visibles.reduce((s, f) => s + (Number(f.comision) || 0), 0)
-  const totIva = visibles.reduce((s, f) => s + (Number(f.iva) || 0), 0)
+  const totIva = visibles.reduce((s, f) => s + ivaDe(f), 0)
   const totComplComision = complL.reduce((s, c) => s + (Number(c.comision) || 0), 0)
   const totComplIva = complL.reduce((s, c) => s + (Number(c.iva) || 0), 0)
 
@@ -372,7 +396,7 @@ export default function FacturasPage() {
     // Hoja 1 — una fila por línea (inmueble): lo mensual + las complementarias (lo mismo que entra al CSV).
     const filas = visibles.map(f => {
       const p = propMap[f.idprop] || {}
-      const com = Number(f.comision) || 0, iva = Number(f.iva) || 0
+      const com = Number(f.comision) || 0, iva = ivaDe(f)
       return {
         Origen: 'Mensual', IdAdmon: f.idadmon, IdProp: f.idprop, Propietario: f.propietario,
         Inmueble: f.inmueble, Admon: com, IVA: iva, Total: com + iva,
@@ -405,7 +429,7 @@ export default function FacturasPage() {
         }
       }
       const r = porProp[f.idprop]
-      r.Inmuebles += 1; r.Admon += Number(f.comision) || 0; r.IVA += Number(f.iva) || 0; r.Total = r.Admon + r.IVA
+      r.Inmuebles += 1; r.Admon += Number(f.comision) || 0; r.IVA += ivaDe(f); r.Total = r.Admon + r.IVA
     }
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Facturacion')
@@ -597,7 +621,7 @@ export default function FacturasPage() {
                   <td style={{ padding: '8px 10px', fontWeight: nuevoProp ? 600 : 400, color: '#1a1a2e', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${f.idprop} — ${f.propietario}`}>{nuevoProp ? `${f.idprop} — ${f.propietario}` : ''}</td>
                   <td style={{ padding: '8px 10px', color: '#444', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.inmueble}>{f.inmueble}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{fmtPesos(f.comision)}</td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', color: '#666' }}>{fmtPesos(f.iva)}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: '#666' }}>{fmtPesos(ivaDe(f))}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: tc.bg, color: tc.fg, whiteSpace: 'nowrap' }}>{p.tipo_factura || '?'}{TIPO_DOC[p.tipo_factura] ? ' · ' + TIPO_DOC[p.tipo_factura] : ''}</span>
                   </td>
