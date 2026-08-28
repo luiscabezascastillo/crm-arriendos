@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v7 · 2026-08-28 · Filtros por columna estilo Excel (motor lib/filtroExcel, como CC1/SA) + Limpiar filtros + contador. Hereda v6.
 // VERSION: v6 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el drawer → Bitácora, además del email. Hereda v5.
 // VERSION: v5 · 2026-08-27 · "Probar (a mí)" y "Enviar" abren la MISMA ventana de revisión; la prueba se lanza desde ahí. Hereda v4.
 // VERSION: v4 · 2026-08-27 · Paso de confirmación antes de enviar (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v3.
@@ -9,8 +10,9 @@
 //   Columna de estado (pendiente/enviado/pospuesto/investigar). Ya NO salta a Cartolas.
 //   Consume /api/cobranza/diferencias (GET retrato · POST enviar/estado).
 // Ruta real: app/op/cobranza/DiferenciasView.js
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import RegistroGestion from '../../components/ui/RegistroGestion'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 const C = { txt: '#2C2C2A', sub: '#888780', line: '#D3D1C7', panel: '#F1EFE8', rojo: '#9B1C1C', rojoBg: '#FBEDEC', verde: '#085041', verdeBg: '#E9F4E4', ambar: '#B8860B', ambarBg: '#FBF7EC', azul: '#1D4ED8', azulBg: '#EEF4FF', acento: '#1D9E75', naranja: '#E8820C', naranjaBg: '#FFF1DF' }
 const P = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Math.round(Number(n) || 0)).toLocaleString('es-CL')
 const ddmm = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d && m ? `${d}/${m}/${y}` : iso }
@@ -28,6 +30,20 @@ const ESTADO = {
 }
 const badge = (o) => o ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: o.bg, color: o.fg, whiteSpace: 'nowrap' }}>{o.lbl}</span> : null
 
+const numV = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
+const DIF_COLS = [
+  { key: 'idadmon', label: 'IDADMON', tipo: 'texto', fkey: f => f.idadmon || '', flabel: k => k || '(vacías)' },
+  { key: 'arrendatario', label: 'Arrendatario', tipo: 'texto', fkey: f => f.arrendatario || '', flabel: k => k || '(vacías)' },
+  { key: 'propiedad', label: 'Propiedad', tipo: 'texto', fkey: f => f.propiedad || '', flabel: k => k || '(vacías)' },
+  { key: 'base', label: 'A cobrar', tipo: 'num', fkey: f => String(numV(f.base)), flabel: k => k === '' ? '(vacías)' : P(k) },
+  { key: 'recibido', label: 'Recibido', tipo: 'num', fkey: f => String(numV(f.recibido)), flabel: k => k === '' ? '(vacías)' : P(k) },
+  { key: 'pct_pagado', label: '% pag.', tipo: 'num', fkey: f => String(numV(f.pct_pagado)), flabel: k => k === '' ? '(vacías)' : (k + '%') },
+  { key: 'diferencia', label: 'Diferencia', tipo: 'num', fkey: f => String(numV(f.diferencia)), flabel: k => k === '' ? '(vacías)' : P(k) },
+  { key: 'saldo_acumulado', label: 'Saldo acum.', tipo: 'num', fkey: f => String(numV(f.saldo_acumulado)), flabel: k => k === '' ? '(vacías)' : P(k) },
+  { key: 'reajuste', label: 'Reajuste', tipo: 'texto', fkey: f => f.reajuste_reciente ? 'Con reajuste' : 'Sin reajuste', flabel: k => k || '(vacías)' },
+  { key: 'estado', label: 'Estado', tipo: 'texto', fkey: f => f.estado || 'pendiente', flabel: k => (ESTADO[k] && ESTADO[k].lbl) || k },
+]
+
 export default function DiferenciasView() {
   const [periodo, setPeriodo] = useState(''); const [inp, setInp] = useState('')
   const [data, setData] = useState(null); const [cargando, setCargando] = useState(true); const [error, setError] = useState('')
@@ -40,6 +56,21 @@ export default function DiferenciasView() {
       .catch(e => setError(String(e))).finally(() => setCargando(false))
   }
   useEffect(() => { cargar('') }, [])
+
+  const [filters, setFilters] = useState({})
+  const [openFilter, setOpenFilter] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const setFiltroCol = (key, val) => setFilters(f => { const n = { ...f }; if (val == null) delete n[key]; else n[key] = val; return n })
+  const limpiarTodo = () => { setFilters({}); setOrden(null) }
+  const hayAlguno = DIF_COLS.some(c => filtroActivo(filters[c.key])) || !!orden?.key
+  const _filas = data?.filas || []
+  const filtradas = useMemo(() => aplicarFiltros(_filas, DIF_COLS, filters, orden), [_filas, filters, orden])
+  const HF = (key) => (
+    <HeaderFilter col={DIF_COLS.find(c => c.key === key)} movs={_filas}
+      state={filters[key]} setState={v => setFiltroCol(key, v)}
+      open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
+      limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} flotante />
+  )
 
   const sustituir = (txt, f) => String(txt || '')
     .replaceAll('{{arrendatario}}', f.arrendatario || '').replaceAll('{{propiedad}}', f.propiedad || '')
@@ -109,16 +140,23 @@ export default function DiferenciasView() {
           {(!data.filas || !data.filas.length) ? (
             <div style={{ color: C.sub, fontSize: 13, padding: 20 }}>Nadie pagó de menos este periodo.</div>
           ) : (
+            <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+              {hayAlguno && <button onClick={limpiarTodo} style={{ padding: '6px 11px', borderRadius: 7, border: '1px solid ' + C.line, background: C.ambarBg, fontSize: 12, color: C.ambar, cursor: 'pointer', fontWeight: 700 }}>✕ Limpiar filtros</button>}
+              <span style={{ fontSize: 12, color: C.sub }}>{filtradas.length} de {_filas.length}</span>
+            </div>
             <div style={{ overflowX: 'auto', border: '1px solid ' + C.line, borderRadius: 10 }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 980 }}>
                 <thead><tr>
-                  <th style={th}>IDADMON</th><th style={th}>Arrendatario</th><th style={th}>Propiedad</th>
-                  <th style={{ ...th, textAlign: 'right' }}>A cobrar</th><th style={{ ...th, textAlign: 'right' }}>Recibido</th>
-                  <th style={{ ...th, textAlign: 'right' }}>% pag.</th><th style={{ ...th, textAlign: 'right' }}>Diferencia</th>
-                  <th style={{ ...th, textAlign: 'right', background: C.naranjaBg }}>Saldo acumulado</th><th style={th}>Reajuste</th><th style={th}>Estado</th>
+                  <th style={th}>{HF('idadmon')}</th><th style={th}>{HF('arrendatario')}</th><th style={th}>{HF('propiedad')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{HF('base')}</th><th style={{ ...th, textAlign: 'right' }}>{HF('recibido')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{HF('pct_pagado')}</th><th style={{ ...th, textAlign: 'right' }}>{HF('diferencia')}</th>
+                  <th style={{ ...th, textAlign: 'right', background: C.naranjaBg }}>{HF('saldo_acumulado')}</th><th style={th}>{HF('reajuste')}</th><th style={th}>{HF('estado')}</th>
                 </tr></thead>
                 <tbody>
-                  {data.filas.map(f => (
+                  {filtradas.length === 0 ? (
+                    <tr><td colSpan={10} style={{ ...td, color: C.sub, padding: 16 }}>Sin resultados con estos filtros.</td></tr>
+                  ) : filtradas.map(f => (
                     <tr key={f.idadmon} onClick={() => abrir(f)} style={{ cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = '#FAF9F5'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                       <td style={{ ...td, color: C.acento, fontWeight: 700 }}>{f.idadmon}</td>
                       <td style={td}>{f.arrendatario}</td>
@@ -135,6 +173,7 @@ export default function DiferenciasView() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </>
       )}
