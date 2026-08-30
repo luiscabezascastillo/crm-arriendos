@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-30 · Cabecera sticky bajo TopNav+FinancieroNav (altura medida) y FILTROS de columna estilo SA (motor FiltroCabecera). Hereda versión previa.
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
 // VERSION: v1 · 2026-08-15 · "Alberto" · Cuenta corriente del propietario de la empresa (Financiero).
 //   Libro de movimientos que afectan al dinero/deuda entre la empresa (FCR) y Alberto: aportes, retiros,
@@ -11,9 +12,10 @@
 import { useSession } from 'next-auth/react'
 import BotonVolver from '../../../components/ui/BotonVolver'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import TopNav from '@/app/components/ui/TopNav'
 import FinancieroNav from '@/app/components/ui/FinancieroNav'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/app/components/ui/FiltroCabecera'
 
 const num = (v) => { const n = Math.round(Number(String(v ?? '').replace(/[^\d.-]/g, ''))); return Number.isFinite(n) ? n : 0 }
 const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(Number(n) || 0)).toLocaleString('es-CL')
@@ -22,6 +24,19 @@ const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String
 
 const TIPOS = ['Aporte', 'Retiro', 'Gasto asumido por Alberto', 'Pago de la empresa', 'Devolución', 'Ajuste']
 const VACIO = { fecha: '', tipo: '', descripcion: '', procedencia: '', destino: '', debe: '', haber: '', referencia: '', estado: 'pendiente' }
+
+// Columnas para el filtro de cabecera estilo SA (motor FiltroCabecera). El Saldo (corrido) no se filtra.
+const COLDEFS = [
+  { key: 'fecha',       label: 'Fecha',       tipo: 'fecha', fkey: m => String(m.fecha || '').slice(0, 10), flabel: k => (k ? fmtFecha(k) : '(vacías)') },
+  { key: 'tipo',        label: 'Tipo',        tipo: 'texto', fkey: m => m.tipo || '',        flabel: k => k || '(vacías)' },
+  { key: 'descripcion', label: 'Descripción', tipo: 'texto', fkey: m => m.descripcion || '', flabel: k => k || '(vacías)' },
+  { key: 'procedencia', label: 'Procedencia', tipo: 'texto', fkey: m => m.procedencia || '', flabel: k => k || '(vacías)' },
+  { key: 'destino',     label: 'Destino',     tipo: 'texto', fkey: m => m.destino || '',     flabel: k => k || '(vacías)' },
+  { key: 'debe',        label: 'Debe',        tipo: 'num',   fkey: m => num(m.debe),         flabel: k => (Number(k) ? Number(k).toLocaleString('es-CL') : '—') },
+  { key: 'haber',       label: 'Haber',       tipo: 'num',   fkey: m => num(m.haber),        flabel: k => (Number(k) ? Number(k).toLocaleString('es-CL') : '—') },
+  { key: 'referencia',  label: 'Referencia',  tipo: 'texto', fkey: m => m.referencia || '',  flabel: k => k || '(vacías)' },
+  { key: 'estado',      label: 'Estado',      tipo: 'texto', fkey: m => m.estado || 'pendiente', flabel: k => k || '' },
+]
 
 export default function CuentaAlbertoPage() {
   const { data: session, status } = useSession()
@@ -35,6 +50,13 @@ export default function CuentaAlbertoPage() {
   const [editId, setEditId] = useState(null)      // null = alta; id = edición
   const [saving, setSaving] = useState(false)
   const [formErr, setFormErr] = useState(null)
+  const [filtros, setFiltros] = useState({})
+  const [fOpen, setFOpen] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const hayFiltro = Object.values(filtros).some(filtroActivo)
+  const limpiarTodo = () => { setFiltros({}); setOrden(null) }
+  const contentRef = useRef(null)
+  const [headTop, setHeadTop] = useState(96)
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/api/auth/signin') }, [status, router])
 
@@ -46,6 +68,22 @@ export default function CuentaAlbertoPage() {
     }).catch(e => setError(String(e))).finally(() => setLoading(false))
   }
   useEffect(() => { if (status === 'authenticated') cargar() }, [status])   // eslint-disable-line
+
+  // Cabecera sticky justo bajo las barras fijas de arriba (TopNav + FinancieroNav): mido su altura real.
+  useEffect(() => {
+    const medir = () => {
+      let alto = 0, el = contentRef.current?.previousElementSibling
+      while (el) {
+        const pos = window.getComputedStyle(el).position
+        if (pos === 'sticky' || pos === 'fixed') alto += Math.round(el.getBoundingClientRect().height)
+        el = el.previousElementSibling
+      }
+      if (alto) setHeadTop(alto)
+    }
+    medir(); window.addEventListener('resize', medir)
+    const t = setTimeout(medir, 350)
+    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
+  }, [])
 
   // Saldo corrido: excluye anuladas. Saldo = Σ(haber − debe). Orden: el que devuelve el API (fecha, id).
   const conSaldo = useMemo(() => {
@@ -60,6 +98,7 @@ export default function CuentaAlbertoPage() {
   const saldoActual = useMemo(() => (movs || []).filter(m => !m.anulado).reduce((a, m) => a + num(m.haber) - num(m.debe), 0), [movs])
   const totDebe = useMemo(() => (movs || []).filter(m => !m.anulado).reduce((a, m) => a + num(m.debe), 0), [movs])
   const totHaber = useMemo(() => (movs || []).filter(m => !m.anulado).reduce((a, m) => a + num(m.haber), 0), [movs])
+  const filas = useMemo(() => aplicarFiltros(conSaldo, COLDEFS, filtros, orden), [conSaldo, filtros, orden])
 
   const abrirAlta = () => { setEditId(null); setForm({ ...VACIO, fecha: hoyISO() }); setFormErr(null); setFormOpen(true) }
   const abrirEdicion = (m) => {
@@ -112,7 +151,7 @@ export default function CuentaAlbertoPage() {
     XLSX.writeFile(wb, `Cuenta_Alberto_${hoy}.xlsx`)
   }
 
-  const th = { padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', borderBottom: '1px solid #E3E1D8', whiteSpace: 'nowrap', background: '#FAFAF8', position: 'sticky', top: 0, zIndex: 2 }
+  const th = { padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em', borderBottom: '1px solid #E3E1D8', whiteSpace: 'nowrap', background: '#FAFAF8', position: 'sticky', top: headTop, zIndex: 2 }
   const td = { padding: '7px 10px', fontSize: 12, color: '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', verticalAlign: 'top' }
   const numTd = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
@@ -121,7 +160,7 @@ export default function CuentaAlbertoPage() {
       <TopNav />
       <BotonVolver />
       <FinancieroNav activo="alberto" />
-      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px 20px 40px' }}>
+      <div ref={contentRef} style={{ maxWidth: 1400, margin: '0 auto', padding: '16px 20px 40px' }}>
 
         {/* Cabecera */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -143,6 +182,12 @@ export default function CuentaAlbertoPage() {
               style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #1c7d3f', background: movs.length ? '#EAF7EF' : '#eee', color: movs.length ? '#1c7d3f' : '#aaa', cursor: movs.length ? 'pointer' : 'default' }}>
               ⭳ Exportar Excel ({movs.length})
             </button>
+            {hayFiltro && (
+              <button onClick={limpiarTodo}
+                style={{ fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 8, border: '0.5px solid #C9A94B', background: '#FBF7EC', color: '#6b4e05', cursor: 'pointer' }}>
+                Quitar filtros
+              </button>
+            )}
           </div>
         </div>
 
@@ -170,29 +215,56 @@ export default function CuentaAlbertoPage() {
         {error && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#FDECEC', border: '0.5px solid #F1B0B0', color: '#9B1C1C', fontSize: 12 }}>{error}</div>}
 
         {/* Tabla */}
-        <div style={{ border: '1px solid #E3E1D8', borderRadius: 12, overflow: 'auto', maxHeight: '68vh', background: '#fff' }}>
+        <div style={{ border: '1px solid #E3E1D8', borderRadius: 12, background: '#fff' }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 1080 }}>
             <thead>
               <tr>
-                <th style={th}>Fecha</th>
-                <th style={th}>Tipo</th>
-                <th style={th}>Descripción</th>
-                <th style={th}>Procedencia</th>
-                <th style={th}>Destino</th>
-                <th style={{ ...th, textAlign: 'right' }}>Debe</th>
-                <th style={{ ...th, textAlign: 'right' }}>Haber</th>
+                {['fecha', 'tipo', 'descripcion', 'procedencia', 'destino'].map(k => {
+                  const col = COLDEFS.find(c => c.key === k)
+                  return (
+                    <th key={k} style={{ ...th, verticalAlign: 'top', zIndex: fOpen === k ? 6 : 2 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {col.label}{orden?.key === k ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        <HeaderFilter col={col} movs={conSaldo} state={filtros[k]} setState={v => setFiltros(f => ({ ...f, [k]: v }))}
+                          open={fOpen} setOpen={setFOpen} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                      </span>
+                    </th>
+                  )
+                })}
+                {['debe', 'haber'].map(k => {
+                  const col = COLDEFS.find(c => c.key === k)
+                  return (
+                    <th key={k} style={{ ...th, textAlign: 'right', verticalAlign: 'top', zIndex: fOpen === k ? 6 : 2 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {col.label}{orden?.key === k ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        <HeaderFilter col={col} movs={conSaldo} state={filtros[k]} setState={v => setFiltros(f => ({ ...f, [k]: v }))}
+                          open={fOpen} setOpen={setFOpen} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                      </span>
+                    </th>
+                  )
+                })}
                 <th style={{ ...th, textAlign: 'right' }}>Saldo</th>
-                <th style={th}>Referencia</th>
-                <th style={th}>Estado</th>
+                {['referencia', 'estado'].map(k => {
+                  const col = COLDEFS.find(c => c.key === k)
+                  return (
+                    <th key={k} style={{ ...th, verticalAlign: 'top', zIndex: fOpen === k ? 6 : 2 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {col.label}{orden?.key === k ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        <HeaderFilter col={col} movs={conSaldo} state={filtros[k]} setState={v => setFiltros(f => ({ ...f, [k]: v }))}
+                          open={fOpen} setOpen={setFOpen} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                      </span>
+                    </th>
+                  )
+                })}
                 {puedeEditar && <th style={{ ...th, textAlign: 'center' }}>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={puedeEditar ? 11 : 10} style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Cargando…</td></tr>
-              ) : conSaldo.length === 0 ? (
-                <tr><td colSpan={puedeEditar ? 11 : 10} style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>Sin movimientos todavía. {puedeEditar && 'Pulsa "Nuevo movimiento" para empezar.'}</td></tr>
-              ) : conSaldo.map(m => {
+              ) : filas.length === 0 ? (
+                <tr><td colSpan={puedeEditar ? 11 : 10} style={{ padding: 30, textAlign: 'center', color: '#888780', fontSize: 13 }}>{hayFiltro ? 'Sin resultados con los filtros aplicados.' : <>Sin movimientos todavía. {puedeEditar && 'Pulsa "Nuevo movimiento" para empezar.'}</>}</td></tr>
+              ) : filas.map(m => {
                 const anul = !!m.anulado
                 const strike = anul ? { textDecoration: 'line-through', color: '#B4B2A9' } : {}
                 return (
