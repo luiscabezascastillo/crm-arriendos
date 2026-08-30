@@ -3,6 +3,10 @@ import JSZip from "jszip";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/src/lib/supabase";
 
+// VERSION: 2026-08-28 · runtime nodejs + maxDuration 60s: la exportación creció (~3.500 msgs) y la ruta se cortaba por tiempo, dejando fuera los meses recientes (jul-ago). Upsert que ACTUALIZA (no ignora) para que un re-import complete lo que falte.
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 function normalizarTexto(texto) {
   return texto
     .toLowerCase()
@@ -205,7 +209,7 @@ export async function POST(request) {
         .from("control_asistencia_eventos")
         .upsert(chunk, {
           onConflict: "hash_mensaje",
-          ignoreDuplicates: true,
+          ignoreDuplicates: false,
         })
         .select("id");
 
