@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v7 · 2026-08-30 · Nueva columna "Tipo" (tipo_multa: FIJO UF/FIJO PESO/%) entre Multa y Situación. Hereda v6.
 // VERSION: v6 · 2026-08-30 · Cabecera de tabla STICKY bajo TopNav+pestañas (top 103); columna adapta unidad (UF/$/%) y muestra total en UF si tipo_multa=FIJO UF. Hereda v5.
 // VERSION: v5 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el modal → Bitácora, además de la carta. Hereda v4.
 // VERSION: v4 · 2026-08-27 · "Probar (a mí)" abre la MISMA ventana de revisión; la prueba se lanza desde ahí (sin cargar cartola). Hereda v3.
@@ -178,7 +179,7 @@ function MultasView() {
                   <th style={thS}>Perfil</th><th style={{ ...thS, textAlign: 'right' }}>A cobrar</th>
                   <th style={{ ...thS, textAlign: 'right' }}>Falta hoy</th><th style={{ ...thS, textAlign: 'right' }}>Días</th>
                   <th style={{ ...thS, textAlign: 'right' }}>Tasa/día</th><th style={{ ...thS, textAlign: 'right' }}>Multa</th>
-                  <th style={thS}>Situación</th><th style={thS}>Acción</th>
+                  <th style={thS}>Tipo</th><th style={thS}>Situación</th><th style={thS}>Acción</th>
                 </tr></thead>
                 <tbody>
                   {data.morosos.map(m => {
@@ -195,6 +196,7 @@ function MultasView() {
                         <td style={numTd}>{m.dias_atraso || '—'}</td>
                         <td style={numTd}>{m.multa_diaria == null ? '—' : (m.tipo_multa === 'FIJO UF' ? m.multa_diaria + ' UF' : m.tipo_multa === 'FIJO PESO' ? P(m.multa_diaria) + '/d' : m.multa_diaria + '%')}</td>
                         <td style={{ ...numTd, fontWeight: 800, color: m.multa > 0 ? C.rojo : C.sub }} title={m.tipo_multa === 'FIJO UF' && m.multa_uf ? (m.multa_uf + ' UF · ref. valor UF día 01; se paga al valor UF del día de pago') : undefined}>{m.multa > 0 ? P(m.multa) : '—'}{m.tipo_multa === 'FIJO UF' && m.multa_uf ? <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: C.sub }}>{m.multa_uf} UF</span> : null}</td>
+                        <td style={td}>{m.tipo_multa ? <span style={{ fontSize: 11, fontWeight: 700, color: m.tipo_multa === 'FIJO UF' ? '#185FA5' : C.txt, background: m.tipo_multa === 'FIJO UF' ? '#EAF2FB' : C.panel, padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>{m.tipo_multa}</span> : <span style={{ fontSize: 11, color: C.sub }}>%</span>}</td>
                         <td style={td}>{badge(BUCKET[m.bucket])} {badge(ESTADO[m.estado])}{vencido ? <span style={{ fontSize: 10, color: C.rojo, fontWeight: 700, display: 'block', marginTop: 2 }}>plazo vencido</span> : (m.estado === 'avisada' && m.plazo_hasta ? <span style={{ fontSize: 10, color: C.ambar, display: 'block', marginTop: 2 }}>hasta {ddmm(m.plazo_hasta)}</span> : null)}</td>
                         <td style={td}>
                           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
