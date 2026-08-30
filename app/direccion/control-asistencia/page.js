@@ -1,4 +1,6 @@
 "use client";
+// VERSION: 2026-08-28 · Importar WhatsApp: zona de arrastrar-soltar el ZIP + clic para elegir; el nombre del archivo ya no importa (la fecha sale del contenido del chat). Hereda versión previa.
+
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,6 +23,7 @@ function hora(valor) {
 
 export default function ControlAsistenciaPage() {
   const [file, setFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dashboard, setDashboard] = useState(null);
@@ -127,21 +130,52 @@ export default function ControlAsistenciaPage() {
         <h2>Importar WhatsApp</h2>
 
         <p style={{ color: "#666" }}>
-          Subir archivo ZIP exportado sin multimedia con formato
-          YYYYMMDD_HHMM.zip.
+          Sube el ZIP exportado de WhatsApp (sin multimedia). El nombre del
+          archivo da igual: la fecha se toma del propio chat.
         </p>
 
-        <input
-          type="file"
-          accept=".zip"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-
-        {file && (
-          <div style={{ marginTop: 12, color: "#444" }}>
-            Archivo seleccionado: <b>{file.name}</b>
-          </div>
-        )}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) setFile(f);
+          }}
+          onClick={() => document.getElementById("zipInput")?.click()}
+          style={{
+            marginTop: 12,
+            padding: "26px 18px",
+            border: "2px dashed " + (dragOver ? "#1D9E75" : "#cbd5e1"),
+            borderRadius: 12,
+            background: dragOver ? "#ECFDF5" : "#F9FAFB",
+            textAlign: "center",
+            cursor: "pointer",
+            color: "#555",
+            fontSize: 14,
+          }}
+        >
+          <div style={{ fontSize: 26, marginBottom: 6 }}>📎</div>
+          {file ? (
+            <>
+              Archivo listo: <b>{file.name}</b>
+              <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>Arrastra otro o haz clic para cambiarlo</div>
+            </>
+          ) : (
+            <>
+              Arrastra aquí el ZIP de WhatsApp
+              <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>o haz clic para seleccionarlo · el nombre da igual</div>
+            </>
+          )}
+          <input
+            id="zipInput"
+            type="file"
+            accept=".zip"
+            style={{ display: "none" }}
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+          />
+        </div>
 
         <button
           onClick={importarZip}
