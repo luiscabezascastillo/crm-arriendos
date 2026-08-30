@@ -13,6 +13,7 @@
 // VERSION: v11 · 2026-08-19 · Numeración correlativa con Nº de inicio configurable y continua entre bloques. Hereda v10.
 // VERSION: v10 · 2026-08-19 · Export Nubox en .xls (SheetJS, cabecera plantilla, Fecha DD/MM/AAAA, K-Q vacías), elección de numeración (0 auto / 1,2,3…), nombre cargaNubox-yyyymmdd-N. Hereda v9.
 // VERSION: v9 · 2026-08-19 · Modal Previsualización Nubox z-index 1000 (tapaba el TopNav z100 / menús z200). Hereda v8.
+// VERSION: v9 · 2026-08-30 · Alberto activo (boton Regenerar -> contab_generar_alberto). Hereda v8.
 // VERSION: v8 · 2026-08-19 · Caja SII con boton "Conciliar F29<->SA" (accion -> /contab/f29-sa) en vez de pronto. Hereda v7.
 // VERSION: v7 · 2026-08-19 · Caja Chica activa (botón Regenerar). Hereda v6.
 // VERSION: v6 · 2026-08-19 · Rejilla 2 columnas + fondo propio, 4 cajas nuevas (SII/Tarjeta/Facturas Int/Alberto) en pronto, y boton "Pendiente de clasificar" -> /contab/pendiente. Hereda v5.
@@ -70,7 +71,7 @@ const ORIGENES = [
   { id: 'sii',          nombre: 'SII',           desc: 'F29 / impuestos SII',                   activo: false, accion: '/procesos/financiero/contab/f29-sa' },
   { id: 'tarjeta',      nombre: 'Tarjeta',       desc: 'Tarjeta de crédito Santander (…2494)',  activo: false },
   { id: 'facturas_int', nombre: 'Facturas Int.', desc: 'Facturas internacionales de servicios', activo: false },
-  { id: 'alberto',      nombre: 'Alberto',       desc: 'Cuenta corriente del propietario',      activo: false },
+  { id: 'alberto',      nombre: 'Alberto',       desc: 'Cuenta corriente del propietario',      activo: true  },
   { id: 'caja_chica',   nombre: 'Caja Chica',    desc: 'Movimientos de caja chica',             activo: true  },
   { id: 'global',       nombre: 'Global 66',     desc: 'Movimientos Global 66',                 activo: false },
 ]

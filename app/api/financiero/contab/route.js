@@ -1,5 +1,6 @@
 // VERSION: v11 · 2026-08-27 · DELETE /api/financiero/contab: ?todo=1 borra TODO lo generado (o ?periodo/?anio para acotar); comprobantes+lineas, solo EDITORES, regenerable. Hereda v10.
 // VERSION: v10 · 2026-08-20 · cuentaNubox: si la cuenta trae el nombre pegado ("4201-46 CONSERVADOR...") se queda solo con el codigo (Nubox no lo encontraba). Hereda v9.
+// VERSION: v10 · 2026-08-30 · Origen 'alberto' -> contab_generar_alberto (c/c del socio: Aporte DEBE 2107-02/HABER 2112-01; Descuento admin DEBE 2112-01/HABER 1104-02-0001). Hereda v9.
 // VERSION: v9 · 2026-08-20 · cuentaNubox: en vez de truncar el 3er nivel al padre, RELLENA la analitica a 4 digitos (4201-01-02 -> 4201-01-0002). Nubox tiene las hijas dadas de alta y obliga a imputar en ellas, no en el padre. Hereda v8.
 // VERSION: v8 · 2026-08-20 · Previsualizacion: columna centro_costo tambien en blanco (coincide con lo que va a Nubox; el CC real queda en campo ccb solo de referencia). Hereda v7.
 // VERSION: v8 · 2026-08-26 · Origen 'mandato' -> contab_generar_mandato (nivel 2: Debe 2107-02 / Haber 1104-01 por CCB). Hereda v7.
@@ -37,6 +38,7 @@ const GENERADORES = {
   sa:      'contab_generar_sa',
   caja_chica: 'contab_generar_caja_chica',
   mandato: 'contab_generar_mandato',
+  alberto: 'contab_generar_alberto',
 }
 
 const LIMITE_NUBOX = 4950 // líneas máximas por bloque de importación (Nubox admite <5000; margen)
