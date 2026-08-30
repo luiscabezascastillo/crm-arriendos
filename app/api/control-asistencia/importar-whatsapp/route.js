@@ -198,39 +198,24 @@ export async function POST(request) {
       };
     });
 
+    // Upsert por lotes: la base deduplica por hash_mensaje (los ya existentes se ignoran, se insertan solo los
+    // nuevos). Va en el CUERPO de la peticion, sin URL gigante. Con maxDuration=60 no se corta por tiempo.
     const lote = 500;
     let insertados = 0;
+    let duplicados = 0;
 
-    // 1) Qué hashes existen ya, para insertar SOLO lo nuevo. Antes se re-procesaba TODO el historial en cada
-    //    subida (~3.500 filas) y la funcion podia cortarse por tiempo dejando fuera los meses recientes.
-    const yaExisten = new Set();
-    const todosHashes = eventos.map((e) => e.hash_mensaje);
-    for (let i = 0; i < todosHashes.length; i += lote) {
-      const trozo = todosHashes.slice(i, i + lote);
-      const { data: exist, error: eSel } = await supabaseAdmin
-        .from("control_asistencia_eventos")
-        .select("hash_mensaje")
-        .in("hash_mensaje", trozo);
-      if (eSel) {
-        return NextResponse.json({ ok: false, error: eSel.message }, { status: 500 });
-      }
-      for (const r of exist || []) yaExisten.add(r.hash_mensaje);
-    }
-
-    // 2) Insertar solo los nuevos.
-    const nuevos = eventos.filter((e) => !yaExisten.has(e.hash_mensaje));
-    for (let i = 0; i < nuevos.length; i += lote) {
-      const chunk = nuevos.slice(i, i + lote);
+    for (let i = 0; i < eventos.length; i += lote) {
+      const chunk = eventos.slice(i, i + lote);
       const { data: inserted, error } = await supabaseAdmin
         .from("control_asistencia_eventos")
-        .insert(chunk)
+        .upsert(chunk, { onConflict: "hash_mensaje", ignoreDuplicates: true })
         .select("id");
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       }
       insertados += inserted?.length || 0;
+      duplicados += chunk.length - (inserted?.length || 0);
     }
-    const duplicados = eventos.length - nuevos.length;
 
     const noValidos = eventos.filter(
       (e) => e.tipo === "MENSAJE_NO_VALIDO"
