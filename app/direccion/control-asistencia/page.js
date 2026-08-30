@@ -64,20 +64,33 @@ export default function ControlAsistenciaPage() {
     setLoading(true);
     setResultado(null);
 
-    const formData = new FormData();
-    formData.append("file", file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const res = await fetch("/api/control-asistencia/importar-whatsapp", {
-      method: "POST",
-      body: formData,
-    });
+      const res = await fetch("/api/control-asistencia/importar-whatsapp", {
+        method: "POST",
+        body: formData,
+      });
 
-    const data = await res.json();
+      const raw = await res.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { ok: false, error: `Respuesta no valida del servidor (HTTP ${res.status}): ${raw.slice(0, 300)}` };
+      }
+      if (!res.ok && data.ok !== false) {
+        data = { ok: false, error: data.error || `Error HTTP ${res.status}` };
+      }
 
-    setLoading(false);
-    setResultado(data);
-
-    await cargarDashboard();
+      setResultado(data);
+      if (data.ok) await cargarDashboard();
+    } catch (e) {
+      setResultado({ ok: false, error: "No se pudo importar: " + (e?.message || String(e)) });
+    } finally {
+      setLoading(false);
+    }
   }
 
   const detalleFiltrado = useMemo(() => {
