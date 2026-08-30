@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-30 · Cabecera de tabla STICKY bajo TopNav+pestañas (top 103).
 // VERSION: v7 · 2026-08-28 · Filtros por columna estilo Excel (motor lib/filtroExcel, como CC1/SA) + Limpiar filtros + contador. Hereda v6.
 // VERSION: v6 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el drawer → Bitácora, además del email. Hereda v5.
 // VERSION: v5 · 2026-08-27 · "Probar (a mí)" y "Enviar" abren la MISMA ventana de revisión; la prueba se lanza desde ahí. Hereda v4.
@@ -105,6 +106,7 @@ export default function DiferenciasView() {
   }
 
   const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, color: C.sub, textTransform: 'uppercase', letterSpacing: '.03em', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
+  const thS = { ...th, position: 'sticky', top: 103, zIndex: 40, background: '#f4f6f9' }   // cabecera sticky bajo TopNav(52)+pestañas(51)
   const td = { fontSize: 13, color: C.txt, padding: '9px 10px', borderBottom: '1px solid #EFEDE6' }
   const numTd = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
   const rs = data?.resumen
@@ -149,13 +151,13 @@ export default function DiferenciasView() {
               {hayAlguno && <button onClick={limpiarTodo} style={{ padding: '6px 11px', borderRadius: 7, border: '1px solid ' + C.line, background: C.ambarBg, fontSize: 12, color: C.ambar, cursor: 'pointer', fontWeight: 700 }}>✕ Limpiar filtros</button>}
               <span style={{ fontSize: 12, color: C.sub }}>{filtradas.length} de {_filas.length}</span>
             </div>
-            <div style={{ overflowX: 'auto', border: '1px solid ' + C.line, borderRadius: 10 }}>
+            <div style={{ border: '1px solid ' + C.line, borderRadius: 10 }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 980 }}>
                 <thead><tr>
-                  <th style={th}>{HFL('idadmon')}</th><th style={th}>{HFL('arrendatario')}</th><th style={th}>{HFL('propiedad')}</th>
-                  <th style={{ ...th, textAlign: 'right' }}>{HFL('base')}</th><th style={{ ...th, textAlign: 'right' }}>{HFL('recibido')}</th>
-                  <th style={{ ...th, textAlign: 'right' }}>{HFL('pct_pagado')}</th><th style={{ ...th, textAlign: 'right' }}>{HFL('diferencia')}</th>
-                  <th style={{ ...th, textAlign: 'right', background: C.naranjaBg }}>{HFL('saldo_acumulado')}</th><th style={th}>{HFL('reajuste')}</th><th style={th}>{HFL('estado')}</th>
+                  <th style={thS}>{HFL('idadmon')}</th><th style={thS}>{HFL('arrendatario')}</th><th style={thS}>{HFL('propiedad')}</th>
+                  <th style={{ ...thS, textAlign: 'right' }}>{HFL('base')}</th><th style={{ ...thS, textAlign: 'right' }}>{HFL('recibido')}</th>
+                  <th style={{ ...thS, textAlign: 'right' }}>{HFL('pct_pagado')}</th><th style={{ ...thS, textAlign: 'right' }}>{HFL('diferencia')}</th>
+                  <th style={{ ...thS, textAlign: 'right', background: C.naranjaBg }}>{HFL('saldo_acumulado')}</th><th style={thS}>{HFL('reajuste')}</th><th style={thS}>{HFL('estado')}</th>
                 </tr></thead>
                 <tbody>
                   {filtradas.length === 0 ? (

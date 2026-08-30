@@ -40,7 +40,7 @@
 //   Cabecera "Cobranza de {tipo} · situación al {fecha, hora}". Columna "Último abono". Toggles vigente/término,
 //   sin_cobrador resaltado. Inicios sigue disponible como sub-vista. Servicios enlaza a /op/deudas.
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { HeaderFilter, filtroActivo, aplicarFiltros } from '@/lib/filtroExcel'
 
@@ -224,6 +224,8 @@ function VistaCobranza({ tipo }) {
   const [verTermino, setVerTermino] = useState(true)
   const [gestionar, setGestionar] = useState(null)   // fila seleccionada para el panel
   const [resumenMap, setResumenMap] = useState({})   // idadmon -> gestiones ya hechas
+  const cabRef = useRef(null)                        // mide la altura real de la cabecera-resumen sticky
+  const [cabH, setCabH] = useState(120)
 
   useEffect(() => {
     let vivo = true
@@ -238,6 +240,15 @@ function VistaCobranza({ tipo }) {
       .catch(() => {})
     return () => { vivo = false }
   }, [tipo])
+
+  useEffect(() => {
+    const el = cabRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const upd = () => setCabH(el.offsetHeight)
+    upd()
+    const ro = new ResizeObserver(upd); ro.observe(el)
+    return () => ro.disconnect()
+  }, [data, verVigente, verTermino, tipo])
 
   const filas = data?.filas || []
   const rv = data?.resumen?.vigente || {}
@@ -261,7 +272,7 @@ function VistaCobranza({ tipo }) {
 
   return (
     <div>
-      <div style={stickyCab}>
+      <div style={stickyCab} ref={cabRef}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 10, marginBottom: (data && moros.length > 0) ? 12 : 0, borderBottom: '1px solid ' + C.line }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 15, fontWeight: 700 }}>{TITULO_TIPO[tipo]}</span>
@@ -307,7 +318,7 @@ function VistaCobranza({ tipo }) {
                   {r.con_deuda || 0} con deuda · {r.al_dia || 0} al día · {r.sobrepago || 0} a revisar · deuda total {money(r.total_deuda)}
                 </span>
               </div>
-              <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} grupo={g} onGestionar={setGestionar} pendMap={pendMap} />
+              <Tabla filas={filas.filter(f => f.grupo === g)} tipo={tipo} grupo={g} onGestionar={setGestionar} pendMap={pendMap} theadTop={100 + cabH} />
             </div>
           ))}
 
@@ -323,7 +334,7 @@ function VistaCobranza({ tipo }) {
   )
 }
 
-function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
+function Tabla({ filas, tipo, grupo, onGestionar, pendMap, theadTop = 103 }) {
   // Estado de filtro/orden PROPIO de esta tabla (como una mini-CC1): cada grupo (Vigentes/Término)
   // filtra y ordena de forma independiente. Así no hay colisión entre las dos tablas de la vista.
   const [filters, setFilters] = useState({})
@@ -371,6 +382,7 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
   const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
+  const thS = { ...th, position: 'sticky', top: theadTop, zIndex: 40, background: '#f4f6f9' }
   const lbl = { fontSize: 11, fontWeight: 600, color: C.sub }
 
   // Cabecera reutilizable: etiqueta + control de filtro Excel para una columna.
@@ -403,16 +415,16 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap }) {
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1060 }}>
           <thead>
             <tr>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>IDADMON</span>{HF('idadmon')}</span></th>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Propietario</span>{HF('propietario')}<span style={{ color: C.line }}>/</span><span style={lbl}>Inmueble</span>{HF('inmueble')}</span></th>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Arrendatario</span>{HF('arrendatario')}</span></th>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Est.</span>{HF('estado')}</span></th>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Último abono</span>{HF('ultimo_abono')}</span></th>
-              {esInicios && <th style={{ ...th, textAlign: 'right' }}>Últ. inicio</th>}
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Deuda</span>{HF('deuda')}</span></th>
-              <th style={th}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Situación</span>{HF('clase')}</span></th>
-              <th style={th}>Próxima acción</th>
-              <th style={{ ...th, textAlign: 'center' }}>Gestión</th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>IDADMON</span>{HF('idadmon')}</span></th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Propietario</span>{HF('propietario')}<span style={{ color: C.line }}>/</span><span style={lbl}>Inmueble</span>{HF('inmueble')}</span></th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Arrendatario</span>{HF('arrendatario')}</span></th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Est.</span>{HF('estado')}</span></th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Último abono</span>{HF('ultimo_abono')}</span></th>
+              {esInicios && <th style={{ ...thS, textAlign: 'right' }}>Últ. inicio</th>}
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Deuda</span>{HF('deuda')}</span></th>
+              <th style={thS}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={lbl}>Situación</span>{HF('clase')}</span></th>
+              <th style={thS}>Próxima acción</th>
+              <th style={{ ...thS, textAlign: 'center' }}>Gestión</th>
             </tr>
           </thead>
           <tbody>
@@ -955,6 +967,7 @@ function SaldosFavor() {
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
   const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
+  const thS = { ...th, position: 'sticky', top: 103, zIndex: 40, background: '#f4f6f9' }   // cabecera sticky bajo TopNav+pestañas
 
   const renderFila = (f) => {
     const lista = sugs(f.idadmon)
@@ -1012,12 +1025,12 @@ function SaldosFavor() {
         <span style={{ fontSize: 12, color: C.sub }}>{resumen.n} contratos · a favor {money(Math.abs(resumen.total))}</span>
       </div>
       {filas.length === 0 ? <div style={{ fontSize: 13, color: C.sub, padding: '8px 0' }}>Sin casos.</div> : (
-        <div style={{ border: '1px solid ' + C.line, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ border: '1px solid ' + C.line, borderRadius: 10 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead><tr>
-              <th style={th}>IDADMON</th><th style={th}>Propietario</th><th style={th}>Inmueble</th>
-              <th style={th}>Arrendatario</th><th style={{ ...th, textAlign: 'right' }}>Saldo a favor</th>
-              <th style={{ ...th, textAlign: 'center' }}>Sugerencias</th>
+              <th style={thS}>IDADMON</th><th style={thS}>Propietario</th><th style={thS}>Inmueble</th>
+              <th style={thS}>Arrendatario</th><th style={{ ...thS, textAlign: 'right' }}>Saldo a favor</th>
+              <th style={{ ...thS, textAlign: 'center' }}>Sugerencias</th>
             </tr></thead>
             <tbody>{filas.map(renderFila)}</tbody>
           </table>
@@ -1197,16 +1210,17 @@ function Bitacora() {
 
   const th = { fontSize: 11, fontWeight: 600, color: C.sub, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid ' + C.line, whiteSpace: 'nowrap' }
   const td = { fontSize: 12, padding: '8px 10px', borderBottom: '0.5px solid ' + C.line, verticalAlign: 'top' }
+  const thS = { ...th, position: 'sticky', top: 103, zIndex: 40, background: '#f4f6f9' }   // cabecera sticky bajo TopNav+pestañas
 
   return (
     <div>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Bitácora de gestiones · {gestiones.length}</div>
-      <div style={{ overflowX: 'auto', border: '0.5px solid ' + C.line, borderRadius: 8 }}>
+      <div style={{ border: '0.5px solid ' + C.line, borderRadius: 8 }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 820 }}>
           <thead><tr>
-            <th style={th}>Fecha</th><th style={th}>IDADMON</th><th style={th}>Destinatario</th>
-            <th style={th}>Canal</th><th style={th}>Etapa</th><th style={th}>Asunto</th>
-            <th style={th}>Resultado</th><th style={th}>Usuario</th>
+            <th style={thS}>Fecha</th><th style={thS}>IDADMON</th><th style={thS}>Destinatario</th>
+            <th style={thS}>Canal</th><th style={thS}>Etapa</th><th style={thS}>Asunto</th>
+            <th style={thS}>Resultado</th><th style={thS}>Usuario</th>
           </tr></thead>
           <tbody>
             {gestiones.map(g => (
