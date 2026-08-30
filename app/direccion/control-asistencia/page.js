@@ -192,19 +192,34 @@ export default function ControlAsistenciaPage() {
 
         <button
           onClick={importarZip}
-          disabled={loading}
+          disabled={loading || !file}
           style={{
             marginTop: 16,
-            padding: "8px 14px",
+            padding: "10px 18px",
             borderRadius: 8,
             border: "none",
-            background: loading ? "#aaa" : "#1D9E75",
+            background: (loading || !file) ? "#aaa" : "#1D9E75",
             color: "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: (loading || !file) ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Importando..." : "Importar ZIP"}
+          {loading ? "Procesando…" : "Pasar a CRM"}
         </button>
+
+        {loading && (
+          <div style={{ marginTop: 10, color: "#555", fontSize: 13 }}>
+            Procesando el chat e insertando en el CRM… puede tardar unos segundos, no cierres la página.
+          </div>
+        )}
+        {!loading && resultado && (
+          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: resultado.ok === false ? "#B91C1C" : "#065F46" }}>
+            {resultado.ok === false
+              ? "⚠ " + (resultado.error || "No se pudo importar")
+              : "✓ Pasado al CRM: " + (resultado.mensajes_nuevos ?? 0) + " nuevos · " + (resultado.mensajes_duplicados ?? 0) + " ya estaban · " + (resultado.mensajes_no_validos ?? 0) + " no reconocidos."}
+          </div>
+        )}
       </section>
 
       {resultado && (
