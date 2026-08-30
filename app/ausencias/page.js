@@ -1,9 +1,13 @@
 'use client'
+// VERSION: v3 · 2026-08-30 · Añade TopNav + FinancieroNav (activo=ausencias) para verse dentro del módulo financiero. Hereda v2.
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
+import PersonalNav from '../components/ui/PersonalNav'
+import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 // Acceso: Dirección + Karina (RRHH)
 const ACCESO_EMAILS = [
   'alberto.cabezas@fondocapital.com',
@@ -32,6 +36,8 @@ export default function AusenciasPage() {
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [showFin, setShowFin] = useState(false)
+  useEffect(() => { setShowFin(new URLSearchParams(window.location.search).get('fin') === '1') }, [])
 
   const [form, setForm] = useState({
     trabajador_id: '',
@@ -137,9 +143,13 @@ export default function AusenciasPage() {
   const labelStyle = { fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 4, display: 'block' }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 20px' }}>
+    <>
+      <TopNav />
+      {showFin && <FinancieroNav activo="ausencias" />}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 20px' }}>
+      <PersonalNav activo="ausencias" fin={showFin} />
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--gray-800)', margin: 0 }}>Gestión de ausencias</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--gray-800)', margin: 0 }}>Gestión de vacaciones y ausencias</h1>
         <div style={{ fontSize: 13, color: 'var(--gray-400)', marginTop: 4 }}>
           Vacaciones, licencias médicas y permisos del personal
         </div>
@@ -238,5 +248,6 @@ export default function AusenciasPage() {
         )}
       </div>
     </div>
+    </>
   )
 }

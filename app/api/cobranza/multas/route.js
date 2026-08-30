@@ -1,3 +1,4 @@
+// VERSION: v7 · 2026-08-30 · Lee tipo_multa: FIJO UF = md(UF) x días x valor_uf(día 01 del mes, indices_mensuales); FIJO PESO = md x días; vacío = % clásico. Expone tipo_multa/multa_uf/valor_uf_ref. Hereda v6.
 // VERSION: v6 · 2026-08-27 · FIX: `cuentas` se traía sin paginar (>1000 filas truncaba) -> perfil/tramos podían salir mal. Ahora paginado. Hereda v5.
 // VERSION: v5 · 2026-08-26 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
@@ -149,12 +150,15 @@ export async function GET(req) {
   if (!ids.length) return Response.json({ ok: true, periodo, hoy: isoUTC(hoy.t), morosos: [], plantillas: [], resumen: { total: 0 } })
 
   // 2) Datos del contrato + 3) cuentas + 4) estado guardado (en paralelo)
-  const [arrRes, mmRes, plaRes, ctasAll] = await Promise.all([
-    admin.from('datos_arriendos').select('idadmon, estado, arrendatario, rut, mail_arrendatario, movil, avalista, rut_avalista, mail_avalista, telefono_avalista, inmueble, propietario, multa_diaria, quien_cobra, media_retraso').in('idadmon', ids),
+  const mesISO01 = `${anio}-${String(mes).padStart(2, '0')}-01`   // día 1 del mes del periodo, para leer el valor UF (FIJO UF)
+  const [arrRes, mmRes, plaRes, ctasAll, ufRes] = await Promise.all([
+    admin.from('datos_arriendos').select('idadmon, estado, arrendatario, rut, mail_arrendatario, movil, avalista, rut_avalista, mail_avalista, telefono_avalista, inmueble, propietario, multa_diaria, tipo_multa, quien_cobra, media_retraso').in('idadmon', ids),
     admin.from('cobranza_multas').select('*').eq('periodo', periodo).in('idadmon', ids),
     admin.from('cobranza_plantillas').select('id, etapa, perfil, destinatario, departamento, asunto, cuerpo').like('etapa', 'multa_%'),
     cuentasDe(ids),
+    admin.from('indices_mensuales').select('valor_uf').eq('mes', mesISO01).maybeSingle(),
   ])
+  const valorUf = ufRes && ufRes.data && ufRes.data.valor_uf != null ? Number(ufRes.data.valor_uf) : 0
   if (arrRes.error) return Response.json({ error: 'datos_arriendos: ' + arrRes.error.message }, { status: 500 })
 
   const arrMap = {}; for (const a of (arrRes.data || [])) arrMap[a.idadmon] = a
@@ -191,7 +195,23 @@ export async function GET(req) {
       if (bal > TOL) { peso += bal * nd; diasAtraso += nd; tramos.push({ desde: isoUTC(ini), hasta: isoUTC(fin), dias: nd, saldo: Math.round(bal) }) }
     }
     const md = (a.multa_diaria == null || a.multa_diaria === '') ? null : n0(a.multa_diaria)
-    const multa = (md && md > 0) ? Math.round(peso * (md / 100)) : 0
+    const tipoMulta = String(a.tipo_multa || '').trim().toUpperCase()   // '' (=%) | 'FIJO UF' | 'FIJO PESO'
+    let multa = 0, multaUf = null, valorUfRef = null
+    if (md && md > 0) {
+      if (tipoMulta === 'FIJO UF') {
+        // Importe FIJO en UF por cada día de retraso. La magnitud en pesos se referencia al valor UF del día 01
+        // del mes (indices_mensuales); lo que realmente paga es el total en UF al valor UF del día de pago.
+        multaUf = Math.round(md * diasAtraso * 10000) / 10000
+        valorUfRef = valorUf > 0 ? valorUf : null
+        multa = valorUf > 0 ? Math.round(multaUf * valorUf) : 0
+      } else if (tipoMulta === 'FIJO PESO') {
+        // Importe FIJO en pesos por cada día de retraso (sin caso conocido aún; queda operativo).
+        multa = Math.round(md * diasAtraso)
+      } else {
+        // Modelo clásico: % diario sobre el saldo vivo ponderado por los días de cada tramo.
+        multa = Math.round(peso * (md / 100))
+      }
+    }
 
     // reconciliación con el FALTAN
     const recDif = Math.abs(obPagadoV - g.recibido)
@@ -215,7 +235,7 @@ export async function GET(req) {
       propiedad: g.inmueble || a.inmueble || '', propietario: g.propietario || a.propietario || '',
       base: aCobrar, recibido: Math.round(g.recibido), falta: Math.round(g.falta),
       pagado_ventana: Math.round(obPagadoV), saldo_hoy: Math.round(obHoy),
-      multa_diaria: md, dias_atraso: diasAtraso, multa, tramos,
+      multa_diaria: md, tipo_multa: tipoMulta || null, multa_uf: multaUf, valor_uf_ref: valorUfRef, dias_atraso: diasAtraso, multa, tramos,
       perfil: guardado?.perfil || perf.perfil, perfil_auto: perf.perfil,
       perfil_metrics: { meses_con_deuda: perf.mesesConDeuda, dia_medio: perf.diaMedio, saldo_actual: perf.saldoActual, renta_ref: perf.rentaRef, media_retraso: a.media_retraso ?? null },
       bucket, reconcilia_ok: reconciliaOk,

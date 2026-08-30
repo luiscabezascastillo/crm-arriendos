@@ -1,6 +1,8 @@
 'use client'
+// VERSION: 2026-08-30 · TopNav arriba (navegación global), como el resto de vistas.
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import TopNav from '../../../components/ui/TopNav'
 
 // Meses del desplegable: se generan solos (mes en curso + 12 hacia atrás). Ya no hay que
 // editar el código cada mes. Formato "MES AAAA" en mayúsculas, igual que antes.
@@ -261,6 +263,7 @@ export default function ServiciosLuzPage() {
 
   return (
     <div style={s.page}>
+      <TopNav />
       <div style={s.header}>
         <button style={s.backBtn} onClick={() => router.push('/op/deudas')}>← Volver a Deudas</button>
         <h1 style={s.title}>⚡ Cargar Luz (ENEL)</h1>

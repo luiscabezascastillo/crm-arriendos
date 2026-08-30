@@ -1,6 +1,8 @@
 'use client'
+// VERSION: 2026-08-30 · TopNav arriba (navegación global), como el resto de vistas.
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import TopNav from '../../../components/ui/TopNav'
 
 // VERSION: v4 · 2026-08-23 · Robustez del botón "Iniciar consulta": try/finally para que procesandoRef
 //   nunca quede colgado y bloquee clics futuros en silencio (causa de "pincho y no hace nada"). El guard
@@ -224,6 +226,7 @@ export default function ServiciosAguaPage() {
 
   return (
     <div style={s.page}>
+      <TopNav />
       <div style={s.header}>
         <button style={s.backBtn} onClick={() => router.push('/op/deudas')}>← Deudas</button>
         <h1 style={s.title}>💧 CONSULTA MASIVA AGUA — AGUAS ANDINAS</h1>

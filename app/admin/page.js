@@ -1,3 +1,5 @@
+// VERSION: 2026-08-30b · "Cargar datos inicio": el botón lee la Ficha de Datos para Nuevo Contrato (Word) pegada como texto (parseFichaInicio), con fallback al email de Neika; rellena arrendatario, aval, propietario, garantía, renta y fechas; check de IDADMON.
+// VERSION: 2026-08-30 · LOG CC1: "Multas" -> "% multas" y campo nuevo "Tipo multa" (Clásico/Agresivo/Normal -> datos_arriendos.tipo_multa) entre Multas y Paga aseo.
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
 'use client'
 // VERSION: v11 · 2026-08-14 · Cambiar estado: dos sub-estados nuevos del término, Q-Auditado y Q-Reclamado
@@ -101,7 +103,7 @@ const FORM_VACIO = {
   fecha2:'', cuota2:'', cobrada2:'', comment2:'',
   fecha3:'', cuota3:'', cobrada3:'', comment3:'',
   fecha4:'', cuota4:'', cobrada4:'', comment4:'',
-  cantidad_aceleracion:'', tipo_aceleracion:'', multa_diaria:'', texto_contrato:'',
+  cantidad_aceleracion:'', tipo_aceleracion:'', multa_diaria:'', tipo_multa:'', texto_contrato:'',
   media_retraso:'', comision_base:'', comision_iva:'', comision_total:'',
   c_especiales:'', comentario_comision:'', comision_cobrado:'', meses:'',
   cantidad:'', comentario2b:'', repeticion_idadmon:'', idadmon_siguiente:'',
@@ -113,11 +115,11 @@ const FORM_VACIO = {
 }
 
 /* ── Celda de input editable ── */
-function IC({ name, value, onChange, readOnly, type='text', width, bold, title }) {
+function IC({ name, value, onChange, readOnly, type='text', width, bold, title, placeholder }) {
   return (
     <input
       type={type} name={name} value={value ?? ''}
-      onChange={onChange} readOnly={readOnly}
+      onChange={onChange} readOnly={readOnly} placeholder={placeholder}
       title={title || (typeof value === 'string' ? value : '')}
       style={{
         ...inputCell,
@@ -458,6 +460,54 @@ function parseInicioEmail(texto) {
 
   return out
 }
+// ── Parser de la "Ficha de Datos para Nuevo Contrato" (Word) pegada como texto ──
+// El .docx pegado convierte cada tabla en líneas "Etiqueta\tValor". Se parsea por
+// bloques de sección (INMUEBLE / ARRENDATARIO / FIADOR / CONDICIONES / PLAZO).
+function parseFichaInicio(texto) {
+  const t = String(texto || '').replace(/\r/g, '')
+  const out = { arr: {}, aval: {} }
+  if (!/ficha de datos|arrendatario/i.test(t)) return out
+  out._hit = true
+  const sec = (re) => { const m = t.match(new RegExp('\\d+\\s*[·.\\-–]\\s*' + re + '[\\s\\S]*?(?=\\n\\s*\\d+\\s*[·.\\-–]\\s|$)', 'i')); return m ? m[0] : '' }
+  const vIn = (blk, lab) => { const m = blk.match(new RegExp('(?:^|\\n)[\\s>*·\\-]*' + lab + '[^\\n\\t:]*(?:\\t+|:)\\s*([^\\n]*)', 'i')); return m ? m[1].trim() : '' }
+  const NA = /^\s*(no\s*aplica|n\/a|sin\s+este\s+dato|[-—]{2,}\s*$)/i
+  const limpio = (s) => { s = String(s || '').trim(); return NA.test(s) ? '' : s }
+  const digs = (s) => (String(s || '').match(/\d/g) || []).join('')
+  const fechaDe = (s) => normFecha(String(s || '').replace(/[^\d/-]/g, ''))
+  const generoDe = (e) => { e = e.toLowerCase(); if (/o\b/.test(e)) return 'H'; if (/a\b/.test(e)) return 'M'; return '' }
+  const contacto = (s) => { let email = '', tel = ''; for (const p of String(s || '').split('/')) { if (/@/.test(p)) email = p.trim(); else if (/\d/.test(p)) tel = p.trim() } return { email, tel } }
+  const bInm = sec('INMUEBLE') || t, bArr = sec('ARRENDATARIO') || t, bAval = sec('(?:FIADOR|AVAL)'), bEco = sec('CONDICIONES') || t, bPlz = sec('PLAZO') || t
+  out.idadmon = limpio(vIn(bInm, 'IDADMON')).toUpperCase()
+  out.propietario = limpio(vIn(bInm, 'Propietario'))
+  const be = limpio(vIn(bInm, 'Bodega'))
+  if (be) { const nb = be.match(/bodega\D*(\d+)/i); if (nb) out.bodega = nb[1]; const ne = be.match(/estacionamiento\D*(\d+)/i); if (ne) out.estac = ne[1] }
+  out.arr.nombre = limpio(vIn(bArr, 'Nombre'))
+  out.arr.rut = limpio(vIn(bArr, 'RUT'))
+  out.arr.nacion = limpio(vIn(bArr, 'Nacionalidad'))
+  out.arr.estado = limpio(vIn(bArr, 'Estado civil'))
+  out.arr.genero = generoDe(out.arr.estado)
+  { const c = contacto(vIn(bArr, 'Email')); out.arr.email = limpio(c.email); out.arr.telefono = limpio(c.tel) }
+  out.arr.domHabit = limpio(vIn(bArr, 'Domicilio actual'))
+  out.arr.domLab = limpio(vIn(bArr, 'Domicilio laboral'))
+  if (bAval) {
+    const an = limpio(vIn(bAval, 'Nombre'))
+    if (an) {
+      out.aval.nombre = an
+      out.aval.rut = limpio(vIn(bAval, 'RUT'))
+      out.aval.nacion = limpio(vIn(bAval, 'Nacionalidad'))
+      out.aval.estado = limpio(vIn(bAval, 'Estado civil'))
+      out.aval.genero = generoDe(out.aval.estado)
+      const c = contacto(vIn(bAval, 'Email')); out.aval.email = limpio(c.email); out.aval.telefono = limpio(c.tel)
+      out.aval.domHabit = limpio(vIn(bAval, 'Domicilio'))
+    }
+  }
+  const renta = digs(vIn(bEco, 'Renta')); if (renta) { out.cuota = renta; out.unid = '$' }
+  const gar = digs(vIn(bEco, 'Garant')); if (gar) out.garantia_pedida = gar
+  out.fecha_inicio = fechaDe(vIn(bPlz, 'Fecha de inicio'))
+  if (out.fecha_inicio) out.termino_inicial = masUnAnoMenosUnDia(out.fecha_inicio)
+  return out
+}
+
 // dd-mm-aaaa (o dd/mm/aa) -> aaaa-mm-dd
 function normFecha(s) {
   const p = String(s).split(/[-/]/)
@@ -835,9 +885,16 @@ function AdminContent() {
       setMsg({ type: 'warn', text: `⚠ Este contrato está en estado "${form.estado}", no en P. Un inicio solo se carga sobre un IDADMON en captación (P). Revisa que el IDADMON sea el correcto.` })
       return
     }
-    const p = parseInicioEmail(textoEmail)
-    if (!p.fecha_inicio && !p.arr.nombre && !p.cuota) {
-      setMsg({ type: 'warn', text: 'No pude extraer datos del texto. Revisa que sea el email de inicio.' })
+    // Primero intenta la Ficha de Datos (Word); si no la reconoce, cae al email de Neika.
+    const pf = parseFichaInicio(textoEmail)
+    const p = pf._hit ? pf : parseInicioEmail(textoEmail)
+    if (!p.fecha_inicio && !(p.arr && p.arr.nombre) && !p.cuota) {
+      setMsg({ type: 'warn', text: 'No pude extraer datos del texto. Revisa que sea la Ficha de Datos del Word (o el email de inicio).' })
+      return
+    }
+    // Seguridad: si la Ficha trae IDADMON y no coincide con el que hay cargado, no rellenamos.
+    if (p.idadmon && form.idadmon && p.idadmon.toUpperCase() !== String(form.idadmon).toUpperCase()) {
+      setMsg({ type: 'warn', text: `⚠ La ficha es de ${p.idadmon} pero el IDADMON cargado es ${form.idadmon}. No se rellenó nada. Carga el IDADMON correcto.` })
       return
     }
     // Campos del contrato
@@ -856,6 +913,12 @@ function AdminContent() {
       ...(p.arr.rut         ? { rut: p.arr.rut } : {}),
       ...(p.arr.email       ? { mail_arrendatario: p.arr.email } : {}),
       ...(p.arr.telefono    ? { movil: p.arr.telefono } : {}),
+      // Datos de la Ficha (Word): propietario, garantía y aval
+      ...(p.propietario     ? { propietario: p.propietario } : {}),
+      ...(p.garantia_pedida ? { garantia_pedida: p.garantia_pedida } : {}),
+      ...(p.aval && p.aval.nombre   ? { avalista: p.aval.nombre } : {}),
+      ...(p.aval && p.aval.email    ? { mail_avalista: p.aval.email } : {}),
+      ...(p.aval && p.aval.telefono ? { telefono_avalista: p.aval.telefono } : {}),
     }))
     // Detalle del arrendatario 1 (personas.arr1)
     setPersonas(prev => ({
@@ -864,6 +927,7 @@ function AdminContent() {
         ...prev.arr1,
         ...(p.arr.nombre   ? { nombre: p.arr.nombre } : {}),
         ...(p.arr.rut      ? { rut: p.arr.rut } : {}),
+        ...(p.arr.nacion   ? { nacion: p.arr.nacion } : {}),
         ...(p.arr.estado   ? { estado: p.arr.estado } : {}),
         ...(p.arr.genero   ? { genero: p.arr.genero } : {}),
         ...(p.arr.email    ? { email: p.arr.email } : {}),
@@ -871,10 +935,21 @@ function AdminContent() {
         ...(p.arr.domHabit ? { domHabit: p.arr.domHabit } : {}),
         ...(p.arr.domLab   ? { domLab: p.arr.domLab } : {}),
       },
+      ...(p.aval && p.aval.nombre ? { aval1: {
+        ...prev.aval1,
+        nombre: p.aval.nombre,
+        ...(p.aval.rut      ? { rut: p.aval.rut } : {}),
+        ...(p.aval.nacion   ? { nacion: p.aval.nacion } : {}),
+        ...(p.aval.estado   ? { estado: p.aval.estado } : {}),
+        ...(p.aval.genero   ? { genero: p.aval.genero } : {}),
+        ...(p.aval.email    ? { email: p.aval.email } : {}),
+        ...(p.aval.telefono ? { telefono: p.aval.telefono } : {}),
+        ...(p.aval.domHabit ? { domHabit: p.aval.domHabit } : {}),
+      } } : {}),
     }))
     setBloqueado(false)   // desbloquea para que Neika revise y ajuste
     setModalEmailAbierto(false)
-    setMsg({ type: 'ok', text: '✓ Datos precargados desde el email. Revisa, completa lo que falte y pulsa GUARDAR.' })
+    setMsg({ type: 'ok', text: `✓ Datos precargados desde ${pf._hit ? 'la Ficha de Datos (Word)' : 'el email'}${p.idadmon ? ' · ' + p.idadmon : ''}. Revisa, completa lo que falte y pulsa GUARDAR.` })
   }
 
   // Rellenar la ficha desde el PDF del contrato (plantilla FCR). Solo prerellena; NO guarda ni activa.
@@ -1386,12 +1461,12 @@ function AdminContent() {
 
         {puedeEditarAhora && (
           <button onClick={() => { setTextoEmail(''); setModalEmailAbierto(true) }}
-            title="Pega el email de inicio de Neika y se rellenan los campos automáticamente"
+            title="Pega el contenido de la Ficha de Datos para Nuevo Contrato (Word): en el Word pulsa Ctrl+A y Ctrl+C, y aquí Ctrl+V. Se rellenan los campos automáticamente."
             style={{
               padding: '5px 14px', borderRadius: 5, border: 'none',
               background: '#2563a8', color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit',
-            }}>📩 Cargar datos email</button>
+            }}>📩 Cargar datos inicio</button>
         )}
 
         {puedeEditarAhora && (
@@ -1540,7 +1615,7 @@ function AdminContent() {
                     background: (cambiando || !nuevoEstado) ? '#9ca3af' : C.headerBg,
                     color: '#fff', fontSize: 12, fontWeight: 700,
                     cursor: (cambiando || !nuevoEstado) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                  }}>{cambiando ? 'Procesando…' : 'Aplicar cambio'}</button>
+                  }}>{cambiando ? 'Procesando…' : 'Aplicar cambio de estado'}</button>
               </>
             )
           })()}
@@ -1964,11 +2039,12 @@ function AdminContent() {
             <tr>
               <LB>Cláusula aceleración</LB>
               <td colSpan={3} style={inputCell}><IC name="tipo_aceleracion" value={form.tipo_aceleracion} onChange={handleChange} readOnly={roLog} /></td>
-              <LB right>Multas</LB>
-              <td style={inputCell}><IC name="multa_diaria" value={form.multa_diaria} onChange={handleChange} readOnly={roLog} type="number" /></td>
+              <LB right>% multas</LB>
+              <td style={inputCell}><IC name="multa_diaria" value={form.multa_diaria} onChange={handleChange} readOnly={roLog} type="number" placeholder="inserta el porcentaje en número" /></td>
+              <LB right>Tipo multa</LB>
+              <td style={inputCell}><SC name="tipo_multa" value={form.tipo_multa} onChange={handleChange} readOnly={roLog} options={['FIJO UF', 'FIJO PESO']} /></td>
               <LB right>Paga aseo</LB>
               <td style={inputCell}><SC name="aseo1" value={form.aseo1} onChange={handleChange} readOnly={roLog} options={['SI', 'NO']} /></td>
-              <td colSpan={2} style={{ ...inputCell, background: C.rowAlt }}></td>
               <LB>Especial</LB>
               <td colSpan={2} style={inputCell}><IC name="especial_a" value={form.especial_a} onChange={handleChange} readOnly={roLog} /></td>
             </tr>
@@ -2263,16 +2339,16 @@ function AdminContent() {
           <div onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 10, width: 'min(680px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
             <div style={{ background: C.headerBg, color: '#fff', padding: '10px 16px', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>📩 Cargar datos del email de inicio {form.idadmon ? `· ${form.idadmon}` : ''}</span>
+              <span>📩 Cargar datos de inicio (Ficha Word) {form.idadmon ? `· ${form.idadmon}` : ''}</span>
               <button type="button" onClick={() => setModalEmailAbierto(false)}
                 style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: 16 }}>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>
-                Pega el texto del email de inicio (el que envía Neika). Se rellenarán los campos del contrato y del arrendatario. Después revisa, completa lo que falte y pulsa <b>GUARDAR</b>. Solo funciona si el contrato está en <b>P</b>.
+                Abre la <b>Ficha de Datos para Nuevo Contrato</b> (Word), selecciona todo (<b>Ctrl+A</b>), cópialo (<b>Ctrl+C</b>) y pégalo aquí (<b>Ctrl+V</b>). Se rellenan los campos del contrato, del arrendatario y del aval. Después revisa, completa lo que falte y pulsa <b>GUARDAR</b>. (También sigue aceptando el email de inicio de Neika.) Solo funciona si el contrato está en <b>P</b>.
               </div>
               <textarea autoFocus value={textoEmail} onChange={e => setTextoEmail(e.target.value)}
-                placeholder="Pega aquí el email…"
+                placeholder="Pega aquí la Ficha de Datos del Word (Ctrl+A → Ctrl+C → Ctrl+V)…"
                 style={{ width: '100%', minHeight: 220, boxSizing: 'border-box', padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none', resize: 'vertical', color: '#1f2937' }}
               />
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

@@ -71,6 +71,10 @@ export default function DiferenciasView() {
       open={openFilter} setOpen={setOpenFilter} orden={orden} setOrden={setOrden}
       limpiarTodo={limpiarTodo} hayAlguno={hayAlguno} flotante />
   )
+  const HFL = (key) => {
+    const c = DIF_COLS.find(x => x.key === key)
+    return (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span>{c?.label}</span>{HF(key)}</span>)
+  }
 
   const sustituir = (txt, f) => String(txt || '')
     .replaceAll('{{arrendatario}}', f.arrendatario || '').replaceAll('{{propiedad}}', f.propiedad || '')
@@ -148,10 +152,10 @@ export default function DiferenciasView() {
             <div style={{ overflowX: 'auto', border: '1px solid ' + C.line, borderRadius: 10 }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 980 }}>
                 <thead><tr>
-                  <th style={th}>{HF('idadmon')}</th><th style={th}>{HF('arrendatario')}</th><th style={th}>{HF('propiedad')}</th>
-                  <th style={{ ...th, textAlign: 'right' }}>{HF('base')}</th><th style={{ ...th, textAlign: 'right' }}>{HF('recibido')}</th>
-                  <th style={{ ...th, textAlign: 'right' }}>{HF('pct_pagado')}</th><th style={{ ...th, textAlign: 'right' }}>{HF('diferencia')}</th>
-                  <th style={{ ...th, textAlign: 'right', background: C.naranjaBg }}>{HF('saldo_acumulado')}</th><th style={th}>{HF('reajuste')}</th><th style={th}>{HF('estado')}</th>
+                  <th style={th}>{HFL('idadmon')}</th><th style={th}>{HFL('arrendatario')}</th><th style={th}>{HFL('propiedad')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{HFL('base')}</th><th style={{ ...th, textAlign: 'right' }}>{HFL('recibido')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{HFL('pct_pagado')}</th><th style={{ ...th, textAlign: 'right' }}>{HFL('diferencia')}</th>
+                  <th style={{ ...th, textAlign: 'right', background: C.naranjaBg }}>{HFL('saldo_acumulado')}</th><th style={th}>{HFL('reajuste')}</th><th style={th}>{HFL('estado')}</th>
                 </tr></thead>
                 <tbody>
                   {filtradas.length === 0 ? (

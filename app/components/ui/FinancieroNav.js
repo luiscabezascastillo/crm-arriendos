@@ -37,7 +37,7 @@ const MODULOS = [
   { id: 'facturas-int',   icon: '🌍', label: 'Facturas Int.', href: '/procesos/financiero/facturas-int' },
   { id: 'pagos',          icon: '🔔', label: 'Pagos',       href: '/procesos/financiero/pagos' },
   { id: 'contab',         icon: '📊', label: 'CONTAB',      href: '/procesos/financiero/contab' },
-  { id: 'ausencias',      icon: '🌴', label: 'Vacaciones',  href: '/ausencias' },
+  { id: 'ausencias',      icon: '👥', label: 'Control del personal', href: '/ausencias?fin=1' },
 ]
 
 const VERDE = '#085041'

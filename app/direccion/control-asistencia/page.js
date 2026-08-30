@@ -1,8 +1,13 @@
 "use client";
-// VERSION: 2026-08-28 · Importar WhatsApp: zona de arrastrar-soltar el ZIP + clic para elegir; el nombre del archivo ya no importa (la fecha sale del contenido del chat). Hereda versión previa.
+// VERSION: 2026-08-30g · Secciones cerradas por defecto. Resumen semanal extraído a componente reutilizable ResumenSemanal (compartido con Mi Portal). Hereda 30f (teórica L-V fija).
 
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import PersonalNav from "../../components/ui/PersonalNav";
+import { useSession } from "next-auth/react";
+import ResumenSemanal from "../../components/ui/ResumenSemanal";
+import TopNav from "@/app/components/ui/TopNav";
+import FinancieroNav from "@/app/components/ui/FinancieroNav";
 
 function estadoTexto(estado) {
   if (estado === "ACCION_REQUERIDA") return "🔴 ACCIÓN";
@@ -21,6 +26,144 @@ function hora(valor) {
   return String(valor).slice(11, 16);
 }
 
+
+const TIPO_AUS = { VACACIONES: "Vacaciones", LICENCIA: "Licencia médica", PERMISO: "Permiso" };
+const secFicha = { marginTop: 16, border: "1px solid #ddd", borderRadius: 12, background: "#fff", maxWidth: 1200, overflow: "hidden" };
+const thF = { padding: 8 };
+
+function Seccion({ titulo, abierto, onToggle, children }) {
+  return (
+    <section style={secFicha}>
+      <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "13px 20px", userSelect: "none" }}>
+        <span style={{ fontSize: 13, color: "#6b7280", width: 12 }}>{abierto ? "▾" : "▸"}</span>
+        <h2 style={{ margin: 0, fontSize: 16 }}>{titulo}</h2>
+      </div>
+      {abierto && <div style={{ padding: "0 20px 20px" }}>{children}</div>}
+    </section>
+  );
+}
+
+function FichaTrabajador({ ficha, dashboard, ausencias, detalleTrab, calendario, esDireccion, onClose }) {
+  const tid = ficha.trabajador_id;
+  const tend = (dashboard?.tendencia || []).filter((m) => String(m.trabajador_id) === String(tid));
+  const inci = (dashboard?.incidencias || []).filter((i) => String(i.trabajador_id) === String(tid));
+  const aus = (ausencias || []).filter((a) => String(a.trabajador_id) === String(tid));
+  const cargandoDet = detalleTrab === null;
+  const det = (detalleTrab && detalleTrab.length ? detalleTrab : (dashboard?.detalle || []).filter((d) => String(d.trabajador_id) === String(tid)));
+
+  const [open, setOpen] = useState({ mes: false, sem: false, aus: false, tend: false, inci: false, diario: false });
+  const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+
+  const card = (label, value) => (
+    <div style={{ flex: "1 1 130px", minWidth: 130, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 10, background: "#fafafa" }}>
+      <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 14 }}>
+        <button onClick={onClose} style={{ fontSize: 13, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>← Volver al resumen</button>
+        {esDireccion && (
+          <a href={`/mi-portal?trab=${tid}`} style={{ fontSize: 13, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: "1px solid #6366f1", background: "#eef2ff", color: "#3730a3", marginLeft: 10, textDecoration: "none", display: "inline-block" }}>Ver ficha completa (portal del trabajador) →</a>
+        )}
+      </div>
+      <h1 style={{ margin: "0 0 2px" }}>{ficha.trabajador}</h1>
+      <p style={{ color: "#666", marginTop: 0 }}>Ficha de personal — asistencia y ausencias. Toca cada título para abrir o cerrar.</p>
+
+      <Seccion titulo="Este mes" abierto={open.mes} onToggle={() => toggle("mes")}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {card("Estado", estadoTexto(ficha.estado_dashboard))}
+          {card("Horas mes", numero(ficha.horas_trabajadas_mes))}
+          {card("Esperadas", numero(ficha.horas_esperadas_mes_a_fecha))}
+          {card("Saldo", numero(ficha.saldo_mes_a_fecha))}
+          {card("Críticas", ficha.incidencias_criticas_mes ?? 0)}
+          {card("Informativas", ficha.incidencias_informativas_mes ?? 0)}
+        </div>
+      </Seccion>
+
+      <Seccion titulo="Resumen semanal (últimos 2 meses · incluye sábados)" abierto={open.sem} onToggle={() => toggle("sem")}>
+        <ResumenSemanal detalle={det} calendario={calendario} ausencias={aus} cargando={cargandoDet} />
+      </Seccion>
+
+      <Seccion titulo="Vacaciones y ausencias" abierto={open.aus} onToggle={() => toggle("aus")}>
+        {aus.length === 0 ? (<div style={{ color: "#888" }}>Sin ausencias registradas.</div>) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr style={{ borderBottom: "1px solid #ddd" }}>
+              <th align="left" style={thF}>Tipo</th><th align="left" style={thF}>Desde</th><th align="left" style={thF}>Hasta</th><th align="right" style={thF}>Días hábiles</th><th align="left" style={thF}>Motivo</th>
+            </tr></thead>
+            <tbody>{aus.map((a) => (
+              <tr key={a.id} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={thF}>{TIPO_AUS[a.tipo] || a.tipo}</td>
+                <td style={thF}>{a.fecha_inicio}</td>
+                <td style={thF}>{a.fecha_fin}</td>
+                <td align="right" style={thF}>{a.dias_habiles}</td>
+                <td style={thF}>{a.motivo || "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </Seccion>
+
+      <Seccion titulo="Tendencia últimos 3 meses" abierto={open.tend} onToggle={() => toggle("tend")}>
+        {tend.length === 0 ? (<div style={{ color: "#888" }}>Sin datos.</div>) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr style={{ borderBottom: "1px solid #ddd" }}>
+              <th align="left" style={thF}>Mes</th><th align="right" style={thF}>Esperadas</th><th align="right" style={thF}>Trabajadas</th><th align="right" style={thF}>Saldo</th><th align="left" style={thF}>Estado</th>
+            </tr></thead>
+            <tbody>{tend.map((m, idx) => (
+              <tr key={`${m.mes}-${idx}`} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={thF}>{String(m.mes).slice(0, 7)}</td>
+                <td align="right" style={thF}>{numero(m.horas_esperadas_mes)}</td>
+                <td align="right" style={thF}>{numero(m.horas_trabajadas_mes)}</td>
+                <td align="right" style={thF}>{numero(m.saldo_mes)}</td>
+                <td style={thF}>{estadoTexto(m.estado_mes)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </Seccion>
+
+      <Seccion titulo="Incidencias abiertas" abierto={open.inci} onToggle={() => toggle("inci")}>
+        {inci.length === 0 ? (<div style={{ color: "#888" }}>Sin incidencias abiertas.</div>) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr style={{ borderBottom: "1px solid #ddd" }}>
+              <th align="left" style={thF}>Fecha</th><th align="left" style={thF}>Incidencia</th><th align="left" style={thF}>Estado</th>
+            </tr></thead>
+            <tbody>{inci.map((i) => (
+              <tr key={i.id} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={thF}>{i.fecha}</td><td style={thF}>{i.tipo}</td><td style={thF}>{i.estado}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </Seccion>
+
+      <Seccion titulo={`Detalle diario 2026 completo (${det.length} días)`} abierto={open.diario} onToggle={() => toggle("diario")}>
+        {cargandoDet ? (<div style={{ color: "#888" }}>Cargando el histórico…</div>) : det.length === 0 ? (<div style={{ color: "#888" }}>Sin registros.</div>) : (
+          <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+            <thead><tr style={{ borderBottom: "1px solid #ddd" }}>
+              <th align="left" style={thF}>Fecha</th><th align="left" style={thF}>Inicio</th><th align="left" style={thF}>Fin</th><th align="right" style={thF}>Horas netas</th><th align="left" style={thF}>Estado</th>
+            </tr></thead>
+            <tbody>{det.map((d, idx) => (
+              <tr key={`${d.fecha}-${idx}`} style={{ borderBottom: "1px solid #eee" }}>
+                <td style={thF}>{String(d.fecha).slice(0, 10)}</td>
+                <td style={thF}>{hora(d.inicio_jornada)}</td>
+                <td style={thF}>{hora(d.fin_jornada)}</td>
+                <td align="right" style={thF}>{d.horas_trabajadas_netas !== null ? numero(d.horas_trabajadas_netas) : "-"}</td>
+                <td style={thF}>{d.cumplimiento_reglamento}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          </div>
+        )}
+      </Seccion>
+    </div>
+  );
+}
+
 export default function ControlAsistenciaPage() {
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -29,6 +172,27 @@ export default function ControlAsistenciaPage() {
   const [dashboard, setDashboard] = useState(null);
   const [errorDashboard, setErrorDashboard] = useState(null);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState("TODOS");
+  const [ficha, setFicha] = useState(null);
+  const [ausencias, setAusencias] = useState([]);
+  const [showFin, setShowFin] = useState(false);
+  const { data: session } = useSession();
+  const esDireccion = ["alberto.cabezas@fondocapital.com", "luis.cabezas@fondocapital.com"].includes(session?.user?.email);
+  const [detalleTrab, setDetalleTrab] = useState(null);
+  const [calendario, setCalendario] = useState([]);
+
+  async function abrirFicha(r) {
+    setFicha(r);
+    setDetalleTrab(null);
+    try {
+      const res = await fetch(`/api/control-asistencia/detalle-trabajador?id=${r.trabajador_id}`, { cache: "no-store" });
+      const data = await res.json();
+      setDetalleTrab(data.detalle || []);
+      setCalendario(data.calendario || []);
+    } catch {
+      setDetalleTrab([]);
+      setCalendario([]);
+    }
+  }
 
   async function cargarDashboard() {
     try {
@@ -51,8 +215,20 @@ export default function ControlAsistenciaPage() {
     }
   }
 
+  async function cargarAusencias() {
+    try {
+      const res = await fetch("/api/control-asistencia/ausencias", { cache: "no-store" });
+      const data = await res.json();
+      setAusencias(data.ausencias || []);
+    } catch {
+      /* silencioso */
+    }
+  }
+
   useEffect(() => {
     cargarDashboard();
+    cargarAusencias();
+    setShowFin(new URLSearchParams(window.location.search).get("fin") === "1");
   }, []);
 
   async function importarZip() {
@@ -106,7 +282,15 @@ export default function ControlAsistenciaPage() {
   }, [dashboard, trabajadorSeleccionado]);
 
   return (
-    <main style={{ padding: 24 }}>
+    <>
+      <TopNav />
+      {showFin && <FinancieroNav activo="ausencias" />}
+      <main style={{ padding: 24 }}>
+      <PersonalNav activo="asistencia" fin={showFin} />
+      {ficha ? (
+        <FichaTrabajador ficha={ficha} dashboard={dashboard} ausencias={ausencias} detalleTrab={detalleTrab} calendario={calendario} esDireccion={esDireccion} onClose={() => setFicha(null)} />
+      ) : (
+      <>
       <h1>Control de Asistencia</h1>
 
       <p style={{ color: "#666", maxWidth: 900 }}>
@@ -294,7 +478,7 @@ export default function ControlAsistenciaPage() {
               <tbody>
                 {dashboard.resumen?.map((r) => (
                   <tr key={r.trabajador_id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: 8 }}>{r.trabajador}</td>
+                    <td style={{ padding: 8 }}><button onClick={() => abrirFicha(r)} style={{ background: "none", border: "none", padding: 0, color: "#085041", fontWeight: 600, fontSize: "inherit", fontFamily: "inherit", cursor: "pointer", textDecoration: "underline" }}>{r.trabajador}</button></td>
                     <td style={{ padding: 8 }}>
                       {estadoTexto(r.estado_dashboard)}
                     </td>
@@ -500,6 +684,9 @@ export default function ControlAsistenciaPage() {
           </section>
         </>
       )}
+      </>
+      )}
     </main>
+    </>
   );
 }

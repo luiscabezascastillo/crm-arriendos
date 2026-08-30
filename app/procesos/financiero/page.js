@@ -32,7 +32,7 @@ const SUBPROCESOS = [
   { icon: '🧑‍💼', titulo: 'Alberto',        desc: 'Cuenta corriente del propietario: aportes, retiros, gastos y pagos', cadencia: 'continuo', href: '/procesos/financiero/alberto' },
   { icon: '🌍', titulo: 'Facturas Int.',  desc: 'Facturas internacionales de servicios (del exterior) con su CCB',    cadencia: 'mensual',  href: '/procesos/financiero/facturas-int' },
   { icon: '🔔', titulo: 'Pagos',          desc: 'Recordatorios de pagos recurrentes y vencimientos (avisa a Alberto)', cadencia: 'continuo', href: '/procesos/financiero/pagos' },
-  { icon: '🌴', titulo: 'Vacaciones',     desc: 'Vacaciones, licencias médicas y permisos del personal',            cadencia: 'continuo', href: '/ausencias' },
+  { icon: '👥', titulo: 'Control del personal', desc: 'Asistencia, vacaciones y ausencias del personal',            cadencia: 'continuo', href: '/ausencias?fin=1' },
 ]
 
 const CAD_BADGE = {

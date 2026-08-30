@@ -1,5 +1,5 @@
 'use client'
-// VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
+// VERSION: 2026-08-30 · Resumen semanal de asistencia (últimos 2 meses) en la info personal, con nota "En desarrollo" (registrar vacaciones). Reusa ResumenSemanal. Preselección ?trab. Hereda 2026-08-26.
 // VERSION: v5 · 2026-08-12 · Mi Portal: botón "+ Nueva alerta" en la tarjeta Alertas (solo Dirección, viendo el
 //   portal de otra persona), como el "+ Nueva tarea". Abre un modal (título, detalle, fecha) e inserta la alerta en
 //   `alertas` para esa persona (origen manual, con nota de quién la creó y cuándo). Hereda v4.
@@ -18,6 +18,7 @@
 import { useState, useEffect } from 'react'
 import BotonVolver from '../../components/ui/BotonVolver'
 import { useSession } from 'next-auth/react'
+import ResumenSemanal from '../../components/ui/ResumenSemanal'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 import TopNav from '@/app/components/ui/TopNav'
@@ -99,6 +100,8 @@ export default function MiPortalPage() {
   const [trabajadores, setTrabajadores] = useState([])
   const [emailActivo, setEmailActivo] = useState(null)
   const [data, setData] = useState(null)
+  const [asisDetalle, setAsisDetalle] = useState(null)
+  const [asisCalendario, setAsisCalendario] = useState([])
   const [procVisOpen, setProcVisOpen] = useState(false)
   const [filtrosWf, setFiltrosWf] = useState({ node_codigo: [], idadmon: [], nodo_nombre: [], estado: ['PENDIENTE'] })
   const [filtrosTar, setFiltrosTar] = useState({ titulo: [], estado: [], prioridad: [], fecha_limite: [] })
@@ -205,6 +208,26 @@ export default function MiPortalPage() {
       .select('id, nombre_real, email').eq('activo', true).order('nombre_real')
       .then(({ data }) => setTrabajadores(data || []))
   }, [esDireccion])
+
+  // Preselección de un trabajador vía URL (?trab=ID) al entrar desde Control del personal
+  useEffect(() => {
+    if (!esDireccion || !trabajadores.length) return
+    const trab = new URLSearchParams(window.location.search).get('trab')
+    if (!trab) return
+    const t = trabajadores.find(x => String(x.id) === String(trab))
+    if (t) setEmailActivo(t.email)
+  }, [esDireccion, trabajadores])
+
+  // Detalle diario + calendario del trabajador activo, para el resumen semanal de asistencia
+  useEffect(() => {
+    const tid = data?.trabajador?.id
+    if (!tid) { setAsisDetalle([]); setAsisCalendario([]); return }
+    setAsisDetalle(null)
+    fetch(`/api/control-asistencia/detalle-trabajador?id=${tid}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { setAsisDetalle(d.detalle || []); setAsisCalendario(d.calendario || []) })
+      .catch(() => { setAsisDetalle([]); setAsisCalendario([]) })
+  }, [data?.trabajador?.id])
 
   useEffect(() => {
     if (!emailActivo) return
@@ -330,6 +353,7 @@ export default function MiPortalPage() {
     (filtrosTar.fecha_limite.length === 0 || filtrosTar.fecha_limite.includes(t.fecha_limite))
   )
   const asistencia = data?.asistencia || null
+  const asisCargando = asisDetalle === null
   const ausencias = data?.ausencias || []
   const nombre = data?.trabajador?.nombre_real || emailActivo
   const diasVacaciones = ausencias.filter(a => a.tipo === 'VACACIONES').reduce((s, a) => s + (a.dias_habiles || 0), 0)
@@ -602,6 +626,18 @@ export default function MiPortalPage() {
                     </tbody>
                   </table>
                 )}
+              </div>
+
+              <div style={card}>
+                <div style={cardHead}><span>🕘 Resumen semanal de asistencia (últimos 2 meses)</span></div>
+                <div style={{ margin: '12px 14px 4px', padding: '12px 14px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ ¡EN DESARROLLO!</div>
+                  <div style={{ marginBottom: 6 }}>Si te faltan vacaciones por registrar, hazlo, ya que afecta al cómputo semanal y mensual.</div>
+                  <div>Este módulo funciona desde septiembre 2026, para que puedas ver cómo computa el control de asistencia. Gracias.</div>
+                </div>
+                <div style={{ padding: '4px 8px 12px' }}>
+                  <ResumenSemanal detalle={asisDetalle} calendario={asisCalendario} ausencias={ausencias} cargando={asisCargando} />
+                </div>
               </div>
             </div>
                   {tareaAbierta && (
