@@ -1,3 +1,4 @@
+// VERSION: v5 · 2026-08-31 · 'Enviados' cuenta los envíos REALES del periodo (tabla cobranza_diferencias), incluidos los que ya pagaron y salieron de la lista; se devuelven en enviados_resueltos.
 // VERSION: v4 · 2026-08-31 · Devuelve 'usuario' del estado (para mostrar quién envió el recordatorio y la fecha en la etiqueta).
 // VERSION: v6 · 2026-08-27 · FIX saldo acumulado y perfil: `cuentas` se traía sin paginar (>1000 filas truncaba). Ahora paginado -> el saldo cuadra con la cartola. Hereda v5.
 // VERSION: v5 · 2026-08-27 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
@@ -142,7 +143,7 @@ export async function GET(req) {
   const [arrRes, servRes, estRes, ctasAll] = await Promise.all([
     admin.from('datos_arriendos').select('idadmon, arrendatario, rut, mail_arrendatario, movil, avalista, mail_avalista, inmueble, propietario, quien_cobra, fecha_reajuste1, fecha_reajuste2, fecha_reajuste3, fecha_reajuste4, fecha_reajuste5, fecha_reajuste6').in('idadmon', ids),
     admin.from('ggcc_agua_luz').select('idadmon, deuda_gastos_comunes, deuda_vigente_electricidad, deuda_vigente_agua, deuda_vigente_gas').like('mes', isoMes(hoy.y, hoy.mo) + '%').in('idadmon', ids),
-    admin.from('cobranza_diferencias').select('*').eq('periodo', periodo).in('idadmon', ids),
+    admin.from('cobranza_diferencias').select('*').eq('periodo', periodo),
     cuentasDe(ids),
   ])
   const arrMap = {}; for (const a of (arrRes.data || [])) arrMap[a.idadmon] = a
@@ -172,12 +173,28 @@ export async function GET(req) {
     })
   }
   filas.sort((x, y) => (y.diferencia - x.diferencia))
+  // Envíos REALES de este mes de liquidación: todas las filas del periodo con estado 'enviado',
+  // aunque el contrato ya haya pagado y salido de la lista de arriba.
+  const enviadosPeriodo = (estRes.data || []).filter(e => e.estado === 'enviado')
+  const idsFila = new Set(filas.map(f => f.idadmon))
+  const resueltosIds = enviadosPeriodo.filter(e => !idsFila.has(e.idadmon)).map(e => e.idadmon)
+  let enviados_resueltos = []
+  if (resueltosIds.length) {
+    const { data: nombres } = await admin.from('datos_arriendos').select('idadmon, arrendatario, inmueble').in('idadmon', resueltosIds)
+    const nm = {}; for (const x of (nombres || [])) nm[x.idadmon] = x
+    enviados_resueltos = enviadosPeriodo.filter(e => !idsFila.has(e.idadmon)).map(e => ({
+      idadmon: e.idadmon, arrendatario: nm[e.idadmon]?.arrendatario || '', propiedad: nm[e.idadmon]?.inmueble || '',
+      fecha_estado: e.fecha_estado || null, usuario: e.usuario || null,
+    }))
+  }
   const resumen = {
     total: filas.length,
     suma_dif: filas.reduce((s, f) => s + f.diferencia, 0),
     suma_acum: filas.reduce((s, f) => s + Math.max(0, f.saldo_acumulado), 0),
     con_reajuste: filas.filter(f => f.reajuste_reciente).length,
-    enviados: filas.filter(f => f.estado === 'enviado').length,
+    enviados: enviadosPeriodo.length,             // envíos reales del mes (incluye los que ya pagaron)
+    enviados_en_lista: filas.filter(f => f.estado === 'enviado').length,
+    enviados_resueltos,                            // enviados este mes que ya regularizaron y no salen arriba
   }
   return Response.json({ ok: true, periodo, mes_lbl: mesLbl, hoy: isoUTC(hoy.t), filas, plantilla, resumen })
 }

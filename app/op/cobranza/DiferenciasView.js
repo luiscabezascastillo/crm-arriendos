@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-31b · 'Enviados' cuenta los envíos reales del mes (incluye los que ya pagaron y salieron de la lista), con nota de cuáles fueron. Hereda lo anterior.
 // VERSION: 2026-08-31 · Anti-doble-envío: la etiqueta muestra 'Enviado dd/mm', el drawer avisa si ya se envió este mes y el 2º envío exige marcar una casilla (a propósito). Hereda lo anterior.
 // VERSION: 2026-08-30 · Cabecera de tabla STICKY bajo TopNav+pestañas (top 103).
 // VERSION: v7 · 2026-08-28 · Filtros por columna estilo Excel (motor lib/filtroExcel, como CC1/SA) + Limpiar filtros + contador. Hereda v6.
@@ -139,16 +140,22 @@ export default function DiferenciasView() {
 
       {!cargando && !error && data && (
         <>
-          {rs && (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-              {[{ lab: 'Contratos', val: rs.total, col: C.txt }, { lab: 'Se escapa este mes', val: P(rs.suma_dif), col: C.rojo }, { lab: 'Saldo acumulado', val: P(rs.suma_acum), col: C.naranja }, { lab: 'Con reajuste reciente', val: rs.con_reajuste, col: C.azul }, { lab: 'Enviados', val: rs.enviados ?? 0, col: C.verde }].map((k, i) => (
+          {rs && (<>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: (rs.enviados_resueltos && rs.enviados_resueltos.length) ? 6 : 14 }}>
+              {[{ lab: 'Contratos', val: rs.total, col: C.txt }, { lab: 'Se escapa este mes', val: P(rs.suma_dif), col: C.rojo }, { lab: 'Saldo acumulado', val: P(rs.suma_acum), col: C.naranja }, { lab: 'Con reajuste reciente', val: rs.con_reajuste, col: C.azul }, { lab: 'Enviados', val: rs.enviados ?? 0, col: C.verde, sub: (rs.enviados_resueltos && rs.enviados_resueltos.length) ? (rs.enviados_en_lista + ' en lista · ' + rs.enviados_resueltos.length + ' ya pagó') : null }].map((k, i) => (
                 <div key={i} style={{ border: '1px solid ' + C.line, borderRadius: 10, padding: '7px 13px', background: '#fff', minWidth: 100 }}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: C.sub, textTransform: 'uppercase', letterSpacing: '.03em' }}>{k.lab}</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: k.col }}>{k.val}</div>
+                  {k.sub ? <div style={{ fontSize: 10, color: C.sub, marginTop: 1 }}>{k.sub}</div> : null}
                 </div>
               ))}
             </div>
-          )}
+            {rs.enviados_resueltos && rs.enviados_resueltos.length ? (
+              <div style={{ background: C.verdeBg, border: '1px solid #CBE6BE', borderRadius: 8, padding: '7px 12px', fontSize: 12, color: C.verde, marginBottom: 14 }}>
+                También se envió recordatorio este mes a {rs.enviados_resueltos.length === 1 ? '1 contrato que ya regularizó' : rs.enviados_resueltos.length + ' contratos que ya regularizaron'} (fuera de la lista): {rs.enviados_resueltos.map(e => `${e.idadmon}${e.arrendatario ? ' · ' + e.arrendatario : ''} (${ddmm(String(e.fecha_estado || '').slice(0, 10))}${e.usuario ? ', ' + e.usuario : ''})`).join(' · ')}.
+              </div>
+            ) : null}
+          </>)}
 
           {(!data.filas || !data.filas.length) ? (
             <div style={{ color: C.sub, fontSize: 13, padding: 20 }}>Nadie pagó de menos este periodo.</div>
