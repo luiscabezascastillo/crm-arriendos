@@ -1,3 +1,4 @@
+// VERSION: v6 · 2026-08-31 · Excluye contratos internos de FCR (arrendatario = RUT FCR 76.828.712-0), p.ej. FCR Almacenaje.
 // VERSION: v5 · 2026-08-31 · 'Enviados' cuenta los envíos REALES del periodo (tabla cobranza_diferencias), incluidos los que ya pagaron y salieron de la lista; se devuelven en enviados_resueltos.
 // VERSION: v4 · 2026-08-31 · Devuelve 'usuario' del estado (para mostrar quién envió el recordatorio y la fecha en la etiqueta).
 // VERSION: v6 · 2026-08-27 · FIX saldo acumulado y perfil: `cuentas` se traía sin paginar (>1000 filas truncaba). Ahora paginado -> el saldo cuadra con la cartola. Hereda v5.
@@ -34,6 +35,9 @@ const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', '
 
 const n0 = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const cargoEf = (r) => (r.cargo_manual != null && r.cargo_manual !== '') ? n0(r.cargo_manual) : n0(r.cargo)
+// RUT de FCR (76.828.712-0): contratos internos donde FCR es el arrendatario (p.ej. "FCR Almacenaje").
+const RUT_FCR = '768287120'
+const esFCR = (rut) => String(rut || '').replace(/[^0-9kK]/g, '').toLowerCase() === RUT_FCR
 const esInicio = (r) => /INICIO/i.test(String(r.calif || '')) || /garant|comision|comisión/i.test(String(r.concepto || ''))
 function pf(s) {
   const t = String(s || '').trim()
@@ -155,6 +159,7 @@ export async function GET(req) {
   for (const g of cand) {
     const a = arrMap[g.idadmon] || {}
     if (String(a.quien_cobra || '').toUpperCase() === 'DUEÑO') continue
+    if (esFCR(a.rut)) continue   // FCR es el arrendatario (bodega interna): no se auto-recuerda
     const noAnul = (ctasMap[g.idadmon] || []).filter(c => !c.anulado)
     const saldoAcum = noAnul.reduce((s, c) => s + cargoEf(c) - n0(c.abono), 0)
     const uReaj = ultimoReajuste(a, hoy.t)

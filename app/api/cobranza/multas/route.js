@@ -1,6 +1,7 @@
 // VERSION: v7 · 2026-08-30 · Lee tipo_multa: FIJO UF = md(UF) x días x valor_uf(día 01 del mes, indices_mensuales); FIJO PESO = md x días; vacío = % clásico. Expone tipo_multa/multa_uf/valor_uf_ref. Hereda v6.
 // VERSION: v6 · 2026-08-27 · FIX: `cuentas` se traía sin paginar (>1000 filas truncaba) -> perfil/tramos podían salir mal. Ahora paginado. Hereda v5.
 // VERSION: v5 · 2026-08-26 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
+// VERSION: v6 · 2026-08-31 · Excluye de la bandeja los contratos internos de FCR (arrendatario = RUT FCR 76.828.712-0), p.ej. FCR Almacenaje.
 // VERSION: v5 · 2026-08-31 · GET devuelve 'cartas' (historial de avisos/firmes por idadmon desde cobranza_gestiones) para la columna Cartas de la bandeja.
 // VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
 // VERSION: v3 · 2026-08-26 · Periodo por defecto respeta la gracia del día 10 (días 1-10 -> mes anterior). Hereda v2.
@@ -28,6 +29,11 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const PUEDEN_VER = ['direccion', 'administracion', 'finanzas', 'legal']
 const TOL = 10000            // tolerancia de saldo (pesos): por debajo se considera "al día"
 const DIA_MS = 86400000
+
+// RUT de FCR (76.828.712-0): contratos donde FCR es el propio arrendatario (p.ej. "FCR Almacenaje").
+// No se auto-persiguen en Cobranza. Se comparan solo dígitos + DV.
+const RUT_FCR = '768287120'
+const esFCR = (rut) => String(rut || '').replace(/[^0-9kK]/g, '').toLowerCase() === RUT_FCR
 
 // ── Envío de correo (mismo patrón que /api/cobranza/gestion: alias de info@, misma app password) ──
 const BCC_ARCHIVO = 'info@fondocapital.com'
@@ -178,6 +184,7 @@ export async function GET(req) {
   for (const g of conFalta) {
     const a = arrMap[g.idadmon] || {}
     if (String(a.quien_cobra || '').toUpperCase() === 'DUEÑO') continue   // lo cobra el dueño, fuera de multas FCR
+    if (esFCR(a.rut)) continue   // FCR es el arrendatario (bodega interna): no se auto-multa
 
     const todas = ctasMap[g.idadmon] || []
     const noAnul = todas.filter(c => !c.anulado)
