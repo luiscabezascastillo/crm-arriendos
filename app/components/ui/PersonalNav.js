@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v3 · 2026-08-31 · Añade 3ª pestaña "Calendario laboral" (/direccion/calendario-laboral). Hereda v2.
 // VERSION: v2 · 2026-08-30 · Sub-nav del hub "Control del personal". Prop fin: si viene del módulo Financiero,
 //   propaga ?fin=1 para que la FinancieroNav siga apareciendo al saltar entre vistas. Botones entre las
 //   vistas del personal (Vacaciones/ausencias y Control de asistencia). Vista por defecto: ausencias.
@@ -12,6 +13,7 @@ const BORDE = '#E5E4DF'
 const VISTAS = [
   { id: 'ausencias',  icon: '🌴', label: 'Vacaciones y ausencias', href: '/ausencias' },
   { id: 'asistencia', icon: '🕘', label: 'Control de asistencia',  href: '/direccion/control-asistencia' },
+  { id: 'calendario', icon: '📅', label: 'Calendario laboral',     href: '/direccion/calendario-laboral' },
 ]
 
 export default function PersonalNav({ activo, fin }) {
