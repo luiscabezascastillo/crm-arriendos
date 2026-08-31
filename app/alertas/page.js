@@ -1,3 +1,5 @@
+// VERSION: v12 · 2026-08-31 · Corretaje pasa a NUBOX: descarga corretaje_nubox_<idadmon>.csv (sin BOM) en vez de
+//   los CSV SimpleFactura 33/39; textos del bloque 3 actualizados. descargarCSV admite conBom. Hereda v11.
 // VERSION: v11 · 2026-08-12 · APAGADO GLOBAL: interruptor AUTO_OFF=true apaga TODO el automático (términos del día,
 //   reclamaciones/cobranzas y valoración legal) para TODAS las personas mientras se depura. Solo quedan las alertas
 //   asignadas a mano. Poner AUTO_OFF=false para reactivar. Hereda v10.
@@ -280,9 +282,9 @@ export default function AlertasPage() {
   }
   const cerrarCorretaje = () => { setCorr(null); setCorrData(null); setCorrResultado(null) }
 
-  const descargarCSV = (contenido, nombre) => {
+  const descargarCSV = (contenido, nombre, conBom = true) => {
     if (!contenido) return
-    const blob = new Blob(['\ufeff' + contenido], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([conBom ? '\ufeff' + contenido : contenido], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = nombre; a.click()
@@ -305,9 +307,7 @@ export default function AlertasPage() {
       const j = await r.json()
       setCorrResultado(j)
       if (j.ok) {
-        const mes = new Date().toISOString().slice(0, 7).replace('-', '')
-        if (j.csv?.facturas_csv) descargarCSV(j.csv.facturas_csv, `corretaje_facturas_33_${corrData.idadmon}.csv`)
-        if (j.csv?.boletas_csv) setTimeout(() => descargarCSV(j.csv.boletas_csv, `corretaje_boletas_39_${corrData.idadmon}.csv`), 700)
+        if (j.csv?.nubox_csv) descargarCSV(j.csv.nubox_csv, `corretaje_nubox_${corrData.idadmon}.csv`, false)   // Nubox: sin BOM
         cargar()  // la alerta ya está resuelta
       }
     } catch (e) {
@@ -687,7 +687,7 @@ export default function AlertasPage() {
 
                 {/* BLOQUE 3: facturación */}
                 <div style={{ border: '1px solid #E5E3DC', borderRadius: 10, padding: 14, marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', marginBottom: 8 }}>3 · Facturación (CSV SimpleFactura)</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A', marginBottom: 8 }}>3 · Facturación (CSV Nubox)</div>
                   <div style={{ fontSize: 13, color: '#444', marginBottom: 8 }}>
                     <b>Propietario:</b> tipo {corrData.propietario.tipo_factura === '33' ? 'FACTURA (33)' : 'BOLETA (39)'} · {fmtPesos(corrData.propietario.comision)}
                     <span style={{ color: '#999' }}> (de propietarios)</span>
@@ -731,7 +731,7 @@ export default function AlertasPage() {
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {(corrResultado.avisos || []).map((m, i) => <li key={i} style={{ marginBottom: 4 }}>{m}</li>)}
                       </ul>
-                      <div style={{ fontSize: 12, color: '#0a7f4f', marginTop: 8 }}>El/los CSV se han descargado. Súbelos a SimpleFactura.</div>
+                      <div style={{ fontSize: 12, color: '#0a7f4f', marginTop: 8 }}>El CSV se ha descargado. Súbelo a Nubox (Cargar Ventas desde Archivo).</div>
                     </div>
                   )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>

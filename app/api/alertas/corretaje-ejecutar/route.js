@@ -1,3 +1,6 @@
+// VERSION: v5 · 2026-08-31 · Salida CSV NUBOX (20 col, formato del mensual generar-csv). Corretaje = servicio
+//   PUNTUAL: TIPOSERVICIO y PERIODO en blanco. GIRO 'CORRETAJE INMOBILIARIO' (como SimpleFactura). Se mantienen
+//   los CSV SimpleFactura; se AÑADE nubox_csv. Precio: factura(33) NETO / boleta(39) BRUTO. Hereda v4.
 // VERSION: v4 · 2026-08-06 · Fix anti-duplicado del descuento de corretaje: ahora EXCLUYE los anulados
 //   (mes_a_imputar='----MES'). Antes, un corretaje anulado bloqueaba la re-facturación → la factura salía
 //   pero el descuento NO se creaba (caso A00888/A00873: solo quedaban sus anulados 5173/5175). Se mantiene
@@ -73,6 +76,23 @@ function lineaReceptor({ id, tipo, rut, razon, correo, direccion, monto, idadmon
     RebajaAvaluo: '0',
     IndicadorExento: '0',
     TotalProducto: String(monto),
+  })
+}
+
+// 20 columnas del CSV de Nubox (Cargar Ventas desde Archivo), idénticas al mensual (generar-csv).
+// FOLIO = correlativo de documento (1,2,3...) que Nubox exige; con "Folios automatico" asigna el folio real del SII.
+const NUBOX_COLS = ['TIPO', 'FOLIO', 'SECUENCIA', 'FECHA', 'RUT', 'RAZONSOCIAL', 'GIRO', 'COMUNA', 'DIRECCION', 'AFECTO', 'PRODUCTO', 'DESCRIPCION', 'CANTIDAD', 'PRECIO', 'PORCENTDSCTO', 'EMAIL', 'TIPOSERVICIO', 'PERIODODESDE', 'PERIODOHASTA', 'FECHAVENCIMIENTO']
+function filaNubox(obj) { return NUBOX_COLS.map(c => obj[c] != null ? String(obj[c]) : '').join(';') }
+// Una línea Nubox para un receptor. Corretaje = puntual: TIPOSERVICIO y PERIODO vacíos.
+function lineaNubox({ folio, tipo, rut, razon, comuna, direccion, correo, precio, idadmon, inmueble }) {
+  const fecha = fechaHoy()
+  return filaNubox({
+    TIPO: tipo, FOLIO: String(folio), SECUENCIA: '1', FECHA: fecha,
+    RUT: rut || '', RAZONSOCIAL: sinAcentos(razon), GIRO: 'CORRETAJE INMOBILIARIO',
+    COMUNA: sinAcentos(comuna), DIRECCION: sinAcentos(direccion), AFECTO: 'SI',
+    PRODUCTO: 'CORRETAJE', DESCRIPCION: sinAcentos(`Corretaje inicio contrato ${idadmon}-${inmueble}`),
+    CANTIDAD: '1', PRECIO: String(precio), PORCENTDSCTO: '0', EMAIL: correo || '',
+    TIPOSERVICIO: '', PERIODODESDE: '', PERIODOHASTA: '', FECHAVENCIMIENTO: fecha,
   })
 }
 
@@ -190,11 +210,13 @@ export async function POST(req) {
   const filasFactura = []   // 33
   const filasBoleta = []    // 39/41
   let idF = 0, idB = 0
+  const filasNubox = []     // Nubox (20 col, 1 CSV)
+  let docNubox = 0          // correlativo de documento para el FOLIO de Nubox
 
   // Propietario
   if (comisionProp > 0) {
     const { data: p } = await sb.from('propietarios')
-      .select('propietario, rut, mail1, email_2, direccion, tipo_factura').eq('idprop', da.idprop || '').maybeSingle()
+      .select('propietario, rut, mail1, email_2, direccion, comuna, tipo_factura').eq('idprop', da.idprop || '').maybeSingle()
     const tipoP = (p?.tipo_factura || '33').trim()
     const linea = lineaReceptor({
       id: tipoP === '33' ? ++idF : ++idB, tipo: tipoP,
@@ -203,6 +225,13 @@ export async function POST(req) {
       monto: netoProp, idadmon, inmueble: da.inmueble,   // NETO: SimpleFactura añade el IVA
     })
     if (tipoP === '33') filasFactura.push(linea); else filasBoleta.push(linea)
+    filasNubox.push(lineaNubox({
+      folio: ++docNubox, tipo: tipoP, rut: p?.rut,
+      razon: `${da.idprop}-${p?.propietario || da.propietario}`,
+      comuna: p?.comuna, direccion: p?.direccion, correo: p?.mail1 || p?.email_2,
+      precio: tipoP === '33' ? netoProp : comisionProp,   // factura NETO / boleta BRUTO
+      idadmon, inmueble: da.inmueble,
+    }))
   }
   // Arrendatario (si aplica)
   if (comisionArr > 0) {
@@ -213,12 +242,19 @@ export async function POST(req) {
       direccion: da.inmueble, monto: netoArr, idadmon, inmueble: da.inmueble,   // NETO: SimpleFactura añade el IVA
     })
     if (tipoA === '33') filasFactura.push(linea); else filasBoleta.push(linea)
+    filasNubox.push(lineaNubox({
+      folio: ++docNubox, tipo: tipoA, rut: da.rut, razon: da.arrendatario,
+      comuna: '', direccion: da.inmueble, correo: da.mail_arrendatario,
+      precio: tipoA === '33' ? netoArr : comisionArr,   // factura NETO / boleta BRUTO
+      idadmon, inmueble: da.inmueble,
+    }))
     resultado.avisos.push('Boleta/factura del arrendatario generada: verifica en cartolas que el cargo del arrendatario ya está registrado.')
   }
   const cab = COLUMNAS.join(';')
   resultado.csv = {
     facturas_csv: filasFactura.length ? [cab, ...filasFactura].join('\r\n') : '',
     boletas_csv: filasBoleta.length ? [cab, ...filasBoleta].join('\r\n') : '',
+    nubox_csv: filasNubox.length ? [NUBOX_COLS.join(';'), ...filasNubox].join('\r\n') : '',
   }
   if (resultado.descuento?.creado) resultado.avisos.push('Recuerda: la factura/boleta del propietario lleva asociado el descuento de corretaje creado en la liquidación.')
 
