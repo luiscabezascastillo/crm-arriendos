@@ -1,4 +1,6 @@
 // RUTA: app/api/liquidaciones/generar-csv/route.js
+// VERSION: v10 · 2026-08-31 · FIX Nubox 'caracteres invalidos': sinAcentos ahora quita TODO no-ASCII (º, ª, …),
+//   no solo tildes/ñ. Afecta RAZONSOCIAL/COMUNA/DIRECCION/DESCRIPCION. Hereda v9.
 // VERSION: v9 · 2026-08-28 · MODO EXCEPCION: acepta forzar:true (solo trío EMAILS_OK) para emitir en un mes CERRADO
 //   (incluye las cabeceras con cerrado=true). Sin forzar, se excluyen como siempre. Hereda v8.
 // VERSION: v8 · 2026-08-19 · BITÁCORA de facturación (append-only). Cada línea emitida (regulares y complementarias) se
@@ -69,6 +71,7 @@ function sinAcentos(s) {
     .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
     .replace(/;/g, ' ')   // el ; es separador -> fuera del contenido
     .replace(/\r?\n/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '')   // fuera cualquier no-ASCII (º, ª, …): Nubox solo acepta ASCII
     .trim()
 }
 

@@ -1,3 +1,4 @@
+// VERSION: v8 · 2026-08-31 · FIX Nubox 'caracteres invalidos': sinAcentos quita TODO no-ASCII (º, ª, …). Hereda v7.
 // VERSION: v7 · 2026-08-31 · FIX: datos_arriendos NO tiene domicilio/comuna_domicilio (rompía la lectura y no
 //   descargaba nada). Se quitan del select; la comuna del arrendatario usa como respaldo la del propietario
 //   (p.comuna), que se lee siempre. Hereda v6.
@@ -49,7 +50,7 @@ function sinAcentos(s) {
   return String(s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
-    .replace(/;/g, ' ').replace(/\r?\n/g, ' ').trim()
+    .replace(/;/g, ' ').replace(/\r?\n/g, ' ').replace(/[^\x20-\x7E]/g, '').trim()   // fuera no-ASCII (º, ª, …): Nubox solo acepta ASCII
 }
 
 // 38 columnas SimpleFactura (idénticas a /api/liquidaciones/generar-csv)
