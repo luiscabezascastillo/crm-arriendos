@@ -3,6 +3,7 @@
 // VERSION: v6 · 2026-08-30 · Cabecera de tabla STICKY bajo TopNav+pestañas (top 103); columna adapta unidad (UF/$/%) y muestra total en UF si tipo_multa=FIJO UF. Hereda v5.
 // VERSION: v5 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el modal → Bitácora, además de la carta. Hereda v4.
 // VERSION: v4 · 2026-08-27 · "Probar (a mí)" abre la MISMA ventana de revisión; la prueba se lanza desde ahí (sin cargar cartola). Hereda v3.
+// VERSION: v4 · 2026-08-31 · Nueva columna 'Cartas': fechas de los avisos/firmes enviados a cada idadmon (historial de cobranza_gestiones). colSpan del detalle a 13.
 // VERSION: v3 · 2026-08-27 · Paso de confirmación antes de enviar aviso/firme (revisar, añadir CC/aval, cancelar); copia a administración. Hereda v2.
 // VERSION: v2 · 2026-08-26 · Cobranza · Pestaña MULTAS con acciones (Tanda 2).
 //   Bandeja + modal de carta: elige perfil/redacción, multa editable, Probar / Enviar aviso / Hacer firme.
@@ -179,7 +180,7 @@ function MultasView() {
                   <th style={thS}>Perfil</th><th style={{ ...thS, textAlign: 'right' }}>A cobrar</th>
                   <th style={{ ...thS, textAlign: 'right' }}>Falta hoy</th><th style={{ ...thS, textAlign: 'right' }}>Días</th>
                   <th style={{ ...thS, textAlign: 'right' }}>Tasa/día</th><th style={{ ...thS, textAlign: 'right' }}>Multa</th>
-                  <th style={thS}>Tipo</th><th style={thS}>Situación</th><th style={thS}>Acción</th>
+                  <th style={thS}>Tipo</th><th style={thS}>Situación</th><th style={thS}>Cartas</th><th style={thS}>Acción</th>
                 </tr></thead>
                 <tbody>
                   {data.morosos.map(m => {
@@ -198,6 +199,17 @@ function MultasView() {
                         <td style={{ ...numTd, fontWeight: 800, color: m.multa > 0 ? C.rojo : C.sub }} title={m.tipo_multa === 'FIJO UF' && m.multa_uf ? (m.multa_uf + ' UF · ref. valor UF día 01; se paga al valor UF del día de pago') : undefined}>{m.multa > 0 ? P(m.multa) : '—'}{m.tipo_multa === 'FIJO UF' && m.multa_uf ? <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: C.sub }}>{m.multa_uf} UF</span> : null}</td>
                         <td style={td}>{m.tipo_multa ? <span style={{ fontSize: 11, fontWeight: 700, color: m.tipo_multa === 'FIJO UF' ? '#185FA5' : C.txt, background: m.tipo_multa === 'FIJO UF' ? '#EAF2FB' : C.panel, padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap' }}>{m.tipo_multa}</span> : <span style={{ fontSize: 11, color: C.sub }}>%</span>}</td>
                         <td style={td}>{badge(BUCKET[m.bucket])} {badge(ESTADO[m.estado])}{vencido ? <span style={{ fontSize: 10, color: C.rojo, fontWeight: 700, display: 'block', marginTop: 2 }}>plazo vencido</span> : (m.estado === 'avisada' && m.plazo_hasta ? <span style={{ fontSize: 10, color: C.ambar, display: 'block', marginTop: 2 }}>hasta {ddmm(m.plazo_hasta)}</span> : null)}</td>
+                        <td style={td}>{(() => {
+                          const cs = m.cartas || []
+                          if (!cs.length) return <span style={{ fontSize: 11, color: C.sub }}>—</span>
+                          const full = cs.map(c => (c.tipo === 'firme' ? 'Firme' : 'Aviso') + ' ' + ddmm(String(c.fecha || '').slice(0, 10))).join('\n')
+                          return (<div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={full}>
+                            {cs.slice(0, 3).map((c, i) => (
+                              <span key={i} style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 999, whiteSpace: 'nowrap', background: c.tipo === 'firme' ? C.rojoBg : C.ambarBg, color: c.tipo === 'firme' ? C.rojo : C.ambar }}>{c.tipo === 'firme' ? 'F' : 'A'} {ddmm(String(c.fecha || '').slice(0, 10))}</span>
+                            ))}
+                            {cs.length > 3 ? <span style={{ fontSize: 10, color: C.sub }}>+{cs.length - 3} más</span> : null}
+                          </div>)
+                        })()}</td>
                         <td style={td}>
                           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                             {(m.estado === 'propuesta' && m.bucket === 'multa') && (
@@ -215,7 +227,7 @@ function MultasView() {
                       </tr>,
                       open ? (
                         <tr key={m.idadmon + '_d'} style={{ background: C.panel }}>
-                          <td style={{ ...td, borderBottom: '1px solid ' + C.line }} colSpan={11}>
+                          <td style={{ ...td, borderBottom: '1px solid ' + C.line }} colSpan={13}>
                             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12.5 }}>
                               <div>
                                 <div style={{ fontWeight: 700, color: C.sub, marginBottom: 4 }}>Perfil ({PERFIL[m.perfil]?.d})</div>

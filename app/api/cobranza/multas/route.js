@@ -1,6 +1,7 @@
 // VERSION: v7 · 2026-08-30 · Lee tipo_multa: FIJO UF = md(UF) x días x valor_uf(día 01 del mes, indices_mensuales); FIJO PESO = md x días; vacío = % clásico. Expone tipo_multa/multa_uf/valor_uf_ref. Hereda v6.
 // VERSION: v6 · 2026-08-27 · FIX: `cuentas` se traía sin paginar (>1000 filas truncaba) -> perfil/tramos podían salir mal. Ahora paginado. Hereda v5.
 // VERSION: v5 · 2026-08-26 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
+// VERSION: v5 · 2026-08-31 · GET devuelve 'cartas' (historial de avisos/firmes por idadmon desde cobranza_gestiones) para la columna Cartas de la bandeja.
 // VERSION: v4 · 2026-08-26 · POST acciones: aviso (plazo 3 días hábiles, no toca cuentas), firme (2ª carta + cargo MULTA en cuentas, anulable), regularizar, anular. Hereda v3.
 // VERSION: v3 · 2026-08-26 · Periodo por defecto respeta la gracia del día 10 (días 1-10 -> mes anterior). Hereda v2.
 // VERSION: v2 · 2026-08-26 · FIX periodo por defecto: mes de la renta ya vencida, no la ventana 23→22 del FALTAN. Hereda v1.
@@ -151,12 +152,14 @@ export async function GET(req) {
 
   // 2) Datos del contrato + 3) cuentas + 4) estado guardado (en paralelo)
   const mesISO01 = `${anio}-${String(mes).padStart(2, '0')}-01`   // día 1 del mes del periodo, para leer el valor UF (FIJO UF)
-  const [arrRes, mmRes, plaRes, ctasAll, ufRes] = await Promise.all([
+  const [arrRes, mmRes, plaRes, ctasAll, ufRes, gesRes] = await Promise.all([
     admin.from('datos_arriendos').select('idadmon, estado, arrendatario, rut, mail_arrendatario, movil, avalista, rut_avalista, mail_avalista, telefono_avalista, inmueble, propietario, multa_diaria, tipo_multa, quien_cobra, media_retraso').in('idadmon', ids),
     admin.from('cobranza_multas').select('*').eq('periodo', periodo).in('idadmon', ids),
     admin.from('cobranza_plantillas').select('id, etapa, perfil, destinatario, departamento, asunto, cuerpo').like('etapa', 'multa_%'),
     cuentasDe(ids),
     admin.from('indices_mensuales').select('valor_uf').eq('mes', mesISO01).maybeSingle(),
+    // Historial de cartas enviadas (avisos/firmes) de estos contratos, para la columna "Cartas".
+    admin.from('cobranza_gestiones').select('idadmon, etapa, fecha, asunto').in('idadmon', ids).like('etapa', 'multa_%').order('fecha', { ascending: false }),
   ])
   const valorUf = ufRes && ufRes.data && ufRes.data.valor_uf != null ? Number(ufRes.data.valor_uf) : 0
   if (arrRes.error) return Response.json({ error: 'datos_arriendos: ' + arrRes.error.message }, { status: 500 })
@@ -164,6 +167,12 @@ export async function GET(req) {
   const arrMap = {}; for (const a of (arrRes.data || [])) arrMap[a.idadmon] = a
   const ctasMap = {}; for (const c of ctasAll) (ctasMap[c.idadmon] || (ctasMap[c.idadmon] = [])).push(c)
   const mmMap = {}; for (const m of (mmRes.data || [])) mmMap[m.idadmon] = m
+  // Agrupa las cartas enviadas por idadmon (más recientes primero): { tipo:'aviso'|'firme', fecha }.
+  const cartasMap = {}
+  for (const g of (gesRes.data || [])) {
+    const tipo = /firme/i.test(g.etapa || '') ? 'firme' : 'aviso'
+    ;(cartasMap[g.idadmon] || (cartasMap[g.idadmon] = [])).push({ tipo, fecha: g.fecha, asunto: g.asunto || null })
+  }
 
   const morosos = []
   for (const g of conFalta) {
@@ -239,6 +248,7 @@ export async function GET(req) {
       perfil: guardado?.perfil || perf.perfil, perfil_auto: perf.perfil,
       perfil_metrics: { meses_con_deuda: perf.mesesConDeuda, dia_medio: perf.diaMedio, saldo_actual: perf.saldoActual, renta_ref: perf.rentaRef, media_retraso: a.media_retraso ?? null },
       bucket, reconcilia_ok: reconciliaOk,
+      cartas: cartasMap[g.idadmon] || [],
       estado: guardado?.estado || 'propuesta',
       plazo_hasta: guardado?.plazo_hasta || null, fecha_aviso: guardado?.fecha_aviso || null,
       fecha_firme: guardado?.fecha_firme || null, cuenta_id: guardado?.cuenta_id || null,
