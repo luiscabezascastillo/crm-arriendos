@@ -1,3 +1,6 @@
+// VERSION: v7 · 2026-08-31 · FIX: datos_arriendos NO tiene domicilio/comuna_domicilio (rompía la lectura y no
+//   descargaba nada). Se quitan del select; la comuna del arrendatario usa como respaldo la del propietario
+//   (p.comuna), que se lee siempre. Hereda v6.
 // VERSION: v6 · 2026-08-31 · FIX validación Nubox: TIPOSERVICIO='3' en boletas (obligatorio; corretaje = venta/
 //   servicio puntual), RUT sin puntos (máx 10), y COMUNA del arrendatario desde datos_arriendos.comuna_domicilio
 //   (+ domicilio como dirección). Hereda v5.
@@ -124,7 +127,7 @@ export async function POST(req) {
 
   // --- Releer ficha (fuente de verdad para montos y datos) ---
   const { data: da, error: eDa } = await sb.from('datos_arriendos')
-    .select('idadmon, idprop, propietario, arrendatario, inmueble, rut, mail_arrendatario, domicilio, comuna_domicilio, comision_d_total, comision_a_total, comision_d_base, comision_a_base')
+    .select('idadmon, idprop, propietario, arrendatario, inmueble, rut, mail_arrendatario, comision_d_total, comision_a_total, comision_d_base, comision_a_base')
     .eq('idadmon', idadmon).maybeSingle()
   if (eDa || !da) return Response.json({ error: 'No se pudo leer datos_arriendos: ' + (eDa?.message || 'no existe') }, { status: 500 })
 
@@ -222,10 +225,12 @@ export async function POST(req) {
   const filasNubox = []     // Nubox (20 col, 1 CSV)
   let docNubox = 0          // correlativo de documento para el FOLIO de Nubox
 
+  // Propietario del contrato (se lee siempre: su comuna sirve de respaldo para la del arrendatario en Nubox)
+  const { data: p } = await sb.from('propietarios')
+    .select('propietario, rut, mail1, email_2, direccion, comuna, tipo_factura').eq('idprop', da.idprop || '').maybeSingle()
+
   // Propietario
   if (comisionProp > 0) {
-    const { data: p } = await sb.from('propietarios')
-      .select('propietario, rut, mail1, email_2, direccion, comuna, tipo_factura').eq('idprop', da.idprop || '').maybeSingle()
     const tipoP = (p?.tipo_factura || '33').trim()
     const linea = lineaReceptor({
       id: tipoP === '33' ? ++idF : ++idB, tipo: tipoP,
@@ -253,7 +258,7 @@ export async function POST(req) {
     if (tipoA === '33') filasFactura.push(linea); else filasBoleta.push(linea)
     filasNubox.push(lineaNubox({
       folio: ++docNubox, tipo: tipoA, rut: da.rut, razon: da.arrendatario,
-      comuna: da.comuna_domicilio || '', direccion: da.domicilio || da.inmueble, correo: da.mail_arrendatario,
+      comuna: p?.comuna || '', direccion: da.inmueble, correo: da.mail_arrendatario,   // sin comuna propia del arrendatario: respaldo la del propietario
       precio: tipoA === '33' ? netoArr : comisionArr,   // factura NETO / boleta BRUTO
       idadmon, inmueble: da.inmueble,
     }))
