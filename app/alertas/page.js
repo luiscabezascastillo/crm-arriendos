@@ -1,3 +1,5 @@
+// VERSION: v13 · 2026-08-31 · Cabecera de la tabla STICKY bajo el TopNav (altura medida) + FILTROS de columna
+//   estilo SA (motor FiltroCabecera) en Tema/Fecha/A resolver/Motivo/Estado. Hereda v12.
 // VERSION: v12 · 2026-08-31 · Corretaje pasa a NUBOX: descarga corretaje_nubox_<idadmon>.csv (sin BOM) en vez de
 //   los CSV SimpleFactura 33/39; textos del bloque 3 actualizados. descargarCSV admite conBom. Hereda v11.
 // VERSION: v11 · 2026-08-12 · APAGADO GLOBAL: interruptor AUTO_OFF=true apaga TODO el automático (términos del día,
@@ -31,11 +33,12 @@
 // VERSION: v1 · 2026-07-28 · Pantalla propia de Alertas (/alertas) para Karina, Alberto y Luis.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import TopNav from '../components/ui/TopNav'
+import { HeaderFilter, filtroActivo, aplicarFiltros } from '../components/ui/FiltroCabecera'
 
 // Términos del día: SOLO estos (Karina + Dirección), como pidió Dirección.
 const ALERTAS_EMAILS = [
@@ -75,6 +78,15 @@ const fmtFecha = (d) => {
   return `${String(x.getDate()).padStart(2, '0')}-${String(x.getMonth() + 1).padStart(2, '0')}-${x.getFullYear()}`
 }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
+
+// Columnas para el filtro de cabecera estilo SA (motor FiltroCabecera) sobre la tabla de alertas.
+const COLDEFS = [
+  { key: 'tema',     label: 'Tema',                tipo: 'texto', fkey: a => a.tema || '',                                                        flabel: k => k || '(vacías)' },
+  { key: 'fecha',    label: 'Fecha',               tipo: 'fecha', fkey: a => String(a.fecha || '').slice(0, 10),                                   flabel: k => (k ? fmtFecha(k) : '(vacías)') },
+  { key: 'objetivo', label: 'A resolver',          tipo: 'fecha', fkey: a => String(a.fecha_pospuesta || a.fecha_resolver || '').slice(0, 10),    flabel: k => (k ? fmtFecha(k) : '(vacías)') },
+  { key: 'motivo',   label: 'Motivo aplazamiento', tipo: 'texto', fkey: a => a.motivo_pospuesta || '',                                             flabel: k => k || '(vacías)' },
+  { key: 'estado',   label: 'Estado',              tipo: 'texto', fkey: a => a.estado === 'resuelta' ? 'Resuelta' : a.estado === 'pospuesta' ? 'Pospuesta' : 'Pendiente', flabel: k => k || '' },
+]
 const fmtPesos = (n) => '$' + Number(n || 0).toLocaleString('es-CL')
 
 export default function AlertasPage() {
@@ -99,6 +111,13 @@ export default function AlertasPage() {
   const [valBusy, setValBusy] = useState('')
   const [cargando, setCargando] = useState(true)
   const [verResueltas, setVerResueltas] = useState(false)
+  const [filtros, setFiltros] = useState({})
+  const [fOpen, setFOpen] = useState(null)
+  const [orden, setOrden] = useState(null)
+  const hayFiltro = Object.values(filtros).some(filtroActivo)
+  const limpiarTodo = () => { setFiltros({}); setOrden(null) }
+  const contentRef = useRef(null)
+  const [headTop, setHeadTop] = useState(52)
   const [posponiendo, setPosponiendo] = useState(null)
   const [posFecha, setPosFecha] = useState('')
   const [posMotivo, setPosMotivo] = useState('')
@@ -317,17 +336,34 @@ export default function AlertasPage() {
   }
 
   const visibles = alertas.filter(a => verResueltas ? true : a.estado !== 'resuelta')
+  const filas = useMemo(() => aplicarFiltros(visibles, COLDEFS, filtros, orden), [visibles, filtros, orden])
+
+  // Cabecera sticky justo bajo el TopNav: mido la altura real de las barras fijas de arriba.
+  useEffect(() => {
+    const medir = () => {
+      let alto = 0, el = contentRef.current?.previousElementSibling
+      while (el) {
+        const pos = window.getComputedStyle(el).position
+        if (pos === 'sticky' || pos === 'fixed') alto += Math.round(el.getBoundingClientRect().height)
+        el = el.previousElementSibling
+      }
+      if (alto) setHeadTop(alto)
+    }
+    medir(); window.addEventListener('resize', medir)
+    const t = setTimeout(medir, 350)
+    return () => { window.removeEventListener('resize', medir); clearTimeout(t) }
+  }, [])
   const nPend = alertas.filter(a => a.estado === 'pendiente').length
   const nPosp = alertas.filter(a => a.estado === 'pospuesta').length
   const color = nPend > 0 ? '#DC2626' : nPosp > 0 ? '#D97706' : '#16A34A'
 
-  const th = { textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.03em', borderBottom: '1px solid #E5E3DC' }
+  const th = { textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.03em', borderBottom: '1px solid #E5E3DC', background: '#FAFAF7', position: 'sticky', top: headTop, zIndex: 3, whiteSpace: 'nowrap' }
   const td = { padding: '10px 12px', fontSize: 13, color: '#333', borderBottom: '1px solid #F0EEE8', verticalAlign: 'top' }
 
   return (
     <>
       <TopNav />
-      <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+      <div ref={contentRef} style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
 
         <style>{`@keyframes fcrBlink { 0%,49%{opacity:1} 50%,100%{opacity:0.15} }`}</style>
 
@@ -525,18 +561,22 @@ export default function AlertasPage() {
             No hay alertas{verResueltas ? '' : ' pendientes'}. Todo al día 🎉
           </div>
         ) : (
-          <div style={{ border: '1px solid #E5E3DC', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr style={{ background: '#FAFAF7' }}>
-                <th style={th}>Tema</th>
-                <th style={th}>Fecha</th>
-                <th style={th}>A resolver</th>
-                <th style={th}>Motivo aplazamiento</th>
-                <th style={th}>Estado</th>
+          <div style={{ border: '1px solid #E5E3DC', borderRadius: 12, background: '#fff' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+              <thead><tr>
+                {COLDEFS.map(col => (
+                  <th key={col.key} style={{ ...th, zIndex: fOpen === col.key ? 6 : 3 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      {col.label}{orden?.key === col.key ? (orden.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                      <HeaderFilter col={col} movs={visibles} state={filtros[col.key]} setState={v => setFiltros(f => ({ ...f, [col.key]: v }))}
+                        open={fOpen} setOpen={setFOpen} orden={orden} setOrden={setOrden} limpiarTodo={limpiarTodo} hayAlguno={hayFiltro} />
+                    </span>
+                  </th>
+                ))}
                 <th style={th}></th>
               </tr></thead>
               <tbody>
-                {visibles.map(a => {
+                {filas.map(a => {
                   const resuelta = a.estado === 'resuelta'
                   const pospuesta = a.estado === 'pospuesta'
                   const objetivo = a.fecha_pospuesta || a.fecha_resolver
