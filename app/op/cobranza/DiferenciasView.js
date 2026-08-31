@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-08-31 · Anti-doble-envío: la etiqueta muestra 'Enviado dd/mm', el drawer avisa si ya se envió este mes y el 2º envío exige marcar una casilla (a propósito). Hereda lo anterior.
 // VERSION: 2026-08-30 · Cabecera de tabla STICKY bajo TopNav+pestañas (top 103).
 // VERSION: v7 · 2026-08-28 · Filtros por columna estilo Excel (motor lib/filtroExcel, como CC1/SA) + Limpiar filtros + contador. Hereda v6.
 // VERSION: v6 · 2026-08-27 · Registrar gestión (llamada/WhatsApp/presencial) en el drawer → Bitácora, además del email. Hereda v5.
@@ -30,6 +31,12 @@ const ESTADO = {
   investigar: { lbl: 'A investigar', bg: C.azulBg, fg: C.azul },
 }
 const badge = (o) => o ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: o.bg, color: o.fg, whiteSpace: 'nowrap' }}>{o.lbl}</span> : null
+// Etiqueta de estado en la tabla: si está 'enviado', añade la fecha del envío (dd/mm) para que se vea de un vistazo.
+const badgeEstado = (f) => {
+  const o = ESTADO[f.estado]; if (!o) return null
+  const txt = f.estado === 'enviado' && f.fecha_estado ? (o.lbl + ' ' + ddmm(String(f.fecha_estado).slice(0, 10))) : o.lbl
+  return <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: o.bg, color: o.fg, whiteSpace: 'nowrap' }}>{txt}</span>
+}
 
 const numV = (v) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[^\d.-]/g, '')) || 0)
 const DIF_COLS = [
@@ -173,7 +180,7 @@ export default function DiferenciasView() {
                       <td style={{ ...numTd, fontWeight: 800, color: C.rojo }}>{P(f.diferencia)}</td>
                       <td style={{ ...numTd, background: C.naranjaBg, color: f.saldo_acumulado > 0 ? C.naranja : C.verde, fontWeight: 700 }}>{P(f.saldo_acumulado)}</td>
                       <td style={td}>{f.reajuste_reciente ? <span style={{ fontSize: 11, fontWeight: 700, color: C.azul }} title={'último reajuste ' + ddmm(f.fecha_reajuste)}>reaj. {ddmm(f.fecha_reajuste)}</span> : <span style={{ color: C.sub }}>—</span>}</td>
-                      <td style={td}>{badge(ESTADO[f.estado])}</td>
+                      <td style={td}>{badgeEstado(f)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -227,9 +234,14 @@ export default function DiferenciasView() {
             </div>
             {dw.msg && <div style={{ fontSize: 12.5, color: dw.msg[0] === '✓' ? C.verde : C.rojo, marginBottom: 8 }}>{dw.msg}</div>}
 
+            {dw.f.estado === 'enviado' && (
+              <div style={{ background: C.ambarBg, border: '1px solid #E8D9A8', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: C.ambar, marginTop: 6, marginBottom: 2 }}>
+                Ya se envió un recordatorio de este mes el <b>{ddmm(String(dw.f.fecha_estado || '').slice(0, 10))}</b>{dw.f.usuario ? ' (' + dw.f.usuario + ')' : ''}. Envía otro solo si es a propósito.
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
               <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>Probar (a mí)…</button>
-              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 14px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>Enviar recordatorio…</button>
+              <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: true, msg: '' })} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 14px', borderRadius: 8, border: 'none', background: dw.f.estado === 'enviado' ? C.ambar : C.acento, color: '#fff', cursor: 'pointer' }}>{dw.f.estado === 'enviado' ? 'Enviar otro recordatorio…' : 'Enviar recordatorio…'}</button>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 <button disabled={dw.enviando} onClick={() => marcar('pospuesto')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.ambar, cursor: 'pointer' }}>Posponer</button>
                 <button disabled={dw.enviando} onClick={() => marcar('investigar')} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.azul, cursor: 'pointer' }}>A investigar</button>
@@ -260,12 +272,21 @@ export default function DiferenciasView() {
                 <div style={{ background: '#F7F6F1', border: '1px solid ' + C.line, borderRadius: 8, padding: '10px 12px', whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 220, overflowY: 'auto' }}>{dw.cuerpo}</div>
               </div>
               <div style={{ fontSize: 11.5, color: C.sub }}>Se envía una copia oculta a administración@fondocapital.com.</div>
+              {dw.f.estado === 'enviado' && (
+                <div style={{ background: C.ambarBg, border: '1px solid #E8D9A8', borderRadius: 8, padding: '8px 12px', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: C.ambar, marginBottom: 6 }}>⚠ Este arrendatario <b>ya recibió</b> un recordatorio de este mes el <b>{ddmm(String(dw.f.fecha_estado || '').slice(0, 10))}</b>{dw.f.usuario ? ' (' + dw.f.usuario + ')' : ''}.</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.txt, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!dw.okReenvio} onChange={e => setDw({ ...dw, okReenvio: e.target.checked })} />
+                    Sí, quiero enviar otro recordatorio a propósito.
+                  </label>
+                </div>
+              )}
             </div>
             {dw.msg && <div style={{ fontSize: 12.5, color: dw.msg[0] === '✓' ? C.verde : C.rojo, marginTop: 10 }}>{dw.msg}</div>}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 16 }}>
               <button disabled={dw.enviando} onClick={() => setDw({ ...dw, confirmar: false, msg: '' })} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid ' + C.line, background: '#fff', color: C.sub, cursor: 'pointer', marginRight: 'auto' }}>Volver a editar</button>
               <button disabled={dw.enviando} onClick={() => enviar(true)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 14px', borderRadius: 8, border: '1px solid #CFE0FF', background: C.azulBg, color: C.azul, cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Enviar prueba a mí'}</button>
-              <button disabled={dw.enviando} onClick={() => enviar(false)} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 16px', borderRadius: 8, border: 'none', background: C.acento, color: '#fff', cursor: 'pointer' }}>{dw.enviando ? 'Enviando…' : 'Confirmar y enviar'}</button>
+              {(() => { const rein = dw.f.estado === 'enviado'; const off = dw.enviando || (rein && !dw.okReenvio); return (<button disabled={off} onClick={() => enviar(false)} style={{ fontSize: 12.5, fontWeight: 800, padding: '8px 16px', borderRadius: 8, border: 'none', background: off ? '#C9C7BE' : (rein ? C.ambar : C.acento), color: '#fff', cursor: off ? 'default' : 'pointer' }}>{dw.enviando ? 'Enviando…' : (rein ? 'Enviar otro' : 'Confirmar y enviar')}</button>) })()}
             </div>
           </div>
         </div>

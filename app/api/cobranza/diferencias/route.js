@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-08-31 · Devuelve 'usuario' del estado (para mostrar quién envió el recordatorio y la fecha en la etiqueta).
 // VERSION: v6 · 2026-08-27 · FIX saldo acumulado y perfil: `cuentas` se traía sin paginar (>1000 filas truncaba). Ahora paginado -> el saldo cuadra con la cartola. Hereda v5.
 // VERSION: v5 · 2026-08-27 · Envío con CC (aval u otros) y copia oculta a administración@ en todos los envíos reales (no en pruebas). Hereda v4.
 // VERSION: v4 · 2026-08-27 · Email suave afinado: pide regularizar hoy/mañana, con concepto de pago y mención del reajuste (placeholder). Hereda v3.
@@ -167,7 +168,7 @@ export async function GET(req) {
       reajuste_reciente: uReaj != null && (hoy.t - uReaj) <= 150 * 86400000, fecha_reajuste: uReaj ? isoUTC(uReaj) : null,
       perfil: perf.perfil, perfil_metrics: { meses_con_deuda: perf.meses_con_deuda, dia_medio: perf.dia_medio, saldo_actual: perf.saldo_actual },
       deuda_servicios: Math.round(servMap[g.idadmon] || 0),
-      estado: est?.estado || 'pendiente', nota: est?.nota || null, fecha_estado: est?.fecha_estado || null,
+      estado: est?.estado || 'pendiente', nota: est?.nota || null, fecha_estado: est?.fecha_estado || null, usuario: est?.usuario || null,
     })
   }
   filas.sort((x, y) => (y.diferencia - x.diferencia))

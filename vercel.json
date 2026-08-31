@@ -1,6 +1,17 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
   "crons": [
-    { "path": "/api/liquidaciones/auto-congelar", "schedule": "0 12 23 * *" }
+    {
+      "path": "/api/liquidaciones/auto-congelar",
+      "schedule": "0 12 23 * *"
+    },
+    {
+      "path": "/api/cron/alberto-descuento",
+      "schedule": "0 12 7 * *"
+    },
+    {
+      "path": "/api/cron/alberto-aporte",
+      "schedule": "0 12 25 * *"
+    }
   ]
 }
