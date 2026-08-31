@@ -1,4 +1,5 @@
 'use client'
+// VERSION: v2 · 2026-08-31 · Muestra FinancieroNav (activo=ausencias) tras TopNav cuando viene del módulo financiero (?fin=1), como el resto del personal. Hereda v1.
 // VERSION: v1 · 2026-08-31 · Calendario laboral (3ª pestaña de Control del personal): ver/editar por día es_habil,
 //   horas_esperadas y motivo (feriados y días extra de la empresa). GET/POST a /api/control-asistencia/calendario.
 import { useState, useEffect, useMemo } from 'react'
@@ -6,6 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import PersonalNav from '../../components/ui/PersonalNav'
 import TopNav from '@/app/components/ui/TopNav'
+import FinancieroNav from '@/app/components/ui/FinancieroNav'
 
 const ACCESO_EMAILS = [
   'alberto.cabezas@fondocapital.com',
@@ -100,6 +102,7 @@ export default function CalendarioLaboralPage() {
   return (
     <>
       <TopNav />
+      {fin && <FinancieroNav activo="ausencias" />}
       <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
         <PersonalNav activo="calendario" fin={fin} />
 
