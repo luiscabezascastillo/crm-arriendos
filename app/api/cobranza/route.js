@@ -1,3 +1,5 @@
+// VERSION: v3 · 2026-08-31 · La morosidad usa el CARGO EFECTIVO (cargo_manual ?? cargo) y EXCLUYE las líneas
+//   anuladas, igual que la Cartola. Antes ignoraba las ediciones/anulaciones a mano y la deuda no cuadraba. Hereda v2.
 // VERSION: v2 · 2026-08-27 · INICIOS rediseñado: entra solo si TODOS los cargos INICIO vencieron (+5d tolerancia) y el saldo corrido al terminar los inicios > umbral. Cartolas sin cambios. Hereda v1.
 // VERSION: v1 · 2026-07-21 · Cobranza unificada. GET ?tipo=cartolas|inicios.
 //   - cartolas: TODOS los arrendatarios; umbral cobranza_umbral_cartola (8000).
@@ -67,7 +69,7 @@ export async function GET(req) {
   for (let desde = 0; ; desde += PAGE) {
     const { data, error } = await admin
       .from('cuentas')
-      .select('id, idadmon, fecha, concepto, cargo, abono, calif')
+      .select('id, idadmon, fecha, concepto, cargo, cargo_manual, abono, calif, anulado')
       .range(desde, desde + PAGE - 1)
     if (error) return Response.json({ error: 'Error leyendo cuentas: ' + error.message }, { status: 500 })
     movs = movs.concat(data || [])
@@ -131,7 +133,7 @@ export async function GET(req) {
       const corte = ui._f + TOL_INI_MS
       if (corte > hoy) continue                             // aún no ha pasado el margen -> no evaluar todavía
       let sIni = 0
-      for (const m of conMeta) { if (m._f > 0 && m._f <= corte) sIni += num(m.cargo) - num(m.abono) }
+      for (const m of conMeta) { if (!m.anulado && m._f > 0 && m._f <= corte) sIni += ((m.cargo_manual != null && m.cargo_manual !== '') ? num(m.cargo_manual) : num(m.cargo)) - num(m.abono) }
       saldoInicio = sIni
       if (sIni <= umbral) continue                          // arranque saldado (cero o a favor) -> fuera
     }
@@ -140,8 +142,10 @@ export async function GET(req) {
     let saldoHoy = 0
     let ultimoAbono = null
     for (const m of conMeta) {
+      if (m.anulado) continue   // las líneas anuladas no cuentan (igual que la Cartola)
       if (m._f <= hoy) {
-        saldoHoy += num(m.cargo) - num(m.abono)
+        const cEf = (m.cargo_manual != null && m.cargo_manual !== '') ? num(m.cargo_manual) : num(m.cargo)
+        saldoHoy += cEf - num(m.abono)
         if (num(m.abono) > 0 && m._f > 0) ultimoAbono = m.fecha  // último abono cronológico
       }
     }
