@@ -1,4 +1,6 @@
 // VERSION: 2026-08-26 · Añadido "← Volver" (BotonVolver, history.back) — convención de retorno. Hereda versión previa.
+// VERSION: v8 · 2026-08-31 · Ayuda en la hoja: botón "📖 Cómo cargar" + modal paso a paso (bajar el Archivo LRE
+//   de Nubox en Formato CSV; el LRE trae los aportes patronales; el PDF no). Hereda v7.
 // VERSION: v7 · 2026-08-14 · Dos arreglos: (1) tras cargar (LRE o PDF) se refresca la tabla del mes
 //   aunque ya estuviera seleccionado (antes había que recargar la página para ver el coste completo);
 //   (2) la nota "meses sin cargar" ya NO cuenta el mes en curso (la nómina se corre a fin de mes),
@@ -112,6 +114,7 @@ export default function RemuneracionesPage() {
   const [subiendo, setSubiendo] = useState(false)
   const [msgCarga, setMsgCarga] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  const [ayudaOpen, setAyudaOpen] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
@@ -535,6 +538,11 @@ export default function RemuneracionesPage() {
                 Cargar libro (PDF)
               </button>
             )}
+            <button onClick={() => setAyudaOpen(true)}
+              title="Cómo descargar y subir el LRE de Nubox"
+              style={{ ...pill, padding: '6px 12px', fontSize: 12, background: '#fff', color: '#0C447C', borderColor: '#CFE0F0', cursor: 'pointer' }}>
+              📖 Cómo cargar
+            </button>
             <input ref={lreRef} type="file" accept=".csv" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cargarLRE(f) }} />
             <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
@@ -554,6 +562,29 @@ export default function RemuneracionesPage() {
             (SIS, cesantía patronal, mutual y SANNA), así que el coste empresa queda completo de una.
             Descárgalo de Nubox en <b>Utilitarios → Archivo LRE → Descargar → Formato CSV</b> y súbelo con su nombre original.
             El PDF del Libro sigue disponible como alternativa, pero no incluye los aportes.
+          </div>
+        )}
+
+        {ayudaOpen && (
+          <div onClick={() => setAyudaOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 96vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', padding: 22 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#2C2C2A', marginBottom: 10 }}>Cómo cargar el libro de remuneraciones</div>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6, color: '#333' }}>
+                <li>En <b>Nubox</b>, ve a <b>Utilitarios → Archivo LRE → Descargar → Formato CSV</b>. Ese es el archivo bueno (el <b>LRE</b>): no el "Libro de Remuneraciones" en PDF ni ningún otro Excel/CSV.</li>
+                <li>El LRE trae <b>todo</b>: haberes, descuentos y los <b>aportes del empleador</b> (SIS, cesantía patronal, mutual y SANNA), así el <b>coste empresa queda completo</b> de una.</li>
+                <li>Súbelo <b>tal cual</b>, sin abrirlo ni volver a guardarlo en Excel (viene en Latin-1; si lo re-guardas se rompen los acentos y puede fallar).</li>
+                <li>Arriba, elige el <b>mes</b> correcto. Luego pulsa <b>"⬆ Cargar LRE (CSV)"</b> y selecciona el archivo (o arrástralo sobre la tabla).</li>
+              </ol>
+              <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: '#FDF6E3', border: '1px solid #EFE0B8', fontSize: 12.5, color: '#7A5B00', lineHeight: 1.5 }}>
+                <b>Si sale "no parece un LRE de Nubox (faltan columnas…)":</b> descargaste otro archivo. Vuelve al paso 1 y baja el <b>Archivo LRE en Formato CSV</b> (Utilitarios → Archivo LRE).
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12.5, color: '#888780', lineHeight: 1.5 }}>
+                El <b>PDF del Libro</b> vale como alternativa, pero <b>no trae los aportes patronales</b> → el coste empresa sale incompleto (marcado con "*"). Usa siempre el LRE si puedes.
+              </div>
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={() => setAyudaOpen(false)} style={{ ...pill, padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Entendido</button>
+              </div>
+            </div>
           </div>
         )}
 
