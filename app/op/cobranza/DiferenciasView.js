@@ -123,7 +123,7 @@ export default function DiferenciasView() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        <span style={{ fontSize: 15, fontWeight: 700 }}>Diferencias / saldo por cobrar</span>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>Diferencias / Recientes · saldo por cobrar</span>
         <span style={{ fontSize: 12, color: C.sub }}>· {data?.mes_lbl || '—'}{data?.hoy ? ' · al ' + ddmm(data.hoy) : ''}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <input value={inp} onChange={e => setInp(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} placeholder="AAMM" style={{ ...inpS, width: 72, textAlign: 'center' }} />

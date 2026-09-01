@@ -1,3 +1,4 @@
+// VERSION: v4 · 2026-09-01 · Cartolas: parámetro ?hasta=YYYY-MM-DD para ver el saldo a una FECHA DE CORTE (fin del día); por defecto hoy. Devuelve 'corte'.
 // VERSION: v3 · 2026-08-31 · La morosidad usa el CARGO EFECTIVO (cargo_manual ?? cargo) y EXCLUYE las líneas
 //   anuladas, igual que la Cartola. Antes ignoraba las ediciones/anulaciones a mano y la deuda no cuadraba. Hereda v2.
 // VERSION: v2 · 2026-08-27 · INICIOS rediseñado: entra solo si TODOS los cargos INICIO vencieron (+5d tolerancia) y el saldo corrido al terminar los inicios > umbral. Cartolas sin cambios. Hereda v1.
@@ -62,6 +63,12 @@ export async function GET(req) {
   const umbral = tipo === 'inicios' ? P.umbralInicios : P.umbralCartola
   const ventanaMs = P.ventanaInicios * DIA_MS
   const hoy = Date.now()
+  // Fecha de corte opcional (?hasta=YYYY-MM-DD): ver el saldo de la cartola a esa fecha (fin del día).
+  // Útil en ventana de liquidación (23→10), cuando el saldo a "hoy" no es estable. Por defecto = ahora.
+  let corteTs = hoy
+  const hastaRaw = (url.searchParams.get('hasta') || '').trim()
+  const mh = hastaRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (mh) { const t = new Date(Number(mh[1]), Number(mh[2]) - 1, Number(mh[3]), 23, 59, 59).getTime(); if (!isNaN(t)) corteTs = t }
 
   // 1) Todos los movimientos (paginado)
   let movs = []
@@ -143,7 +150,7 @@ export async function GET(req) {
     let ultimoAbono = null
     for (const m of conMeta) {
       if (m.anulado) continue   // las líneas anuladas no cuentan (igual que la Cartola)
-      if (m._f <= hoy) {
+      if (m._f <= corteTs) {
         const cEf = (m.cargo_manual != null && m.cargo_manual !== '') ? num(m.cargo_manual) : num(m.cargo)
         saldoHoy += cEf - num(m.abono)
         if (num(m.abono) > 0 && m._f > 0) ultimoAbono = m.fecha  // último abono cronológico
@@ -198,6 +205,8 @@ export async function GET(req) {
     ok: true,
     tipo,
     generado: new Date().toISOString(),
+    corte: new Date(corteTs).toISOString(),
+    corte_es_hoy: corteTs === hoy,
     parametros: { umbral, sobrepago: P.sobrepago },
     resumen: { vigente: resumenDe('vigente'), termino: resumenDe('termino') },
     filas,

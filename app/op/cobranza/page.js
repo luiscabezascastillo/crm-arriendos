@@ -1,4 +1,6 @@
 'use client'
+// VERSION: 2026-09-01b · Cartolas: selector de FECHA DE CORTE (ver saldo a una fecha) + el panel de gestión referencia la deuda a esa fecha y expone {{deuda}}/{{fecha_corte}}/{{corte}} en las plantillas. Hereda lo anterior.
+// VERSION: 2026-09-01 · Renombre de pestañas: Diferencias→"Diferencias/Recientes", Cartolas→"Acumulada/Cartola" (etiquetas y títulos; claves y rutas intactas). Hereda versión previa.
 // VERSION: 2026-08-27 · En Inicios/Cartolas el IDADMON abre la Cartola en la MISMA ventana (no pestaña nueva); se vuelve con el ← Volver de Cartolas. Hereda versión previa.
 // VERSION: 2026-08-27 · Unificado "Manual"+"Ayuda" en un solo botón "Ayuda" (panel en la misma página), con el contenido actualizado a la realidad del módulo y remitiendo a «Guía morosos» para la reclamación. Hereda versión previa.
 // VERSION: 2026-08-27 · "Notificaciones" abre en la MISMA ventana (Link SPA), no en pestaña nueva; se vuelve con el ← Volver de esa página. Hereda versión previa.
@@ -63,6 +65,12 @@ function fechaHoraLocal(iso) {
   const p = (n) => String(n).padStart(2, '0')
   return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ', ' + p(d.getHours()) + ':' + p(d.getMinutes())
 }
+// Solo la fecha (dd/mm/aaaa), sin hora — para mostrar la fecha de corte elegida.
+function fechaLocalCorta(iso) {
+  const d = iso ? new Date(iso) : new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear()
+}
 
 const MESES_TXT = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 function mesActualTxt() { const d = new Date(); return MESES_TXT[d.getMonth()] + ' ' + d.getFullYear() }
@@ -121,20 +129,20 @@ const COB_COLS = [
 ]
 
 const TABS = [
-  { k: 'diferencias', label: 'Diferencias' },
+  { k: 'diferencias', label: 'Diferencias/Recientes' },
   { k: 'multas', label: 'Multas' },
-  { k: 'cartolas', label: 'Cartolas' },
+  { k: 'cartolas', label: 'Acumulada/Cartola' },
   { k: 'saldos', label: 'Saldos a favor' },
   { k: 'bitacora', label: 'Bitácora' },
   { k: 'servicios', label: 'Servicios', href: '/op/deudas' },
   { k: 'inicios', label: 'Inicios' },
 ]
-const TITULO_TIPO = { cartolas: 'Cobranza de Cartolas', inicios: 'Cobranza de Inicios' }
+const TITULO_TIPO = { cartolas: 'Cobranza · Acumulada / Cartola', inicios: 'Cobranza de Inicios' }
 
 // Contenido del boton "? Ayuda" — como funciona la cobranza (escueto y practico).
 const AYUDA_COBRANZA = [
   { t: 'Qué es este módulo', d: 'La cobranza del arriendo y de los servicios en un solo sitio: detectar quién debe, avisar dejando constancia, y escalar hasta el pago o la acción legal. La deuda sale de la cartola de cada contrato (lo cargado menos lo abonado) que cobra FCR, no el dueño.' },
-  { t: 'Las pestañas', d: 'Diferencias: pagó de menos (casi siempre por un reajuste) — recordatorio suave. Multas: atraso de renta, aviso → firme (carga a la cartola, anulable). Cartolas: morosos con deuda y su gestión. Saldos a favor: cartolas a auditar. Bitácora: el registro global de todas las gestiones. Servicios: deudas de GGCC/luz/agua/gas y su recordatorio. Inicios: contratos recién arrancados.' },
+  { t: 'Las pestañas', d: 'Diferencias/Recientes: pagó de menos del mes (casi siempre por un reajuste) — recordatorio suave. Multas: atraso de renta, aviso → firme (carga a la cartola, anulable). Acumulada/Cartola: morosos con deuda acumulada y su gestión. Saldos a favor: cartolas a auditar. Bitácora: el registro global de todas las gestiones. Servicios: deudas de GGCC/luz/agua/gas y su recordatorio. Inicios: contratos recién arrancados.' },
   { t: 'Salud del cobro (KPIs)', d: 'Arriba, cinco indicadores con su evolución: cobrado en plazo y cartera por cobrar (renta, mensual); deuda de servicios, servicios al día y garantías en riesgo (servicios, corte semanal de los domingos). «Ver evolución» abre las curvas.' },
   { t: 'Enviar siempre pasa por revisión', d: 'Todo email (diferencias, multas, servicios) abre una ventana de confirmación: ves el correo, añades CC (p. ej. el aval), y eliges Probar (a ti), Confirmar y enviar o Volver a editar. Todo envío real lleva copia a administración y queda registrado.' },
   { t: 'Además del email: llamada y WhatsApp', d: 'En Diferencias, Multas y Servicios puedes registrar una llamada, un WhatsApp o una visita presencial. Queda en la Bitácora con su fecha y usuario, aunque no salga ningún correo.' },
@@ -220,6 +228,7 @@ function VistaCobranza({ tipo }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [corte, setCorte] = useState('')   // fecha de corte (YYYY-MM-DD); '' = hoy. Solo aplica a Cartolas.
   const [verVigente, setVerVigente] = useState(true)
   const [verTermino, setVerTermino] = useState(true)
   const [gestionar, setGestionar] = useState(null)   // fila seleccionada para el panel
@@ -230,7 +239,7 @@ function VistaCobranza({ tipo }) {
   useEffect(() => {
     let vivo = true
     setLoading(true); setError(null); setData(null)
-    fetch('/api/cobranza?tipo=' + tipo)
+    fetch('/api/cobranza?tipo=' + tipo + (corte ? '&hasta=' + corte : ''))
       .then(r => r.json())
       .then(j => { if (!vivo) return; if (j.error) setError(j.error); else setData(j); setLoading(false) })
       .catch(e => { if (!vivo) return; setError(String(e)); setLoading(false) })
@@ -239,7 +248,7 @@ function VistaCobranza({ tipo }) {
       .then(j => { if (!vivo) return; const m = {}; for (const x of (j.resumen || [])) m[x.idadmon] = x; setResumenMap(m) })
       .catch(() => {})
     return () => { vivo = false }
-  }, [tipo])
+  }, [tipo, corte])
 
   useEffect(() => {
     const el = cabRef.current
@@ -276,7 +285,16 @@ function VistaCobranza({ tipo }) {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 10, marginBottom: (data && moros.length > 0) ? 12 : 0, borderBottom: '1px solid ' + C.line }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 15, fontWeight: 700 }}>{TITULO_TIPO[tipo]}</span>
-            <span style={{ fontSize: 12, color: C.sub }}>· situación al {fechaHoraLocal(data?.generado)}</span>
+            <span style={{ fontSize: 12, color: C.sub }}>· situación al {data?.corte && !data?.corte_es_hoy ? fechaLocalCorta(data.corte) : fechaHoraLocal(data?.generado)}</span>
+            {tipo === 'cartolas' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.sub }}>
+                · corte a:
+                <input type="date" value={corte} onChange={e => setCorte(e.target.value)}
+                  title="Ver el saldo de la cartola a esta fecha (útil en la ventana de liquidación, 23→10, cuando el saldo de hoy aún no es estable)."
+                  style={{ fontSize: 12, padding: '3px 6px', border: '1px solid ' + C.line, borderRadius: 6 }} />
+                {corte ? <button onClick={() => setCorte('')} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '1px solid ' + C.line, background: '#fff', color: C.sub, cursor: 'pointer' }}>Hoy</button> : null}
+              </span>
+            )}
           </div>
           {data && (
             <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
@@ -329,7 +347,7 @@ function VistaCobranza({ tipo }) {
         </>
       )}
 
-      {gestionar && <CobranzaDrawer fila={gestionar} onClose={() => setGestionar(null)} />}
+      {gestionar && <CobranzaDrawer fila={gestionar} corte={corte} onClose={() => setGestionar(null)} />}
     </div>
   )
 }
@@ -486,7 +504,7 @@ function Tabla({ filas, tipo, grupo, onGestionar, pendMap, theadTop = 103 }) {
 }
 
 // ─── Panel de gestión (constancia) ──────────────────────────────────────────
-function CobranzaDrawer({ fila, onClose }) {
+function CobranzaDrawer({ fila, onClose, corte }) {
   const [info, setInfo] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -524,6 +542,8 @@ function CobranzaDrawer({ fila, onClose }) {
   const dias = (fila.dias_mora != null) ? fila.dias_mora : diasDesdeFecha(fila.ultimo_abono)
   const multa = (dias && dias > 0) ? Math.round(deuda * (Number(pct) / 100) * dias) : 0
   const total = deuda + multa
+  // Fecha de corte a la que está referida la deuda (viene de la vista Cartolas; por defecto hoy).
+  const fechaCorteTxt = corte ? fechaLocalCorta(corte + 'T12:00:00') : fechaLocalCorta(new Date().toISOString())
 
   function cargar() {
     setLoading(true)
@@ -565,6 +585,10 @@ function CobranzaDrawer({ fila, onClose }) {
       '{{multa}}': num(multa).toLocaleString('es-CL'),
       '{{total}}': num(total).toLocaleString('es-CL'),
       '{{mes}}': mesActualTxt(),
+      '{{deuda}}': num(deuda).toLocaleString('es-CL'),
+      '{{fecha_corte}}': fechaCorteTxt,
+      '{{corte}}': fechaCorteTxt,
+      '{{hoy}}': fechaLocalCorta(new Date().toISOString()),
     }
   }
   function render(t) { let s = String(t || ''); const v = valores(); for (const k in v) s = s.split(k).join(v[k]); return s }
@@ -775,6 +799,7 @@ function CobranzaDrawer({ fila, onClose }) {
               {plantillasDep.map(p => <option key={p.id} value={p.id}>{DEST_LBL[p.destinatario] || p.destinatario} · {p.etapa}</option>)}
             </select>
           </div>
+          <div style={{ fontSize: 11, color: C.sub, marginTop: -4, marginBottom: 8 }}>La deuda ({money(deuda)}) está referida a la fecha de corte: <b>{fechaCorteTxt}</b>.</div>
 
           {dias > 0 && (
             <div style={{ marginBottom: 10, background: '#FBF7EC', border: '1px solid #EADFBD', borderRadius: 8, padding: '10px 12px' }}>
@@ -788,7 +813,7 @@ function CobranzaDrawer({ fila, onClose }) {
                     style={{ width: 64, padding: '5px 7px', border: '1px solid #E0DDD8', borderRadius: 6, fontSize: 12 }} />
                 </label>
               </div>
-              <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>Usa {'{{multa}}'} y {'{{total}}'} en las plantillas. El cargo a la cuenta sigue en Morosidad.</div>
+              <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>Deuda referida al <b>{fechaCorteTxt}</b>. En las plantillas: {'{{deuda}}'}, {'{{fecha_corte}}'}, {'{{multa}}'}, {'{{total}}'}. El cargo a la cuenta sigue en Morosidad.</div>
             </div>
           )}
 
