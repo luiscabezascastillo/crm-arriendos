@@ -1,4 +1,5 @@
 'use client'
+// VERSION: 2026-09-01 · Cartola IDADMON: selector de FECHA DE CORTE — muestra el saldo a esa fecha (chip "Al dd/mm") y atenúa las líneas posteriores. El Total (hoy) sigue visible. Hereda lo anterior.
 // VERSION: 2026-08-27 · Botón «← Volver» (history.back) bajo el TopNav — vuelve a donde se abrió la Cartola (Cobranza/Inicios, etc.). Convención de navegación.
 // VERSION: v33 · 2026-08-26 · Filas de MULTA por atraso (calif='MULTA') con fondo rojo claro. Hereda v32.
 // VERSION: v32 · 2026-08-25 · Cartola IDADMON: filas anteriores al RESETEO (cierre ficticio) se marcan HISTÓRICO — atenuadas, saldo "—", no suman al total; toggle Mostrar/Ocultar histórico. Hereda v31.
@@ -939,6 +940,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   const [ficha, setFicha] = useState(null)      // fila de datos_arriendos
   const [movs, setMovs] = useState([])          // movimientos con _saldo corrido
   const [resetInfo, setResetInfo] = useState({ count: 0, fecha: '' })  // v32: corte por reseteo (cierre ficticio)
+  const [corteISO, setCorteISO] = useState('')  // fecha de corte para ver el saldo a esa fecha ('' = hoy/actual)
   const [verHist, setVerHist] = useState(true)  // v32: histórico anterior al reseteo visible (atenuado) por defecto
   const [consultado, setConsultado] = useState(false)
   const [aviso, setAviso] = useState(null)      // "en TÉRMINO" / "HISTÓRICO"
@@ -1101,6 +1103,12 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
   const filaEsBI = (r) => String(r.comentarios || '').trim().toUpperCase() === 'BI'
   const esInicio = (r) => String(r.calif || '').trim().toUpperCase() === 'INICIO'
   const saldoTotal = movs.filter(m => !m.anulado && !m._hist).reduce((a, m) => a + cargoEfectivo(m) - num(m.abono), 0)
+  // Saldo A UNA FECHA DE CORTE (útil en ventana de liquidación 23→10, cuando el saldo de hoy no es estable).
+  const corteNum = corteISO ? Number(corteISO.replaceAll('-', '')) : Infinity
+  const saldoAlCorte = corteISO
+    ? movs.filter(m => !m.anulado && !m._hist && fechaOrden(m.fecha) <= corteNum).reduce((a, m) => a + cargoEfectivo(m) - num(m.abono), 0)
+    : saldoTotal
+  const corteTxt = corteISO ? corteISO.split('-').reverse().join('/') : ''
   const idsEditables = new Set(movs.slice(-5).map(m => m.id))
   const estadoLiq = (m) => {
     if (m.cargo_editado_en == null) return null
@@ -1337,9 +1345,17 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
               {/* MOROSIDAD incrustada (KPIs + toggles + AL DÍA) */}
               <MorosidadCartola idadmon={ficha.idadmon} inline />
               {/* TOTAL — a la derecha */}
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Total</span>
-                <span style={{ fontSize: 18, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                {corteISO && (
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 10, color: '#B8860B', textTransform: 'uppercase', letterSpacing: '.03em' }}>Al {corteTxt}</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: saldoAlCorte < 0 ? '#9B1C1C' : '#B8860B' }}>{money(saldoAlCorte)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '.03em' }}>Total{corteISO ? ' (hoy)' : ''}</span>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: saldoTotal < 0 ? '#9B1C1C' : '#085041' }}>{money(saldoTotal)}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1347,6 +1363,13 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
           {/* MOVIMIENTOS · el proporcional del primer mes va a la derecha, en la misma línea */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#2C2C2A' }}>Movimientos</div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#888780' }}>
+              corte a:
+              <input type="date" value={corteISO} onChange={e => setCorteISO(e.target.value)}
+                title="Ver el saldo de la cartola a esta fecha (las líneas posteriores se atenúan). Útil en la ventana de liquidación (23→10)."
+                style={{ fontSize: 12, padding: '3px 6px', border: '0.5px solid #D3D1C7', borderRadius: 6 }} />
+              {corteISO ? <button onClick={() => setCorteISO('')} style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '0.5px solid #D3D1C7', background: '#fff', color: '#6B7280', cursor: 'pointer' }}>Hoy</button> : null}
+            </span>
             {resetInfo.count > 0 && (
               <button onClick={() => setVerHist(v => !v)} title="Filas anteriores al reseteo (cierre ficticio): congeladas, no suman al saldo"
                 style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 7, border: '0.5px solid #D3D1C7', background: '#F4F3EF', color: '#6B7280', cursor: 'pointer' }}>
@@ -1439,7 +1462,7 @@ function CartolaIdadmonVista({ vista, setVista, initialId, onConsumed }) {
                   return (
                   <tr key={r.id}>
                     {MCOLS.map((c, ci) => (
-                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: filaBg || bgMov(r, c), color: r._hist ? '#A8A69E' : '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', fontStyle: r._hist ? 'italic' : 'normal' }}>
+                      <td key={ci} style={{ padding: '6px 10px', textAlign: c.align, whiteSpace: c.key === 'concepto' ? 'normal' : 'nowrap', background: filaBg || bgMov(r, c), color: r._hist ? '#A8A69E' : '#2C2C2A', borderBottom: '0.5px solid #EDEBE4', fontStyle: r._hist ? 'italic' : 'normal', opacity: (corteISO && !r._hist && fechaOrden(r.fecha) > corteNum) ? 0.4 : 1 }}>
                         {cellMov(r, c, r._hist)}
                       </td>
                     ))}
