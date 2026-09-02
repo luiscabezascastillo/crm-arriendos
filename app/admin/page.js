@@ -1,3 +1,4 @@
+// VERSION: 2026-09-02d · BITÁCORA: la ficha rellena datos_arriendos.updated_por (email del usuario) en cada guardado (alta, update, cerrar-facturar), para que el trigger de bitácora registre el autor del cambio. Requiere el SQL de datos_arriendos_bitacora ejecutado ANTES en Supabase (columna updated_por + tabla + trigger). Hereda 2026-09-02c.
 // VERSION: 2026-09-02c · FIX punto decimal UF en el autocálculo de corretaje: en UF la cuota (15.87) llevaba el punto como DECIMAL y el código lo quitaba (→1587, ×100), generando corretajes disparatados (A00820=32M, A00689=420M…). Ahora en UF no se quita el punto; en pesos sí (miles). Junto al candado anti-sobreescritura cierra el problema de raíz. Hereda 2026-09-02b.
 // VERSION: 2026-09-02b · CANDADO ANTI-SOBREESCRITURA: los autocálculos (corretaje y pct_adm por defecto) YA NO pisan datos guardados; solo rellenan celdas VACÍAS (alta). Antes, abrir un contrato "editable" (incl. Correcciones excepcionales) recalculaba el corretaje por dentro (rama UF) y al GUARDAR machacaba datos congelados (A00820, A00807…). Hereda 2026-09-02.
 // VERSION: 2026-09-02 · pct_adm se EDITA en % en la ficha (teclea 8 = 8%) y se GUARDA como fracción (0.08). Conversión %↔fracción en carga y en los 3 guardados (alta, update, cerrar-facturar); default en % (ya no siembra fracción cruda ni pisa contratos FIJO); validación 0<%<100 antes de guardar. Corrige de raíz los pct_adm=8 (=800%) que inflaban el panel CC1. Hereda 2026-08-30b.
@@ -1124,6 +1125,7 @@ function AdminContent() {
         // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
         for (const k in payload) { if (payload[k] === '') payload[k] = null }
         if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD)
+        payload.updated_por = emailUsuario   // bitácora de campos sensibles: autor del alta
         const res = await fetch('/api/cc1/alta', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ form: payload }),
@@ -1148,6 +1150,7 @@ function AdminContent() {
     // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
     for (const k in payload) { if (payload[k] === '') payload[k] = null }
     if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD); FIJO no se toca
+    payload.updated_por = emailUsuario   // bitácora de campos sensibles: autor del cambio
     const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
     if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }); setSaving(false); return }
 
@@ -1285,6 +1288,7 @@ function AdminContent() {
       delete payload.id
       for (const k in payload) { if (payload[k] === '') payload[k] = null }
       if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD); FIJO no se toca
+      payload.updated_por = emailUsuario   // bitácora de campos sensibles: autor del cambio
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
       if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de validar: ' + eSave.message }); setCambiando(false); return }
       try {
