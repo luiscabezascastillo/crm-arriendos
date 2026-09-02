@@ -1,3 +1,5 @@
+// VERSION: 2026-09-02b · CANDADO ANTI-SOBREESCRITURA: los autocálculos (corretaje y pct_adm por defecto) YA NO pisan datos guardados; solo rellenan celdas VACÍAS (alta). Antes, abrir un contrato "editable" (incl. Correcciones excepcionales) recalculaba el corretaje por dentro (rama UF) y al GUARDAR machacaba datos congelados (A00820, A00807…). Hereda 2026-09-02.
+// VERSION: 2026-09-02 · pct_adm se EDITA en % en la ficha (teclea 8 = 8%) y se GUARDA como fracción (0.08). Conversión %↔fracción en carga y en los 3 guardados (alta, update, cerrar-facturar); default en % (ya no siembra fracción cruda ni pisa contratos FIJO); validación 0<%<100 antes de guardar. Corrige de raíz los pct_adm=8 (=800%) que inflaban el panel CC1. Hereda 2026-08-30b.
 // VERSION: 2026-08-30b · "Cargar datos inicio": el botón lee la Ficha de Datos para Nuevo Contrato (Word) pegada como texto (parseFichaInicio), con fallback al email de Neika; rellena arrendatario, aval, propietario, garantía, renta y fechas; check de IDADMON.
 // VERSION: 2026-08-30 · LOG CC1: "Multas" -> "% multas" y campo nuevo "Tipo multa" (Clásico/Agresivo/Normal -> datos_arriendos.tipo_multa) entre Multas y Paga aseo.
 // RENAME 2026-08-21 · columna datos_arriendos: idlinmue → idinmue (unificado con ggcc/servicios). Ver docs/desarrollo/PENDIENTE_rename_idlinmue_a_idinmue.md
@@ -285,6 +287,32 @@ const IVA_TASA = 0.19
 function parsePct(txt) {
   const m = String(txt ?? '').match(/(\d+(?:[.,]\d+)?)/)
   return m ? Number(m[1].replace(',', '.')) : 0
+}
+
+// ── pct_adm · CONVENCIÓN ────────────────────────────────────────────────────────
+// En la FICHA se maneja como PORCENTAJE (el usuario teclea 8 = 8%).
+// En datos_arriendos se GUARDA como FRACCIÓN (0.08). El motor de liquidación y las
+// vistas esperan fracción; por eso convertimos en la frontera (carga/guardado).
+// Los contratos FIJO (si_fijo_admon con valor) NO usan fracción: su "Cuantía" es un
+// importe en pesos y no se toca.
+function pctAdmAPantalla(v) {            // fracción→% para mostrar: 0.08→'8' · 0.045→'4.5' · 8→'8'
+  const n = parsePct(v)
+  if (!(n > 0)) return v == null ? '' : String(v)
+  return n < 1 ? String(Number((n * 100).toFixed(4))) : String(n)
+}
+function pctAdmParaGuardar(v) {          // %→fracción para guardar: '8'→0.08 · '4,5'→0.045
+  const s = String(v ?? '').trim()
+  if (s === '') return null
+  const n = parsePct(s)
+  if (!(n > 0)) return v                 // no parseable: no destruir el dato existente
+  return n >= 1 ? Number((n / 100).toFixed(6)) : n   // ya-fracción (<1) se respeta
+}
+function pctAdmFueraDeRango(f) {         // true si el % de un contrato % no está en (0,100)
+  if (String(f?.si_fijo_admon ?? '').trim() !== '') return false   // FIJO: no aplica
+  const s = String(f?.pct_adm ?? '').trim()
+  if (s === '') return false             // vacío: lo gestiona el ''→null del guardado
+  const n = parsePct(s)
+  return !(n > 0 && n < 100)
 }
 
 // Celda económica. Soporta:
@@ -715,8 +743,9 @@ function AdminContent() {
     const clave = `${form.idadmon || ''}|${idprop}`
     if (pctAdmRef.current === clave) return   // ya aplicado para este contrato
     pctAdmRef.current = clave
+    if (String(form.si_fijo_admon ?? '').trim() !== '') return   // FIJO: la Cuantía es un importe, no un % por defecto
     ;(async () => {
-      let val = '8'   // fallback
+      let val = '8'   // fallback (en %: 8 = 8%)
       if (idprop) {
         let q = supabase.from('datos_arriendos')
           .select('idadmon, pct_adm').eq('idprop', idprop).in('estado', ['S', 'SQ', 'Q'])
@@ -724,8 +753,9 @@ function AdminContent() {
         const counts = new Map()
         for (const d of data || []) {
           if (String(d.idadmon ?? '').trim() === String(form.idadmon ?? '').trim()) continue // excluye el propio
-          const n = Number(String(d.pct_adm ?? '').replace(',', '.').replace(/[^\d.-]/g, ''))
-          if (!Number.isFinite(n) || String(d.pct_adm ?? '').trim() === '') continue
+          const nRaw = parsePct(d.pct_adm)                                   // el hermano está en fracción (0.08) o legado (8)
+          if (!(nRaw > 0)) continue
+          const n = nRaw < 1 ? Number((nRaw * 100).toFixed(4)) : nRaw        // fracción→% para trabajar en % en la ficha
           counts.set(n, (counts.get(n) || 0) + 1)
         }
         let best = null
@@ -734,7 +764,8 @@ function AdminContent() {
         }
         if (best) val = String(best.n)
       }
-      setForm(prev => ({ ...prev, pct_adm: val }))
+      // REGLA DURA: nunca pisar un pct_adm ya guardado. Solo rellena si está VACÍO (alta / contrato nuevo).
+      setForm(prev => (String(prev.pct_adm ?? '').trim() !== '' ? prev : { ...prev, pct_adm: val }))
     })()
   }, [form.idprop, form.idadmon, bloqueado, form.estado, isNew, correccionAbierta])
 
@@ -755,16 +786,19 @@ function AdminContent() {
     }
     const d = lado(logEcon.porcentD)
     const a = lado(logEcon.porcentA)
+    // REGLA DURA (2026-09-02): el autocálculo NUNCA pisa un corretaje ya guardado.
+    // Solo rellena la celda si está VACÍA (alta / contrato nuevo). Antes recalculaba y
+    // sobreescribía al abrir un contrato "editable" (incl. Correcciones excepcionales),
+    // corrompiendo datos congelados (p.ej. A00820/A00807 en UF). Ya no.
     setForm(prev => {
-      if (prev.comision_d_base === d.base && prev.iva_comision_d === d.iva && prev.comision_d_total === d.total &&
-          prev.comision_a_base === a.base && prev.iva_comision_a === a.iva && prev.comision_a_total === a.total) {
-        return prev // sin cambios: evita renders innecesarios
+      const next = { ...prev }; let changed = false
+      if (String(prev.comision_d_base ?? '').trim() === '' && d.base) {
+        next.comision_d_base = d.base; next.iva_comision_d = d.iva; next.comision_d_total = d.total; changed = true
       }
-      return {
-        ...prev,
-        comision_d_base: d.base, iva_comision_d: d.iva, comision_d_total: d.total,
-        comision_a_base: a.base, iva_comision_a: a.iva, comision_a_total: a.total,
+      if (String(prev.comision_a_base ?? '').trim() === '' && a.base) {
+        next.comision_a_base = a.base; next.iva_comision_a = a.iva; next.comision_a_total = a.total; changed = true
       }
+      return changed ? next : prev
     })
   }, [form.cuota, form.unid, form.estado, logEcon.porcentD, logEcon.porcentA, ufMes, bloqueado, isNew, correccionAbierta])
 
@@ -840,7 +874,9 @@ function AdminContent() {
     setMsg({ type: 'info', text: 'Buscando...' })
     const { data } = await supabase.from('datos_arriendos').select('*').eq('idadmon', buscar).single()
     if (data) {
-      setForm(data); setIdadmonInput(buscar); setIsNew(false); setBloqueado(true)
+      // pct_adm se guarda en fracción; en la ficha se muestra/edita en % (los FIJO se dejan tal cual)
+      const dataForm = String(data.si_fijo_admon ?? '').trim() !== '' ? data : { ...data, pct_adm: pctAdmAPantalla(data.pct_adm) }
+      setForm(dataForm); setIdadmonInput(buscar); setIsNew(false); setBloqueado(true)
       localStorage.setItem('ultimo_idadmon', buscar)
       // Capa 1: leer también el registro completo del log (raw_data)
       try {
@@ -1068,6 +1104,10 @@ function AdminContent() {
 
   async function guardar() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
+    if (pctAdmFueraDeRango(form)) {
+      setMsg({ type: 'error', text: 'El % de administración debe estar entre 0 y 100 (escribe 8 para 8%). Revisa la casilla “Cuantía” de ADMON MES.' })
+      return
+    }
     setSaving(true); setMsg(null)
 
     if (isNew) {
@@ -1077,6 +1117,7 @@ function AdminContent() {
         delete payload.idadmon
         // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
         for (const k in payload) { if (payload[k] === '') payload[k] = null }
+        if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD)
         const res = await fetch('/api/cc1/alta', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ form: payload }),
@@ -1100,6 +1141,7 @@ function AdminContent() {
     delete payload.id
     // Postgres rechaza '' en columnas numéricas: convertir cadenas vacías a null
     for (const k in payload) { if (payload[k] === '') payload[k] = null }
+    if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD); FIJO no se toca
     const { error } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
     if (error) { setMsg({ type: 'error', text: 'Error: ' + error.message }); setSaving(false); return }
 
@@ -1226,6 +1268,7 @@ function AdminContent() {
     if (bloqueado) { setMsg({ type: 'warn', text: 'Desbloquea primero.' }); return }
     if (!form.idadmon) { setMsg({ type: 'warn', text: 'No hay contrato cargado.' }); return }
     if (form.estado !== 'P') { setMsg({ type: 'warn', text: 'Esta acción solo aplica a contratos en estado P.' }); return }
+    if (pctAdmFueraDeRango(form)) { setMsg({ type: 'error', text: 'El % de administración debe estar entre 0 y 100 (8 = 8%). Corrige la “Cuantía” de ADMON MES antes de activar.' }); return }
     { const f = faltaIvaCorretaje(); if (f.length) { setMsg({ type: 'error', text: `No se puede pasar de P a S: falta el IVA del corretaje (${f.join(' y ')}). Complétalo en Datos Económicos.` }); return } }
     if (!window.confirm(`¿Cerrar la carga del contrato ${form.idadmon}?\n\nSe validarán los datos de inicio. Si están correctos, se pedirá el DICOM y luego el estado pasará de P a S, se generarán los cargos de inicio y se enviará la solicitud de facturación a Finanzas.`)) return
     setCambiando(true); setMsg({ type: 'info', text: 'Validando datos de inicio…' })
@@ -1235,6 +1278,7 @@ function AdminContent() {
       const payload = { ...form, adicionar_iva: 'SI', updated_at: new Date().toISOString() }   // administración siempre con IVA
       delete payload.id
       for (const k in payload) { if (payload[k] === '') payload[k] = null }
+      if (String(payload.si_fijo_admon ?? '').trim() === '') payload.pct_adm = pctAdmParaGuardar(form.pct_adm)   // % (ficha) → fracción (BD); FIJO no se toca
       const { error: eSave } = await supabase.from('datos_arriendos').update(payload).eq('idadmon', form.idadmon)
       if (eSave) { setMsg({ type: 'error', text: 'No se pudo guardar antes de validar: ' + eSave.message }); setCambiando(false); return }
       try {
