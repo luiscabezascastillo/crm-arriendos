@@ -1,3 +1,4 @@
+// VERSION: 2026-09-02c · FIX punto decimal UF en el autocálculo de corretaje: en UF la cuota (15.87) llevaba el punto como DECIMAL y el código lo quitaba (→1587, ×100), generando corretajes disparatados (A00820=32M, A00689=420M…). Ahora en UF no se quita el punto; en pesos sí (miles). Junto al candado anti-sobreescritura cierra el problema de raíz. Hereda 2026-09-02b.
 // VERSION: 2026-09-02b · CANDADO ANTI-SOBREESCRITURA: los autocálculos (corretaje y pct_adm por defecto) YA NO pisan datos guardados; solo rellenan celdas VACÍAS (alta). Antes, abrir un contrato "editable" (incl. Correcciones excepcionales) recalculaba el corretaje por dentro (rama UF) y al GUARDAR machacaba datos congelados (A00820, A00807…). Hereda 2026-09-02.
 // VERSION: 2026-09-02 · pct_adm se EDITA en % en la ficha (teclea 8 = 8%) y se GUARDA como fracción (0.08). Conversión %↔fracción en carga y en los 3 guardados (alta, update, cerrar-facturar); default en % (ya no siembra fracción cruda ni pisa contratos FIJO); validación 0<%<100 antes de guardar. Corrige de raíz los pct_adm=8 (=800%) que inflaban el panel CC1. Hereda 2026-08-30b.
 // VERSION: 2026-08-30b · "Cargar datos inicio": el botón lee la Ficha de Datos para Nuevo Contrato (Word) pegada como texto (parseFichaInicio), con fallback al email de Neika; rellena arrendatario, aval, propietario, garantía, renta y fechas; check de IDADMON.
@@ -775,8 +776,13 @@ function AdminContent() {
   useEffect(() => {
     const editable = !(bloqueado || (form.estado !== 'P' && !isNew && !correccionAbierta))
     if (!editable) return
-    const cuotaNum = Number(String(form.cuota ?? '').replace(/\./g, '').replace(/[^\d.-]/g, '')) || 0
     const esUF = form.unid === 'UF'
+    // En UF el punto de la cuota es DECIMAL (15.87), NO separador de miles: NO quitarlo.
+    // En pesos sí es separador de miles ("650.000" → 650000). Antes se quitaba siempre y en
+    // UF convertía 15.87 → 1587 (×100), origen del corretaje disparatado (A00820, A00807…).
+    const cuotaNum = esUF
+      ? (Number(String(form.cuota ?? '').replace(',', '.').replace(/[^\d.]/g, '')) || 0)
+      : (Number(String(form.cuota ?? '').replace(/\./g, '').replace(/[^\d]/g, '')) || 0)
     const cuotaPesos = esUF ? (ufMes ? Math.round(cuotaNum * ufMes) : null) : cuotaNum
     const lado = (pctTxt) => {
       if (!cuotaNum || cuotaPesos == null) return { base: '', iva: '', total: '' }
